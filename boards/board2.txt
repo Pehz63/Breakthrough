@@ -1,0 +1,8 @@
+.BBBBBB.
+.BBBBBB.
+.BB..BB.
+........
+........
+.WWWWWW.
+..W..W..
+WWWWWWWW
