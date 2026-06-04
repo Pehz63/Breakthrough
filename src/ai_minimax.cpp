@@ -2,6 +2,7 @@
 #include "moves.h"
 #include "board_analysis.h"
 #include "ai_random.h"
+#include "ai_eval.h"
 
 int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for white
     nodes++;

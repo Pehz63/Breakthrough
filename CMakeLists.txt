@@ -10,6 +10,7 @@ add_executable(breakthrough
     src/settings.cpp
     src/board_analysis.cpp
     src/moves.cpp
+    src/ai_eval.cpp
     src/ai_random.cpp
     src/ai_minimax.cpp
 )

@@ -11,7 +11,7 @@ A C++ console implementation of the Breakthrough board game by Zeph Johnson.
 Run from the project root in any VS Code terminal (regular PowerShell works):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 
 This produces `breakthrough.exe` in the project root. Intermediate `.obj` files go into `build/`.
@@ -21,7 +21,7 @@ This produces `breakthrough.exe` in the project root. Intermediate `.obj` files 
 To recompile and immediately run the result:
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
 ```
 
 ## Source files
@@ -34,7 +34,8 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Buil
 | `settings.cpp` | `getSettings`, `printVictor` |
 | `board_analysis.cpp` | `countChips`, `chipDiff`, `findWin*`, `canWin*` |
 | `moves.cpp` | Move validation, execution, simulation, player input, move routing |
-| `ai_random.cpp` | `evaluateBoard`, `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
+| `ai_eval.cpp` | `evaluateBoard` — board heuristic used by minimax and move dispatcher |
+| `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
 | `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta` |
 
 ## Running

@@ -1,6 +1,7 @@
 #include "moves.h"
 #include "ai_random.h"
 #include "ai_minimax.h"
+#include "ai_eval.h"
 
 int moveWhite(int whitePlayer, int w1, int w2, int w3, int w4, int w5, int wOpener) {  //Call appropriate move function for given parameters
     unsigned long long int nodes = 0;
