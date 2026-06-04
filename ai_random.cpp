@@ -1,0 +1,737 @@
+#include "ai_random.h"
+#include "moves.h"
+#include "board_analysis.h"
+
+int pureRandomMoveWhite() {  //Get a uniform-random move for white (simple ai)
+    int moveX1, moveY, moveX2;
+    int moveList[(SIZE-1)*SIZE*3][3];
+    int availableMoves = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every possible move:
+    for (int y = 0; y < SIZE; y++)
+    {
+        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+            if (board[x][y] == WHITE) //If space has our piece, try to move:
+                for (int z = x-1; z <= x+1; z++) //Try each direction:
+                    if (tryMoveWhite(x, y, z, false))
+                    { //Move is valid, list and count it:
+                        moveList[availableMoves][0] = x;
+                        moveList[availableMoves][1] = y;
+                        moveList[availableMoves][2] = z;
+                        availableMoves++;
+                    }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        if (PRNT > 0)
+        {
+            cout << "Error finding a move.\n";
+            printBoard();
+        }
+        return tieredRandomMoveWhite();
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "White (Uniform Random) ";
+    if (tryMoveWhite(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveWhite(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "White (Uniform Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+int pureRandomMoveBlack() {  //Get a uniform-random move for black (simple ai)
+    int moveX1, moveY, moveX2;
+    int moveList[(SIZE-1)*SIZE*3][3];
+    int availableMoves = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every possible move:
+    for (int y = 0; y < SIZE; y++)
+    {
+        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+            if (board[x][y] == BLACK) //If space has our piece, try to move:
+                for (int z = x-1; z <= x+1; z++) //Try each direction:
+                    if (tryMoveBlack(x, y, z, false))
+                    { //Move is valid, list and count it:
+                        moveList[availableMoves][0] = x;
+                        moveList[availableMoves][1] = y;
+                        moveList[availableMoves][2] = z;
+                        availableMoves++;
+                    }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        if (PRNT > 0)
+        {
+            cout << "Error finding a move.\n";
+            printBoard();
+        }
+        return tieredRandomMoveBlack();
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "Black (Uniform Random) ";
+    if (tryMoveBlack(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveBlack(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "Black (Uniform Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+
+int tieredRandomMoveWhite() {  //Get a random move for white, prioritizing wins, capturing a piece, then random moves
+    int moveX1, moveY, moveX2;
+    int moveList[(SIZE-2)*SIZE*3][3];
+    enum MoveType {AnyMove, CaptureMove, WinMove};
+    int moveType = AnyMove;
+    int availableMoves = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every possible move:
+    for (int y = SIZE-2; y >= 0; y--)
+    {
+        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+        {
+            if (board[x][y] == WHITE) //If space has our piece, try to move:
+                for (int z = x-1; z <= x+1; z++) //Try each direction:
+                    if (tryMoveWhite(x, y, z, false))
+                    { //Move is valid, list and count it:
+                        if (y == SIZE-2)
+                        { //Move is a victory, prioritize it
+                            moveType = WinMove;
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                        else if (board[z][y+1] == BLACK)
+                        { //Move is a capture, prioritize it
+                            if (moveType == AnyMove)
+                            { //First discovered capture, remove previous non-captures
+                                moveType = CaptureMove;
+                                availableMoves = 0;
+                            }
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                        else if (moveType == AnyMove)
+                        { //Move is a standard move
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                    }
+        }
+        if (y == SIZE-2 && availableMoves > 0)
+        { //If we found a winning move, play it:
+            break;
+        }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        cout << "Error finding a move.\n";
+        printBoard();
+        return BlackWin;
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "White (Tiered Random) ";
+    if (tryMoveWhite(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveWhite(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "White (Tiered Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+int tieredRandomMoveBlack() {  //Get a random move for black, prioritizing wins, capturing a piece, then random moves
+    int moveX1, moveY, moveX2;
+    int moveList[(SIZE-2)*SIZE*3][3];
+    enum MoveType {AnyMove, CaptureMove, WinMove};
+    int moveType = AnyMove;
+    int availableMoves = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every possible move:
+    for (int y = 1; y <= SIZE-1; y++)
+    {
+        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+        {
+            if (board[x][y] == BLACK) //If space has our piece, try to move:
+                for (int z = x-1; z <= x+1; z++) //Try each direction:
+                    if (tryMoveBlack(x, y, z, false))
+                    { //Move is valid, list and count it:
+                        if (y == 1)
+                        { //Move is a victory, prioritize it
+                            moveType = WinMove;
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                        else if (board[z][y-1] == WHITE)
+                        { //Move is a capture, prioritize it
+                            if (moveType == AnyMove)
+                            { //First discovered capture, remove previous non-captures
+                                moveType = CaptureMove;
+                                availableMoves = 0;
+                            }
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                        else if (moveType == AnyMove)
+                        { //Move is a standard move
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+                    }
+        }
+        if (y == 1 && availableMoves > 0)
+        { //If we found a winning move, play it:
+            break;
+        }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        cout << "Error finding a move.\n";
+        printBoard();
+        return WhiteWin;
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "Black (Tiered Random) ";
+    if (tryMoveBlack(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveBlack(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "Black (Tiered Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+
+int smartRandomMoveWhite(int furthestCount) {  //Get a random move for white, prioritizing wins, capturing furthest piece, then moving furthest 4 pieces
+    int moveX1, moveY, moveX2;
+    int moveList[12*3][3];
+    int availableMoves = 0;
+    int forwardPieces = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every move of prioritized category:
+    moveX1 = findWinWhite();
+    if (moveX1 > -1)
+    { //There is a winning move, list available directions for winning piece:
+        moveY = SIZE-2;
+        for (int z = moveX1 - 1; z <= moveX1+1; z++)
+        {
+            if (tryMoveWhite(moveX1, moveY, z, false))
+            {
+                moveList[availableMoves][0] = moveX1;
+                moveList[availableMoves][1] = moveY;
+                moveList[availableMoves][2] = z;
+                availableMoves++;
+            }
+        }
+    }
+    else //if no winning move, find another move:
+    {
+        //List and count first row of defensive captures:
+        for (int y = 0; y <= SIZE-3; y++)
+        {
+            for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+                if (board[x][y] == WHITE) //If space has our piece, try to move:
+                    for (int z = x-1; z <= x+1; z+=2) //Try each direction:
+                        if (tryMoveWhite(x, y, z, false) && board[z][y+1] == BLACK)
+                        { //Move is a valid capture, list and count it:
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+
+            //If a capture was found, stop searching:
+            if (availableMoves > 0)
+            {
+                break;
+            }
+        }
+
+        //If no capture move, then list and count at least 4 furthest moves:
+        if (availableMoves == 0)
+        {
+            for (int y = SIZE-3; y >= 0; y--)
+            {
+                for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+                    if (board[x][y] == WHITE) //If space has our piece, try to move:
+                        for (int z = x-1; z <= x+1; z+=2) //Try each direction:
+                            if (tryMoveWhite(x, y, z, false))
+                            { //Move is valid, list and count it:
+                                if (availableMoves == 0 || (moveList[availableMoves-1][0] != x || moveList[availableMoves-1][1] != y))
+                                    forwardPieces++; //This is new piece, count it
+                                moveList[availableMoves][0] = x;
+                                moveList[availableMoves][1] = y;
+                                moveList[availableMoves][2] = z;
+                                availableMoves++;
+                            }
+
+                //If enough pieces found, stop searching:
+                if (forwardPieces >= furthestCount)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        if (PRNT > 0)
+        {
+            cout << "Error finding a move.\n";
+            printBoard();
+        }
+        return tieredRandomMoveWhite();
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "White (Smart Random) ";
+    if (tryMoveWhite(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveWhite(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "White (Smart Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+int smartRandomMoveBlack(int furthestCount) {  //Get a random move for black, prioritizing wins, capturing furthest piece, then moving furthest 4 pieces
+    int moveX1, moveY, moveX2;
+    int moveList[12*3][3];
+    int availableMoves = 0;
+    int forwardPieces = 0;
+    int chosenMove = 0;
+    int victor = 0;
+
+    //List and count every move of prioritized category:
+    moveX1 = findWinBlack();
+    if (moveX1 > -1)
+    { //There is a winning move, list available directions for winning piece:
+        moveY = 1;
+        for (int z = moveX1 - 1; z <= moveX1+1; z++)
+        {
+            if (tryMoveBlack(moveX1, moveY, z, false))
+            {
+                moveList[availableMoves][0] = moveX1;
+                moveList[availableMoves][1] = moveY;
+                moveList[availableMoves][2] = z;
+                availableMoves++;
+            }
+        }
+    }
+    else //if no winning move, find another move:
+    {
+        //List and count first row of defensive captures:
+        for (int y = SIZE-1; y >= 2; y--)
+        {
+            for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+                if (board[x][y] == BLACK) //If space has our piece, try to move:
+                    for (int z = x-1; z <= x+1; z+=2) //Try each direction:
+                        if (tryMoveBlack(x, y, z, false) && board[z][y-1] == WHITE)
+                        { //Move is a valid capture, list and count it:
+                            moveList[availableMoves][0] = x;
+                            moveList[availableMoves][1] = y;
+                            moveList[availableMoves][2] = z;
+                            availableMoves++;
+                        }
+
+            //If a capture was found, stop searching:
+            if (availableMoves > 0)
+            {
+                break;
+            }
+        }
+
+        //If no capture move, then list and count at least 4 furthest moves:
+        if (availableMoves == 0)
+        {
+            for (int y = 2; y <= SIZE-1; y++)
+            {
+                for (int x = 0; x < SIZE; x++) //Loop through board spaces:
+                    if (board[x][y] == BLACK) //If space has our piece, try to move:
+                        for (int z = x-1; z <= x+1; z+=2) //Try each direction:
+                            if (tryMoveBlack(x, y, z, false))
+                            { //Move is valid, list and count it:
+                                if (availableMoves == 0 || (moveList[availableMoves-1][0] != x || moveList[availableMoves-1][1] != y))
+                                    forwardPieces++; //This is new piece, count it
+                                moveList[availableMoves][0] = x;
+                                moveList[availableMoves][1] = y;
+                                moveList[availableMoves][2] = z;
+                                availableMoves++;
+                            }
+
+                //If enough pieces found, stop searching:
+                if (forwardPieces >= furthestCount)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    //Choose a random move from the list:
+    if (availableMoves < 1)
+    {
+        if (PRNT > 0)
+        {
+            cout << "Error finding a move.\n";
+            printBoard();
+        }
+        return tieredRandomMoveBlack();
+    }
+    chosenMove = rand() % availableMoves;
+    moveX1 = moveList[chosenMove][0];
+    moveY  = moveList[chosenMove][1];
+    moveX2 = moveList[chosenMove][2];
+
+    //Play chosen move:
+    if (PRNT > 1)
+        cout << "Black (Smart Random) ";
+    if (tryMoveBlack(moveX1, moveY, moveX2, false))
+    { //Move is valid, play it:
+        if (PRNT > 1)
+            cout << "played: ";
+        victor = playMoveBlack(moveX1, moveY, moveX2);
+    }
+    else
+    { //Move is invalid, report it:
+        victor = None;
+        if (PRNT > 0)
+        {
+            if (PRNT == 1)
+                cout << "Black (Smart Random) ";
+            cout << "move Invalid, tried: ";
+            cout << (char)('a'+moveX1) << moveY << (char)('a'+moveX2);
+            if (PRNT == 1)
+                printBoard();
+        }
+    }
+    return victor;
+}
+
+int evaluateBoard(int turnColor, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight) { //Evaluates the board assuming it's given color's turn, with parameters for multipliers
+    int y = 0, x = 0;
+    int eval = 0;
+
+    //If a piece is at the end of the board, that color won:
+    for (x = 0; x < SIZE; x++)
+        if (board[x][y] == BLACK)
+            return BlackWin;
+    y = SIZE-1;
+    for (x = 0; x < SIZE; x++)
+        if (board[x][y] == WHITE)
+            return WhiteWin;
+
+    //If a piece is one away from the end of the board and can move or can't be captured, that color won:
+    if (turnColor == White)
+    {
+        eval += turnWeight;
+        //If current color has a piece that can move to victory, they won:
+        y = SIZE-2;
+        for (x = 0; x < SIZE; x++)
+            if (board[x][y] == WHITE)
+                return WhiteWin;
+        //If the opponent color has a piece that can move to victory and we can't capture it, they won:
+        y = 1;
+        for (x = 0; x < SIZE; x++)
+            if ((board[x][y] == BLACK) && (x == 0 || board[x-1][y-1] != WHITE) && (x == SIZE-1 || board[x+1][y-1] != WHITE))
+                return BlackWin;
+    }
+    else if (turnColor == Black)
+    {
+        eval -= turnWeight;
+        //If current color has a piece that can move to victory, they won:
+        y = 1;
+        for (x = 0; x < SIZE; x++)
+            if (board[x][y] == BLACK)
+                return BlackWin;
+        //If the opponent color has a piece that can move to victory and we can't capture it, they won:
+        y = SIZE-2;
+        for (x = 0; x < SIZE; x++)
+            if ((board[x][y] == WHITE) && (x == 0 || board[x-1][y+1] != BLACK) && (x == SIZE-1 || board[x+1][y+1] != BLACK))
+                return WhiteWin;
+    }
+
+    //Look for strong structures:
+    if (wallWeight != 0 || columnWeight != 0) {
+        for (y = 0; y < SIZE-1; y++) {
+            for (x = 0; x < SIZE-1; x++) { //Loop through board places:
+                if (board[x][y] != EMPTY) {
+                    if (x < SIZE-1 && board[x+1][y] == board[x][y]) { //Wall structure
+                        if (board[x][y] == WHITE)
+                            eval += wallWeight;
+                        else
+                            eval -= wallWeight;
+                    }
+                    if (y < SIZE-1 && board[x][y+1] == board[x][y]) { //Column structure
+                        if (board[x][y] == WHITE)
+                            eval += columnWeight;
+                        else
+                            eval -= columnWeight;
+                    }
+                }
+            }
+        }
+    }
+
+    //Look for strong vertical structures:
+
+    return chipDiff()*chipDiffWeight + eval;
+}
+
+bool playOpenerWhite(int openerCode) { //If opponent hasn't advanced too far, plays the next opening move and returns 1.
+    if (openerCode <= StandardOpener)
+        return false;
+
+    //If our half of the board has their piece, don't play next opener move:
+    for (int y = 0; y <= 3; y++)
+        for (int x = 0; x <= SIZE-1; x++)
+            if (board[x][y] == BLACK)
+                return false;
+
+    //Else, play our next opener move:
+    if (openerCode == OffensiveOpener) {
+        for (int x = SIZE-1; x >= 0; x--)
+        {
+            if (board[x][1] == WHITE)
+            {
+                if (x >= SIZE-2)
+                {
+                    playMoveWhite(x, 1, x-1);
+                    return true;
+                }
+                if (x >= 3 && x <= SIZE-4)
+                {
+                    playMoveWhite(x, 1, x);
+                    return true;
+                }
+                if (x <= 1)
+                {
+                    playMoveWhite(x, 1, x+1);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    if (openerCode == DefensiveOpener) {
+        if (board[SIZE-1][0] == WHITE)
+        {
+            if (board[SIZE-2][1] == WHITE)
+                playMoveWhite(SIZE-2, 1, SIZE-3);
+            else
+                playMoveWhite(SIZE-1, 0, SIZE-2);
+            return true;
+        }
+        if (board[0][0] == WHITE)
+        {
+            if (board[1][1] == WHITE)
+                playMoveWhite(1, 1, 2);
+            else
+                playMoveWhite(0, 0, 1);
+            return true;
+        }
+        if (board[SIZE-1][1] == WHITE)
+        {
+            playMoveWhite(SIZE-1, 1, SIZE-2);
+            return true;
+        }
+        if (board[0][1] == WHITE)
+        {
+            playMoveWhite(0, 1, 1);
+            return true;
+        }
+        //If none of previous moves worked, opener is done:
+        return false;
+    }
+    return false;
+}
+bool playOpenerBlack(int openerCode) { //If opponent hasn't advanced too far, plays the next opening move and returns 1.
+    if (openerCode <= StandardOpener)
+        return false;
+
+    //If our half of the board has their piece, don't play next opener move:
+    for (int y = SIZE-1; y >= SIZE-4; y--)
+        for (int x = 0; x <= SIZE-1; x++)
+            if (board[x][y] == WHITE)
+                return false;
+
+    //Else, play our next opener move:
+    if (openerCode == OffensiveOpener) {
+        for (int x = SIZE-1; x >= 0; x--)
+        {
+            if (board[x][SIZE-2] == BLACK)
+            {
+                if (x >= SIZE-2)
+                {
+                    playMoveBlack(x, SIZE-2, x-1);
+                    return true;
+                }
+                if (x >= 3 && x <= SIZE-4)
+                {
+                    playMoveBlack(x, SIZE-2, x);
+                    return true;
+                }
+                if (x <= 1)
+                {
+                    playMoveBlack(x, SIZE-2, x+1);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    if (openerCode == DefensiveOpener) {
+        if (board[SIZE-1][SIZE-1] == BLACK)
+        {
+            if (board[SIZE-2][SIZE-2] == BLACK)
+                playMoveBlack(SIZE-2, SIZE-2, SIZE-3);
+            else
+                playMoveBlack(SIZE-1, SIZE-1, SIZE-2);
+            return true;
+        }
+        if (board[0][SIZE-1] == BLACK)
+        {
+            if (board[1][SIZE-2] == BLACK)
+                playMoveBlack(1, SIZE-2, 2);
+            else
+                playMoveBlack(0, SIZE-1, 1);
+            return true;
+        }
+        if (board[SIZE-1][SIZE-2] == BLACK)
+        {
+            playMoveBlack(SIZE-1, SIZE-2, SIZE-2);
+            return true;
+        }
+        if (board[0][SIZE-2] == BLACK)
+        {
+            playMoveBlack(0, SIZE-2, 1);
+            return true;
+        }
+        //If none of previous moves worked, opener is done:
+        return false;
+    }
+    return false;
+}

@@ -11,7 +11,7 @@ A C++ console implementation of the Breakthrough board game by Zeph Johnson.
 Run from the project root in any VS Code terminal (regular PowerShell works):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl main.cpp /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl main.cpp board_io.cpp settings.cpp board_analysis.cpp moves.cpp ai_random.cpp ai_minimax.cpp /EHsc /Fe:breakthrough.exe'
 ```
 
 This produces `breakthrough.exe` in the project root.
@@ -21,8 +21,21 @@ This produces `breakthrough.exe` in the project root.
 To recompile and immediately run the result:
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl main.cpp /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl main.cpp board_io.cpp settings.cpp board_analysis.cpp moves.cpp ai_random.cpp ai_minimax.cpp /EHsc /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
 ```
+
+## Source files
+
+| File | Contents |
+|---|---|
+| `globals.h` | Shared macros, enums, extern globals, all forward declarations |
+| `main.cpp` | Global variable definitions + `main()` game loop |
+| `board_io.cpp` | `getBoard`, `reloadBoard`, `printBoard`, `loadMinimaxParams` |
+| `settings.cpp` | `getSettings`, `printVictor` |
+| `board_analysis.cpp` | `countChips`, `chipDiff`, `findWin*`, `canWin*` |
+| `moves.cpp` | Move validation, execution, simulation, player input, move routing |
+| `ai_random.cpp` | `evaluateBoard`, `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
+| `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta` |
 
 ## Running
 
