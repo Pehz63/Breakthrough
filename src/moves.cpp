@@ -185,6 +185,10 @@ int playMoveWhite(int moveX1, int moveY, int moveX2) { //Lets white play the giv
 
     //If it's a capture, we have to check if a piece remains
     isCapture = (board[moveX2][moveY+1] == BLACK);
+    if (isCapture) {
+        g_blackCount--;
+        g_chipDiff++;
+    }
 
     //Play the move:
     board[moveX1][moveY] = EMPTY;
@@ -194,17 +198,9 @@ int playMoveWhite(int moveX1, int moveY, int moveX2) { //Lets white play the giv
     if (moveY >= SIZE-2)
         return WhiteWin;
 
-    //If white captured a piece, make sure it wasn't the last:
-    if (isCapture)
-    {
-        //Loop through board places until a black piece is found:
-        for (int y = SIZE-1; y >= 0; y--)
-            for (int x = 0; x <= SIZE-1; x++)
-                if (board[x][y] == BLACK)
-                    return None;
-        //No black piece found, white won by domination:
+    //If white captured the last black piece, white won by domination:
+    if (isCapture && g_blackCount == 0)
         return WhiteWin;
-    }
     return None;
 }
 int playMoveBlack(int moveX1, int moveY, int moveX2) { //Lets black play the given move and returns victory#
@@ -221,6 +217,10 @@ int playMoveBlack(int moveX1, int moveY, int moveX2) { //Lets black play the giv
 
     //If it's a capture, we have to check if a piece remains
     isCapture = (board[moveX2][moveY-1] == WHITE);
+    if (isCapture) {
+        g_whiteCount--;
+        g_chipDiff--;
+    }
 
     //Play the move:
     board[moveX1][moveY] = EMPTY;
@@ -230,17 +230,9 @@ int playMoveBlack(int moveX1, int moveY, int moveX2) { //Lets black play the giv
     if (moveY <= 1)
         return BlackWin;
 
-    //If black captured a piece, make sure it wasn't the last:
-    if (isCapture)
-    {
-        //Loop through board places until a white piece is found:
-        for (int y = 0; y <= SIZE-1; y++)
-            for (int x = 0; x <= SIZE-1; x++)
-                if (board[x][y] == BLACK)
-                    return None;
-        //No white piece found, black won by domination:
+    //If black captured the last white piece, black won by domination:
+    if (isCapture && g_whiteCount == 0)
         return BlackWin;
-    }
     return None;
 }
 
@@ -262,6 +254,10 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     bool isCapture;
     //If it's a capture, we have to return this later
     isCapture = (board[moveX2][moveY+1] == BLACK);
+    if (isCapture) {
+        g_blackCount--;
+        g_chipDiff++;
+    }
 
     //Simulate the move:
     board[moveX1][moveY] = EMPTY;
@@ -273,6 +269,10 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
     bool isCapture;
     //If it's a capture, we have to return this later
     isCapture = (board[moveX2][moveY-1] == WHITE);
+    if (isCapture) {
+        g_whiteCount--;
+        g_chipDiff--;
+    }
 
     //Simulate the move:
     board[moveX1][moveY] = EMPTY;
@@ -284,9 +284,11 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
     //Undo the simulated move:
     board[moveX1][moveY] = WHITE;
     //If it's a capture, replace captured piece
-    if (isCapture)
+    if (isCapture) {
+        g_blackCount++;
+        g_chipDiff--;
         board[moveX2][moveY+1] = BLACK;
-    else
+    } else
         board[moveX2][moveY+1] = EMPTY;
     return;
 }
@@ -294,9 +296,11 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
     //Undo the simulated move:
     board[moveX1][moveY] = BLACK;
     //If it's a capture, replace captured piece
-    if (isCapture)
+    if (isCapture) {
+        g_whiteCount++;
+        g_chipDiff++;
         board[moveX2][moveY-1] = WHITE;
-    else
+    } else
         board[moveX2][moveY-1] = EMPTY;
     return;
 }

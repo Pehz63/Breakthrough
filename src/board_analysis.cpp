@@ -83,13 +83,7 @@ bool canWinWhite() { //Returns 0 if no win or 1 if white can/did win
     for (int x = 0; x < SIZE; x++)
         if (board[x][y] == WHITE) //If space has our piece, we won
             return true;
-    //Else if no win, make sure opponent still has pieces:
-    for (y = SIZE-1; y >= 0; y--)
-        for (int x = 0; x < SIZE; x++)
-            if (board[x][y] == BLACK) //If space has their piece, we haven't won
-                return false;
-    //Else opponent can't move, we won
-    return true;
+    return g_blackCount == 0;
 }
 bool canWinBlack() { //Returns 0 if no win or 1 if black can/did win
     //Loop through board spaces in furthest row:
@@ -97,11 +91,5 @@ bool canWinBlack() { //Returns 0 if no win or 1 if black can/did win
     for (int x = 0; x < SIZE; x++)
         if (board[x][y] == BLACK) //If space has our piece, we won
             return true;
-    //Else if no win, make sure opponent still has pieces:
-    for (y = 0; y <= SIZE-1; y++)
-        for (int x = 0; x < SIZE; x++)
-            if (board[x][y] == WHITE) //If space has their piece, we haven't won
-                return false;
-    //Else opponent can't move, we won
-    return true;
+    return g_whiteCount == 0;
 }

@@ -68,5 +68,5 @@ int evaluateBoard(int turnColor, int turnWeight, int chipDiffWeight, int wallWei
 
     //Look for strong vertical structures:
 
-    return chipDiff()*chipDiffWeight + eval;
+    return g_chipDiff*chipDiffWeight + eval;
 }

@@ -30,6 +30,19 @@ string getBoard() {  //Get the board from a specified file
                 }
     }
     boardFile.close();
+    g_whiteCount = 0;
+    g_blackCount = 0;
+    g_chipDiff = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            if (board[x][y] == WHITE) {
+                g_whiteCount++;
+                g_chipDiff++;
+            } else if (board[x][y] == BLACK) {
+                g_blackCount++;
+                g_chipDiff--;
+            }
+        }
     return boardFileStr;
 }
 bool reloadBoard(string boardFileStr) {  //Reloads the board from the given file
@@ -55,6 +68,19 @@ bool reloadBoard(string boardFileStr) {  //Reloads the board from the given file
                 return false;
             }
     boardFile.close();
+    g_whiteCount = 0;
+    g_blackCount = 0;
+    g_chipDiff = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            if (board[x][y] == WHITE) {
+                g_whiteCount++;
+                g_chipDiff++;
+            } else if (board[x][y] == BLACK) {
+                g_blackCount++;
+                g_chipDiff--;
+            }
+        }
     return true;
 }
 void printBoard() {  //Print the board

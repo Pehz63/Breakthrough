@@ -22,6 +22,9 @@ char chipChr[3] = {'.', 'W', 'B'};
 char board[SIZE][SIZE];
 unsigned long long int nodesWhite = 0;
 unsigned long long int nodesBlack = 0;
+int g_whiteCount = 0;
+int g_blackCount = 0;
+int g_chipDiff   = 0;
 
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));
