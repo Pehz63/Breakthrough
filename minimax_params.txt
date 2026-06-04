@@ -1,0 +1,22 @@
+# Breakthrough MiniMax Parameters
+# Edit these values to set your preferred settings for each color.
+# The game will offer to load them whenever you pick MiniMax.
+#
+# Depth guide (no structure weights):  <8=~1s  8=10s  9=30s  10=5min  11=25min
+# Depth guide (with structure weights): <6=~1s  6=10s   7=1.5min  8=7min  9=40min
+#
+# opener: 0=Standard  1=Offensive  2=Defensive
+
+white_depth=7
+white_turn_weight=0
+white_chip_weight=1
+white_wall_weight=0
+white_column_weight=0
+white_opener=0
+
+black_depth=7
+black_turn_weight=0
+black_chip_weight=1
+black_wall_weight=0
+black_column_weight=0
+black_opener=0

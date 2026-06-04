@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
+#include <map>
+#include <string>
 #include <ctime>
 #include <limits.h>
 
@@ -16,6 +18,8 @@ using std::endl;
 using std::flush;
 using std::string;
 using std::fstream;
+using std::ifstream;
+using std::map;
 
 #define EMPTY   '.'
 #define WHITE   'W'
@@ -38,6 +42,7 @@ char board[SIZE][SIZE];
 unsigned long long int nodesWhite = 0;
 unsigned long long int nodesBlack = 0;
 
+bool loadMinimaxParams(const string&, int&, int&, int&, int&, int&, int&, const string&); //Loads minimax params from file for given color prefix
 string getBoard(); //Loads the board from a user-given file
 bool reloadBoard(string); //Reloads the board from the given file
 void printBoard(); //Print the board
@@ -87,7 +92,7 @@ int evaluateBoard(int, int, int, int, int); //Evaluates the board assuming it's 
 
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));
-    string boardFileStr = "";
+    string boardFileStr = "boards\\board1.txt";
     int whitePlayer = NullPlayer, wOpener = NullOpener; //white enumerated player-type code
     int w1 = -1, w2 = -1, w3 = -1, w4 = -1, w5 = -1; //white parameters
     int blackPlayer = NullPlayer, bOpener = NullOpener; //black enumerated player-type code
@@ -104,8 +109,20 @@ int main () {  //Play one game of Breakthrough
     int victor = None;
     
     //Get board from user:
-    if (!reloadBoard(boardFileStr))
-        boardFileStr = getBoard();
+    {
+        ifstream check(boardFileStr);
+        if (check.good()) {
+            check.close();
+            cout << "Use default board (boards\\board1.txt)? (1=yes, 0=no): ";
+            int useDefault = 0; cin >> useDefault;
+            if (useDefault == 1)
+                reloadBoard(boardFileStr);
+            else
+                boardFileStr = getBoard();
+        } else {
+            boardFileStr = getBoard();
+        }
+    }
         
     cout << "Starting board:" << endl;
     printBoard();
@@ -367,6 +384,27 @@ void printBoard() {  //Print the board
     cout << "\n  \\ - - - - - - - - /\n    a b c d e f g h" << endl;
     return;
 }
+bool loadMinimaxParams(const string& filename, int& depth, int& turnW, int& chipW, int& wallW, int& colW, int& opener, const string& prefix) {
+    ifstream f(filename);
+    if (!f.is_open()) return false;
+    map<string, int> vals;
+    string line;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto eq = line.find('=');
+        if (eq == string::npos) continue;
+        string key = line.substr(0, eq);
+        try { vals[key] = std::stoi(line.substr(eq + 1)); } catch (...) {}
+    }
+    depth  = vals.count(prefix+"_depth")         ? vals[prefix+"_depth"]         : -1;
+    turnW  = vals.count(prefix+"_turn_weight")   ? vals[prefix+"_turn_weight"]   : -1;
+    chipW  = vals.count(prefix+"_chip_weight")   ? vals[prefix+"_chip_weight"]   : -1;
+    wallW  = vals.count(prefix+"_wall_weight")   ? vals[prefix+"_wall_weight"]   : -1;
+    colW   = vals.count(prefix+"_column_weight") ? vals[prefix+"_column_weight"] : -1;
+    opener = vals.count(prefix+"_opener")        ? vals[prefix+"_opener"]        : NullOpener;
+    return true;
+}
+
 void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, int& wOpener, int& blackPlayer, int& b1, int& b2, int& b3, int& b4, int& b5, int& bOpener, int& gameCount, int& testing, int& testingParam) {  //Gets the player and game settings from the user
     //Get whitePlayer:
     if (whitePlayer <= NullPlayer) {
@@ -449,6 +487,17 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         break;
         
         case MiniMax:
+        {
+            int fd=-1, ft=-1, fc=-1, fw=-1, fco=-1, fo=NullOpener;
+            if (loadMinimaxParams("minimax_params.txt", fd, ft, fc, fw, fco, fo, "white")) {
+                cout << "Loaded white params from minimax_params.txt:"
+                     << "\n  depth=" << fd << "  turn=" << ft << "  chip=" << fc
+                     << "  wall=" << fw << "  col=" << fco << "  opener=" << fo << "\n";
+                cout << "Use these? (1=yes, 0=no): ";
+                int useFile = 0; cin >> useFile;
+                if (useFile == 1) { w1=fd; w2=ft; w3=fc; w4=fw; w5=fco; wOpener=fo; }
+            }
+        }
         //parameter 1 is depth:
         while (w1 <= 0) {
             cout << "Depths:\tGame time, without structure params:\n";
@@ -506,7 +555,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
                 cout << "Invalid number: Enter an integer between 0 and 2 inclusive.\n";
         }
         break;
-        
+
         default:
         cout << "Invalid code: Enter an integer between 0 and 4 inclusive.\n";
         whitePlayer = NullPlayer;
@@ -595,6 +644,17 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         break;
         
         case MiniMax:
+        {
+            int fd=-1, ft=-1, fc=-1, fw=-1, fco=-1, fo=NullOpener;
+            if (loadMinimaxParams("minimax_params.txt", fd, ft, fc, fw, fco, fo, "black")) {
+                cout << "Loaded black params from minimax_params.txt:"
+                     << "\n  depth=" << fd << "  turn=" << ft << "  chip=" << fc
+                     << "  wall=" << fw << "  col=" << fco << "  opener=" << fo << "\n";
+                cout << "Use these? (1=yes, 0=no): ";
+                int useFile = 0; cin >> useFile;
+                if (useFile == 1) { b1=fd; b2=ft; b3=fc; b4=fw; b5=fco; bOpener=fo; }
+            }
+        }
         //parameter 1 is depth
         while (b1 <= 0) {
             cout << "Depths:\tGame time, without structure params:\n";
