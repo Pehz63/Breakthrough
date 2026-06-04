@@ -7,14 +7,14 @@
 #
 # opener: 0=Standard  1=Offensive  2=Defensive
 
-white_depth=7
+white_depth=9
 white_turn_weight=0
 white_chip_weight=1
 white_wall_weight=0
 white_column_weight=0
 white_opener=0
 
-black_depth=7
+black_depth=9
 black_turn_weight=0
 black_chip_weight=1
 black_wall_weight=0

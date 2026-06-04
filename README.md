@@ -16,6 +16,14 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Buil
 
 This produces `breakthrough.exe` in the project root.
 
+## Compile and Run
+
+To recompile and immediately run the result:
+
+```powershell
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl main.cpp /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+```
+
 ## Running
 
 Run from the project root (required so board file paths resolve correctly):
