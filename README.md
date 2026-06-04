@@ -11,17 +11,17 @@ A C++ console implementation of the Breakthrough board game by Zeph Johnson.
 Run from the project root in any VS Code terminal (regular PowerShell works):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 
-This produces `breakthrough.exe` in the project root.
+This produces `breakthrough.exe` in the project root. Intermediate `.obj` files go into `build/`.
 
 ## Compile and Run
 
 To recompile and immediately run the result:
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
 ```
 
 ## Source files
