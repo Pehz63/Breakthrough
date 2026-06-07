@@ -60,7 +60,7 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 | `settings.cpp` / `settings.h` | Interactive CLI configuration. `getSettings()` prompts for player types, AI weights, game count, and verbosity. `printVictor()` displays winner and timing. |
 | `moves.cpp` / `moves.h` | All move logic: dispatch (`moveWhite`/`moveBlack`), human input parsing, full validation (`tryMoveWhite/Black`), fast AI validation (`tryMoveQuickWhite/Black`), execution (`playMoveWhite/Black`), reversible simulation (`simulateMove`/`unsimulateMove`) |
 | `board_analysis.cpp` / `board_analysis.h` | Chip counting, row-level chip difference, one-step win detection: `findWinWhite/Black()`, `canWinWhite/Black()` |
-| `ai_eval.cpp` / `ai_eval.h` | `evaluateBoard()`, the heuristic leaf-node score for minimax: immediate win detection, turn bonus, wall/column structure bonuses, chip-diff base score |
+| `ai_eval.cpp` / `ai_eval.h` | `evaluateBoard()`, the heuristic leaf-node score for minimax: near-end win detection (rows `SIZE-2` and `1`), turn bonus, wall/column structure bonuses, chip-diff base score. End-row win detection is handled before calling this function. |
 | `ai_random.cpp` / `ai_random.h` | Three random AI strategies (`pureRandomMove`, `tieredRandomMove`, `smartRandomMove`) and opening-sequence logic (`playOpenerWhite/Black`) |
 | `ai_minimax.cpp` / `ai_minimax.h` | Alpha-beta minimax: `miniMaxWhite/Black()` top-level search, `maxAlphaBeta`/`minAlphaBeta` recursive pruning, capture-first move ordering, win-decay for fastest wins |
 
@@ -82,6 +82,8 @@ All globals are declared `extern` in `globals.h` and defined in `main.cpp`.
 | `g_whiteCount` | `int` | Live white piece count, updated on every capture |
 | `g_blackCount` | `int` | Live black piece count, updated on every capture |
 | `g_chipDiff` | `int` | `g_whiteCount - g_blackCount`, used directly in `evaluateBoard()` |
+| `g_whiteAtEnd` | `int` | Count of White pieces currently on row `SIZE-1`. Updated by `simulateMove`/`unsimulateMove`. |
+| `g_blackAtEnd` | `int` | Count of Black pieces currently on row `0`. Updated by `simulateMove`/`unsimulateMove`. |
 | `nodesWhite` / `nodesBlack` | `int` | Minimax nodes visited this turn, printed for perf analysis |
 | `PRNT` | `int` | Verbosity: `0`=silent, `1`=moves only, `2`=full board states |
 
@@ -112,7 +114,7 @@ Openers are disabled automatically once the opponent advances into the player's 
 
 - **Simulate/unsimulate pattern:** `simulateMoveWhite/Black` and `unsimulateMoveWhite/Black` apply and reverse moves in-place so minimax avoids copying the board.
 - **Two validation tiers:** `tryMoveWhite/Black` gives full validation with user-readable error messages for human input. `tryMoveQuickWhite/Black` skips bounds checks for AI inner loop performance.
-- **Capture-first move ordering:** In minimax, diagonal (capture) moves are tried before forward moves to improve alpha-beta pruning efficiency.
+- **Capture-first move ordering:** In minimax, moves for each piece are tried in strict priority order: actual captures (diagonal to an enemy piece), then empty diagonal advances, then the forward move. This ordering maximizes alpha-beta cutoffs. End-row win detection (`canWinWhite`/`canWinBlack`) uses `g_whiteAtEnd`/`g_blackAtEnd` for O(1) checks instead of scanning a row.
 - **Win decay:** When minimax finds a forced win, the score decreases by 1 per level, incentivizing the fastest possible victory path.
 - **`minimax_params.txt`:** Key-value config file (`key=value`, `#` comments) for persisting preferred AI weights between sessions.
 

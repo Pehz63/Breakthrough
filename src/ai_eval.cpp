@@ -5,15 +5,6 @@ int evaluateBoard(int turnColor, int turnWeight, int chipDiffWeight, int wallWei
     int y = 0, x = 0;
     int eval = 0;
 
-    //If a piece is at the end of the board, that color won:
-    for (x = 0; x < SIZE; x++)
-        if (board[x][y] == BLACK)
-            return BlackWin;
-    y = SIZE-1;
-    for (x = 0; x < SIZE; x++)
-        if (board[x][y] == WHITE)
-            return WhiteWin;
-
     //If a piece is one away from the end of the board and can move or can't be captured, that color won:
     if (turnColor == White)
     {

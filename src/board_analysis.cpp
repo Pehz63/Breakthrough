@@ -78,18 +78,8 @@ int findWinBlack() {  //Returns -1 if no win or column number if black can win
     return moveList[rand()%availableMoves];
 }
 bool canWinWhite() { //Returns 0 if no win or 1 if white can/did win
-    //Loop through board spaces in furthest row:
-    int y = SIZE-1;
-    for (int x = 0; x < SIZE; x++)
-        if (board[x][y] == WHITE) //If space has our piece, we won
-            return true;
-    return g_blackCount == 0;
+    return g_whiteAtEnd > 0 || g_blackCount == 0;
 }
 bool canWinBlack() { //Returns 0 if no win or 1 if black can/did win
-    //Loop through board spaces in furthest row:
-    int y = 0;
-    for (int x = 0; x < SIZE; x++)
-        if (board[x][y] == BLACK) //If space has our piece, we won
-            return true;
-    return g_whiteCount == 0;
+    return g_blackAtEnd > 0 || g_whiteCount == 0;
 }

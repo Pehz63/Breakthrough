@@ -19,25 +19,21 @@ int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     for (int y = SIZE-2; y >= 0; y--)
     {
         for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-            if (board[x][y] == WHITE) //If space has our piece, try to move:
-                for (int di = 0; di < 3; di++) //Try diagonals first, then forward:
-                {
-                    int z = x + (di == 0 ? -1 : di == 1 ? 1 : 0);
-                    if (tryMoveQuickWhite(x, y, z))
-                    { //Move is valid, evaluate its sub-tree:
-                        isCapture = simulateMoveWhite(x, y, z);
-                        eval = minAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
-                        unsimulateMoveWhite(x, y, z, isCapture);
-
-                        if (eval > alpha) //If this is the best child thus far, save it
-                        {
-                            alpha = eval;
-                            moveX1 = x;
-                            moveY = y;
-                            moveX2 = z;
-                        }
-                    }
-                }
+        {
+            if (board[x][y] != WHITE) continue;
+            int ny = y + 1;
+            auto tryMove = [&](int z) {
+                isCapture = simulateMoveWhite(x, y, z);
+                eval = minAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                unsimulateMoveWhite(x, y, z, isCapture);
+                if (eval > alpha) { alpha = eval; moveX1 = x; moveY = y; moveX2 = z; }
+            };
+            if (x > 0       && board[x-1][ny] == BLACK) tryMove(x-1); //Capture-left
+            if (x < SIZE-1  && board[x+1][ny] == BLACK) tryMove(x+1); //Capture-right
+            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1); //Diagonal-left
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1); //Diagonal-right
+            if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
+        }
     }
     if (moveX1 == -1)
     {
@@ -108,25 +104,21 @@ int miniMaxBlack(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     for (int y = 1; y <= SIZE-1; y++)
     {
         for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-            if (board[x][y] == BLACK) //If space has our piece, try to move:
-                for (int di = 0; di < 3; di++) //Try diagonals first, then forward:
-                {
-                    int z = x + (di == 0 ? -1 : di == 1 ? 1 : 0);
-                    if (tryMoveQuickBlack(x, y, z))
-                    { //Move is valid, evaluate its sub-tree:
-                        isCapture = simulateMoveBlack(x, y, z);
-                        eval = maxAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
-                        unsimulateMoveBlack(x, y, z, isCapture);
-
-                        if (eval < beta) //If this is the best child thus far, save it
-                        {
-                            beta = eval;
-                            moveX1 = x;
-                            moveY = y;
-                            moveX2 = z;
-                        }
-                    }
-                }
+        {
+            if (board[x][y] != BLACK) continue;
+            int ny = y - 1;
+            auto tryMove = [&](int z) {
+                isCapture = simulateMoveBlack(x, y, z);
+                eval = maxAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                unsimulateMoveBlack(x, y, z, isCapture);
+                if (eval < beta) { beta = eval; moveX1 = x; moveY = y; moveX2 = z; }
+            };
+            if (x > 0       && board[x-1][ny] == WHITE) tryMove(x-1); //Capture-left
+            if (x < SIZE-1  && board[x+1][ny] == WHITE) tryMove(x+1); //Capture-right
+            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1); //Diagonal-left
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1); //Diagonal-right
+            if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
+        }
     }
     if (moveX1 == -1)
     {
@@ -187,6 +179,8 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
     if (level == depth) //Base case: Node is a leaf, use SEF.
     {
         leafs++;
+        if (canWinWhite()) return WhiteWin;
+        if (canWinBlack()) return BlackWin;
         return evaluateBoard(White, turnWeight, chipDiffWeight, wallWeight, columnWeight);
     }
     if (canWinWhite())
@@ -209,22 +203,22 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
     for (int y = SIZE-2; y >= 0; y--)
     {
         for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-            if (board[x][y] == WHITE) //If space has our piece, try to move:
-                for (int di = 0; di < 3; di++) //Try diagonals first, then forward:
-                {
-                    int z = x + (di == 0 ? -1 : di == 1 ? 1 : 0);
-                    if (tryMoveQuickWhite(x, y, z))
-                    { //Move is valid, evaluate its sub-tree:
-                        isCapture = simulateMoveWhite(x, y, z);
-                        eval = minAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
-                        unsimulateMoveWhite(x, y, z, isCapture);
-
-                        if (eval > alpha) //If this is the best child thus far, save it
-                            alpha = eval;
-                        if (alpha >= beta) //If this sub-tree won't be played, prune it
-                            return beta;
-                    }
-                }
+        {
+            if (board[x][y] != WHITE) continue;
+            int ny = y + 1;
+            auto tryMove = [&](int z) -> bool {
+                isCapture = simulateMoveWhite(x, y, z);
+                eval = minAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                unsimulateMoveWhite(x, y, z, isCapture);
+                if (eval > alpha) alpha = eval;
+                return alpha >= beta;
+            };
+            if (x > 0       && board[x-1][ny] == BLACK && tryMove(x-1)) return beta; //Capture-left
+            if (x < SIZE-1  && board[x+1][ny] == BLACK && tryMove(x+1)) return beta; //Capture-right
+            if (x > 0       && board[x-1][ny] == EMPTY && tryMove(x-1)) return beta; //Diagonal-left
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY && tryMove(x+1)) return beta; //Diagonal-right
+            if (               board[x  ][ny] == EMPTY && tryMove(x)  ) return beta; //Forward
+        }
     }
     if (alpha > WhiteWin-1024) //If alpha is a winning move, have it decay at each level to favor longer checkmates
         alpha--;
@@ -235,6 +229,8 @@ int minAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
     if (level == depth) //Base case: Node is a leaf, use SEF.
     {
         leafs++;
+        if (canWinBlack()) return BlackWin;
+        if (canWinWhite()) return WhiteWin;
         return evaluateBoard(Black, turnWeight, chipDiffWeight, wallWeight, columnWeight);
     }
     if (canWinBlack())
@@ -257,22 +253,22 @@ int minAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
     for (int y = 1; y <= SIZE-1; y++)
     {
         for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-            if (board[x][y] == BLACK) //If space has our piece, try to move:
-                for (int di = 0; di < 3; di++) //Try diagonals first, then forward:
-                {
-                    int z = x + (di == 0 ? -1 : di == 1 ? 1 : 0);
-                    if (tryMoveQuickBlack(x, y, z))
-                    { //Move is valid, evaluate its sub-tree:
-                        isCapture = simulateMoveBlack(x, y, z);
-                        eval = maxAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
-                        unsimulateMoveBlack(x, y, z, isCapture);
-
-                        if (eval < beta) //If this is the best child thus far, save it
-                            beta = eval;
-                        if (beta <= alpha) //If this sub-tree won't be played, prune it
-                            return alpha;
-                    }
-                }
+        {
+            if (board[x][y] != BLACK) continue;
+            int ny = y - 1;
+            auto tryMove = [&](int z) -> bool {
+                isCapture = simulateMoveBlack(x, y, z);
+                eval = maxAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                unsimulateMoveBlack(x, y, z, isCapture);
+                if (eval < beta) beta = eval;
+                return beta <= alpha;
+            };
+            if (x > 0       && board[x-1][ny] == WHITE && tryMove(x-1)) return alpha; //Capture-left
+            if (x < SIZE-1  && board[x+1][ny] == WHITE && tryMove(x+1)) return alpha; //Capture-right
+            if (x > 0       && board[x-1][ny] == EMPTY && tryMove(x-1)) return alpha; //Diagonal-left
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY && tryMove(x+1)) return alpha; //Diagonal-right
+            if (               board[x  ][ny] == EMPTY && tryMove(x)  ) return alpha; //Forward
+        }
     }
     if (beta < BlackWin+1024) //If beta is a winning move, have it decay at each level to favor longer checkmates
         beta++;

@@ -35,6 +35,8 @@ extern unsigned long long int nodesBlack;
 extern int g_whiteCount;
 extern int g_blackCount;
 extern int g_chipDiff;
+extern int g_whiteAtEnd;
+extern int g_blackAtEnd;
 
 enum VictorEnum {None = 0, White = 1, Black = -1, WhiteWin = INT_MAX-1, BlackWin = INT_MIN+1};
 enum PlayerEnum {NullPlayer = -1, Human = 0, UniformRandom = 1, TieredRandom = 2, SmartRandom = 3, MiniMax = 4};

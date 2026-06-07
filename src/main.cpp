@@ -25,6 +25,8 @@ unsigned long long int nodesBlack = 0;
 int g_whiteCount = 0;
 int g_blackCount = 0;
 int g_chipDiff   = 0;
+int g_whiteAtEnd = 0;
+int g_blackAtEnd = 0;
 
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));

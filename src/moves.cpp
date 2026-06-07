@@ -262,6 +262,7 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     //Simulate the move:
     board[moveX1][moveY] = EMPTY;
     board[moveX2][moveY+1] = WHITE;
+    if (moveY+1 == SIZE-1) g_whiteAtEnd++;
 
     return isCapture;
 }
@@ -272,15 +273,18 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
     if (isCapture) {
         g_whiteCount--;
         g_chipDiff--;
+        if (moveY-1 == SIZE-1) g_whiteAtEnd--;
     }
 
     //Simulate the move:
     board[moveX1][moveY] = EMPTY;
     board[moveX2][moveY-1] = BLACK;
+    if (moveY-1 == 0) g_blackAtEnd++;
 
     return isCapture;
 }
 void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for white
+    if (moveY+1 == SIZE-1) g_whiteAtEnd--;
     //Undo the simulated move:
     board[moveX1][moveY] = WHITE;
     //If it's a capture, replace captured piece
@@ -293,12 +297,14 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
     return;
 }
 void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for black
+    if (moveY-1 == 0) g_blackAtEnd--;
     //Undo the simulated move:
     board[moveX1][moveY] = BLACK;
     //If it's a capture, replace captured piece
     if (isCapture) {
         g_whiteCount++;
         g_chipDiff++;
+        if (moveY-1 == SIZE-1) g_whiteAtEnd++;
         board[moveX2][moveY-1] = WHITE;
     } else
         board[moveX2][moveY-1] = EMPTY;
