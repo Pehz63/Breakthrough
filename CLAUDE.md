@@ -3,6 +3,7 @@
 ## Standing Instructions
 
 - **Never run `git commit` or `git push`.** The developer makes all commits manually.
+- **Todo list:** Project tasks are tracked in `todo.md`. When a task is completed, cross it out using Markdown strikethrough (`~~like this~~`) rather than deleting it.
 - **Writing style:** Avoid semicolons and em dashes. Use a comma or period instead, restructuring the sentence if needed. Avoid special Unicode characters like arrows or comparison signs. Use standard keyboard equivalents instead, such as `->` for a right-pointing arrow and `>=` for a greater-than-or-equal sign.
 - **After every functional change:**
   1. Update `README.md` for any section affected by the change (build command, game rules, AI descriptions, etc.)
