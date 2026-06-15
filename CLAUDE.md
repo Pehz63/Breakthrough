@@ -30,7 +30,12 @@
 
 ### Build
 ```
-cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe
+cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe
+```
+
+### Tests
+```
+cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe
 ```
 
 ### Run
@@ -56,6 +61,7 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 | File | Purpose |
 |---|---|
 | `globals.h` | Master header: macros (`EMPTY='.'`, `WHITE='W'`, `BLACK='B'`, `SIZE=8`), enums, `extern` globals, and all function prototypes. Included by every `.cpp`. |
+| `globals.cpp` | Definitions of all global variables (`board`, `g_whiteCount`, `PRNT`, etc.). Separated from `main.cpp` so the test executable can link them without pulling in `main()`. |
 | `main.cpp` | Top-level game loop: seeds RNG, loads board, calls `getSettings()`, dispatches turns, tracks per-player time, and accumulates scores over multi-game sets. It also hosts parameter test-sweep mode. |
 | `board_io.cpp` / `board_io.h` | Board file I/O and display: `getBoard()`, `reloadBoard()`, `printBoard()`, `loadMinimaxParams()` |
 | `settings.cpp` / `settings.h` | Interactive CLI configuration. `getSettings()` prompts for player types, AI weights, game count, and verbosity. `printVictor()` displays winner and timing. |
@@ -64,6 +70,18 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 | `ai_eval.cpp` / `ai_eval.h` | `evaluateBoard()`, the heuristic leaf-node score for minimax: near-end win detection (rows `SIZE-2` and `1`), turn bonus, wall/column structure bonuses, chip-diff base score. End-row win detection is handled before calling this function. |
 | `ai_random.cpp` / `ai_random.h` | Three random AI strategies (`pureRandomMove`, `tieredRandomMove`, `smartRandomMove`) and opening-sequence logic (`playOpenerWhite/Black`) |
 | `ai_minimax.cpp` / `ai_minimax.h` | Alpha-beta minimax: `miniMaxWhite/Black()` top-level search, `maxAlphaBeta`/`minAlphaBeta` recursive pruning, capture-first move ordering, win-decay for fastest wins |
+
+### `tests/`
+| File | Purpose |
+|---|---|
+| `catch.hpp` | Catch2 v2 single-header test framework (no external dependency) |
+| `helpers.h` | `setupBoard()`, `clearBoard()`, `runGame()` -- shared test utilities |
+| `test_main.cpp` | Catch2 entry point (defines `CATCH_CONFIG_MAIN`) |
+| `test_move_validation.cpp` | Unit tests for `tryMoveWhite/Black` and `tryMoveQuickWhite/Black` |
+| `test_win_detection.cpp` | Unit tests for `canWinWhite/Black` and `findWinWhite/Black` |
+| `test_eval.cpp` | Unit tests for `evaluateBoard` |
+| `test_ai_integration.cpp` | MiniMax forced-win scenarios on hand-crafted positions |
+| `test_game_outcomes.cpp` | Full-game outcome tests using puzzle boards (Black/White MiniMax vs TieredRandom) |
 
 ### `boards/`
 | Files | Purpose |
@@ -75,7 +93,7 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 
 ## Key Global State
 
-All globals are declared `extern` in `globals.h` and defined in `main.cpp`.
+All globals are declared `extern` in `globals.h` and defined in `globals.cpp`.
 
 | Variable | Type | Meaning |
 |---|---|---|
@@ -126,8 +144,9 @@ Openers are disabled automatically once the opponent advances into the player's 
 Use this after any change to confirm nothing is broken:
 
 1. Build succeeds with the `cl` command above (no errors or warnings introduced)
-2. `.\breakthrough.exe` launches and shows the settings prompts
-3. Enter `boards\board1.txt` when asked for a board file. Confirm the board displays correctly.
-4. Run a quick Human vs. UniformRandom game (a few moves) to confirm basic flow
-5. **For AI changes:** run MiniMax (depth 3) vs. MiniMax (depth 3) with `PRNT=1`. Confirm `nodesWhite`/`nodesBlack` stats print and the game completes.
-6. **For eval/weight changes:** compare win rates over a 10-game batch before and after
+2. `.\tests.exe` passes all 63 assertions (run from project root)
+3. `.\breakthrough.exe` launches and shows the settings prompts
+4. Enter `boards\board1.txt` when asked for a board file. Confirm the board displays correctly.
+5. Run a quick Human vs. UniformRandom game (a few moves) to confirm basic flow
+6. **For AI changes:** run MiniMax (depth 3) vs. MiniMax (depth 3) with `PRNT=1`. Confirm `nodesWhite`/`nodesBlack` stats print and the game completes.
+7. **For eval/weight changes:** compare win rates over a 10-game batch before and after

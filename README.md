@@ -11,7 +11,7 @@ A C++ console implementation of the Breakthrough board game by Zeph Johnson.
 Run from the project root in any VS Code terminal (regular PowerShell works):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 
 This produces `breakthrough.exe` in the project root. Intermediate `.obj` files go into `build/`.
@@ -21,7 +21,21 @@ This produces `breakthrough.exe` in the project root. Intermediate `.obj` files 
 To recompile and immediately run the result:
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+```
+
+## Testing
+
+Build and run the unit and integration test suite (uses [Catch2 v2](https://github.com/catchorg/Catch2/tree/v2.x), header already included in `tests/`):
+
+```powershell
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
+```
+
+Then run from the project root (required so puzzle board paths resolve correctly):
+
+```powershell
+.\tests.exe
 ```
 
 ## Source files
@@ -29,7 +43,8 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Buil
 | File | Contents |
 |---|---|
 | `globals.h` | Shared macros, enums, extern globals, all forward declarations |
-| `main.cpp` | Global variable definitions + `main()` game loop |
+| `globals.cpp` | Global variable definitions (board, counters, etc.) |
+| `main.cpp` | `main()` game loop |
 | `board_io.cpp` | `getBoard`, `reloadBoard`, `printBoard`, `loadMinimaxParams` |
 | `settings.cpp` | `getSettings`, `printVictor` |
 | `board_analysis.cpp` | `countChips`, `chipDiff`, `findWin*`, `canWin*` |
