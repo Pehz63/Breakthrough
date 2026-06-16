@@ -88,6 +88,19 @@ in [INSTALL.md](INSTALL.md).
 `build_gui.bat` finds Visual Studio automatically, so it runs from a plain
 terminal. It produces `breakthrough_gui.exe` in the project root.
 
+To rebuild and run in one line (only runs if the build succeeds):
+
+```powershell
+.\build_gui.bat; if ($?) { .\breakthrough_gui.exe }
+```
+
+If a previous window is still open it will lock the executable and block the
+rebuild; close it first, or kill it inline:
+
+```powershell
+Get-Process breakthrough_gui -EA 0 | Stop-Process -Force; .\build_gui.bat; if ($?) { .\breakthrough_gui.exe }
+```
+
 ### Web build (GitHub Pages)
 
 ```powershell
