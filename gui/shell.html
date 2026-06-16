@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Breakthrough</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #15171d;
+            color: #d8d8e0;
+            font-family: system-ui, Segoe UI, Arial, sans-serif;
+            text-align: center;
+        }
+        h1 { font-weight: 600; margin: 16px 0 4px; }
+        p.sub { margin: 0 0 12px; color: #8a8a98; font-size: 14px; }
+        #canvas {
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #2a2d36;
+            background: #22242c;
+        }
+        #status { color: #8a8a98; font-size: 13px; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Breakthrough</h1>
+    <p class="sub">8x8 abstract strategy with a C++ AI compiled to WebAssembly.</p>
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="status">Loading...</div>
+    <script>
+        var statusEl = document.getElementById('status');
+        var Module = {
+            canvas: (function () { return document.getElementById('canvas'); })(),
+            print: function (text) { console.log(text); },
+            printErr: function (text) { console.error(text); },
+            setStatus: function (text) { if (statusEl) statusEl.textContent = text; },
+            onRuntimeInitialized: function () { if (statusEl) statusEl.textContent = ''; }
+        };
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>

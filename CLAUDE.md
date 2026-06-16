@@ -44,6 +44,25 @@ cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.c
 ```
 When prompted for a board file, enter e.g. `boards\board1.txt`.
 
+### GUI (raylib + raygui)
+The graphical front end is an additive layer over the same engine (no `src/` files
+change). Native build requires prebuilt raylib in `third_party/` (see `INSTALL.md`):
+```
+.\build_gui.bat
+.\breakthrough_gui.exe
+```
+Web build requires emsdk + a raylib-for-web `libraylib.a` (see `INSTALL.md`), output
+to `docs/`:
+```
+.\build_web.bat          # release;  .\build_web.bat dev for a debug build
+```
+Notes for working on the GUI: it is built with `/MD` because the prebuilt raylib
+links the dynamic CRT. `raylib.h` defines `WHITE`/`BLACK` as `Color` macros that
+collide with `globals.h`'s board macros, so `main_gui.cpp` includes raylib/raygui
+first, `#undef`s `WHITE`/`BLACK`, then includes `globals.h` and draws with explicit
+`Color` literals. The GUI sets `PRNT=0` and never calls `getSettings()`,
+`playerMove()`, or `printBoard()`.
+
 ---
 
 ## File Structure
@@ -55,7 +74,11 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 | `CLAUDE.md` | Claude reference and workflow instructions (this file) |
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
 | `minimax_params.txt` | Saved MiniMax weights, loaded automatically when MiniMax player is selected |
-| `.gitignore` | Excludes `.exe`, `.obj`, `build/` directory |
+| `.gitignore` | Excludes `.exe`, `.obj`, `build/`, and `third_party/` |
+| `INSTALL.md` | Setup notes: VS C++ workload, raylib download, emsdk for the web build |
+| `build_gui.bat` | Native GUI build (MSVC + raylib, `/MD`) -> `breakthrough_gui.exe` |
+| `build_web.bat` | Emscripten/WASM GUI build -> `docs/index.html` (release or `dev`) |
+| `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash |
 
 ### `src/`
 | File | Purpose |
@@ -70,6 +93,13 @@ When prompted for a board file, enter e.g. `boards\board1.txt`.
 | `ai_eval.cpp` / `ai_eval.h` | `evaluateBoard()`, the heuristic leaf-node score for minimax: near-end win detection (rows `SIZE-2` and `1`), turn bonus, wall/column structure bonuses, chip-diff base score. End-row win detection is handled before calling this function. |
 | `ai_random.cpp` / `ai_random.h` | Three random AI strategies (`pureRandomMove`, `tieredRandomMove`, `smartRandomMove`) and opening-sequence logic (`playOpenerWhite/Black`) |
 | `ai_minimax.cpp` / `ai_minimax.h` | Alpha-beta minimax: `miniMaxWhite/Black()` top-level search, `maxAlphaBeta`/`minAlphaBeta` recursive pruning, capture-first move ordering, win-decay for fastest wins |
+
+### `gui/`
+| File | Purpose |
+|---|---|
+| `main_gui.cpp` | raylib + raygui front end. Per-frame state machine (`Settings`/`WaitingForHuman`/`WaitingBeforeAI`/`ComputingAI`/`GameOver`), board rendering from the `board` global, mouse->grid click-to-move (via `tryMove*`/`playMove*`), AI turns via `moveWhite`/`moveBlack`, robust win detection by scanning goal rows + piece counts, AI-move pacing (speed selector, Pause, Next move), and the native/web main-loop shim. |
+| `raygui.h` | Vendored single-header raygui v4 widget library (`RAYGUI_IMPLEMENTATION` defined in `main_gui.cpp`). |
+| `shell.html` | Emscripten HTML shell page for the web build. |
 
 ### `tests/`
 | File | Purpose |
@@ -150,3 +180,18 @@ Use this after any change to confirm nothing is broken:
 5. Run a quick Human vs. UniformRandom game (a few moves) to confirm basic flow
 6. **For AI changes:** run MiniMax (depth 3) vs. MiniMax (depth 3) with `PRNT=1`. Confirm `nodesWhite`/`nodesBlack` stats print and the game completes.
 7. **For eval/weight changes:** compare win rates over a 10-game batch before and after
+
+### For GUI changes (`gui/`)
+
+Always run the standard smoke test after any GUI change, the same way each time:
+
+```powershell
+.\smoke_test_gui.ps1 -Build
+```
+
+This rebuilds `breakthrough_gui.exe`, launches it, waits for it to render, saves a
+screenshot to `build\gui_smoke.png`, and closes it. Exit code `0` means it built
+and stayed alive; non-zero means the build failed or it crashed on startup. Open
+`build\gui_smoke.png` to confirm the board, pieces, and control panel render
+correctly. Add `-KeepOpen` to interact with the window manually (e.g. to test
+click-to-move or a new widget).
