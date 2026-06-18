@@ -34,16 +34,26 @@
 #endif
 
 // ---------------------------------------------------------------------------
-// Layout constants
+// Layout
 // ---------------------------------------------------------------------------
-static const int CELL      = 70;
-static const int BOARD_X   = 48;
-static const int BOARD_Y   = 56;
-static const int BOARD_PX  = SIZE * CELL;          // 560
-static const int PANEL_X   = BOARD_X + BOARD_PX + 24;  // 632
-static const int PANEL_W   = 372;
-static const int WIN_W     = PANEL_X + PANEL_W + 16;   // 1020
-static const int WIN_H     = 768;
+// Initial window size (the window is resizable; geometry below is recomputed
+// each frame from the live window size).
+static const int INIT_W = 1024;
+static const int INIT_H = 768;
+static const int MIN_W  = 820;
+static const int MIN_H  = 620;
+
+static const int TOP      = 44;    // top bar height (title + Options toggle)
+static const int MARGIN   = 28;    // space around the board for row/col labels
+static const int PANEL_W  = 210;   // left options panel width
+static const int BADGE_STRIP = 64; // right strip reserved for piece-count badges
+
+// Board geometry, recomputed every frame by ComputeLayout().
+static int       g_cell    = 64;
+static int       g_boardX  = 0;
+static int       g_boardY  = 0;
+static int       g_boardPx = 0;
+static Rectangle g_panelRect = { 0, 0, 0, 0 };
 
 // Drawing colors (explicit literals; raylib WHITE/BLACK macros were undef'd)
 static const Color COL_LIGHT   = { 222, 210, 180, 255 };
@@ -57,6 +67,11 @@ static const Color COL_SEL     = { 250, 210,  70, 200 };
 static const Color COL_HINT    = {  70, 200, 120, 170 };
 static const Color COL_HOVER   = { 255, 255, 255,  45 };
 static const Color COL_LABEL   = { 200, 200, 210, 255 };
+// Stepper-control palette (bar track / fill / border / number text)
+static const Color COL_TRK     = {  46,  49,  60, 255 };
+static const Color COL_FILL    = {  86, 158, 222, 255 };
+static const Color COL_BRD     = {  92,  96, 110, 255 };
+static const Color COL_NUM     = { 236, 239, 246, 255 };
 
 // ---------------------------------------------------------------------------
 // Application state
@@ -85,8 +100,10 @@ static int    g_speedIndex = 2;          // 0=Step 1=0.25x 2=1x 3=4x 4=Instant
 static double g_aiTimer = 0.0;
 static bool   g_paused = false;
 static bool   g_stepRequested = false;
+static bool   g_delay2s = false;         // human vs fast AI: hold AI to >=2s/move
 // delay per speed index (seconds); index 0 (Step) handled separately, 4 = instant
 static const double SPEED_DELAY[5] = { 0.0, 1.0, 0.25, 0.0625, 0.0 };
+static const char  *SPEED_NAME[5]  = { "Step", "0.25x", "1x", "4x", "Instant" };
 
 // Move log
 static std::vector<std::string> g_log;
@@ -104,6 +121,32 @@ static char g_status[160]    = "Configure players, then press Start.";
 static bool g_editBoardFile = false;
 static bool g_editWhiteType = false;
 static bool g_editBlackType = false;
+static bool g_editWhiteOpener = false;
+static bool g_editBlackOpener = false;
+
+// Left overlay panel visibility (toggled by the Options button / Tab key).
+static bool g_showPanel = true;
+
+// Stepper-control prototypes. Each numeric parameter row can be drawn in one of
+// several "slider + buttons" designs so the developer can compare them and pick a
+// favorite. The style switcher (g_stepStyle) forces one design across all rows;
+// 0 = per-row (each row uses its own assigned design).
+// Each style is a genuinely different way to show the SAME bounded integer: all
+// show both a bar and the number, and all step with a "+" (up) above a "-" (down).
+//   BAR_NUM  - continuous fill bar with the number printed on it
+//   SEGMENTS - discrete LED-style segment meter (click a cell to set)
+//   NUMBAR   - a typeable number box with a slim proportional bar beneath it
+//   HANDLE   - a thin track with a chip handle that carries the number
+//   RULER    - a ticked ruler with a marker pointing at the value
+enum StepStyle { STEP_BAR_NUM, STEP_SEGMENTS, STEP_NUMBAR, STEP_HANDLE,
+                 STEP_RULER, STEP_STYLE_COUNT };
+static int g_stepStyle = 0;
+
+// Edit-mode flags for the typeable stepper styles (spinner / value box), kept as a
+// small fixed set keyed by player+parameter so PlayerConfig stays unchanged.
+// Index layout: [side][param], side 0 = White, 1 = Black; param 0..4 =
+// Depth, Turn, Chip, Wall, Column; param 5 = SmartRandom Forward.
+static bool g_stepEdit[2][6] = { { false } };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -260,20 +303,39 @@ static void HandleHumanClick(int col, int by) {
     AfterMove();
 }
 
+// Matchup classification drives the pacing controls: with a human in the game
+// there is nothing to pace (slow AI paces itself; a fast AI can optionally be held
+// to a 2s minimum), while AI vs AI gets the full speed/pause/step/restart set.
+struct Matchup { int humans; bool aiVsAi; bool aiSlow; };
+static Matchup ClassifyMatchup() {
+    bool wH = (g_white.type == Human), bH = (g_black.type == Human);
+    int humans = (wH ? 1 : 0) + (bH ? 1 : 0);
+    const PlayerConfig &ai = wH ? g_black : g_white;   // an AI side (if any)
+    Matchup mu;
+    mu.humans = humans;
+    mu.aiVsAi = (humans == 0);
+    mu.aiSlow = (ai.type == MiniMax && ai.depth > 5);  // slow enough to self-pace
+    return mu;
+}
+
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 static void Update() {
-    // Board clicks (only meaningful while waiting for a human, and not over a
-    // dropdown/textbox in edit mode).
+    // Tab toggles the options overlay.
+    if (IsKeyPressed(KEY_TAB)) g_showPanel = !g_showPanel;
+
+    // Board clicks (only meaningful while waiting for a human, not over a
+    // dropdown/textbox in edit mode, and not over the open overlay).
+    Vector2 m = GetMousePosition();
     if (g_state == AppState::WaitingForHuman &&
         IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
         !g_editBoardFile && !g_editWhiteType && !g_editBlackType &&
-        !g_white.editDepth && !g_black.editDepth) {
-        Vector2 m = GetMousePosition();
-        int sc = (int)((m.x - BOARD_X) / CELL);  // screen column
-        int sr = (int)((m.y - BOARD_Y) / CELL);  // screen row (0 = top)
-        if (m.x >= BOARD_X && m.y >= BOARD_Y && sc >= 0 && sc < SIZE && sr >= 0 && sr < SIZE) {
+        !g_white.editDepth && !g_black.editDepth &&
+        !(g_showPanel && CheckCollisionPointRec(m, g_panelRect))) {
+        int sc = (int)((m.x - g_boardX) / g_cell);  // screen column
+        int sr = (int)((m.y - g_boardY) / g_cell);  // screen row (0 = top)
+        if (m.x >= g_boardX && m.y >= g_boardY && sc >= 0 && sc < SIZE && sr >= 0 && sr < SIZE) {
             int by = SIZE - 1 - sr;  // board row (y=SIZE-1 at top)
             HandleHumanClick(sc, by);
         }
@@ -282,10 +344,18 @@ static void Update() {
     // AI pacing.
     if (g_state == AppState::WaitingBeforeAI) {
         g_aiTimer += GetFrameTime();
-        bool stepMode = (g_speedIndex == 0);
+        Matchup mu = ClassifyMatchup();
         bool go = false;
-        if (g_stepRequested)                                          go = true;
-        else if (!g_paused && !stepMode && g_aiTimer >= SPEED_DELAY[g_speedIndex]) go = true;
+        if (mu.aiVsAi) {
+            bool stepMode = (g_speedIndex == 0);
+            if (g_stepRequested)                                                      go = true;
+            else if (!g_paused && !stepMode && g_aiTimer >= SPEED_DELAY[g_speedIndex]) go = true;
+        } else {
+            // Human vs AI: no pause/step. Slow AI moves as soon as its search ends;
+            // a fast AI is optionally held to a 2s minimum via the delay checkbox.
+            double need = (!mu.aiSlow && g_delay2s) ? 2.0 : 0.0;
+            if (g_aiTimer >= need) go = true;
+        }
         if (go) g_state = AppState::ComputingAI;
     }
 
@@ -297,10 +367,37 @@ static void Update() {
 }
 
 // ---------------------------------------------------------------------------
+// Layout (recomputed each frame from the live window size)
+// ---------------------------------------------------------------------------
+static void ComputeLayout() {
+    int W = GetScreenWidth();
+    int H = GetScreenHeight();
+
+    // Reserve the panel strip on the left only while it is shown, so the board
+    // sits beside the panel rather than under it. Reserve a strip on the right for
+    // the piece-count badges so they never sit on top of the board.
+    int leftReserve = g_showPanel ? PANEL_W : 0;
+    int rightReserve = BADGE_STRIP;
+
+    // Largest square board that fits in the remaining area, leaving label margins.
+    int byW = (W - leftReserve - rightReserve - 2 * MARGIN) / SIZE;
+    int byH = (H - TOP - 2 * MARGIN) / SIZE;
+    g_cell = byW < byH ? byW : byH;
+    if (g_cell < 8) g_cell = 8;            // never collapse to nothing
+    g_boardPx = g_cell * SIZE;
+
+    // Center the board within the area between the panel and the badge strip.
+    g_boardX = leftReserve + (W - leftReserve - rightReserve - g_boardPx) / 2;
+    g_boardY = TOP + (H - TOP - g_boardPx) / 2;
+
+    g_panelRect = Rectangle{ 0, (float)TOP, (float)PANEL_W, (float)(H - TOP) };
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 static void DrawPiece(int cx, int cy, char who) {
-    float r = CELL * 0.36f;
+    float r = g_cell * 0.36f;
     if (who == WHITE) {
         DrawCircle(cx, cy, r, COL_WPIECE);
         DrawCircleLines(cx, cy, r, COL_WEDGE);
@@ -315,14 +412,14 @@ static void DrawBoard() {
     for (int sr = 0; sr < SIZE; sr++) {
         int by = SIZE - 1 - sr;
         for (int x = 0; x < SIZE; x++) {
-            int px = BOARD_X + x * CELL;
-            int py = BOARD_Y + sr * CELL;
+            int px = g_boardX + x * g_cell;
+            int py = g_boardY + sr * g_cell;
             Color sq = ((x + by) % 2 == 0) ? COL_DARK : COL_LIGHT;
-            DrawRectangle(px, py, CELL, CELL, sq);
+            DrawRectangle(px, py, g_cell, g_cell, sq);
 
             char who = board[x][by];
             if (who == WHITE || who == BLACK)
-                DrawPiece(px + CELL / 2, py + CELL / 2, who);
+                DrawPiece(px + g_cell / 2, py + g_cell / 2, who);
         }
     }
 
@@ -330,8 +427,8 @@ static void DrawBoard() {
     if (g_hasSel) {
         int selSr = SIZE - 1 - g_selY;
         DrawRectangleLinesEx(
-            Rectangle{ (float)(BOARD_X + g_selX * CELL), (float)(BOARD_Y + selSr * CELL),
-                       (float)CELL, (float)CELL }, 4, COL_SEL);
+            Rectangle{ (float)(g_boardX + g_selX * g_cell), (float)(g_boardY + selSr * g_cell),
+                       (float)g_cell, (float)g_cell }, 4, COL_SEL);
         int fwd = (g_turn == White) ? g_selY + 1 : g_selY - 1;
         for (int dx = -1; dx <= 1; dx++) {
             int nx = g_selX + dx;
@@ -340,107 +437,268 @@ static void DrawBoard() {
                                         : tryMoveBlack(g_selX, g_selY, nx, false);
             if (ok) {
                 int hsr = SIZE - 1 - fwd;
-                DrawCircle(BOARD_X + nx * CELL + CELL / 2,
-                           BOARD_Y + hsr * CELL + CELL / 2, CELL * 0.16f, COL_HINT);
+                DrawCircle(g_boardX + nx * g_cell + g_cell / 2,
+                           g_boardY + hsr * g_cell + g_cell / 2, g_cell * 0.16f, COL_HINT);
             }
         }
     }
 
-    // Hover highlight while a human is to move.
+    // Hover highlight while a human is to move (not over the open overlay).
     if (g_state == AppState::WaitingForHuman) {
         Vector2 m = GetMousePosition();
-        int sc = (int)((m.x - BOARD_X) / CELL);
-        int sr = (int)((m.y - BOARD_Y) / CELL);
-        if (m.x >= BOARD_X && m.y >= BOARD_Y && sc >= 0 && sc < SIZE && sr >= 0 && sr < SIZE)
-            DrawRectangle(BOARD_X + sc * CELL, BOARD_Y + sr * CELL, CELL, CELL, COL_HOVER);
+        bool overPanel = g_showPanel && CheckCollisionPointRec(m, g_panelRect);
+        int sc = (int)((m.x - g_boardX) / g_cell);
+        int sr = (int)((m.y - g_boardY) / g_cell);
+        if (!overPanel && m.x >= g_boardX && m.y >= g_boardY &&
+            sc >= 0 && sc < SIZE && sr >= 0 && sr < SIZE)
+            DrawRectangle(g_boardX + sc * g_cell, g_boardY + sr * g_cell, g_cell, g_cell, COL_HOVER);
     }
 
-    // Border + labels.
-    DrawRectangleLinesEx(Rectangle{ (float)BOARD_X, (float)BOARD_Y,
-                                      (float)BOARD_PX, (float)BOARD_PX }, 2, COL_LABEL);
+    // Border + labels (font scales with cell size).
+    DrawRectangleLinesEx(Rectangle{ (float)g_boardX, (float)g_boardY,
+                                      (float)g_boardPx, (float)g_boardPx }, 2, COL_LABEL);
+    int fs = g_cell / 4;
+    if (fs < 12) fs = 12; else if (fs > 20) fs = 20;
     for (int x = 0; x < SIZE; x++) {
         const char *lbl = TextFormat("%c", 'a' + x);
-        DrawText(lbl, BOARD_X + x * CELL + CELL / 2 - 4, BOARD_Y - 22, 18, COL_LABEL);
-        DrawText(lbl, BOARD_X + x * CELL + CELL / 2 - 4, BOARD_Y + BOARD_PX + 4, 18, COL_LABEL);
+        int tx = g_boardX + x * g_cell + g_cell / 2 - fs / 4;
+        DrawText(lbl, tx, g_boardY - fs - 4, fs, COL_LABEL);
+        DrawText(lbl, tx, g_boardY + g_boardPx + 4, fs, COL_LABEL);
     }
     for (int sr = 0; sr < SIZE; sr++) {
         int by = SIZE - 1 - sr;
         const char *lbl = TextFormat("%d", by);
-        DrawText(lbl, BOARD_X - 20, BOARD_Y + sr * CELL + CELL / 2 - 8, 18, COL_LABEL);
-        DrawText(lbl, BOARD_X + BOARD_PX + 6, BOARD_Y + sr * CELL + CELL / 2 - 8, 18, COL_LABEL);
+        int ty = g_boardY + sr * g_cell + g_cell / 2 - fs / 2;
+        DrawText(lbl, g_boardX - fs - 6, ty, fs, COL_LABEL);   // left only (right strip holds the badges)
     }
 }
 
+// Draw a transport glyph centered in r: forward = two right triangles
+// (">>" fast-forward), otherwise a bar + one right triangle ("|>" slow motion).
+// Triangle vertices are ordered (top-back, bottom-back, tip) so raylib renders
+// them (it expects counter-clockwise winding in screen space).
+static void DrawSpeedGlyph(Rectangle r, bool forward) {
+    Color c = { 50, 52, 60, 255 };   // dark, to contrast the light raygui button
+    float cy = r.y + r.height / 2.0f;
+    float th = r.height * 0.28f;     // triangle half-height
+    float tw = th;                   // triangle width
+    if (forward) {
+        float x0 = r.x + r.width / 2.0f - tw - 1;
+        for (int i = 0; i < 2; i++) {
+            float bx = x0 + i * (tw + 2);
+            DrawTriangle(Vector2{ bx, cy - th }, Vector2{ bx, cy + th }, Vector2{ bx + tw, cy }, c);
+        }
+    } else {
+        float bx = r.x + r.width / 2.0f - tw / 2.0f - 4;
+        DrawRectangle((int)bx, (int)(cy - th), 3, (int)(2 * th), c);
+        float tx = bx + 6;
+        DrawTriangle(Vector2{ tx, cy - th }, Vector2{ tx, cy + th }, Vector2{ tx + tw, cy }, c);
+    }
+}
+
+// "+" (up) stacked above "-" (down): the canonical increment/decrement for a
+// number. Drawn at the right of every stepper design so they share one gesture.
+static void DrawStackedPM(float bx, float y, float bw, float h, int *val, int lo, int hi) {
+    float bh = (h - 3) / 2.0f;
+    if (GuiButton(Rectangle{ bx, y, bw, bh }, "+")) { if (*val < hi) (*val)++; }
+    if (GuiButton(Rectangle{ bx, y + bh + 3, bw, bh }, "-")) { if (*val > lo) (*val)--; }
+}
+
+// Track + proportional fill, with the number optionally centered on the bar.
+static void DrawFillBar(Rectangle r, int val, int lo, int hi, bool showNum) {
+    DrawRectangleRec(r, COL_TRK);
+    float frac = (hi > lo) ? (float)(val - lo) / (float)(hi - lo) : 0.0f;
+    if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+    if (frac > 0) DrawRectangle((int)r.x, (int)r.y, (int)(r.width * frac), (int)r.height, COL_FILL);
+    DrawRectangleLinesEx(r, 1, COL_BRD);
+    if (showNum) {
+        const char *s = TextFormat("%d", val);
+        int tw = MeasureText(s, 16);
+        DrawText(s, (int)(r.x + (r.width - tw) / 2), (int)(r.y + (r.height - 16) / 2), 16, COL_NUM);
+    }
+}
+
+// Click/drag anywhere on a bar to set its value by horizontal position. Ignored
+// while the gui is locked (e.g. a dropdown list is open over the panel).
+static void ScrubBar(Rectangle r, int *val, int lo, int hi) {
+    if (GuiIsLocked()) return;
+    Vector2 m = GetMousePosition();
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(m, r)) {
+        float frac = (m.x - r.x) / r.width;
+        if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+        *val = lo + (int)(frac * (hi - lo) + 0.5f);
+    }
+}
+
+// Modular numeric control: draws a labeled integer in one of several distinct
+// bar+number designs, updates *val (clamped to [lo,hi]), and returns the next y.
+// `barHi` caps the bar's proportional range (defaults to hi); values stepped or
+// typed above it are preserved (e.g. Depth's bar tops out at 25 while the value
+// can go higher). `side`/`param` index the per-row edit-mode flags.
+static float StepperRow(int side, int param, StepStyle assigned, float x, float y,
+                        float w, const char *name, int *val, int lo, int hi,
+                        int barHi = -1) {
+    if (barHi < 0) barHi = hi;
+    StepStyle eff = (g_stepStyle == 0) ? assigned : (StepStyle)(g_stepStyle - 1);
+    bool *edit = &g_stepEdit[side][param];
+
+    const float labelW = 56;       // includes a gap so the name never touches the control
+    GuiLabel(Rectangle{ x, y, labelW - 6, 20 }, name);
+    float cx = x + labelW;
+    float cw = w - labelW;
+    const float bw = 18;        // stacked +/- column width
+    float pmX = cx + cw - bw;   // x of the +/- column
+    float ctrlW = cw - bw - 6;  // width left of the +/- column
+    float rowH = 24;
+
+    switch (eff) {
+    case STEP_BAR_NUM: {                  // fill bar with the number on it
+        Rectangle bar = { cx, y + 1, ctrlW, 20 };
+        DrawFillBar(bar, *val, lo, barHi, true);
+        ScrubBar(bar, val, lo, hi);
+        DrawStackedPM(pmX, y, bw, 22, val, lo, hi);
+        break;
+    }
+    case STEP_SEGMENTS: {                 // discrete LED-style meter
+        int n = hi - lo + 1; if (n < 1) n = 1; if (n > 40) n = 40;
+        float gap = 2;
+        float cwd = (ctrlW - gap * (n - 1)) / n; if (cwd < 2) cwd = 2;
+        for (int i = 0; i < n; i++) {
+            Rectangle seg = { cx + i * (cwd + gap), y + 2, cwd, 18 };
+            DrawRectangleRec(seg, ((lo + i) <= *val) ? COL_FILL : COL_TRK);
+            DrawRectangleLinesEx(seg, 1, COL_BRD);
+            if (!GuiIsLocked() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                CheckCollisionPointRec(GetMousePosition(), seg))
+                *val = lo + i;
+        }
+        DrawText(TextFormat("%d", *val), (int)(cx + 3), (int)(y + 4), 14, COL_NUM);
+        DrawStackedPM(pmX, y, bw, 22, val, lo, hi);
+        break;
+    }
+    case STEP_NUMBAR: {                   // typeable number + slim underbar
+        if (GuiValueBox(Rectangle{ cx, y, ctrlW, 18 }, NULL, val, lo, hi, *edit)) *edit = !*edit;
+        DrawStackedPM(pmX, y, bw, 22, val, lo, hi);
+        Rectangle bar = { cx, y + 21, ctrlW, 5 };
+        DrawFillBar(bar, *val, lo, barHi, false);
+        ScrubBar(bar, val, lo, hi);
+        rowH = 30;
+        break;
+    }
+    case STEP_HANDLE: {                   // thin track + chip handle with number
+        Rectangle track = { cx, y + 9, ctrlW, 4 };
+        DrawRectangleRec(track, COL_TRK);
+        DrawRectangleLinesEx(track, 1, COL_BRD);
+        float frac = (barHi > lo) ? (float)(*val - lo) / (float)(barHi - lo) : 0.0f;
+        if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+        float chipW = 26;
+        Rectangle chip = { cx + frac * (ctrlW - chipW), y + 2, chipW, 18 };
+        DrawRectangleRec(chip, COL_FILL);
+        DrawRectangleLinesEx(chip, 1, COL_BRD);
+        const char *s = TextFormat("%d", *val);
+        int tw = MeasureText(s, 14);
+        DrawText(s, (int)(chip.x + (chipW - tw) / 2), (int)(chip.y + 2), 14, COL_NUM);
+        ScrubBar(Rectangle{ cx, y, ctrlW, 22 }, val, lo, hi);
+        DrawStackedPM(pmX, y, bw, 22, val, lo, hi);
+        break;
+    }
+    case STEP_RULER: {                    // ticked ruler + value marker
+        float ry = y + 18;
+        DrawLineEx(Vector2{ cx, ry }, Vector2{ cx + ctrlW, ry }, 2, COL_BRD);
+        int n = hi - lo;
+        if (n > 0) {
+            for (int i = 0; i <= n; i++) {
+                float tx = cx + ctrlW * (float)i / n;
+                float th = (i % 5 == 0) ? 6.0f : 3.0f;
+                DrawLineEx(Vector2{ tx, ry }, Vector2{ tx, ry - th }, 1, COL_BRD);
+            }
+            float mx = cx + ctrlW * (float)(*val - lo) / n;
+            DrawTriangle(Vector2{ mx + 5, ry - 12 }, Vector2{ mx - 5, ry - 12 },
+                         Vector2{ mx, ry - 3 }, COL_FILL);
+            const char *s = TextFormat("%d", *val);
+            int tw = MeasureText(s, 14);
+            float lx = mx - tw / 2.0f;
+            if (lx < cx) lx = cx; if (lx > cx + ctrlW - tw) lx = cx + ctrlW - tw;
+            DrawText(s, (int)lx, (int)(y - 1), 14, COL_NUM);
+        }
+        ScrubBar(Rectangle{ cx, y + 6, ctrlW, 18 }, val, lo, hi);
+        DrawStackedPM(pmX, y, bw, 22, val, lo, hi);
+        rowH = 28;
+        break;
+    }
+    default: break;
+    }
+
+    if (*val < lo) *val = lo;
+    if (*val > hi) *val = hi;
+    return y + rowH + 8;
+}
+
 // One AI player's config block. Returns the y after the block. Defers drawing
-// the type dropdown: stores its rectangle in *dropRect for a later top pass.
-static float DrawPlayerConfig(const char *title, PlayerConfig &c, float x, float y,
-                              float w, Rectangle *dropRect) {
+// the type and opener dropdowns: stores their rectangles in *typeRect/*openerRect
+// for a later top pass so their open lists render above the rows below them.
+// `side` is 0 for White, 1 for Black (indexes the stepper edit-mode flags).
+static float DrawPlayerConfig(const char *title, int side, PlayerConfig &c,
+                              float x, float y, float w,
+                              Rectangle *typeRect, Rectangle *openerRect) {
     GuiLabel(Rectangle{ x, y, w, 18 }, title);
     y += 20;
 
-    *dropRect = Rectangle{ x, y, w, 26 };  // type dropdown drawn later (on top)
+    *typeRect = Rectangle{ x, y, w, 26 };  // type dropdown drawn later (on top)
     y += 30;
 
-    GuiLabel(Rectangle{ x, y, 70, 22 }, "Opener");
-    GuiToggleGroup(Rectangle{ x + 72, y, (w - 72) / 3.0f, 22 },
-                   "Std;Off;Def", &c.opener);
+    GuiLabel(Rectangle{ x, y, 52, 24 }, "Opener");
+    *openerRect = Rectangle{ x + 58, y, w - 58, 24 };  // opener dropdown, drawn later
     if (c.opener < 0) c.opener = StandardOpener;
-    y += 28;
+    y += 30;
 
+    // Each parameter row uses a different stepper design so they can be compared;
+    // the Sliders switcher (g_stepStyle) can override all rows to one design.
     if (c.type == SmartRandom) {
-        float v = (float)c.furthest;
-        GuiSliderBar(Rectangle{ x + 90, y, w - 130, 16 }, "Forward", TextFormat("%d", c.furthest), &v, 1, 16);
-        c.furthest = (int)(v + 0.5f);
-        y += 22;
+        y = StepperRow(side, 5, STEP_SEGMENTS, x, y, w, "Forward", &c.furthest, 1, 16);
     } else if (c.type == MiniMax) {
-        // Depth: a slider for quick 1..25 selection plus a spinner to type an
-        // exact value as high as desired. The slider only writes c.depth while
-        // it is actually being dragged (we copy back only on change), so a value
-        // typed above 25 in the spinner is preserved and not clamped to 25.
-        float sv = (float)(c.depth < 1 ? 1 : (c.depth > 25 ? 25 : c.depth));
-        float before = sv;
-        GuiSliderBar(Rectangle{ x + 90, y, w - 90 - 92, 16 }, "Depth", "", &sv, 1, 25);
-        if (sv != before) c.depth = (int)(sv + 0.5f);
-        if (GuiSpinner(Rectangle{ x + w - 88, y - 1, 88, 18 }, NULL, &c.depth, 1, 1000000, c.editDepth))
-            c.editDepth = !c.editDepth;
-        y += 24;
-
-        struct { const char *name; int *val; int lo, hi; } rows[] = {
-            { "Turn",   &c.turn,  0, 10 },
-            { "Chip",   &c.chip,  0, 10 },
-            { "Wall",   &c.wall,  0, 10 },
-            { "Column", &c.col,   0, 10 },
-        };
-        for (int i = 0; i < 4; i++) {
-            float v = (float)*rows[i].val;
-            GuiSliderBar(Rectangle{ x + 90, y, w - 130, 16 }, rows[i].name,
-                         TextFormat("%d", *rows[i].val), &v, (float)rows[i].lo, (float)rows[i].hi);
-            *rows[i].val = (int)(v + 0.5f);
-            y += 22;
-        }
+        // Depth uses the typeable Number+bar design so it can exceed the bar's 25.
+        y = StepperRow(side, 0, STEP_NUMBAR,   x, y, w, "Depth",  &c.depth, 1, 1000000, 25);
+        y = StepperRow(side, 1, STEP_SEGMENTS, x, y, w, "Turn",   &c.turn,  0, 10);
+        y = StepperRow(side, 2, STEP_BAR_NUM,  x, y, w, "Chip",   &c.chip,  0, 10);
+        y = StepperRow(side, 3, STEP_HANDLE,   x, y, w, "Wall",   &c.wall,  0, 10);
+        y = StepperRow(side, 4, STEP_RULER,    x, y, w, "Column", &c.col,   0, 10);
     }
     return y + 6;
 }
 
 static void DrawPanel() {
-    float x = (float)PANEL_X;
-    float w = (float)PANEL_W;
-    float y = 16;
+    // Opaque background (the board now sits beside the panel), plus a right edge.
+    DrawRectangleRec(g_panelRect, Color{ 20, 22, 28, 255 });
+    DrawLineEx(Vector2{ g_panelRect.width, g_panelRect.y },
+               Vector2{ g_panelRect.width, g_panelRect.y + g_panelRect.height }, 2, COL_LABEL);
+
+    float x = g_panelRect.x + 12;
+    float w = (float)PANEL_W - 24;
+    float y = (float)TOP + 12;
 
     const char *TYPES = "Human;Uniform Random;Tiered Random;Smart Random;MiniMax";
 
-    bool anyDropdown = g_editWhiteType || g_editBlackType;
+    // Slider-design switcher: "Per-row" shows each parameter in its own design,
+    // any other choice forces that design on every row. GuiComboBox cycles in
+    // place, so (unlike the type dropdowns) it needs no overlay/lock handling.
+    GuiLabel(Rectangle{ x, y, 52, 22 }, "Sliders");
+    GuiComboBox(Rectangle{ x + 58, y, w - 58, 22 },
+                "Per-row;Bar+number;Segments;Number+bar;Handle;Ruler", &g_stepStyle);
+    y += 28;
+
+    bool anyDropdown = g_editWhiteType || g_editBlackType ||
+                       g_editWhiteOpener || g_editBlackOpener;
     if (anyDropdown) GuiLock();
 
-    Rectangle whiteDrop, blackDrop;
-    y = DrawPlayerConfig("WHITE player", g_white, x, y, w, &whiteDrop);
+    Rectangle whiteDrop, blackDrop, whiteOpenDrop, blackOpenDrop;
+    y = DrawPlayerConfig("WHITE player", 0, g_white, x, y, w, &whiteDrop, &whiteOpenDrop);
     GuiLine(Rectangle{ x, y, w, 8 }, NULL); y += 12;
-    y = DrawPlayerConfig("BLACK player", g_black, x, y, w, &blackDrop);
+    y = DrawPlayerConfig("BLACK player", 1, g_black, x, y, w, &blackDrop, &blackOpenDrop);
     GuiLine(Rectangle{ x, y, w, 8 }, NULL); y += 14;
 
     // Board file
-    GuiLabel(Rectangle{ x, y, 70, 26 }, "Board");
-    if (GuiTextBox(Rectangle{ x + 72, y, w - 72, 26 }, g_boardFile, sizeof(g_boardFile), g_editBoardFile))
+    GuiLabel(Rectangle{ x, y, 52, 26 }, "Board");
+    if (GuiTextBox(Rectangle{ x + 58, y, w - 58, 26 }, g_boardFile, sizeof(g_boardFile), g_editBoardFile))
         g_editBoardFile = !g_editBoardFile;
     y += 32;
 
@@ -451,31 +709,53 @@ static void DrawPanel() {
     }
     y += 38;
 
-    // Speed selector
-    GuiLabel(Rectangle{ x, y, 60, 22 }, "Speed");
-    GuiToggleGroup(Rectangle{ x + 62, y, (w - 62) / 5.0f, 22 },
-                   "Step;0.25x;1x;4x;Inst", &g_speedIndex);
-    if (g_speedIndex < 0) g_speedIndex = 2;
-    y += 28;
+    // Pacing / game controls depend on the matchup. AI vs AI gets the full set
+    // (speed, pause/resume, step, restart); a human vs a fast AI gets just an
+    // optional 2s-per-move floor; a human vs a slow (self-pacing) AI or human vs
+    // human needs no pacing controls at all.
+    Matchup mu = ClassifyMatchup();
+    if (mu.aiVsAi) {
+        // Speed: slow-motion (|>) slower, fast-forward (>> double arrow) faster,
+        // custom-drawn since raygui has no such glyphs. Preset name shown between.
+        GuiLabel(Rectangle{ x, y, 52, 22 }, "Speed");
+        float sbw = 38;
+        Rectangle slowBtn = { x + 58, y, sbw, 22 };
+        Rectangle fastBtn = { x + w - sbw, y, sbw, 22 };
+        if (GuiButton(slowBtn, "")) { if (g_speedIndex > 0) g_speedIndex--; }
+        DrawSpeedGlyph(slowBtn, false);
+        if (GuiButton(fastBtn, "")) { if (g_speedIndex < 4) g_speedIndex++; }
+        DrawSpeedGlyph(fastBtn, true);
+        if (g_speedIndex < 0) g_speedIndex = 2;
+        const char *sn = SPEED_NAME[g_speedIndex];
+        int snw = MeasureText(sn, 16);
+        float nameX = slowBtn.x + sbw + 4;
+        float nameW = fastBtn.x - 4 - nameX;
+        DrawText(sn, (int)(nameX + (nameW - snw) / 2), (int)(y + 3), 16, COL_LABEL);
+        y += 28;
 
-    // Pause + Next move
-    GuiToggle(Rectangle{ x, y, w / 2 - 4, 26 }, g_paused ? "Paused" : "Pause", &g_paused);
-    if (GuiButton(Rectangle{ x + w / 2 + 4, y, w / 2 - 4, 26 }, "Next move"))
-        g_stepRequested = true;
-    y += 34;
+        // Transport row: play/pause toggle, step (next), restart, as icon buttons.
+        // ("#131#" play, "#132#" pause, "#134#" next, "#211#" restart.)
+        float bw3 = (w - 8) / 3.0f;
+        GuiToggle(Rectangle{ x, y, bw3, 28 }, g_paused ? "#131#" : "#132#", &g_paused);
+        if (GuiButton(Rectangle{ x + bw3 + 4, y, bw3, 28 }, "#134#")) g_stepRequested = true;
+        if (GuiButton(Rectangle{ x + 2 * (bw3 + 4), y, bw3, 28 }, "#211#")) StartGame();
+        y += 34;
+    } else if (mu.humans == 1 && !mu.aiSlow) {
+        GuiCheckBox(Rectangle{ x, y, 18, 18 }, "", &g_delay2s);
+        GuiLabel(Rectangle{ x + 24, y, w - 24, 18 }, "Min 2s per AI move");
+        y += 26;
+    }
 
-    // Status line
-    GuiLabel(Rectangle{ x, y, w, 20 },
-             TextFormat("W:%d  B:%d   %s to move",
-                        g_whiteCount, g_blackCount,
-                        g_turn == White ? "White" : "Black"));
+    // Status line (piece counts are shown on the board itself).
+    GuiLabel(Rectangle{ x, y, w, 20 }, TextFormat("%s to move", g_turn == White ? "White" : "Black"));
     y += 22;
     GuiLabel(Rectangle{ x, y, w, 20 }, g_status);
     y += 26;
 
-    // Move log (scrolling).
+    // Move log (scrolling), fills the remaining panel height.
     float logTop = y;
-    float logH = (float)WIN_H - logTop - 16;
+    float logH = (float)GetScreenHeight() - logTop - 12;
+    if (logH < 60) logH = 60;
     float lineH = 18;
     Rectangle logBounds = { x, logTop, w, logH };
     Rectangle content = { 0, 0, w - 16, (float)g_log.size() * lineH + 8 };
@@ -490,17 +770,59 @@ static void DrawPanel() {
     }
     EndScissorMode();
 
-    if (anyDropdown) GuiUnlock();
+    // Draw the four dropdowns (player type + opener, per side) last so their open
+    // lists render on top. The currently-open one (if any) is drawn after the rest
+    // and after GuiUnlock, so only it is interactive while the others stay locked
+    // underneath, preventing click-through from an open list. Opening any dropdown
+    // closes the others so only one list is ever expanded.
+    const char *OPENERS = "Standard;Offensive;Defensive";
+    struct DropSpec { Rectangle r; const char *opts; int *val; bool *edit; };
+    DropSpec ds[4] = {
+        { whiteDrop,     TYPES,   &g_white.type,   &g_editWhiteType   },
+        { blackDrop,     TYPES,   &g_black.type,   &g_editBlackType   },
+        { whiteOpenDrop, OPENERS, &g_white.opener, &g_editWhiteOpener },
+        { blackOpenDrop, OPENERS, &g_black.opener, &g_editBlackOpener },
+    };
+    int openIdx = -1;
+    for (int i = 0; i < 4; i++) if (*ds[i].edit) { openIdx = i; break; }
 
-    // Draw dropdowns last so their open lists render on top of everything.
-    if (GuiDropdownBox(whiteDrop, TYPES, &g_white.type, g_editWhiteType)) {
-        g_editWhiteType = !g_editWhiteType;
-        g_editBlackType = false;
+    for (int i = 0; i < 4; i++) {
+        if (i == openIdx) continue;
+        if (GuiDropdownBox(ds[i].r, ds[i].opts, ds[i].val, *ds[i].edit)) {
+            for (int j = 0; j < 4; j++) *ds[j].edit = false;
+            *ds[i].edit = true;
+        }
     }
-    if (GuiDropdownBox(blackDrop, TYPES, &g_black.type, g_editBlackType)) {
-        g_editBlackType = !g_editBlackType;
-        g_editWhiteType = false;
+    if (anyDropdown) GuiUnlock();
+    if (openIdx >= 0) {
+        if (GuiDropdownBox(ds[openIdx].r, ds[openIdx].opts, ds[openIdx].val, *ds[openIdx].edit))
+            *ds[openIdx].edit = false;
     }
+}
+
+// Emblematic piece-count badges drawn on the board itself (so they stay visible
+// when the panel is hidden): a small piece icon + count, white near White's side
+// (top of the board) and black near Black's side (bottom).
+static void DrawCountBadge(int bx, int by, char who, int count) {
+    const int bwd = 52, bht = 26;
+    // Mid-gray pill so both a light and a dark piece icon read clearly on it.
+    DrawRectangleRounded(Rectangle{ (float)bx, (float)by, (float)bwd, (float)bht }, 0.5f, 8,
+                         Color{ 58, 62, 74, 235 });
+    int cyc = by + bht / 2, cxc = bx + 15;
+    float r = 8;
+    if (who == WHITE) { DrawCircle(cxc, cyc, r, COL_WPIECE); DrawCircleLines(cxc, cyc, r, COL_WEDGE); }
+    else              { DrawCircle(cxc, cyc, r, COL_BPIECE); DrawCircleLines(cxc, cyc, r, COL_BEDGE); }
+    DrawText(TextFormat("%d", count), bx + 28, by + 5, 16, COL_NUM);
+}
+
+static void DrawPieceCounts() {
+    if (g_boardPx <= 0) return;
+    // In the reserved strip just to the right of the board, so nothing overlaps the
+    // squares. Orientation: White starts on the low rows and moves up (its pieces
+    // sit at the bottom of the screen); Black sits at the top.
+    int bx = g_boardX + g_boardPx + 8;
+    DrawCountBadge(bx, g_boardY,                  BLACK, g_blackCount);  // Black's side (top)
+    DrawCountBadge(bx, g_boardY + g_boardPx - 26, WHITE, g_whiteCount);  // White's side (bottom)
 }
 
 static void DrawGameOverBanner() {
@@ -508,8 +830,8 @@ static void DrawGameOverBanner() {
     const char *who = (g_winner == White) ? "WHITE WINS" : "BLACK WINS";
     int fs = 40;
     int tw = MeasureText(who, fs);
-    int bx = BOARD_X + (BOARD_PX - tw) / 2 - 20;
-    int by = BOARD_Y + BOARD_PX / 2 - 34;
+    int bx = g_boardX + (g_boardPx - tw) / 2 - 20;
+    int by = g_boardY + g_boardPx / 2 - 34;
     DrawRectangle(bx, by, tw + 40, 68, Color{ 0, 0, 0, 190 });
     DrawText(who, bx + 20, by + 14, fs, Color{ 255, 220, 90, 255 });
 }
@@ -518,16 +840,24 @@ static void DrawGameOverBanner() {
 // Frame
 // ---------------------------------------------------------------------------
 static void UpdateDrawFrame() {
+    ComputeLayout();
     Update();
 
     BeginDrawing();
     ClearBackground(COL_BG);
-    DrawText("Breakthrough", BOARD_X, 12, 26, COL_LABEL);
-    DrawText(TextFormat("%s  vs  %s", PlayerName(g_white.type), PlayerName(g_black.type)),
-             BOARD_X + 200, 20, 16, COL_LABEL);
+
     DrawBoard();
-    DrawGameOverBanner();
-    DrawPanel();
+    DrawPieceCounts();      // emblematic counts on the board (visible with panel hidden)
+    if (g_showPanel) DrawPanel();
+    DrawGameOverBanner();   // on top so the win banner stays readable
+
+    // Top bar: Options/Hide toggle + title (above the overlay, always visible).
+    if (GuiButton(Rectangle{ 8, 8, 96, 28 }, g_showPanel ? "Hide" : "Options"))
+        g_showPanel = !g_showPanel;
+    DrawText("Breakthrough", 116, 11, 22, COL_LABEL);
+    DrawText(TextFormat("%s  vs  %s", PlayerName(g_white.type), PlayerName(g_black.type)),
+             320, 15, 16, COL_LABEL);
+
     EndDrawing();
 }
 
@@ -539,7 +869,9 @@ int main() {
     g_white.type = Human;
     g_black.type = MiniMax;
 
-    InitWindow(WIN_W, WIN_H, "Breakthrough");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(INIT_W, INIT_H, "Breakthrough");
+    SetWindowMinSize(MIN_W, MIN_H);
     GuiSetStyle(DEFAULT, TEXT_SIZE, 16);
 
     // Load the default board so the grid shows something before the game starts.

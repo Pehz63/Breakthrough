@@ -113,22 +113,42 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
 
 ### Using the GUI
 
-- The board is drawn on the left; the control panel is on the right.
+- The window is **resizable** and the board **scales to fill it** (kept square and
+  centered).
+- The options live in a narrow panel on the **left**. The board sits **beside** it
+  (it is not covered). Toggle the panel with the **Options** / **Hide** button in
+  the top-left, or the **Tab** key. Hiding it lets the board grow to fill the
+  window.
 - Pick a player type for **White** and **Black** from the dropdowns
   (Human / Uniform Random / Tiered Random / Smart Random / MiniMax), choose each
-  side's **opener** (Std / Off / Def), and adjust **Smart Random** /
-  **MiniMax** parameters with the controls that appear for those types. The
-  default matchup is **Human (White) vs MiniMax (Black)**.
-- **MiniMax depth:** the slider sets depth from 1 to 25; the number box beside it
-  lets you type an exact depth (or one higher than 25, though large depths get
-  very slow). The default depth is 8.
+  side's **opener** from a dropdown (Standard / Offensive / Defensive), and adjust
+  **Smart Random** / **MiniMax** parameters with the controls that appear for those
+  types. The default matchup is **Human (White) vs MiniMax (Black)**.
+- **Slider designs:** the numeric parameters use prototype controls that each show
+  both a bar and the number and step with a "+" (up) above a "-" (down) button.
+  Each row demonstrates a different design (Bar+number, Segments, Number+bar,
+  Handle, Ruler) so you can compare them, and you can also click or drag a bar to
+  set its value directly. The **Sliders** switcher at the top of the panel forces
+  one design across all rows ("Per-row" restores the mixed view).
+- **MiniMax depth:** the Depth control (the Number+bar design) lets you type an
+  exact depth, step it with +/-, or drag its bar (which tops out at 25, though the
+  typed/stepped value can go higher). Large depths get very slow. The default depth
+  is 8.
 - Type a board file in the **Board** box (default `boards/board1.txt`) and press
   **Start Game** / **New Game**.
+- **Piece counts** are shown on the board itself as small badges (a piece icon plus
+  the count) on each side, so they stay visible even with the options panel hidden.
 - **Human moves:** click one of your pieces to select it (legal destinations are
   highlighted), then click the destination square one row forward.
-- **Pacing:** the **Speed** selector controls AI move pacing
-  (Step / 0.25x / 1x / 4x / Instant). Use **Pause** and **Next move** to step
-  through an AI-vs-AI game. The **Move Log** scrolls through the move history.
+- **Pacing** adapts to the matchup:
+  - **Human vs a strong AI** (MiniMax depth > 5): no pacing controls, the AI's own
+    search sets the pace.
+  - **Human vs a fast AI** (shallow MiniMax or a random AI): a **Min 2s per AI
+    move** checkbox so the AI does not snap back instantly.
+  - **AI vs AI:** the full set, slow-motion (`|>`) / fast-forward (`>>`) buttons
+    that step the speed presets (Step / 0.25x / 1x / 4x / Instant) shown between
+    them, plus icon buttons for **play/pause**, **step**, and **restart**.
+- The **Move Log** scrolls through the move history.
 
 ## Gameplay
 
