@@ -42,6 +42,11 @@ Then run from the project root (required so puzzle board paths resolve correctly
 .\tests.exe
 ```
 
+For the GUI, the smoke test (`.\tools\smoke_test_gui.ps1 -Build`) and the targeted
+screenshot helper (`.\tools\gui_capture.ps1`) are the main tools. See
+[TESTING.md](TESTING.md) for the full verification playbook, including what to look
+for visually and how to capture matchup-gated controls.
+
 ## Source files
 
 | File | Contents |

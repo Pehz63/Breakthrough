@@ -4,11 +4,12 @@
 # it initialize and render, captures a screenshot, then closes it. Use this after
 # any GUI change to confirm the window still opens and renders without crashing.
 #
-# Usage (from the project root):
-#   .\smoke_test_gui.ps1            # screenshot the already-built exe
-#   .\smoke_test_gui.ps1 -Build     # rebuild first, then screenshot
-#   .\smoke_test_gui.ps1 -Seconds 5 # wait longer before capturing
-#   .\smoke_test_gui.ps1 -KeepOpen  # leave the window open after capturing
+# Usage (always run from the project root, so the relative build/exe/output paths
+# below resolve correctly):
+#   .\tools\smoke_test_gui.ps1            # screenshot the already-built exe
+#   .\tools\smoke_test_gui.ps1 -Build     # rebuild first, then screenshot
+#   .\tools\smoke_test_gui.ps1 -Seconds 5 # wait longer before capturing
+#   .\tools\smoke_test_gui.ps1 -KeepOpen  # leave the window open after capturing
 #
 # The screenshot is written to build\ (git-ignored), so it never clutters commits.
 # Exit code 0 = the process stayed alive and a screenshot was captured;

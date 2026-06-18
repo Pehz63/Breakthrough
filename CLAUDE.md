@@ -78,7 +78,9 @@ first, `#undef`s `WHITE`/`BLACK`, then includes `globals.h` and draws with expli
 | `INSTALL.md` | Setup notes: VS C++ workload, raylib download, emsdk for the web build |
 | `build_gui.bat` | Native GUI build (MSVC + raylib, `/MD`) -> `breakthrough_gui.exe` |
 | `build_web.bat` | Emscripten/WASM GUI build -> `docs/index.html` (release or `dev`) |
-| `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash |
+| `tools/smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root) |
+| `TESTING.md` | Verification playbook: console/engine test steps, the GUI smoke-test workflow, visual-inspection lessons, matchup-gated UI capture, and MSVC/raygui gotchas |
+| `tools/gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`) |
 
 ### `src/`
 | File | Purpose |
@@ -171,6 +173,10 @@ Openers are disabled automatically once the opponent advances into the player's 
 
 ## Verification Checklist
 
+See [TESTING.md](TESTING.md) for the full verification playbook (visual-inspection
+lessons, the `tools/gui_capture.ps1` screenshot helper, matchup-gated UI capture,
+and MSVC/raygui gotchas). The condensed checklist:
+
 Use this after any change to confirm nothing is broken:
 
 1. Build succeeds with the `cl` command above (no errors or warnings introduced)
@@ -186,7 +192,7 @@ Use this after any change to confirm nothing is broken:
 Always run the standard smoke test after any GUI change, the same way each time:
 
 ```powershell
-.\smoke_test_gui.ps1 -Build
+.\tools\smoke_test_gui.ps1 -Build
 ```
 
 This rebuilds `breakthrough_gui.exe`, launches it, waits for it to render, saves a
