@@ -28,14 +28,20 @@
 
 ## Build & Run
 
+**`cl` is not on the default PATH.** Every `cl` build must first load the MSVC
+environment via `vcvars64.bat`. From PowerShell, wrap the build in
+`cmd /c '"<vcvars64.bat>" && cl ...'` as shown below (path matches README; adjust
+the Visual Studio edition/version if yours differs). The bare `cl ...` lines that
+follow are the compile command itself, after the environment is loaded.
+
 ### Build
 ```
-cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 
 ### Tests
 ```
-cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
 ```
 
 ### Run
@@ -173,6 +179,7 @@ Openers are disabled automatically once the opponent advances into the player's 
 - **Win decay:** When minimax finds a forced win, the score decreases by 1 per level, incentivizing the fastest possible victory path.
 - **Evaluator registry / parameter threading:** Instead of fixed positional weights, the chosen evaluator (`int evaluator`) and its parameter array (`const int* evalParams`) are threaded together through `moveWhite/Black` -> `miniMaxWhite/Black` -> `maxAlphaBeta`/`minAlphaBeta` -> `evaluateBoard`. Adding/renaming a parameter or evaluator is a one-place edit in `g_evaluators` (`src/ai_eval.cpp`); both the console (`getEvaluatorSettings`) and GUI (`DrawPlayerConfig`) generate their controls from that table.
 - **`minimax_params.txt`:** Key-value config file (`key=value`, `#` comments) for persisting preferred AI settings between sessions. Per side: `<side>_eval`, `<side>_depth`, `<side>_opener`, and one key per evaluator weight (`<side>_<key>`, with legacy `<side>_<key>_weight` still honored).
+- **Section banners:** The longer source files (`moves.cpp`, `ai_random.cpp`, `settings.cpp`, `gui/main_gui.cpp`) carry `// === LABEL ===` banner comments before each logical section, so `grep "// ==="` over a file returns its outline and `grep "// === FAST VALIDATION"` jumps to a region. Labels mirror the per-file descriptions in this document. `main_gui.cpp` also lists the sections in its header comment. Keep banners in sync when adding or moving a section. Vendored headers (`tests/catch.hpp`, `gui/raygui.h`, `third_party/...`) are excluded.
 
 ---
 

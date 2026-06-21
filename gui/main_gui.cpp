@@ -10,6 +10,22 @@
 //
 // The same source compiles to a native window (while !WindowShouldClose) and to
 // the web via Emscripten (emscripten_set_main_loop), see main() at the bottom.
+//
+// Sections (grep "// ==="):
+//   LAYOUT / WINDOW CONSTANTS
+//   COLORS
+//   APP STATE
+//   PACING STATE
+//   HELPERS              SetStatus / CheckWinner / LogMove / DiffMove / SearchArg
+//   GAME FLOW            AfterMove / StartGame / ApplyAIMove / HandleHumanClick
+//   UPDATE               per-frame state machine
+//   LAYOUT COMPUTE       ComputeLayout
+//   BOARD RENDERING      DrawPiece / DrawBoard
+//   STEPPER WIDGETS      DrawSpeedGlyph / DrawStackedPM / DrawFillBar / ScrubBar / StepperRow
+//   PLAYER CONFIG + PANEL  DrawPlayerConfig / DrawPanel
+//   COUNT BADGES         DrawCountBadge / DrawPieceCounts
+//   GAME OVER            DrawGameOverBanner
+//   MAIN LOOP            UpdateDrawFrame / main
 
 #include "raylib.h"
 #define RAYGUI_IMPLEMENTATION
@@ -34,9 +50,9 @@
 #include <emscripten/emscripten.h>
 #endif
 
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
+// ============================================================
+// LAYOUT / WINDOW CONSTANTS
+// ============================================================
 // Initial window size (the window is resizable; geometry below is recomputed
 // each frame from the live window size).
 static const int INIT_W = 1024;
@@ -56,6 +72,9 @@ static int       g_boardY  = 0;
 static int       g_boardPx = 0;
 static Rectangle g_panelRect = { 0, 0, 0, 0 };
 
+// ============================================================
+// COLORS
+// ============================================================
 // Drawing colors (explicit literals; raylib WHITE/BLACK macros were undef'd)
 static const Color COL_LIGHT   = { 222, 210, 180, 255 };
 static const Color COL_DARK    = { 140, 110,  78, 255 };
@@ -74,9 +93,9 @@ static const Color COL_FILL    = {  86, 158, 222, 255 };
 static const Color COL_BRD     = {  92,  96, 110, 255 };
 static const Color COL_NUM     = { 236, 239, 246, 255 };
 
-// ---------------------------------------------------------------------------
-// Application state
-// ---------------------------------------------------------------------------
+// ============================================================
+// APP STATE
+// ============================================================
 enum class AppState { Settings, WaitingForHuman, WaitingBeforeAI, ComputingAI, GameOver };
 
 struct PlayerConfig {
@@ -111,7 +130,9 @@ static PlayerConfig g_black;
 static int          g_turn   = White;   // whose move it is
 static int          g_winner = None;
 
-// Pacing
+// ============================================================
+// PACING STATE
+// ============================================================
 static int    g_speedIndex = 2;          // 0=Step 1=0.25x 2=1x 3=4x 4=Instant
 static double g_aiTimer = 0.0;
 static bool   g_paused = false;
@@ -166,9 +187,9 @@ static int g_stepStyle = 0;
 // slots 1..MAX_EVAL_PARAMS = evaluator params, last slot = SmartRandom Forward.
 static bool g_stepEdit[2][MAX_EVAL_PARAMS + 2] = { { false } };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ============================================================
+// HELPERS -- SetStatus / CheckWinner / LogMove / DiffMove / SearchArg
+// ============================================================
 static void SetStatus(const char *msg) {
     std::strncpy(g_status, msg, sizeof(g_status) - 1);
     g_status[sizeof(g_status) - 1] = '\0';
@@ -234,6 +255,9 @@ static int SearchArg(const PlayerConfig &c) {
     return 1;
 }
 
+// ============================================================
+// GAME FLOW -- AfterMove / StartGame / ApplyAIMove / HandleHumanClick
+// ============================================================
 // Advance to the next turn / state after a move has been applied.
 static void AfterMove() {
     g_hasSel = false;
@@ -270,9 +294,6 @@ static void StartGame() {
     SetStatus("Game started. White to move.");
 }
 
-// ---------------------------------------------------------------------------
-// Move handling
-// ---------------------------------------------------------------------------
 static void ApplyAIMove() {
     char prev[SIZE][SIZE];
     std::memcpy(prev, board, sizeof(prev));
@@ -330,9 +351,9 @@ static Matchup ClassifyMatchup() {
     return mu;
 }
 
-// ---------------------------------------------------------------------------
-// Update
-// ---------------------------------------------------------------------------
+// ============================================================
+// UPDATE -- per-frame state machine
+// ============================================================
 static void Update() {
     // Tab toggles the options overlay.
     if (IsKeyPressed(KEY_TAB)) g_showPanel = !g_showPanel;
@@ -378,9 +399,9 @@ static void Update() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Layout (recomputed each frame from the live window size)
-// ---------------------------------------------------------------------------
+// ============================================================
+// LAYOUT COMPUTE -- ComputeLayout (recomputed each frame from window size)
+// ============================================================
 static void ComputeLayout() {
     int W = GetScreenWidth();
     int H = GetScreenHeight();
@@ -405,9 +426,9 @@ static void ComputeLayout() {
     g_panelRect = Rectangle{ 0, (float)TOP, (float)PANEL_W, (float)(H - TOP) };
 }
 
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
+// ============================================================
+// BOARD RENDERING -- DrawPiece / DrawBoard
+// ============================================================
 static void DrawPiece(int cx, int cy, char who) {
     float r = g_cell * 0.36f;
     if (who == WHITE) {
@@ -485,6 +506,9 @@ static void DrawBoard() {
     }
 }
 
+// ============================================================
+// STEPPER WIDGETS -- DrawSpeedGlyph / DrawStackedPM / DrawFillBar / ScrubBar / StepperRow
+// ============================================================
 // Draw a transport glyph centered in r: forward = two right triangles
 // (">>" fast-forward), otherwise a bar + one right triangle ("|>" slow motion).
 // Triangle vertices are ordered (top-back, bottom-back, tip) so raylib renders
@@ -645,6 +669,9 @@ static float StepperRow(int side, int param, StepStyle assigned, float x, float 
     return y + rowH + 8;
 }
 
+// ============================================================
+// PLAYER CONFIG + PANEL -- DrawPlayerConfig / DrawPanel
+// ============================================================
 // One AI player's config block. Returns the y after the block. Defers drawing
 // the type and opener dropdowns: stores their rectangles in *typeRect/*openerRect
 // for a later top pass so their open lists render above the rows below them.
@@ -841,6 +868,9 @@ static void DrawPanel() {
     }
 }
 
+// ============================================================
+// COUNT BADGES -- DrawCountBadge / DrawPieceCounts
+// ============================================================
 // Emblematic piece-count badges drawn on the board itself (so they stay visible
 // when the panel is hidden): a small piece icon + count, white near White's side
 // (top of the board) and black near Black's side (bottom).
@@ -866,6 +896,9 @@ static void DrawPieceCounts() {
     DrawCountBadge(bx, g_boardY + g_boardPx - 26, WHITE, g_whiteCount);  // White's side (bottom)
 }
 
+// ============================================================
+// GAME OVER -- DrawGameOverBanner
+// ============================================================
 static void DrawGameOverBanner() {
     if (g_state != AppState::GameOver) return;
     const char *who = (g_winner == White) ? "WHITE WINS" : "BLACK WINS";
@@ -877,9 +910,9 @@ static void DrawGameOverBanner() {
     DrawText(who, bx + 20, by + 14, fs, Color{ 255, 220, 90, 255 });
 }
 
-// ---------------------------------------------------------------------------
-// Frame
-// ---------------------------------------------------------------------------
+// ============================================================
+// MAIN LOOP -- UpdateDrawFrame / main
+// ============================================================
 static void UpdateDrawFrame() {
     ComputeLayout();
     Update();

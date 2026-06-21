@@ -2,6 +2,9 @@
 #include "moves.h"
 #include "board_analysis.h"
 
+// ============================================================
+// UNIFORM RANDOM -- pureRandomMove*
+// ============================================================
 int pureRandomMoveWhite() {  //Get a uniform-random move for white (simple ai)
     int moveX1, moveY, moveX2;
     int moveList[(SIZE-1)*SIZE*3][3];
@@ -125,6 +128,9 @@ int pureRandomMoveBlack() {  //Get a uniform-random move for black (simple ai)
     return victor;
 }
 
+// ============================================================
+// TIERED RANDOM -- tieredRandomMove*
+// ============================================================
 int tieredRandomMoveWhite() {  //Get a random move for white, prioritizing wins, capturing a piece, then random moves
     int moveX1, moveY, moveX2;
     int moveList[(SIZE-2)*SIZE*3][3];
@@ -304,6 +310,9 @@ int tieredRandomMoveBlack() {  //Get a random move for black, prioritizing wins,
     return victor;
 }
 
+// ============================================================
+// SMART RANDOM -- smartRandomMove*
+// ============================================================
 int smartRandomMoveWhite(int furthestCount) {  //Get a random move for white, prioritizing wins, capturing furthest piece, then moving furthest 4 pieces
     int moveX1, moveY, moveX2;
     int moveList[12*3][3];
@@ -531,6 +540,9 @@ int smartRandomMoveBlack(int furthestCount) {  //Get a random move for black, pr
     return victor;
 }
 
+// ============================================================
+// OPENERS -- playOpener*
+// ============================================================
 bool playOpenerWhite(int openerCode) { //If opponent hasn't advanced too far, plays the next opening move and returns 1.
     if (openerCode <= StandardOpener)
         return false;

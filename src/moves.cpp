@@ -3,6 +3,9 @@
 #include "ai_minimax.h"
 #include "ai_eval.h"
 
+// ============================================================
+// MOVE DISPATCH -- moveWhite / moveBlack
+// ============================================================
 int moveWhite(int whitePlayer, int w1, int evaluator, const int* evalParams, int wOpener) {  //Call appropriate move function for given parameters
     unsigned long long int nodes = 0;
     unsigned long long int leafs = 0;
@@ -78,6 +81,9 @@ int moveBlack(int blackPlayer, int b1, int evaluator, const int* evalParams, int
     return WhiteWin;
 }
 
+// ============================================================
+// HUMAN INPUT -- playerMove
+// ============================================================
 int playerMove(int playerColor) {  //Get and perform a player's move for given color and returns victory#
     if (playerColor != White && playerColor != Black)
     {
@@ -123,6 +129,9 @@ int playerMove(int playerColor) {  //Get and perform a player's move for given c
     return victor;
 }
 
+// ============================================================
+// FULL VALIDATION (user-facing) -- tryMoveWhite / tryMoveBlack
+// ============================================================
 bool tryMoveWhite(int moveX1, int moveY, int moveX2, bool usr) {  //Returns if white can make the given move and prints result for user
     if (moveX1 >= 0 && moveX1 <= SIZE-1 && moveY >= 0 && moveY <= SIZE-2 && moveX2 >= 0 && moveX2 <= SIZE-1 && moveX2 >= moveX1-1 && moveX2 <= moveX1+1)
     { //Given index is on the board
@@ -171,6 +180,10 @@ bool tryMoveBlack(int moveX1, int moveY, int moveX2, bool usr) {  //Returns if b
         cout << "Invalid move: Move out of bounds. Input in the form: \"d1c\" to move piece at d1 to place c2." << endl;
     return false;
 }
+
+// ============================================================
+// EXECUTION -- playMoveWhite / playMoveBlack
+// ============================================================
 int playMoveWhite(int moveX1, int moveY, int moveX2) { //Lets white play the given move and returns victory#
     bool isCapture;
     int victor = None;
@@ -236,6 +249,9 @@ int playMoveBlack(int moveX1, int moveY, int moveX2) { //Lets black play the giv
     return None;
 }
 
+// ============================================================
+// FAST VALIDATION (AI hot path) -- tryMoveQuick*
+// ============================================================
 bool tryMoveQuickWhite(int moveX1, int moveY, int moveX2) { //Returns if white can make the given move without checking parameters except z
     if (moveX2 >= 0 && moveX2 <= SIZE-1) //Given index is on the board
         if (board[moveX2][moveY+1] != WHITE) //This move isn't blocked by own piece
@@ -250,6 +266,10 @@ bool tryMoveQuickBlack(int moveX1, int moveY, int moveX2) { //Returns if black c
                 return true;
     return false;
 }
+
+// ============================================================
+// SIMULATION (make / unmake) -- simulateMove* / unsimulateMove*
+// ============================================================
 bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the given move for white and returns 1 if it was a capture
     bool isCapture;
     //If it's a capture, we have to return this later

@@ -2,6 +2,9 @@
 #include "board_io.h"
 #include "ai_eval.h"
 
+// ============================================================
+// EVALUATOR SETTINGS -- defaultEvalParams / getEvaluatorSettings
+// ============================================================
 // Seed a side's evaluator parameters to the registry defaults for evaluator 0.
 // Used for player types that don't prompt for an evaluator (Human and the random
 // AIs), so their opener-fallback evaluation still has sensible weights.
@@ -40,6 +43,9 @@ static void getEvaluatorSettings(const char* color, const char* who, int& eval, 
     }
 }
 
+// ============================================================
+// GAME SETTINGS -- getSettings
+// ============================================================
 void getSettings(int& whitePlayer, int& w1, int& wEval, int* wParams, int& wOpener, int& blackPlayer, int& b1, int& bEval, int* bParams, int& bOpener, int& gameCount, int& testing, int& testingParam) {  //Gets the player and game settings from the user
     //Get whitePlayer:
     if (whitePlayer <= NullPlayer) {
@@ -329,6 +335,9 @@ void getSettings(int& whitePlayer, int& w1, int& wEval, int* wParams, int& wOpen
             cout << "Invalid number: Enter an integer between 0 and 2 (inclusive).\n";
     }
 }
+// ============================================================
+// VICTOR DISPLAY -- printVictor
+// ============================================================
 void printVictor(int victor, int game, int whiteGameTime, int blackGameTime) {  //Display the victor
     cout << "Game " << game << ":\t";
     cout << "Victor code: " << victor << endl;
