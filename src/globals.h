@@ -22,6 +22,10 @@ using std::map;
 #define BLACK   'B'
 #define SIZE    8
 
+// Maximum number of parameters any board evaluator can declare (see ai_eval.h).
+// Defined here so callers that thread evaluator parameter arrays only need globals.h.
+#define MAX_EVAL_PARAMS 8
+
 extern int PRNT;
 extern int p1Default;
 extern int p2Default;
@@ -38,15 +42,25 @@ extern int g_chipDiff;
 extern int g_whiteAtEnd;
 extern int g_blackAtEnd;
 
+// Incremental evaluation state (maintained during a minimax search):
+//   g_evalPos          running positional score (structure + advance) of the board
+//   g_evalIncremental  true while an incremental search is active (gates make/unmake updates)
+//   g_activeParams     the active evaluator's weight array
+//   g_activeParamCount its parameter count
+extern int g_evalPos;
+extern bool g_evalIncremental;
+extern const int* g_activeParams;
+extern int g_activeParamCount;
+
 enum VictorEnum {None = 0, White = 1, Black = -1, WhiteWin = INT_MAX-1, BlackWin = INT_MIN+1};
 enum PlayerEnum {NullPlayer = -1, Human = 0, UniformRandom = 1, TieredRandom = 2, SmartRandom = 3, MiniMax = 4};
 enum OpenerEnum {NullOpener = -1, StandardOpener = 0, OffensiveOpener = 1, DefensiveOpener = 2};
 
-bool loadMinimaxParams(const string&, int&, int&, int&, int&, int&, int&, const string&);
+bool loadMinimaxParams(const string&, int&, int&, int*, int&, const string&);
 string getBoard();
 bool reloadBoard(string);
 void printBoard();
-void getSettings(int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&, int&);
+void getSettings(int&, int&, int&, int*, int&, int&, int&, int&, int*, int&, int&, int&, int&);
 void printVictor(int, int, int, int);
 
 int countChips(int);
@@ -58,8 +72,8 @@ int findWinBlack();
 bool canWinWhite();
 bool canWinBlack();
 
-int moveWhite(int, int, int, int, int, int, int);
-int moveBlack(int, int, int, int, int, int, int);
+int moveWhite(int, int, int, const int*, int);
+int moveBlack(int, int, int, const int*, int);
 int playerMove(int);
 bool tryMoveWhite(int, int, int, bool);
 bool tryMoveBlack(int, int, int, bool);
@@ -84,8 +98,14 @@ int smartRandomMoveBlack(int);
 
 bool playOpenerWhite(int);
 bool playOpenerBlack(int);
-int miniMaxWhite(int, int, int, int, int, unsigned long long int&, unsigned long long int&);
-int miniMaxBlack(int, int, int, int, int, unsigned long long int&, unsigned long long int&);
-int minAlphaBeta(int, int, int, int, int, int, int, int, unsigned long long int&, unsigned long long int&);
-int maxAlphaBeta(int, int, int, int, int, int, int, int, unsigned long long int&, unsigned long long int&);
+int miniMaxWhite(int, int, const int*, unsigned long long int&, unsigned long long int&);
+int miniMaxBlack(int, int, const int*, unsigned long long int&, unsigned long long int&);
+int minAlphaBeta(int, int, int, int, int, const int*, unsigned long long int&, unsigned long long int&);
+int maxAlphaBeta(int, int, int, int, int, const int*, unsigned long long int&, unsigned long long int&);
+int evaluateBoard(int, int, const int*);
 int evaluateBoard(int, int, int, int, int);
+int evalPosFull(const int*, int);
+int evalPosLocal(int, int, int, int);
+int evalLeaf(int, int, const int*);
+void evalBeginSearch(int, const int*);
+void evalEndSearch();

@@ -3,25 +3,25 @@
 #include "ai_minimax.h"
 #include "ai_eval.h"
 
-int moveWhite(int whitePlayer, int w1, int w2, int w3, int w4, int w5, int wOpener) {  //Call appropriate move function for given parameters
+int moveWhite(int whitePlayer, int w1, int evaluator, const int* evalParams, int wOpener) {  //Call appropriate move function for given parameters
     unsigned long long int nodes = 0;
     unsigned long long int leafs = 0;
     switch (whitePlayer) {
       case UniformRandom:
         if (playOpenerWhite(wOpener))
-            return evaluateBoard(Black, w2, w3, w4, w5);
+            return evaluateBoard(Black, evaluator, evalParams);
         return pureRandomMoveWhite();
         break;
 
       case TieredRandom:
         if (playOpenerWhite(wOpener))
-            return evaluateBoard(Black, w2, w3, w4, w5);
+            return evaluateBoard(Black, evaluator, evalParams);
         return tieredRandomMoveWhite();
         break;
 
       case SmartRandom:
         if (playOpenerWhite(wOpener))
-            return evaluateBoard(Black, w2, w3, w4, w5);
+            return evaluateBoard(Black, evaluator, evalParams);
         return smartRandomMoveWhite(w1);
         break;
 
@@ -29,8 +29,8 @@ int moveWhite(int whitePlayer, int w1, int w2, int w3, int w4, int w5, int wOpen
         if (PRNT > 1)
             cout << "Getting move for White (MiniMax)..." << endl;
         if (playOpenerWhite(wOpener))
-            return evaluateBoard(Black, w2, w3, w4, w5);
-        return miniMaxWhite(w1, w2, w3, w4, w5, nodes, leafs);
+            return evaluateBoard(Black, evaluator, evalParams);
+        return miniMaxWhite(w1, evaluator, evalParams, nodes, leafs);
         break;
 
       default: //Human
@@ -40,25 +40,25 @@ int moveWhite(int whitePlayer, int w1, int w2, int w3, int w4, int w5, int wOpen
     cout << "Error calling moveWhite." << endl;
     return BlackWin;
 }
-int moveBlack(int blackPlayer, int b1, int b2, int b3, int b4, int b5, int bOpener) {  //Call appropriate move function for given parameters
+int moveBlack(int blackPlayer, int b1, int evaluator, const int* evalParams, int bOpener) {  //Call appropriate move function for given parameters
     unsigned long long int nodes = 0;
     unsigned long long int leafs = 0;
     switch (blackPlayer) {
       case UniformRandom:
         if (playOpenerBlack(bOpener))
-            return evaluateBoard(White, b2, b3, b4, b5);
+            return evaluateBoard(White, evaluator, evalParams);
         return pureRandomMoveBlack();
         break;
 
       case TieredRandom:
         if (playOpenerBlack(bOpener))
-            return evaluateBoard(White, b2, b3, b4, b5);
+            return evaluateBoard(White, evaluator, evalParams);
         return tieredRandomMoveBlack();
         break;
 
       case SmartRandom:
         if (playOpenerBlack(bOpener))
-            return evaluateBoard(White, b2, b3, b4, b5);
+            return evaluateBoard(White, evaluator, evalParams);
         return smartRandomMoveBlack(b1);
         break;
 
@@ -66,8 +66,8 @@ int moveBlack(int blackPlayer, int b1, int b2, int b3, int b4, int b5, int bOpen
         if (PRNT > 1)
             cout << "Getting move for Black (MiniMax)..." << endl;
         if (playOpenerBlack(bOpener))
-            return evaluateBoard(White, b2, b3, b4, b5);
-        return miniMaxBlack(b1, b2, b3, b4, b5, nodes, leafs);
+            return evaluateBoard(White, evaluator, evalParams);
+        return miniMaxBlack(b1, evaluator, evalParams, nodes, leafs);
         break;
 
       default: //Human
@@ -254,6 +254,7 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     bool isCapture;
     //If it's a capture, we have to return this later
     isCapture = (board[moveX2][moveY+1] == BLACK);
+    int posBefore = g_evalIncremental ? evalPosLocal(moveX1, moveY, moveX2, moveY+1) : 0;
     if (isCapture) {
         g_blackCount--;
         g_chipDiff++;
@@ -264,12 +265,14 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     board[moveX2][moveY+1] = WHITE;
     if (moveY+1 == SIZE-1) g_whiteAtEnd++;
 
+    if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
     return isCapture;
 }
 bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the given move for black and returns 1 if it was a capture
     bool isCapture;
     //If it's a capture, we have to return this later
     isCapture = (board[moveX2][moveY-1] == WHITE);
+    int posBefore = g_evalIncremental ? evalPosLocal(moveX1, moveY, moveX2, moveY-1) : 0;
     if (isCapture) {
         g_whiteCount--;
         g_chipDiff--;
@@ -281,9 +284,11 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
     board[moveX2][moveY-1] = BLACK;
     if (moveY-1 == 0) g_blackAtEnd++;
 
+    if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
     return isCapture;
 }
 void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for white
+    int posBefore = g_evalIncremental ? evalPosLocal(moveX1, moveY, moveX2, moveY+1) : 0;
     if (moveY+1 == SIZE-1) g_whiteAtEnd--;
     //Undo the simulated move:
     board[moveX1][moveY] = WHITE;
@@ -294,9 +299,11 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
         board[moveX2][moveY+1] = BLACK;
     } else
         board[moveX2][moveY+1] = EMPTY;
+    if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
     return;
 }
 void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for black
+    int posBefore = g_evalIncremental ? evalPosLocal(moveX1, moveY, moveX2, moveY-1) : 0;
     if (moveY-1 == 0) g_blackAtEnd--;
     //Undo the simulated move:
     board[moveX1][moveY] = BLACK;
@@ -308,5 +315,6 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
         board[moveX2][moveY-1] = WHITE;
     } else
         board[moveX2][moveY-1] = EMPTY;
+    if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
     return;
 }

@@ -17,3 +17,7 @@ int g_blackCount = 0;
 int g_chipDiff   = 0;
 int g_whiteAtEnd = 0;
 int g_blackAtEnd = 0;
+int g_evalPos = 0;
+bool g_evalIncremental = false;
+const int* g_activeParams = nullptr;
+int g_activeParamCount = 0;

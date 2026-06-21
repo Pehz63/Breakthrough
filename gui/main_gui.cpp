@@ -22,6 +22,7 @@
 #undef BLACK
 
 #include "globals.h"
+#include "ai_eval.h"   // evaluator registry (g_evaluators / g_evalCount / MAX_EVAL_PARAMS)
 
 #include <string>
 #include <vector>
@@ -81,13 +82,28 @@ enum class AppState { Settings, WaitingForHuman, WaitingBeforeAI, ComputingAI, G
 struct PlayerConfig {
     int  type   = TieredRandom;   // PlayerEnum value (Human..MiniMax map to 0..4)
     int  opener = StandardOpener; // 0..2
-    // MiniMax weights
-    int  depth = 8, turn = 1, chip = 4, wall = 0, col = 0;
+    // MiniMax search depth
+    int  depth = 8;
+    // Evaluator selection + its parameters (filled from the g_evaluators registry).
+    int  evaluator = 0;                  // index into g_evaluators
+    int  evalParams[MAX_EVAL_PARAMS] = { 0 };
+    int  seededFor = -1;                 // evaluator whose defaults are loaded in evalParams
     // SmartRandom furthest-N pieces
     int  furthest = 4;
     // raygui edit-mode flag for the depth spinner (typed entry)
     bool editDepth = false;
 };
+
+// Load the registry defaults for c.evaluator into c.evalParams whenever the
+// selected evaluator changes (also seeds the initial values). Keeps each side's
+// weights meaningful after switching evaluators in the dropdown.
+static void SeedEvalParams(PlayerConfig &c) {
+    if (c.seededFor == c.evaluator) return;
+    if (c.evaluator < 0 || c.evaluator >= g_evalCount) c.evaluator = 0;
+    const EvalDef &e = g_evaluators[c.evaluator];
+    for (int i = 0; i < e.paramCount; i++) c.evalParams[i] = e.params[i].def;
+    c.seededFor = c.evaluator;
+}
 
 static AppState     g_state = AppState::Settings;
 static PlayerConfig g_white;
@@ -123,6 +139,8 @@ static bool g_editWhiteType = false;
 static bool g_editBlackType = false;
 static bool g_editWhiteOpener = false;
 static bool g_editBlackOpener = false;
+static bool g_editWhiteEval = false;
+static bool g_editBlackEval = false;
 
 // Left overlay panel visibility (toggled by the Options button / Tab key).
 static bool g_showPanel = true;
@@ -144,9 +162,9 @@ static int g_stepStyle = 0;
 
 // Edit-mode flags for the typeable stepper styles (spinner / value box), kept as a
 // small fixed set keyed by player+parameter so PlayerConfig stays unchanged.
-// Index layout: [side][param], side 0 = White, 1 = Black; param 0..4 =
-// Depth, Turn, Chip, Wall, Column; param 5 = SmartRandom Forward.
-static bool g_stepEdit[2][6] = { { false } };
+// Index layout: [side][slot], side 0 = White, 1 = Black. Slot 0 = Depth,
+// slots 1..MAX_EVAL_PARAMS = evaluator params, last slot = SmartRandom Forward.
+static bool g_stepEdit[2][MAX_EVAL_PARAMS + 2] = { { false } };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -208,15 +226,12 @@ static const char *PlayerName(int type) {
     }
 }
 
-// Build the w1..w5 argument pack the engine expects for a given player type.
-static void BuildArgs(const PlayerConfig &c, int &w1, int &w2, int &w3, int &w4, int &w5) {
-    if (c.type == MiniMax) {
-        w1 = c.depth; w2 = c.turn; w3 = c.chip; w4 = c.wall; w5 = c.col;
-    } else if (c.type == SmartRandom) {
-        w1 = c.furthest; w2 = w3 = w4 = w5 = 1;
-    } else {
-        w1 = w2 = w3 = w4 = w5 = 1;
-    }
+// The engine's w1 argument means depth for MiniMax, furthest-N for SmartRandom,
+// and is unused for the other types.
+static int SearchArg(const PlayerConfig &c) {
+    if (c.type == MiniMax)     return c.depth;
+    if (c.type == SmartRandom) return c.furthest;
+    return 1;
 }
 
 // Advance to the next turn / state after a move has been applied.
@@ -262,13 +277,10 @@ static void ApplyAIMove() {
     char prev[SIZE][SIZE];
     std::memcpy(prev, board, sizeof(prev));
 
-    int w1, w2, w3, w4, w5;
     if (g_turn == White) {
-        BuildArgs(g_white, w1, w2, w3, w4, w5);
-        moveWhite(g_white.type, w1, w2, w3, w4, w5, g_white.opener);
+        moveWhite(g_white.type, SearchArg(g_white), g_white.evaluator, g_white.evalParams, g_white.opener);
     } else {
-        BuildArgs(g_black, w1, w2, w3, w4, w5);
-        moveBlack(g_black.type, w1, w2, w3, w4, w5, g_black.opener);
+        moveBlack(g_black.type, SearchArg(g_black), g_black.evaluator, g_black.evalParams, g_black.opener);
     }
 
     int x1, y1, x2;
@@ -639,7 +651,8 @@ static float StepperRow(int side, int param, StepStyle assigned, float x, float 
 // `side` is 0 for White, 1 for Black (indexes the stepper edit-mode flags).
 static float DrawPlayerConfig(const char *title, int side, PlayerConfig &c,
                               float x, float y, float w,
-                              Rectangle *typeRect, Rectangle *openerRect) {
+                              Rectangle *typeRect, Rectangle *openerRect,
+                              Rectangle *evalRect) {
     GuiLabel(Rectangle{ x, y, w, 18 }, title);
     y += 20;
 
@@ -651,17 +664,31 @@ static float DrawPlayerConfig(const char *title, int side, PlayerConfig &c,
     if (c.opener < 0) c.opener = StandardOpener;
     y += 30;
 
-    // Each parameter row uses a different stepper design so they can be compared;
-    // the Sliders switcher (g_stepStyle) can override all rows to one design.
+    *evalRect = Rectangle{ 0, 0, 0, 0 };   // only shown for MiniMax (set below)
+
+    const int FURTHEST_SLOT = MAX_EVAL_PARAMS + 1;
     if (c.type == SmartRandom) {
-        y = StepperRow(side, 5, STEP_SEGMENTS, x, y, w, "Forward", &c.furthest, 1, 16);
+        y = StepperRow(side, FURTHEST_SLOT, STEP_SEGMENTS, x, y, w, "Forward", &c.furthest, 1, 16);
     } else if (c.type == MiniMax) {
         // Depth uses the typeable Number+bar design so it can exceed the bar's 25.
-        y = StepperRow(side, 0, STEP_NUMBAR,   x, y, w, "Depth",  &c.depth, 1, 1000000, 25);
-        y = StepperRow(side, 1, STEP_SEGMENTS, x, y, w, "Turn",   &c.turn,  0, 10);
-        y = StepperRow(side, 2, STEP_BAR_NUM,  x, y, w, "Chip",   &c.chip,  0, 10);
-        y = StepperRow(side, 3, STEP_HANDLE,   x, y, w, "Wall",   &c.wall,  0, 10);
-        y = StepperRow(side, 4, STEP_RULER,    x, y, w, "Column", &c.col,   0, 10);
+        y = StepperRow(side, 0, STEP_NUMBAR, x, y, w, "Depth", &c.depth, 1, 1000000, 25);
+
+        // Evaluator dropdown (drawn later, on top) followed by that evaluator's
+        // parameters, one row each from the registry. Switching evaluator reseeds
+        // the values to that evaluator's defaults.
+        GuiLabel(Rectangle{ x, y, 52, 24 }, "Eval");
+        *evalRect = Rectangle{ x + 58, y, w - 58, 24 };
+        y += 30;
+
+        SeedEvalParams(c);
+        const EvalDef &e = g_evaluators[c.evaluator];
+        for (int i = 0; i < e.paramCount; i++) {
+            // Cycle the stepper designs so adjacent rows look distinct; the Sliders
+            // switcher (g_stepStyle) can still force one design across all rows.
+            StepStyle st = (StepStyle)(i % STEP_STYLE_COUNT);
+            y = StepperRow(side, 1 + i, st, x, y, w, e.params[i].name,
+                           &c.evalParams[i], e.params[i].lo, e.params[i].hi);
+        }
     }
     return y + 6;
 }
@@ -687,13 +714,14 @@ static void DrawPanel() {
     y += 28;
 
     bool anyDropdown = g_editWhiteType || g_editBlackType ||
-                       g_editWhiteOpener || g_editBlackOpener;
+                       g_editWhiteOpener || g_editBlackOpener ||
+                       g_editWhiteEval || g_editBlackEval;
     if (anyDropdown) GuiLock();
 
-    Rectangle whiteDrop, blackDrop, whiteOpenDrop, blackOpenDrop;
-    y = DrawPlayerConfig("WHITE player", 0, g_white, x, y, w, &whiteDrop, &whiteOpenDrop);
+    Rectangle whiteDrop, blackDrop, whiteOpenDrop, blackOpenDrop, whiteEvalDrop, blackEvalDrop;
+    y = DrawPlayerConfig("WHITE player", 0, g_white, x, y, w, &whiteDrop, &whiteOpenDrop, &whiteEvalDrop);
     GuiLine(Rectangle{ x, y, w, 8 }, NULL); y += 12;
-    y = DrawPlayerConfig("BLACK player", 1, g_black, x, y, w, &blackDrop, &blackOpenDrop);
+    y = DrawPlayerConfig("BLACK player", 1, g_black, x, y, w, &blackDrop, &blackOpenDrop, &blackEvalDrop);
     GuiLine(Rectangle{ x, y, w, 8 }, NULL); y += 14;
 
     // Board file
@@ -776,20 +804,33 @@ static void DrawPanel() {
     // underneath, preventing click-through from an open list. Opening any dropdown
     // closes the others so only one list is ever expanded.
     const char *OPENERS = "Standard;Offensive;Defensive";
-    struct DropSpec { Rectangle r; const char *opts; int *val; bool *edit; };
-    DropSpec ds[4] = {
-        { whiteDrop,     TYPES,   &g_white.type,   &g_editWhiteType   },
-        { blackDrop,     TYPES,   &g_black.type,   &g_editBlackType   },
-        { whiteOpenDrop, OPENERS, &g_white.opener, &g_editWhiteOpener },
-        { blackOpenDrop, OPENERS, &g_black.opener, &g_editBlackOpener },
-    };
-    int openIdx = -1;
-    for (int i = 0; i < 4; i++) if (*ds[i].edit) { openIdx = i; break; }
+    // Evaluator options string ("Classic;Experimental;...") built from the registry.
+    static std::string EVALS;
+    if (EVALS.empty())
+        for (int i = 0; i < g_evalCount; i++) {
+            if (i) EVALS += ";";
+            EVALS += g_evaluators[i].name;
+        }
 
-    for (int i = 0; i < 4; i++) {
+    struct DropSpec { Rectangle r; const char *opts; int *val; bool *edit; };
+    DropSpec ds[6] = {
+        { whiteDrop,     TYPES,         &g_white.type,      &g_editWhiteType   },
+        { blackDrop,     TYPES,         &g_black.type,      &g_editBlackType   },
+        { whiteOpenDrop, OPENERS,       &g_white.opener,    &g_editWhiteOpener },
+        { blackOpenDrop, OPENERS,       &g_black.opener,    &g_editBlackOpener },
+    };
+    int n = 4;
+    // Eval dropdowns are present only for MiniMax sides (rect width > 0).
+    if (whiteEvalDrop.width > 0) ds[n++] = { whiteEvalDrop, EVALS.c_str(), &g_white.evaluator, &g_editWhiteEval };
+    if (blackEvalDrop.width > 0) ds[n++] = { blackEvalDrop, EVALS.c_str(), &g_black.evaluator, &g_editBlackEval };
+
+    int openIdx = -1;
+    for (int i = 0; i < n; i++) if (*ds[i].edit) { openIdx = i; break; }
+
+    for (int i = 0; i < n; i++) {
         if (i == openIdx) continue;
         if (GuiDropdownBox(ds[i].r, ds[i].opts, ds[i].val, *ds[i].edit)) {
-            for (int j = 0; j < 4; j++) *ds[j].edit = false;
+            for (int j = 0; j < n; j++) *ds[j].edit = false;
             *ds[i].edit = true;
         }
     }
@@ -868,6 +909,8 @@ int main() {
     // Default matchup: Human (White) vs MiniMax (Black).
     g_white.type = Human;
     g_black.type = MiniMax;
+    SeedEvalParams(g_white);   // load registry defaults into each side's evalParams
+    SeedEvalParams(g_black);
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(INIT_W, INIT_H, "Breakthrough");

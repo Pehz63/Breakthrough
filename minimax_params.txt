@@ -6,7 +6,13 @@
 # Depth guide (with structure weights): <6=~1s  6=10s   7=1.5min  8=7min  9=40min
 #
 # opener: 0=Standard  1=Offensive  2=Defensive
+#
+# eval: which evaluator to use (0=Classic, 1=Experimental). Each evaluator's
+# weights are read from <side>_<key> keys; the legacy *_weight names below still
+# work for the Classic evaluator. Experimental adds an "adv" (advance) weight:
+#   white_adv=1   black_adv=1
 
+white_eval=0
 white_depth=9
 white_turn_weight=0
 white_chip_weight=1
@@ -14,6 +20,7 @@ white_wall_weight=0
 white_column_weight=0
 white_opener=0
 
+black_eval=0
 black_depth=9
 black_turn_weight=0
 black_chip_weight=1

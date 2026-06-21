@@ -58,7 +58,7 @@ for visually and how to capture matchup-gated controls.
 | `settings.cpp` | `getSettings`, `printVictor` |
 | `board_analysis.cpp` | `countChips`, `chipDiff`, `findWin*`, `canWin*` |
 | `moves.cpp` | Move validation, execution, simulation, player input, move routing |
-| `ai_eval.cpp` | `evaluateBoard` — board heuristic used by minimax and move dispatcher |
+| `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard` — the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
 | `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta` |
 | `gui/main_gui.cpp` | raylib + raygui front end: window, per-frame state machine, board rendering, click-to-move, widget panel, move log |
@@ -129,6 +129,11 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
   side's **opener** from a dropdown (Standard / Offensive / Defensive), and adjust
   **Smart Random** / **MiniMax** parameters with the controls that appear for those
   types. The default matchup is **Human (White) vs MiniMax (Black)**.
+- **Evaluator (MiniMax):** an **Eval** dropdown picks which board-state evaluator
+  the MiniMax search uses (e.g. Classic / Experimental). Each evaluator defines its
+  own set of weights, and the parameter sliders below the dropdown change to match
+  the selected evaluator. Switching evaluator resets that side's weights to the new
+  evaluator's defaults.
 - **Slider designs:** the numeric parameters use prototype controls that each show
   both a bar and the number and step with a "+" (up) above a "-" (down) button.
   Each row demonstrates a different design (Bar+number, Segments, Number+bar,
@@ -166,8 +171,26 @@ The game runs interactively in the console. At startup you will be prompted to:
    - `2` = Tiered Random
    - `3` = Smart Random
    - `4` = MiniMax (AI)
-3. **Configure AI parameters** if applicable (search depth, weights, opener style)
+3. **Configure AI parameters** if applicable. For MiniMax this includes the search
+   depth, the **evaluator** to use (Classic / Experimental / ...), that evaluator's
+   weights (prompted one at a time by name), and the opener style.
 4. **Choose number of games** to play and verbosity level (0 = silent, 1 = moves, 2 = full board)
+
+### Board-state evaluators
+
+The MiniMax AI scores leaf positions with a selectable **evaluator**. Each evaluator
+is one entry in the `g_evaluators` registry in `src/ai_eval.cpp`: a name, a list of
+parameters (display name, save-file key, default, and min/max), and a scoring
+function. To add or change an evaluator you edit that one table entry and its
+function body. The new evaluator and its parameters then appear automatically in
+both the console prompts and the GUI's Eval dropdown / sliders, and can be saved per
+side in `minimax_params.txt` via `<side>_eval` plus each weight's `<side>_<key>`.
+
+For speed, the MiniMax search evaluates positions **incrementally**: since a move
+changes only two squares, the positional score is updated by a small per-move delta
+instead of rescanning the whole board at every leaf. This is internal and does not
+change the scores, so AI play is identical — just faster when positional (wall /
+column / advance) weights are enabled at higher depths.
 
 ### Human move format
 

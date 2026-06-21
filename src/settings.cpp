@@ -1,7 +1,46 @@
 #include "settings.h"
 #include "board_io.h"
+#include "ai_eval.h"
 
-void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, int& wOpener, int& blackPlayer, int& b1, int& b2, int& b3, int& b4, int& b5, int& bOpener, int& gameCount, int& testing, int& testingParam) {  //Gets the player and game settings from the user
+// Seed a side's evaluator parameters to the registry defaults for evaluator 0.
+// Used for player types that don't prompt for an evaluator (Human and the random
+// AIs), so their opener-fallback evaluation still has sensible weights.
+static void defaultEvalParams(int& eval, int* params) {
+    eval = 0;
+    for (int i = 0; i < g_evaluators[0].paramCount; i++)
+        params[i] = g_evaluators[0].params[i].def;
+}
+
+// Prompt for a MiniMax side's evaluator and its parameters. Anything already set
+// (eval >= 0, or a param >= its minimum) is left untouched, so values loaded from
+// minimax_params.txt are not re-asked.
+static void getEvaluatorSettings(const char* color, const char* who, int& eval, int* params) {
+    if (eval < 0) {
+        cout << "\nEvaluators:";
+        for (int i = 0; i < g_evalCount; i++)
+            cout << "\n\t" << i << "\t= " << g_evaluators[i].name;
+        cout << endl;
+    }
+    while (eval < 0 || eval >= g_evalCount) {
+        cout << "Enter the evaluator " << color << " (" << who << ") should use: ";
+        cin >> eval;
+        if (eval < 0 || eval >= g_evalCount)
+            cout << "Invalid number: Enter an integer between 0 and " << (g_evalCount-1) << " inclusive.\n";
+    }
+    const EvalDef& e = g_evaluators[eval];
+    for (int i = 0; i < e.paramCount; i++) {
+        const EvalParamDef& pd = e.params[i];
+        while (params[i] < pd.lo || params[i] > pd.hi) {
+            cout << "Enter the weight " << color << " (" << who << ") should use for "
+                 << pd.name << " (" << pd.lo << "-" << pd.hi << "): ";
+            cin >> params[i];
+            if (params[i] < pd.lo || params[i] > pd.hi)
+                cout << "Invalid number: Enter an integer between " << pd.lo << " and " << pd.hi << " inclusive.\n";
+        }
+    }
+}
+
+void getSettings(int& whitePlayer, int& w1, int& wEval, int* wParams, int& wOpener, int& blackPlayer, int& b1, int& bEval, int* bParams, int& bOpener, int& gameCount, int& testing, int& testingParam) {  //Gets the player and game settings from the user
     //Get whitePlayer:
     if (whitePlayer <= NullPlayer) {
         cout << "\n\t0\t= Human";
@@ -19,18 +58,12 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
     switch(whitePlayer) {
         case Human:
         w1 = p1Default;
-        w2 = p2Default;
-        w3 = p3Default;
-        w4 = p4Default;
-        w5 = p5Default;
+        defaultEvalParams(wEval, wParams);
         break;
 
         case UniformRandom:
         w1 = p1Default;
-        w2 = p2Default;
-        w3 = p3Default;
-        w4 = p4Default;
-        w5 = p5Default;
+        defaultEvalParams(wEval, wParams);
         //parameter opener is opener
         if (wOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -44,10 +77,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
 
         case TieredRandom:
         w1 = p1Default;
-        w2 = p2Default;
-        w3 = p3Default;
-        w4 = p4Default;
-        w5 = p5Default;
+        defaultEvalParams(wEval, wParams);
         //parameter opener is opener
         if (wOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -60,10 +90,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         break;
 
         case SmartRandom:
-        w2 = p2Default;
-        w3 = p3Default;
-        w4 = p4Default;
-        w5 = p5Default;
+        defaultEvalParams(wEval, wParams);
         //parameter 1 is # of pieces forward:
         while (w1 <= 0) {
             cout << "Enter how many pieces White (Smart Random) should have forward: ";
@@ -84,14 +111,21 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
 
         case MiniMax:
         {
-            int fd=-1, ft=-1, fc=-1, fw=-1, fco=-1, fo=NullOpener;
-            if (loadMinimaxParams("minimax_params.txt", fd, ft, fc, fw, fco, fo, "white")) {
+            int fd=-1, fe=-1, fo=NullOpener;
+            int fp[MAX_EVAL_PARAMS];
+            if (loadMinimaxParams("minimax_params.txt", fd, fe, fp, fo, "white")) {
+                const EvalDef& e = g_evaluators[fe];
                 cout << "Loaded white params from minimax_params.txt:"
-                     << "\n  depth=" << fd << "  turn=" << ft << "  chip=" << fc
-                     << "  wall=" << fw << "  col=" << fco << "  opener=" << fo << "\n";
+                     << "\n  depth=" << fd << "  evaluator=" << e.name;
+                for (int i = 0; i < e.paramCount; i++)
+                    cout << "  " << e.params[i].name << "=" << fp[i];
+                cout << "  opener=" << fo << "\n";
                 cout << "Use these? (1=yes, 0=no): ";
                 int useFile = 0; cin >> useFile;
-                if (useFile == 1) { w1=fd; w2=ft; w3=fc; w4=fw; w5=fco; wOpener=fo; }
+                if (useFile == 1) {
+                    w1 = fd; wEval = fe; wOpener = fo;
+                    for (int i = 0; i < e.paramCount; i++) wParams[i] = fp[i];
+                }
             }
         }
         //parameter 1 is depth:
@@ -113,34 +147,8 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
             if (w1 <= 0)
                 cout << "Invalid number: Enter an integer greater than 0.\n";
         }
-        //parameter 2 is weight of turnAdvantage
-        while (w2 <= -1) {
-            cout << "Enter the weight White (MiniMax) should use for turn advantage: ";
-            cin >> w2;
-            if (w2 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 3 is weight of chipAdvantage
-        while (w3 <= -1) {
-            cout << "Enter the weight White (MiniMax) should use for chip advantage: ";
-            cin >> w3;
-            if (w3 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 4 is weight of walls
-        while (w4 <= -1) {
-            cout << "Enter the weight White (MiniMax) should use for wall structures: ";
-            cin >> w4;
-            if (w4 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 5 is weight of columns
-        while (w5 <= -1) {
-            cout << "Enter the weight White (MiniMax) should use for column structures: ";
-            cin >> w5;
-            if (w5 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
+        //Evaluator and its weights:
+        getEvaluatorSettings("White", "MiniMax", wEval, wParams);
         //parameter opener is opener
         if (wOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -155,7 +163,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         default:
         cout << "Invalid code: Enter an integer between 0 and 4 inclusive.\n";
         whitePlayer = NullPlayer;
-        return getSettings(whitePlayer, w1, w2, w3, w4, w5, wOpener, blackPlayer, b1, b2, b3, b4, b5, bOpener, gameCount, testing, testingParam);
+        return getSettings(whitePlayer, w1, wEval, wParams, wOpener, blackPlayer, b1, bEval, bParams, bOpener, gameCount, testing, testingParam);
         break;
     }
 
@@ -176,18 +184,12 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
     switch(blackPlayer) {
         case Human:
         b1 = p1Default;
-        b2 = p2Default;
-        b3 = p3Default;
-        b4 = p4Default;
-        b5 = p5Default;
+        defaultEvalParams(bEval, bParams);
         break;
 
         case UniformRandom:
         b1 = p1Default;
-        b2 = p2Default;
-        b3 = p3Default;
-        b4 = p4Default;
-        b5 = p5Default;
+        defaultEvalParams(bEval, bParams);
         //parameter opener is opener
         if (bOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -201,10 +203,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
 
         case TieredRandom:
         b1 = p1Default;
-        b2 = p2Default;
-        b3 = p3Default;
-        b4 = p4Default;
-        b5 = p5Default;
+        defaultEvalParams(bEval, bParams);
         //parameter opener is opener
         if (bOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -217,10 +216,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         break;
 
         case SmartRandom:
-        b2 = p2Default;
-        b3 = p3Default;
-        b4 = p4Default;
-        b5 = p5Default;
+        defaultEvalParams(bEval, bParams);
         //parameter 1 is # of pieces forward
         while (b1 <= 0) {
             cout << "Enter how many pieces Black (Smart Random) should have forward: ";
@@ -241,14 +237,21 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
 
         case MiniMax:
         {
-            int fd=-1, ft=-1, fc=-1, fw=-1, fco=-1, fo=NullOpener;
-            if (loadMinimaxParams("minimax_params.txt", fd, ft, fc, fw, fco, fo, "black")) {
+            int fd=-1, fe=-1, fo=NullOpener;
+            int fp[MAX_EVAL_PARAMS];
+            if (loadMinimaxParams("minimax_params.txt", fd, fe, fp, fo, "black")) {
+                const EvalDef& e = g_evaluators[fe];
                 cout << "Loaded black params from minimax_params.txt:"
-                     << "\n  depth=" << fd << "  turn=" << ft << "  chip=" << fc
-                     << "  wall=" << fw << "  col=" << fco << "  opener=" << fo << "\n";
+                     << "\n  depth=" << fd << "  evaluator=" << e.name;
+                for (int i = 0; i < e.paramCount; i++)
+                    cout << "  " << e.params[i].name << "=" << fp[i];
+                cout << "  opener=" << fo << "\n";
                 cout << "Use these? (1=yes, 0=no): ";
                 int useFile = 0; cin >> useFile;
-                if (useFile == 1) { b1=fd; b2=ft; b3=fc; b4=fw; b5=fco; bOpener=fo; }
+                if (useFile == 1) {
+                    b1 = fd; bEval = fe; bOpener = fo;
+                    for (int i = 0; i < e.paramCount; i++) bParams[i] = fp[i];
+                }
             }
         }
         //parameter 1 is depth
@@ -270,34 +273,8 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
             if (b1 <= 0)
                 cout << "Invalid number: Enter an integer greater than 0.\n";
         }
-        //parameter 2 is weight of turnAdvantage
-        while (b2 <= -1) {
-            cout << "Enter the weight Black (MiniMax) should use for turn advantage: ";
-            cin >> b2;
-            if (b2 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 3 is weight of chipAdvantage
-        while (b3 <= -1) {
-            cout << "Enter the weight Black (MiniMax) should use for chip advantage: ";
-            cin >> b3;
-            if (b3 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 4 is weight of walls
-        while (b4 <= -1) {
-            cout << "Enter the weight Black (MiniMax) should use for wall structures: ";
-            cin >> b4;
-            if (b4 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
-        //parameter 5 is weight of columns
-        while (b5 <= -1) {
-            cout << "Enter the weight Black (MiniMax) should use for column structures: ";
-            cin >> b5;
-            if (b5 <= -1)
-                cout << "Invalid number: Enter an integer greater than -1.\n";
-        }
+        //Evaluator and its weights:
+        getEvaluatorSettings("Black", "MiniMax", bEval, bParams);
         //parameter opener is opener
         if (bOpener <= NullOpener)
             cout << "Opening codes:\tStandard = " << StandardOpener << "\tOffensive = " << OffensiveOpener << "\tDefensive = " << DefensiveOpener << endl;
@@ -312,8 +289,7 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         default:
         cout << "Invalid code: Enter an integer between 0 and 4 inclusive.\n";
         blackPlayer = NullPlayer;
-        return getSettings(whitePlayer, w1, w2, w3, w4, w5, wOpener, blackPlayer, b1, b2, b3, b4, b5, bOpener, gameCount, testing, testingParam);
-        break;
+        return getSettings(whitePlayer, w1, wEval, wParams, wOpener, blackPlayer, b1, bEval, bParams, bOpener, gameCount, testing, testingParam);
         break;
     }
 
@@ -331,12 +307,19 @@ void getSettings(int& whitePlayer, int& w1, int& w2, int& w3, int& w4, int& w5, 
         if (testing != None && testing != White && testing != Black)
             cout << "Invalid number: Enter an integer between -1 and 1 (inclusive).\n";
     }
-    //Get testingParam:
-    while (testingParam <= 0 || testingParam > 5) {
-        cout << "Enter parameter number you would like to test: ";
-        cin >> testingParam;
-        if (testingParam <= 0 || testingParam > 5)
-            cout << "Invalid number: Enter an integer between 1 and 5 (inclusive).\n";
+    //Get testingParam: index 1 = depth, 2..(1+paramCount) = the tested side's evaluator params.
+    if (testing == None) {
+        testingParam = 1;
+    } else {
+        int testedEval = (testing == White) ? wEval : bEval;
+        if (testedEval < 0 || testedEval >= g_evalCount) testedEval = 0;
+        int maxParam = 1 + g_evaluators[testedEval].paramCount;
+        while (testingParam <= 0 || testingParam > maxParam) {
+            cout << "Enter parameter number you would like to test (1=depth, 2.." << maxParam << "=evaluator weights): ";
+            cin >> testingParam;
+            if (testingParam <= 0 || testingParam > maxParam)
+                cout << "Invalid number: Enter an integer between 1 and " << maxParam << " (inclusive).\n";
+        }
     }
     //Get PRNT:
     while (PRNT < 0) {

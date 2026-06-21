@@ -44,12 +44,15 @@ inline void clearBoard() {
 inline int runGame(int whiteType, int w1, int w2, int w3, int w4, int w5,
                    int blackType, int b1, int b2, int b3, int b4, int b5,
                    int maxHalfMoves) {
+    // w2..w5 / b2..b5 are the Classic evaluator weights (turn, chip, wall, column).
+    int wParams[MAX_EVAL_PARAMS] = { w2, w3, w4, w5 };
+    int bParams[MAX_EVAL_PARAMS] = { b2, b3, b4, b5 };
     int victor;
     for (int h = 0; h < maxHalfMoves; h++) {
         if (h % 2 == 0) {
-            victor = moveWhite(whiteType, w1, w2, w3, w4, w5, StandardOpener);
+            victor = moveWhite(whiteType, w1, 0, wParams, StandardOpener);
         } else {
-            victor = moveBlack(blackType, b1, b2, b3, b4, b5, StandardOpener);
+            victor = moveBlack(blackType, b1, 0, bParams, StandardOpener);
         }
         if (victor == WhiteWin) return 0;
         if (victor == BlackWin) return 1;

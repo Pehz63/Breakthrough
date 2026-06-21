@@ -4,8 +4,20 @@
 #include "ai_random.h"
 #include "ai_eval.h"
 
-int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for white
+// RAII guard: seed the incremental positional accumulator from the current board
+// on entry to a top-level search and tear it down on every exit path (including
+// the "slower death" recursive call), so g_evalIncremental / g_activeParams never
+// linger past the search.
+namespace {
+struct EvalSearchScope {
+    EvalSearchScope(int evaluator, const int* params) { evalBeginSearch(evaluator, params); }
+    ~EvalSearchScope() { evalEndSearch(); }
+};
+}
+
+int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for white
     nodes++;
+    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
     int moveX1 = -1, moveY, moveX2; //Best move found so far
     int eval;
     int alpha = INT_MIN; //Evaluation of this board so far
@@ -24,7 +36,7 @@ int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
             int ny = y + 1;
             auto tryMove = [&](int z) {
                 isCapture = simulateMoveWhite(x, y, z);
-                eval = minAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                eval = minAlphaBeta(alpha, beta, 1, depth, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveWhite(x, y, z, isCapture);
                 if (eval > alpha) { alpha = eval; moveX1 = x; moveY = y; moveX2 = z; }
             };
@@ -48,7 +60,7 @@ int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     //If in checkmate, try to find a slower death:
     if (alpha < BlackWin+1024 && depth > 1)
     {
-        miniMaxWhite(depth-1, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+        miniMaxWhite(depth-1, evaluator, evalParams, nodes, leafs);
         return alpha;
     }
 
@@ -89,8 +101,9 @@ int miniMaxWhite(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     nodesWhite += nodes;
     return victor;
 }
-int miniMaxBlack(int depth, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for black
+int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for black
     nodes++;
+    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
     int moveX1 = -1, moveY, moveX2; //Best move found so far
     int eval;
     int alpha = INT_MIN;
@@ -109,7 +122,7 @@ int miniMaxBlack(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
             int ny = y - 1;
             auto tryMove = [&](int z) {
                 isCapture = simulateMoveBlack(x, y, z);
-                eval = maxAlphaBeta(alpha, beta, 1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                eval = maxAlphaBeta(alpha, beta, 1, depth, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveBlack(x, y, z, isCapture);
                 if (eval < beta) { beta = eval; moveX1 = x; moveY = y; moveX2 = z; }
             };
@@ -132,7 +145,7 @@ int miniMaxBlack(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     //If in checkmate, try to find a slower death:
     if (beta > WhiteWin-1024 && depth > 1)
     {
-        miniMaxBlack(depth-1, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+        miniMaxBlack(depth-1, evaluator, evalParams, nodes, leafs);
         return beta;
     }
 
@@ -174,14 +187,14 @@ int miniMaxBlack(int depth, int turnWeight, int chipDiffWeight, int wallWeight, 
     nodesBlack += nodes;
     return victor;
 }
-int maxAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the AI's best next move
+int maxAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the AI's best next move
     nodes++;
     if (level == depth) //Base case: Node is a leaf, use SEF.
     {
         leafs++;
         if (canWinWhite()) return WhiteWin;
         if (canWinBlack()) return BlackWin;
-        return evaluateBoard(White, turnWeight, chipDiffWeight, wallWeight, columnWeight);
+        return evalLeaf(White, evaluator, evalParams);
     }
     if (canWinWhite())
     {
@@ -208,7 +221,7 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
             int ny = y + 1;
             auto tryMove = [&](int z) -> bool {
                 isCapture = simulateMoveWhite(x, y, z);
-                eval = minAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                eval = minAlphaBeta(alpha, beta, level+1, depth, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveWhite(x, y, z, isCapture);
                 if (eval > alpha) alpha = eval;
                 return alpha >= beta;
@@ -224,14 +237,14 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
         alpha--;
     return alpha;
 }
-int minAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int chipDiffWeight, int wallWeight, int columnWeight, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the opponent's best next move
+int minAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the opponent's best next move
     nodes++;
     if (level == depth) //Base case: Node is a leaf, use SEF.
     {
         leafs++;
         if (canWinBlack()) return BlackWin;
         if (canWinWhite()) return WhiteWin;
-        return evaluateBoard(Black, turnWeight, chipDiffWeight, wallWeight, columnWeight);
+        return evalLeaf(Black, evaluator, evalParams);
     }
     if (canWinBlack())
     {
@@ -258,7 +271,7 @@ int minAlphaBeta(int alpha, int beta, int level, int depth, int turnWeight, int 
             int ny = y - 1;
             auto tryMove = [&](int z) -> bool {
                 isCapture = simulateMoveBlack(x, y, z);
-                eval = maxAlphaBeta(alpha, beta, level+1, depth, turnWeight, chipDiffWeight, wallWeight, columnWeight, nodes, leafs);
+                eval = maxAlphaBeta(alpha, beta, level+1, depth, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveBlack(x, y, z, isCapture);
                 if (eval < beta) beta = eval;
                 return beta <= alpha;

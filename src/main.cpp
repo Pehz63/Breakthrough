@@ -9,14 +9,18 @@
 #include "moves.h"
 #include "ai_random.h"
 #include "ai_minimax.h"
+#include "ai_eval.h"
 
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));
     string boardFileStr = "boards\\board1.txt";
     int whitePlayer = NullPlayer, wOpener = NullOpener; //white enumerated player-type code
-    int w1 = -1, w2 = -1, w3 = -1, w4 = -1, w5 = -1; //white parameters
+    int w1 = -1, wEval = -1;                 //white depth/furthest + evaluator index
+    int wParams[MAX_EVAL_PARAMS];            //white evaluator weights
     int blackPlayer = NullPlayer, bOpener = NullOpener; //black enumerated player-type code
-    int b1 = -1, b2 = -1, b3 = -1, b4 = -1, b5 = -1; //black parameters
+    int b1 = -1, bEval = -1;                 //black depth/furthest + evaluator index
+    int bParams[MAX_EVAL_PARAMS];            //black evaluator weights
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) { wParams[i] = -1; bParams[i] = -1; } //sentinels: prompt unless loaded
     int gameCount = -1;
     int testing = -2; //The color whose parameter will be changed
     int testingParam = 0; //The parameter that will be changed
@@ -48,100 +52,27 @@ int main () {  //Play one game of Breakthrough
     printBoard();
 
     //Get player and game settings from user:
-    getSettings(whitePlayer, w1, w2, w3, w4, w5, wOpener, blackPlayer, b1, b2, b3, b4, b5, bOpener, gameCount, testing, testingParam);
+    getSettings(whitePlayer, w1, wEval, wParams, wOpener, blackPlayer, b1, bEval, bParams, bOpener, gameCount, testing, testingParam);
 
     if (whitePlayer == Human || blackPlayer == Human)
         cout << "\nExample move notation: \"c1d\" will move the piece at c1 forwards a space and into column d.\n" << endl;
     else
         cout << endl;
 
+    // testingParam: 1 = depth, 2..(1+paramCount) = the tested side's evaluator weights.
     if (testing == White)
-        switch(testingParam) {
-          case 1:
-            paramMin = w1;
-            break;
-          case 2:
-            paramMin = w2;
-            break;
-          case 3:
-            paramMin = w3;
-            break;
-          case 4:
-            paramMin = w4;
-            break;
-          case 5:
-            paramMin = w5;
-            break;
-          default:
-            paramMin = 1;
-            break;
-        }
+        paramMin = (testingParam == 1) ? w1 : wParams[testingParam - 2];
     else if (testing == Black)
-        switch(testingParam) {
-          case 1:
-            paramMin = b1;
-            break;
-          case 2:
-            paramMin = b2;
-            break;
-          case 3:
-            paramMin = b3;
-            break;
-          case 4:
-            paramMin = b4;
-            break;
-          case 5:
-            paramMin = b5;
-            break;
-          default:
-            paramMin = 1;
-            break;
-        }
+        paramMin = (testingParam == 1) ? b1 : bParams[testingParam - 2];
 
     for (int p = paramMin; p <= paramMax; p++)
     {
-        if (testing == White)
-            switch(testingParam) {
-            case 1:
-                w1 = p;
-                break;
-            case 2:
-                w2 = p;
-                break;
-            case 3:
-                w3 = p;
-                break;
-            case 4:
-                w4 = p;
-                break;
-            case 5:
-                w5 = p;
-                break;
-            default:
-                w1 = p;
-                break;
-            }
-        else if (testing == Black)
-            switch(testingParam) {
-            case 1:
-                b1 = p;
-                break;
-            case 2:
-                b2 = p;
-                break;
-            case 3:
-                b3 = p;
-                break;
-            case 4:
-                b4 = p;
-                break;
-            case 5:
-                b5 = p;
-                break;
-            default:
-                b1 = p;
-                break;
-            }
+        if (testing == White) {
+            if (testingParam == 1) w1 = p; else wParams[testingParam - 2] = p;
+        }
+        else if (testing == Black) {
+            if (testingParam == 1) b1 = p; else bParams[testingParam - 2] = p;
+        }
         else if (p > paramMin)
             return 0;
 
@@ -164,7 +95,7 @@ int main () {  //Play one game of Breakthrough
                     cout << endl;
                 }
                 activeTimer = time(NULL);
-                victor = moveWhite(whitePlayer, w1, w2, w3, w4, w5, wOpener);
+                victor = moveWhite(whitePlayer, w1, wEval, wParams, wOpener);
                 whiteGameTime += time(NULL) - activeTimer;
                 if (victor < WhiteWin && victor > BlackWin)
                 {
@@ -178,7 +109,7 @@ int main () {  //Play one game of Breakthrough
                         cout << endl;
                     }
                     activeTimer = time(NULL);
-                    victor = moveBlack(blackPlayer, b1, b2, b3, b4, b5, bOpener);
+                    victor = moveBlack(blackPlayer, b1, bEval, bParams, bOpener);
                     blackGameTime += time(NULL) - activeTimer;
                 }
             }
@@ -207,15 +138,21 @@ int main () {  //Play one game of Breakthrough
             blackGameTime = 0;
         }
 
-        //Print game result:
-        if (testing == None || p == paramMin || PRNT > 0)
+        //Print game result. Each side: player, depth, evaluator + its weights, opener.
         {
-            cout << "w0\tw1\tw2\tw3\tw4\tw5\twOpener\n";
-            cout << "b0\tb1\tb2\tb3\tb4\tb5\tbOpener\n";
-            cout << "wt\tbt\twn\tbn\tgc\tws\tbs\n";
+            int we = (wEval >= 0 && wEval < g_evalCount) ? wEval : 0;
+            int be = (bEval >= 0 && bEval < g_evalCount) ? bEval : 0;
+            cout << "white: player=" << whitePlayer << " depth=" << w1 << " eval=" << g_evaluators[we].name;
+            for (int i = 0; i < g_evaluators[we].paramCount; i++)
+                cout << " " << g_evaluators[we].params[i].name << "=" << wParams[i];
+            cout << " opener=" << wOpener << "\n";
+            cout << "black: player=" << blackPlayer << " depth=" << b1 << " eval=" << g_evaluators[be].name;
+            for (int i = 0; i < g_evaluators[be].paramCount; i++)
+                cout << " " << g_evaluators[be].params[i].name << "=" << bParams[i];
+            cout << " opener=" << bOpener << "\n";
         }
-        cout << whitePlayer << "\t" << w1 << "\t" << w2 << "\t" << w3 << "\t" << w4 << "\t" << w5 << "\t" << wOpener << "\n";
-        cout << blackPlayer << "\t" << b1 << "\t" << b2 << "\t" << b3 << "\t" << b4 << "\t" << b5 << "\t" << bOpener << "\n";
+        if (testing == None || p == paramMin || PRNT > 0)
+            cout << "wt\tbt\twn\tbn\tgc\tws\tbs\n";
         cout << whiteTime << "\t" << blackTime << "\t" << nodesWhite << "\t" << nodesBlack << "\t" << gameCount << "\t" << whiteScore << "\t" << blackScore << endl;
         if (testing == None) {
             cout << "\nWhite:\tBlack:\n" << whiteScore << "\t" << blackScore << endl;

@@ -1,4 +1,5 @@
 #include "board_io.h"
+#include "ai_eval.h"
 
 string getBoard() {  //Get the board from a specified file
     fstream boardFile;
@@ -103,7 +104,14 @@ void printBoard() {  //Print the board
     cout << "\n  \\ - - - - - - - - /\n    a b c d e f g h" << endl;
     return;
 }
-bool loadMinimaxParams(const string& filename, int& depth, int& turnW, int& chipW, int& wallW, int& colW, int& opener, const string& prefix) {
+// Load saved MiniMax settings for one side from a key=value file. Fills depth,
+// evaluator (index into g_evaluators), opener, and the chosen evaluator's params
+// (params must have room for MAX_EVAL_PARAMS ints). Each param is read from
+// "<prefix>_<key>", falling back to the legacy "<prefix>_<key>_weight" name so
+// older files (white_turn_weight, ...) still load. Missing values use the
+// parameter's registry default; missing depth/opener stay -1/NullOpener so the
+// caller can prompt for them.
+bool loadMinimaxParams(const string& filename, int& depth, int& evaluator, int* params, int& opener, const string& prefix) {
     ifstream f(filename);
     if (!f.is_open()) return false;
     map<string, int> vals;
@@ -115,11 +123,18 @@ bool loadMinimaxParams(const string& filename, int& depth, int& turnW, int& chip
         string key = line.substr(0, eq);
         try { vals[key] = std::stoi(line.substr(eq + 1)); } catch (...) {}
     }
-    depth  = vals.count(prefix+"_depth")         ? vals[prefix+"_depth"]         : -1;
-    turnW  = vals.count(prefix+"_turn_weight")   ? vals[prefix+"_turn_weight"]   : -1;
-    chipW  = vals.count(prefix+"_chip_weight")   ? vals[prefix+"_chip_weight"]   : -1;
-    wallW  = vals.count(prefix+"_wall_weight")   ? vals[prefix+"_wall_weight"]   : -1;
-    colW   = vals.count(prefix+"_column_weight") ? vals[prefix+"_column_weight"] : -1;
-    opener = vals.count(prefix+"_opener")        ? vals[prefix+"_opener"]        : NullOpener;
+    depth  = vals.count(prefix+"_depth")  ? vals[prefix+"_depth"]  : -1;
+    opener = vals.count(prefix+"_opener") ? vals[prefix+"_opener"] : NullOpener;
+
+    evaluator = vals.count(prefix+"_eval") ? vals[prefix+"_eval"] : 0;
+    if (evaluator < 0 || evaluator >= g_evalCount) evaluator = 0;
+
+    const EvalDef& e = g_evaluators[evaluator];
+    for (int i = 0; i < e.paramCount; i++) {
+        string k = prefix + "_" + e.params[i].key;
+        if (vals.count(k))                 params[i] = vals[k];
+        else if (vals.count(k + "_weight")) params[i] = vals[k + "_weight"];
+        else                                params[i] = e.params[i].def;
+    }
     return true;
 }

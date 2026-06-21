@@ -13,7 +13,8 @@ TEST_CASE("MiniMax - White forced win in 1") {
     board[0][4]      = BLACK;
     g_whiteCount = 1; g_blackCount = 1; g_chipDiff = 0;
 
-    int result = moveWhite(MiniMax, 1, 0, 1, 0, 0, StandardOpener);
+    int params[MAX_EVAL_PARAMS] = { 0, 1, 0, 0 };  // Classic: turn, chip, wall, column
+    int result = moveWhite(MiniMax, 1, 0, params, StandardOpener);
 
     REQUIRE(result == WhiteWin);
     bool whiteAtWinRow = false;
@@ -30,7 +31,8 @@ TEST_CASE("MiniMax - Black forced win in 1") {
     board[0][4]  = WHITE;
     g_blackCount = 1; g_whiteCount = 1; g_chipDiff = 0;
 
-    int result = moveBlack(MiniMax, 1, 0, 1, 0, 0, StandardOpener);
+    int params[MAX_EVAL_PARAMS] = { 0, 1, 0, 0 };  // Classic: turn, chip, wall, column
+    int result = moveBlack(MiniMax, 1, 0, params, StandardOpener);
 
     REQUIRE(result == BlackWin);
     bool blackAtWinRow = false;
@@ -48,7 +50,8 @@ TEST_CASE("MiniMax - White captures only black piece to win") {
     board[3][1] = BLACK;
     g_whiteCount = 1; g_blackCount = 1; g_chipDiff = 0;
 
-    int result = moveWhite(MiniMax, 1, 0, 1, 0, 0, StandardOpener);
+    int params[MAX_EVAL_PARAMS] = { 0, 1, 0, 0 };  // Classic: turn, chip, wall, column
+    int result = moveWhite(MiniMax, 1, 0, params, StandardOpener);
 
     REQUIRE(result == WhiteWin);
     REQUIRE(board[3][1] == WHITE);
