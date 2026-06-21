@@ -26,6 +26,39 @@ All commands are run from the **project root** (`.\breakthrough.exe`,
 5. **For eval / weight changes:** compare win rates over a 10-game batch before and
    after, not just a single game (one game is noise).
 
+### Driving the console non-interactively (do it this way)
+
+`breakthrough.exe` reads every setting with `cin`, so it **hangs forever** the
+moment a prompt gets input it cannot parse. The right way to script it is to pipe a
+newline-separated answer sequence through the **Bash tool** (raw bytes):
+
+```bash
+printf '1\n2\n0\n4\n0\n3\n0\n0\n1\n0\n0\n0\n1\n0\n1\n1\n' | ./breakthrough.exe 2>&1 | grep -E "eval:|has won"
+```
+
+Do **not** pipe input from PowerShell (`"...`n..." | .\breakthrough.exe` or
+`Get-Content in.txt | .\breakthrough.exe`). Windows PowerShell encodes the stream
+to the native exe with an encoding/BOM that corrupts the **first** `cin >>` read.
+The first integer read fails, `useDefault` stays 0, the program drops into
+`getBoard()`, every later answer is then misread as a bad filename, and it spins
+printing "Invalid file..." until it has emitted millions of lines. If you see that,
+the cause is the PowerShell pipe, not the game.
+
+Tips for building the answer sequence:
+- Answer `1` to "Use default board?" to skip the `getBoard()` filename prompt
+  entirely (it is the easiest thing to get wrong).
+- Picking **MiniMax** triggers a "Use these? (1=yes,0=no)" prompt because
+  `minimax_params.txt` exists. Answer `0` and set a small depth (e.g. 3) so the
+  game finishes in seconds. The saved depth in that file is large (slow).
+- The trailing answers are game count, testing (0), `PRNT`, then `SHOW_EVAL`.
+- Kill a stuck run with `Stop-Process -Name breakthrough -Force` before retrying.
+
+When checking evaluation output specifically: a MiniMax side should print both
+`now=` and `pred=`, a non-MiniMax side only `now=`, and forced wins must render as
+`+WIN` / `-WIN` rather than the raw sentinel (`2147483646` / `-2147483647`). Make
+sure **both** the immediate and predicted values go through the `+WIN`/`-WIN`
+formatter, not just one of them.
+
 ---
 
 ## GUI changes (`gui/`)

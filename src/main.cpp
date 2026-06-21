@@ -11,6 +11,26 @@
 #include "ai_minimax.h"
 #include "ai_eval.h"
 
+// ============================================================
+// EVAL DISPLAY -- formatEval / printEvalLine
+// ============================================================
+// Format a white-centric eval: forced wins as +WIN / -WIN, else the raw number.
+static string formatEval(int v) {
+    if (v >= WhiteWin - 1024)      return "+WIN";
+    if (v <= BlackWin + 1024)      return "-WIN";
+    return std::to_string(v);
+}
+
+// Print one side's evaluation line: the immediate static eval ("now") and, for a
+// MiniMax side, the predicted best-line eval ("pred"). White-centric: a positive
+// number favors White. Forced wins are shown as +WIN / -WIN.
+static void printEvalLine(const char* side, int imm, bool isMiniMax, int down) {
+    cout << side << " eval: now=" << formatEval(imm);
+    if (isMiniMax)
+        cout << "  pred=" << formatEval(down);
+    cout << endl;
+}
+
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));
     string boardFileStr = "boards\\board1.txt";
@@ -90,13 +110,15 @@ int main () {  //Play one game of Breakthrough
                     cout << endl;
                     printBoard();
                     cout << "White game time:\t" << whiteGameTime << "\tBlack game time:\t" << blackGameTime << endl;
-                    if (blackPlayer == MiniMax)
-                        cout << "Board evaluation:\t" << victor;
-                    cout << endl;
                 }
+                // Snapshot White's immediate eval before the move; read its
+                // predicted downstream eval after.
+                int immW = SHOW_EVAL ? immediateEvalForDisplay(whitePlayer == MiniMax, wEval, wParams) : 0;
                 activeTimer = time(NULL);
                 victor = moveWhite(whitePlayer, w1, wEval, wParams, wOpener);
                 whiteGameTime += time(NULL) - activeTimer;
+                if (SHOW_EVAL)
+                    printEvalLine("White", immW, whitePlayer == MiniMax, g_downEvalWhite);
                 if (victor < WhiteWin && victor > BlackWin)
                 {
                     if (PRNT > 1)
@@ -104,13 +126,13 @@ int main () {  //Play one game of Breakthrough
                         cout << endl;
                         printBoard();
                         cout << "White game time:\t" << whiteGameTime << "\tBlack game time:\t" << blackGameTime << endl;
-                        if (whitePlayer == MiniMax)
-                            cout << "Board evaluation:\t" << victor;
-                        cout << endl;
                     }
+                    int immB = SHOW_EVAL ? immediateEvalForDisplay(blackPlayer == MiniMax, bEval, bParams) : 0;
                     activeTimer = time(NULL);
                     victor = moveBlack(blackPlayer, b1, bEval, bParams, bOpener);
                     blackGameTime += time(NULL) - activeTimer;
+                    if (SHOW_EVAL)
+                        printEvalLine("Black", immB, blackPlayer == MiniMax, g_downEvalBlack);
                 }
             }
 

@@ -21,3 +21,6 @@ int g_evalPos = 0;
 bool g_evalIncremental = false;
 const int* g_activeParams = nullptr;
 int g_activeParamCount = 0;
+int g_downEvalWhite = 0;
+int g_downEvalBlack = 0;
+int SHOW_EVAL = -1;

@@ -52,6 +52,14 @@ extern bool g_evalIncremental;
 extern const int* g_activeParams;
 extern int g_activeParamCount;
 
+// Last minimax best-line ("predicted downstream") evaluations, white-centric.
+// Set by miniMaxWhite/Black from the root alpha/beta; surfaced by the UIs.
+extern int g_downEvalWhite;
+extern int g_downEvalBlack;
+
+// Console toggle: 1 = print per-move board evaluations, 0 = hide them.
+extern int SHOW_EVAL;
+
 enum VictorEnum {None = 0, White = 1, Black = -1, WhiteWin = INT_MAX-1, BlackWin = INT_MIN+1};
 enum PlayerEnum {NullPlayer = -1, Human = 0, UniformRandom = 1, TieredRandom = 2, SmartRandom = 3, MiniMax = 4};
 enum OpenerEnum {NullOpener = -1, StandardOpener = 0, OffensiveOpener = 1, DefensiveOpener = 2};
@@ -109,3 +117,4 @@ int evalPosLocal(int, int, int, int);
 int evalLeaf(int, int, const int*);
 void evalBeginSearch(int, const int*);
 void evalEndSearch();
+int immediateEvalForDisplay(bool, int, const int*);

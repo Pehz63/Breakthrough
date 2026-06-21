@@ -148,6 +148,12 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
   **Start Game** / **New Game**.
 - **Piece counts** are shown on the board itself as small badges (a piece icon plus
   the count) on each side, so they stay visible even with the options panel hidden.
+- **Board-state evaluation** is shown under each side's count badge. `now` is the
+  immediate static evaluation of the position that side faced; for a **MiniMax**
+  side a second line `pred` shows the AI's predicted best-line ("downstream")
+  evaluation. Numbers are white-centric: a positive value favors White, and a
+  forced win shows as `+WIN` / `-WIN`. Turn off the readouts with the **Show
+  evaluations** checkbox or the **E** key (useful for a hint-free PvP / PvC game).
 - **Human moves:** click one of your pieces to select it (legal destinations are
   highlighted), then click the destination square one row forward.
 - **Pacing** adapts to the matchup:
@@ -175,6 +181,10 @@ The game runs interactively in the console. At startup you will be prompted to:
    depth, the **evaluator** to use (Classic / Experimental / ...), that evaluator's
    weights (prompted one at a time by name), and the opener style.
 4. **Choose number of games** to play and verbosity level (0 = silent, 1 = moves, 2 = full board)
+5. **Show board evaluations?** (0 = no, 1 = yes). When enabled, after each move a
+   line prints that side's `now` (immediate static eval) and, for a MiniMax side,
+   its `pred` (predicted best-line eval). Values are white-centric (positive favors
+   White); forced wins print as `+WIN` / `-WIN`.
 
 ### Board-state evaluators
 

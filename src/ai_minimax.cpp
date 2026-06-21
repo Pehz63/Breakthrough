@@ -47,6 +47,7 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
             if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
         }
     }
+    if (moveX1 != -1) g_downEvalWhite = alpha; //best-line score for display
     if (moveX1 == -1)
     {
         cout << "Error finding move for miniMaxWhite.\n";
@@ -133,6 +134,7 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
             if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
         }
     }
+    if (moveX1 != -1) g_downEvalBlack = beta; //best-line score for display
     if (moveX1 == -1)
     {
         cout << "Error finding move for miniMaxBlack.\n";

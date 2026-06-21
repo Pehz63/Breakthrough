@@ -334,6 +334,13 @@ void getSettings(int& whitePlayer, int& w1, int& wEval, int* wParams, int& wOpen
         if (PRNT < 0)
             cout << "Invalid number: Enter an integer between 0 and 2 (inclusive).\n";
     }
+    //Get SHOW_EVAL:
+    while (SHOW_EVAL < 0) {
+        cout << "Show board evaluations? (0=no, 1=yes): ";
+        cin >> SHOW_EVAL;
+        if (SHOW_EVAL < 0)
+            cout << "Invalid number: Enter 0 or 1.\n";
+    }
 }
 // ============================================================
 // VICTOR DISPLAY -- printVictor

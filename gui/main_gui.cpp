@@ -23,7 +23,7 @@
 //   BOARD RENDERING      DrawPiece / DrawBoard
 //   STEPPER WIDGETS      DrawSpeedGlyph / DrawStackedPM / DrawFillBar / ScrubBar / StepperRow
 //   PLAYER CONFIG + PANEL  DrawPlayerConfig / DrawPanel
-//   COUNT BADGES         DrawCountBadge / DrawPieceCounts
+//   COUNT BADGES + EVAL  DrawCountBadge / FormatEval / DrawEvalReadout / DrawPieceCounts
 //   GAME OVER            DrawGameOverBanner
 //   MAIN LOOP            UpdateDrawFrame / main
 
@@ -166,6 +166,13 @@ static bool g_editBlackEval = false;
 // Left overlay panel visibility (toggled by the Options button / Tab key).
 static bool g_showPanel = true;
 
+// Per-side board-evaluation readout (shown under the count badges). White-centric:
+// a positive number favors White. "imm" is the immediate static eval of the
+// position that side faced; "down" is a MiniMax side's predicted best-line eval.
+struct EvalReadout { int imm = 0; int down = 0; bool hasImm = false; bool hasDown = false; };
+static EvalReadout g_evalW, g_evalB;
+static bool        g_showEval = true;   // toggled by the panel checkbox / E key
+
 // Stepper-control prototypes. Each numeric parameter row can be drawn in one of
 // several "slider + buttons" designs so the developer can compare them and pick a
 // favorite. The style switcher (g_stepStyle) forces one design across all rows;
@@ -287,6 +294,8 @@ static void StartGame() {
     g_stepRequested = false;
     g_turn = White;
     g_aiTimer = 0.0;
+    g_evalW = EvalReadout{};
+    g_evalB = EvalReadout{};
     g_editWhiteType = g_editBlackType = g_editBoardFile = false;
 
     int t = g_white.type;
@@ -298,10 +307,27 @@ static void ApplyAIMove() {
     char prev[SIZE][SIZE];
     std::memcpy(prev, board, sizeof(prev));
 
+    PlayerConfig &cfg = (g_turn == White) ? g_white : g_black;
+    EvalReadout  &ev  = (g_turn == White) ? g_evalW : g_evalB;
+    bool isMM = (cfg.type == MiniMax);
+
+    // Snapshot the immediate eval before the move; read the downstream value after.
+    if (g_showEval) {
+        ev.imm = immediateEvalForDisplay(isMM, cfg.evaluator, cfg.evalParams);
+        ev.hasImm = true;
+    }
+
     if (g_turn == White) {
         moveWhite(g_white.type, SearchArg(g_white), g_white.evaluator, g_white.evalParams, g_white.opener);
     } else {
         moveBlack(g_black.type, SearchArg(g_black), g_black.evaluator, g_black.evalParams, g_black.opener);
+    }
+
+    if (g_showEval && isMM) {
+        ev.down = (g_turn == White) ? g_downEvalWhite : g_downEvalBlack;
+        ev.hasDown = true;
+    } else {
+        ev.hasDown = false;
     }
 
     int x1, y1, x2;
@@ -330,6 +356,14 @@ static void HandleHumanClick(int col, int by) {
                                 : tryMoveBlack(g_selX, g_selY, col, false);
     if (!ok) { SetStatus("Illegal move."); return; }
 
+    // Capture the immediate eval of the position the human faced (no downstream).
+    if (g_showEval) {
+        EvalReadout &ev = (g_turn == White) ? g_evalW : g_evalB;
+        ev.imm = immediateEvalForDisplay(false, 0, nullptr);
+        ev.hasImm = true;
+        ev.hasDown = false;
+    }
+
     if (g_turn == White) playMoveWhite(g_selX, g_selY, col);
     else                 playMoveBlack(g_selX, g_selY, col);
     LogMove(g_turn, g_selX, g_selY, col);
@@ -355,8 +389,9 @@ static Matchup ClassifyMatchup() {
 // UPDATE -- per-frame state machine
 // ============================================================
 static void Update() {
-    // Tab toggles the options overlay.
+    // Tab toggles the options overlay; E toggles the evaluation readouts.
     if (IsKeyPressed(KEY_TAB)) g_showPanel = !g_showPanel;
+    if (IsKeyPressed(KEY_E))   g_showEval  = !g_showEval;
 
     // Board clicks (only meaningful while waiting for a human, not over a
     // dropdown/textbox in edit mode, and not over the open overlay).
@@ -801,6 +836,12 @@ static void DrawPanel() {
         y += 26;
     }
 
+    // Evaluation readout toggle (also bound to the E key). Readouts appear under
+    // the count badges; hide them for a hint-free PvP / PvC game.
+    GuiCheckBox(Rectangle{ x, y, 18, 18 }, "", &g_showEval);
+    GuiLabel(Rectangle{ x + 24, y, w - 24, 18 }, "Show evaluations (E)");
+    y += 26;
+
     // Status line (piece counts are shown on the board itself).
     GuiLabel(Rectangle{ x, y, w, 20 }, TextFormat("%s to move", g_turn == White ? "White" : "Black"));
     y += 22;
@@ -869,7 +910,7 @@ static void DrawPanel() {
 }
 
 // ============================================================
-// COUNT BADGES -- DrawCountBadge / DrawPieceCounts
+// COUNT BADGES + EVAL -- DrawCountBadge / FormatEval / DrawEvalReadout / DrawPieceCounts
 // ============================================================
 // Emblematic piece-count badges drawn on the board itself (so they stay visible
 // when the panel is hidden): a small piece icon + count, white near White's side
@@ -886,6 +927,25 @@ static void DrawCountBadge(int bx, int by, char who, int count) {
     DrawText(TextFormat("%d", count), bx + 28, by + 5, 16, COL_NUM);
 }
 
+// Format a white-centric eval for display: forced wins as +WIN / -WIN, else the
+// signed number. Writes into the caller's buffer and returns it.
+static const char *FormatEval(int v, char *buf, int n) {
+    if (v >= WhiteWin - 1024)      std::snprintf(buf, n, "+WIN");
+    else if (v <= BlackWin + 1024) std::snprintf(buf, n, "-WIN");
+    else                           std::snprintf(buf, n, "%+d", v);
+    return buf;
+}
+
+// Draw a side's eval readout (one or two short lines) starting at (bx, by).
+// "now" is the immediate static eval; "pred" the MiniMax best-line eval.
+static void DrawEvalReadout(int bx, int by, const EvalReadout &ev) {
+    if (!ev.hasImm) return;
+    char buf[16];
+    DrawText(TextFormat("now %s", FormatEval(ev.imm, buf, sizeof(buf))), bx, by, 12, COL_LABEL);
+    if (ev.hasDown)
+        DrawText(TextFormat("pred %s", FormatEval(ev.down, buf, sizeof(buf))), bx, by + 14, 12, COL_LABEL);
+}
+
 static void DrawPieceCounts() {
     if (g_boardPx <= 0) return;
     // In the reserved strip just to the right of the board, so nothing overlaps the
@@ -894,6 +954,14 @@ static void DrawPieceCounts() {
     int bx = g_boardX + g_boardPx + 8;
     DrawCountBadge(bx, g_boardY,                  BLACK, g_blackCount);  // Black's side (top)
     DrawCountBadge(bx, g_boardY + g_boardPx - 26, WHITE, g_whiteCount);  // White's side (bottom)
+
+    // Eval readouts under each badge (Black just below the top badge, White above
+    // the bottom badge so the two never collide on a short board).
+    if (g_showEval) {
+        DrawEvalReadout(bx, g_boardY + 30, g_evalB);
+        int wy = g_boardY + g_boardPx - 26 - (g_evalW.hasDown ? 32 : 18);
+        if (wy > g_boardY + 60) DrawEvalReadout(bx, wy, g_evalW);
+    }
 }
 
 // ============================================================

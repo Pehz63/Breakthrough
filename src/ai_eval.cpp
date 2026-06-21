@@ -1,9 +1,9 @@
 #include "ai_eval.h"
 #include "board_analysis.h"
 
-// ---------------------------------------------------------------------------
+// ============================================================
 // Shared evaluation pieces
-// ---------------------------------------------------------------------------
+// ============================================================
 // The two shipped evaluators (Classic, Experimental) share the same structure:
 //   leaf score = near-win shortcut, else  turn + chipDiff*chip + positional
 // where "positional" is the wall/column structure terms plus (Experimental) an
@@ -85,9 +85,9 @@ int evalPosFull(const int* p, int paramCount) {
     return s;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================
 // Incremental search state
-// ---------------------------------------------------------------------------
+// ============================================================
 // During a minimax search the positional score is kept up to date in g_evalPos
 // instead of rescanning the board at every leaf. evalBeginSearch seeds it from
 // the root board; simulate/unsimulate call evalPosLocal to apply each move's
@@ -145,9 +145,9 @@ int evalLeaf(int turnColor, int evaluator, const int* p) {
     return g_chipDiff * p[1] + turnTerm + g_evalPos;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================
 // The evaluators
-// ---------------------------------------------------------------------------
+// ============================================================
 // "Classic": the original heuristic. p[0]=turn, p[1]=chip, p[2]=wall, p[3]=column.
 static int evalClassic(int turnColor, const int* p) {
     int nw = nearWinCheck(turnColor);
@@ -188,6 +188,9 @@ const EvalDef g_evaluators[] = {
 };
 const int g_evalCount = (int)(sizeof(g_evaluators) / sizeof(g_evaluators[0]));
 
+// ============================================================
+// DISPATCH + DISPLAY -- evaluateBoard / immediateEvalForDisplay
+// ============================================================
 // Dispatcher: score the board with the chosen evaluator (index clamped to valid range).
 int evaluateBoard(int turnColor, int evaluator, const int* p) {
     if (evaluator < 0 || evaluator >= g_evalCount) evaluator = 0;
@@ -199,4 +202,18 @@ int evaluateBoard(int turnColor, int evaluator, const int* p) {
 int evaluateBoard(int turnColor, int turn, int chip, int wall, int col) {
     int p[MAX_EVAL_PARAMS] = { turn, chip, wall, col };
     return evalClassic(turnColor, p);
+}
+
+// White-centric static eval of the current board for UI display. A MiniMax side
+// uses its own evaluator and weights; everyone else (human / random, whose param
+// arrays may be all-zero and meaningless) falls back to Classic with the
+// registry-default weights so the number is still meaningful. turnColor is fixed
+// to White so the sign convention stays consistent (positive favors White).
+int immediateEvalForDisplay(bool isMiniMax, int evaluator, const int* params) {
+    if (isMiniMax)
+        return evaluateBoard(White, evaluator, params);
+    int defs[MAX_EVAL_PARAMS] = { 0 };
+    for (int i = 0; i < g_evaluators[0].paramCount; i++)
+        defs[i] = g_evaluators[0].params[i].def;
+    return evaluateBoard(White, 0, defs);
 }
