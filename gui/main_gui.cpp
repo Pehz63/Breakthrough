@@ -138,6 +138,18 @@ static double g_aiTimer = 0.0;
 static bool   g_paused = false;
 static bool   g_stepRequested = false;
 static bool   g_delay2s = false;         // human vs fast AI: hold AI to >=2s/move
+
+// Snapshot of settings captured at StartGame(). Used to detect mid-game changes
+// so the panel can prompt the user to press New Game before they take effect.
+struct SettingsSnapshot {
+    int  whiteType, whiteOpener, whiteDepth, whiteEvaluator, whiteFurthest;
+    int  whiteParams[MAX_EVAL_PARAMS];
+    int  blackType, blackOpener, blackDepth, blackEvaluator, blackFurthest;
+    int  blackParams[MAX_EVAL_PARAMS];
+    char boardFile[128];
+};
+static SettingsSnapshot g_snap;
+
 // delay per speed index (seconds); index 0 (Step) handled separately, 4 = instant
 static const double SPEED_DELAY[5] = { 0.0, 1.0, 0.25, 0.0625, 0.0 };
 static const char  *SPEED_NAME[5]  = { "Step", "0.25x", "1x", "4x", "Instant" };
@@ -200,6 +212,38 @@ static bool g_stepEdit[2][MAX_EVAL_PARAMS + 2] = { { false } };
 static void SetStatus(const char *msg) {
     std::strncpy(g_status, msg, sizeof(g_status) - 1);
     g_status[sizeof(g_status) - 1] = '\0';
+}
+
+static void TakeSnapshot() {
+    g_snap.whiteType      = g_white.type;
+    g_snap.whiteOpener    = g_white.opener;
+    g_snap.whiteDepth     = g_white.depth;
+    g_snap.whiteEvaluator = g_white.evaluator;
+    g_snap.whiteFurthest  = g_white.furthest;
+    std::memcpy(g_snap.whiteParams, g_white.evalParams, sizeof(g_snap.whiteParams));
+    g_snap.blackType      = g_black.type;
+    g_snap.blackOpener    = g_black.opener;
+    g_snap.blackDepth     = g_black.depth;
+    g_snap.blackEvaluator = g_black.evaluator;
+    g_snap.blackFurthest  = g_black.furthest;
+    std::memcpy(g_snap.blackParams, g_black.evalParams, sizeof(g_snap.blackParams));
+    std::strncpy(g_snap.boardFile, g_boardFile, sizeof(g_snap.boardFile));
+}
+
+static bool SnapMatches() {
+    return g_snap.whiteType      == g_white.type      &&
+           g_snap.whiteOpener    == g_white.opener     &&
+           g_snap.whiteDepth     == g_white.depth      &&
+           g_snap.whiteEvaluator == g_white.evaluator  &&
+           g_snap.whiteFurthest  == g_white.furthest   &&
+           std::memcmp(g_snap.whiteParams, g_white.evalParams, sizeof(g_snap.whiteParams)) == 0 &&
+           g_snap.blackType      == g_black.type       &&
+           g_snap.blackOpener    == g_black.opener     &&
+           g_snap.blackDepth     == g_black.depth      &&
+           g_snap.blackEvaluator == g_black.evaluator  &&
+           g_snap.blackFurthest  == g_black.furthest   &&
+           std::memcmp(g_snap.blackParams, g_black.evalParams, sizeof(g_snap.blackParams)) == 0 &&
+           std::strcmp(g_snap.boardFile, g_boardFile) == 0;
 }
 
 // Robust win check, independent of engine return codes (openers can return a
@@ -300,6 +344,7 @@ static void StartGame() {
 
     int t = g_white.type;
     g_state = (t == Human) ? AppState::WaitingForHuman : AppState::WaitingBeforeAI;
+    TakeSnapshot();
     SetStatus("Game started. White to move.");
 }
 
@@ -792,6 +837,13 @@ static void DrawPanel() {
         g_editBoardFile = !g_editBoardFile;
     y += 32;
 
+    // Settings-changed notice (only while a game is running).
+    bool liveGame = (g_state != AppState::Settings && g_state != AppState::GameOver);
+    if (liveGame && !SnapMatches()) {
+        GuiLabel(Rectangle{ x, y, w, 18 }, "Settings changed.");
+        y += 20;
+    }
+
     // Start / New Game
     if (GuiButton(Rectangle{ x, y, w, 30 },
                   g_state == AppState::Settings ? "Start Game" : "New Game")) {
@@ -1018,13 +1070,14 @@ int main() {
     SetWindowMinSize(MIN_W, MIN_H);
     GuiSetStyle(DEFAULT, TEXT_SIZE, 16);
 
-    // Load the default board so the grid shows something before the game starts.
+    // Start the game immediately. If the board file is missing, StartGame() sets an
+    // error status and leaves the state at Settings so the user can fix the path.
+    // The empty-board fallback below only runs when StartGame() itself couldn't load.
     if (!reloadBoard(g_boardFile)) {
-        // Fall back to an empty board if the file is missing; the user can fix
-        // the path in the Board text box and press Start.
         for (int x = 0; x < SIZE; x++)
             for (int yy = 0; yy < SIZE; yy++) board[x][yy] = EMPTY;
     }
+    StartGame();
 
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop(UpdateDrawFrame, 0, 1);

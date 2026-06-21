@@ -144,8 +144,12 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
   exact depth, step it with +/-, or drag its bar (which tops out at 25, though the
   typed/stepped value can go higher). Large depths get very slow. The default depth
   is 8.
-- Type a board file in the **Board** box (default `boards/board1.txt`) and press
-  **Start Game** / **New Game**.
+- The game starts automatically when the GUI opens using the default board and
+  matchup. To change the board file, type a new path in the **Board** box and press
+  **New Game** to apply it.
+- **Changing settings mid-game:** if you adjust any player option while a game is in
+  progress, a "Settings changed." notice appears above the **New Game** button.
+  Press **New Game** to restart with the new settings.
 - **Piece counts** are shown on the board itself as small badges (a piece icon plus
   the count) on each side, so they stay visible even with the options panel hidden.
 - **Board-state evaluation** is shown under each side's count badge. `now` is the
