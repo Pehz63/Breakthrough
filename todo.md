@@ -11,3 +11,11 @@
 - Depth time budget for minimax (so I specify 10 seconds per move and it will stop calculating after going deep enough to do ~10 seconds)
 - Parameter study for classic board state evaluator (for ~3, ~10, ~30 second budgets per move)
 - Hyperparameter study for machine learning board state evaluator
+- Best moves list or recommendation arrow
+- Interpret board analysis
+  - Which piece is most impactful to the current evaluation?
+  - What's the cheapest strategy to beat each given bot/parameters, even if overfitted?
+  - What strategies could a human devise to beat a bot?
+  - Is attacking the center or attacking the edge the best?
+  - Is advancing through the center or the edge the best?
+  - Is keeping the hind pieces in place the best?

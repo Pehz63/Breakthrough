@@ -25,6 +25,15 @@ fetch raylib.
 That alone is enough to build and run the **console** app (`build_gui.bat` and the
 README's `cl` commands).
 
+### VS Code / CMake kit
+
+If you open the project in VS Code with the CMake Tools extension, it will prompt
+you to select a kit. Choose **Visual Studio Build Tools ... - amd64** (the 64-bit
+MSVC toolchain). If the prompt disappears before you choose, reopen it with
+`Ctrl+Shift+P` -> **CMake: Select a Kit**. Note that CMake is not the primary build
+workflow here - the main builds use `cl` directly via `build_gui.bat` and the
+commands in README. The kit selection just keeps VS Code IntelliSense happy.
+
 ---
 
 ## 2. raylib (required for the GUI, native build)
