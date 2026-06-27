@@ -1,5 +1,5 @@
 @echo off
-REM Build the Breakthrough test suite (Catch2).
+REM Build the Breakthrough ML trainer (train.exe).
 REM Requires Visual Studio with the C++ toolset.
 setlocal
 
@@ -11,19 +11,19 @@ if "%VSPATH%"=="" (
 call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
 
 if not exist build mkdir build
+if not exist data mkdir data
+if not exist models mkdir models
+if not exist agents mkdir agents
 
-cl tests\test_main.cpp ^
-   tests\test_move_validation.cpp tests\test_win_detection.cpp ^
-   tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp ^
-   tests\test_ml.cpp ^
-   src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
-   src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
+cl tools\train_main.cpp ^
+   src\globals.cpp src\board_io.cpp src\board_analysis.cpp src\moves.cpp ^
+   src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
    src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\ml_train.cpp ^
-   /I src /I tests /EHsc /O2 /Fo"build\\" /Fe:tests.exe
+   /I src /EHsc /O2 /Fo"build\\" /Fe:train.exe
 
 if errorlevel 1 (
     echo Build FAILED.
     exit /b 1
 )
-echo Build OK -^> tests.exe
+echo Build OK -^> train.exe

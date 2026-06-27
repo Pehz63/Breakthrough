@@ -1,0 +1,9 @@
+{
+  "evaluators": ["Classic", "Experimental", "LearnedValue"],
+  "explorers": ["Greedy", "AlphaBeta"],
+  "choosers": ["UniformRandom", "TieredRandom", "SmartRandom", "LearnedPolicy"],
+  "model_types": ["linear", "mlp", "nnue", "transformer"],
+  "regimes": ["selfplay-supervised", "imitate", "tdleaf", "population", "tournament", "docs"],
+  "value_feature_version": 1,
+  "move_feature_version": 1
+}

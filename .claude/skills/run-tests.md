@@ -23,7 +23,7 @@ This script:
 - Runs `tests.exe` and streams the Catch2 output.
 
 2. Report the result:
-- Quote the final Catch2 summary line (e.g. "All 81 assertions passed.").
+- Quote the final Catch2 summary line (e.g. "All 101 assertions passed.").
 - If the build or tests fail, quote the first error line so the developer can act on it.
 
 ## Notes

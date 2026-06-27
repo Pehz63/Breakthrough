@@ -15,17 +15,19 @@ to the web via WebAssembly.
 Run from the project root in any VS Code terminal (regular PowerShell works):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 
 This produces `breakthrough.exe` in the project root. Intermediate `.obj` files go into `build/`.
+(The `ml_*` files provide the learned `LearnedValue` evaluator; the engine links them
+even when you do not select a learned evaluator.)
 
 ## Compile and Run
 
 To recompile and immediately run the result:
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe' ; if ($?) { .\breakthrough.exe }
 ```
 
 ## Testing
@@ -33,8 +35,10 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Buil
 Build and run the unit and integration test suite (uses [Catch2 v2](https://github.com/catchorg/Catch2/tree/v2.x), header already included in `tests/`):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp tests\test_ml.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\ml_train.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
 ```
+
+The preferred one-liner is `.\tools\run_tests.ps1 -Build` (see [CLAUDE.md](CLAUDE.md)).
 
 Then run from the project root (required so puzzle board paths resolve correctly):
 
@@ -61,6 +65,15 @@ for visually and how to capture matchup-gated controls.
 | `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard` — the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
 | `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta` |
+| `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation |
+| `ml_model.cpp` | `Model` base + `LinearModel`, model-type registry, save/load (`type=` format) |
+| `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy) |
+| `explorers.cpp` | Move-tree explorer registry (`Greedy`, `AlphaBeta`) |
+| `choosers.cpp` | Direct move-chooser registry (random family + `LearnedPolicy`) |
+| `agents.cpp` | `AgentSpec` composition + `agentChooseMove` (search/policy + dilution) |
+| `datastore.cpp` | Append-only JSONL writer + canonical position keys |
+| `ml_train.cpp` | Training regimes, Elo, tournaments, checkpoints, manifest + doc export |
+| `tools/train_main.cpp` | `train.exe` CLI front end |
 | `gui/main_gui.cpp` | raylib + raygui front end: window, per-frame state machine, board rendering, click-to-move, widget panel, move log |
 | `gui/raygui.h` | Vendored single-header raygui widget library |
 | `gui/shell.html` | Emscripten HTML shell for the web build |
@@ -205,6 +218,33 @@ changes only two squares, the positional score is updated by a small per-move de
 instead of rescanning the whole board at every leaf. This is internal and does not
 change the scores, so AI play is identical — just faster when positional (wall /
 column / advance) weights are enabled at higher depths.
+
+### Machine learning system
+
+Beyond the hand-written evaluators, the project has a modular ML system of
+interchangeable parts that can be **composed into agents**, made to **fight in
+tournaments**, **Elo-rated**, and used to **generate training data**. The four
+pluggable axes are board-state **evaluators** (value), move-tree **explorers**
+(search), move **choosers/policies** (direct, no-lookahead, including a learned
+**move-rater**), and the **models** behind the learned parts (linear now;
+MLP/NNUE/transformer registered for later). A `LearnedValue` evaluator appears in
+the console prompts and GUI Eval dropdown automatically once a model is trained.
+
+Inference is pure C++ (no runtime dependencies); heavy model training and analysis
+are optional Python. Build and use the trainer:
+
+```powershell
+.\tools\run_train.ps1 -Build selfplay-supervised --games 300 --epochs 12  # linear value model
+.\tools\run_train.ps1 imitate --out models/lin_policy.txt --games 150      # linear policy move-rater
+.\tools\run_train.ps1 tournament --games 4                                 # mixed Elo ladder
+.\tools\run_train.ps1 docs                                                 # regenerate ML.md tables
+```
+
+Trained models, an Elo-rated agent library, and an append-only JSONL datastore are
+written under `models/`, `agents/`, and `data/`; the optional `analysis/analyze.py`
+(DuckDB) answers questions like the highest-Elo agent, the most fairly-matched
+positions, and the average evaluation of a board state. See **[ML.md](ML.md)** for
+the full design and the "how to add more" workflow.
 
 ### Human move format
 

@@ -1,5 +1,6 @@
 #include "ai_eval.h"
 #include "board_analysis.h"
+#include "ml_eval.h"
 
 // ============================================================
 // Shared evaluation pieces
@@ -14,8 +15,9 @@
 
 // Near-win shortcut: returns WhiteWin / BlackWin if the position is already
 // decided one move from a goal row, otherwise 0. Identical to the original
-// in-evaluator logic.
-static int nearWinCheck(int turnColor) {
+// in-evaluator logic. Declared in ai_eval.h so learned evaluators and 1-ply
+// explorers share the exact same decided-position logic.
+int nearWinCheck(int turnColor) {
     int x, y;
     if (turnColor == White) {
         y = SIZE-2;
@@ -166,6 +168,13 @@ static int evalExperimental(int turnColor, const int* p) {
     return g_chipDiff * p[1] + turnTerm + evalPosFull(p, 5);
 }
 
+// "LearnedValue": delegates to a machine-learned value model. p[0] = model slot
+// (see ml_eval.h). Non-incremental: the full feature scan runs at each leaf via the
+// evalLeaf fallback path, so `incremental` must stay false in its registry entry.
+static int evalLearnedValue(int turnColor, const int* p) {
+    return mlValueScore(turnColor, p[0]);
+}
+
 // Evaluator registry. Add an evaluator by appending an EvalDef here and writing its
 // function above; both the console and GUI pick it up automatically. Set
 // `incremental` true only if the evaluator follows the standard layout
@@ -185,6 +194,9 @@ const EvalDef g_evaluators[] = {
         { "Column",  "column", 0, 0, 10 },
         { "Advance", "adv",    1, 0, 10 },
       }, evalExperimental, true },
+    { "LearnedValue", 1, {
+        { "Model", "model", 0, 0, ML_SLOTS-1 },
+      }, evalLearnedValue, false },
 };
 const int g_evalCount = (int)(sizeof(g_evaluators) / sizeof(g_evaluators[0]));
 

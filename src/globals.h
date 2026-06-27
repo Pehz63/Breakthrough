@@ -118,3 +118,4 @@ int evalLeaf(int, int, const int*);
 void evalBeginSearch(int, const int*);
 void evalEndSearch();
 int immediateEvalForDisplay(bool, int, const int*);
+void mlAutoLoadDefaultSlots();  // load default trained models into slots (see ml_eval.h)

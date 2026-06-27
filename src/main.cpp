@@ -33,6 +33,7 @@ static void printEvalLine(const char* side, int imm, bool isMiniMax, int down) {
 
 int main () {  //Play one game of Breakthrough
     srand(time(NULL));
+    mlAutoLoadDefaultSlots();  //make LearnedValue usable if a trained model exists
     string boardFileStr = "boards\\board1.txt";
     int whitePlayer = NullPlayer, wOpener = NullOpener; //white enumerated player-type code
     int w1 = -1, wEval = -1;                 //white depth/furthest + evaluator index

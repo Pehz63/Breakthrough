@@ -33,6 +33,7 @@ if /I "%~1"=="dev" set OPTFLAGS=-O0 -gsource-map -sASSERTIONS=2
 emcc gui\main_gui.cpp ^
    src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
    src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
+   src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
    -I src -I gui -I %RAYLIB%\include %RAYLIB%\lib\libraylib.a ^
    -sUSE_GLFW=3 %OPTFLAGS% ^
    --preload-file boards ^

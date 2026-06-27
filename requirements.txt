@@ -1,0 +1,9 @@
+# Python deps for the OPTIONAL analysis + training layer (the C++ engine and
+# trainer need none of this). Install with:  pip install -r requirements.txt
+duckdb>=0.10        # SQL queries over the data/*.jsonl datastore (analysis/analyze.py)
+numpy>=1.24
+pandas>=2.0         # convenient for ad-hoc analysis
+
+# Optional, uncomment as needed:
+# torch>=2.0        # train MLP / NNUE / transformer models (train_py/)
+# wandb>=0.16       # experiment tracking (local metrics are written regardless)

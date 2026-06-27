@@ -1,0 +1,5 @@
+[
+  {"id":"linval_1782562711_e2","type":"linear","head":"value","regime":"selfplay-supervised","conditions":"genDepth=2,genRandom=0.250000","epoch":2,"games":60,"loss":0.673135,"winrate":0.625,"elo":1588,"path":"models/lin_value_ckpt2.txt"},
+  {"id":"linval_1782562711_e4","type":"linear","head":"value","regime":"selfplay-supervised","conditions":"genDepth=2,genRandom=0.250000","epoch":4,"games":60,"loss":0.652808,"winrate":0.6875,"elo":1636,"path":"models/lin_value_ckpt4.txt"},
+  {"id":"linval_1782562711_e6","type":"linear","head":"value","regime":"selfplay-supervised","conditions":"genDepth=2,genRandom=0.250000","epoch":6,"games":60,"loss":0.638092,"winrate":0.8125,"elo":1754,"path":"models/lin_value_ckpt6.txt"}
+]

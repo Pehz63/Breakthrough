@@ -1058,6 +1058,7 @@ static void UpdateDrawFrame() {
 int main() {
     std::srand((unsigned)time(0));
     PRNT = 0;  // silence engine console output
+    mlAutoLoadDefaultSlots();  // make LearnedValue usable if a trained model exists
 
     // Default matchup: Human (White) vs MiniMax (Black).
     g_white.type = Human;

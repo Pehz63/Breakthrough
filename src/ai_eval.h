@@ -32,3 +32,8 @@ struct EvalDef {
 
 extern const EvalDef g_evaluators[];
 extern const int     g_evalCount;
+
+// Near-win shortcut: WhiteWin / BlackWin if the position is decided one move from a
+// goal row, else 0. Exposed so the learned evaluator and 1-ply explorers reuse the
+// exact same decided-position logic as the Classic/Experimental leaf scores.
+int nearWinCheck(int turnColor);

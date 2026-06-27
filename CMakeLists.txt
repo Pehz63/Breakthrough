@@ -13,6 +13,9 @@ add_executable(breakthrough
     src/ai_eval.cpp
     src/ai_random.cpp
     src/ai_minimax.cpp
+    src/ml_features.cpp
+    src/ml_model.cpp
+    src/ml_eval.cpp
 )
 
 target_include_directories(breakthrough PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
