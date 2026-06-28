@@ -40,19 +40,58 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,
                          int epochs, double lr, int teacherDepth, unsigned seed);
 
-// Round-robin tournament of a default mixed roster (loads models/lin_value.txt and
-// models/lin_policy.txt into slots if present); prints an Elo table, writes
-// agents.jsonl + agents/library.txt + manifest rows.
+// Round-robin tournament of the default depth-laddered roster, single process
+// (convenience wrapper: play shard 0/1 then rate). Prints an Elo table.
 int runTournament(const string& boardFile, int gamesPerPair, unsigned seed);
+
+// ---- Depth-laddered, process-shardable tournament ----
+// Build the deterministic roster (heuristics + SmartRandom variants + LearnedPolicy,
+// plus Greedy and AlphaBeta over a table of evaluator presets at each depth). hasValue/
+// hasPolicy gate the learned agents so play and rate build an identical roster.
+std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
+                                             bool hasValue, bool hasPolicy);
+
+// Play this shard's share of the full round-robin (game index % ofK == shard),
+// appending result rows {a,b,sa} and per-agent timing rows {timing,name,ms_total,
+// moves,ms_max} to outFile. nodeBudget caps per-move search nodes (0 = unlimited).
+// `only` is an optional agent-name allowlist: if non-empty the roster is reduced to
+// just those names (play and rate must pass the SAME list so the rosters match).
+int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
+                   int gamesPerPair, unsigned seed, int shard, int ofK,
+                   unsigned long long nodeBudget, const string& outFile,
+                   const std::vector<std::string>& only);
+
+// Read all result + timing rows from inFile, fit Elo, print the table
+// (Elo | ms/move | max ms | games | agent), append data/agents.jsonl, and (only on a
+// FULL run, i.e. `only` empty) write agents/library.txt + the champion files. `only`
+// reduces the roster identically to tournamentPlay. When `runId` is non-empty the run
+// is archived under runs/<runId>/ (elo.tsv + results.jsonl), the per-agent rows are
+// appended to agents/registry.jsonl, agents/registry.md is regenerated, and a summary
+// line is appended to runs/index.jsonl. `note` is unused here (the pre-run note lives
+// in config.json / notes.md, written by writeRunConfig).
+int tournamentRate(const std::vector<int>& depths, const string& inFile,
+                   const std::vector<std::string>& only,
+                   const string& runId, const string& note);
+
+// ---- Run archive (timestamped, append-only history of tournament runs) ----
+// Mint a UTC run id of the form yyyyMMddTHHmmssZ (matches the PowerShell driver).
+string makeRunId();
+
+// Create runs/<runId>/ and write config.json (the exact run configuration) plus the
+// notes.md header with the pre-run note. Called once per run by the driver (via the
+// run-config subcommand) and by the single-process runTournament wrapper.
+void writeRunConfig(const string& runId, const std::vector<int>& depths,
+                    unsigned long long nodeBudget, int gamesPerPair, unsigned seed,
+                    int workers, const string& board,
+                    const std::vector<std::string>& only, const string& note);
+
+// Append a timestamped section to runs/<runId>/notes.md. For attaching a realization
+// after the fact (e.g. "CPU was throttled, ignore ms/move"). No recompute.
+int runNote(const string& runId, const string& note);
 
 // Regenerate the auto-doc region of mlMdPath and models/registries.json from the
 // live registries (evaluators, explorers, choosers, model types, regimes, features).
 int exportDocs(const string& mlMdPath);
-
-// ---- Lower-level building blocks (also used by tests) ----
-// Rate an explicit roster in place (ratings recentered to mean 1500).
-void rateAgents(std::vector<AgentSpec>& agents, std::vector<double>& ratingsOut,
-                const string& boardFile, int gamesPerPair, unsigned seed);
 
 // Write/refresh the manifest from a record list.
 void writeManifest(const std::vector<ModelRecord>& records);

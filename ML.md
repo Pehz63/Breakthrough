@@ -56,15 +56,78 @@ chooser) plus **strength dilution** (`randomMoveProb`, `depthCap`). One function
 Build: `.\tools\run_train.ps1 -Build` (or `build_train.bat`). Commands:
 
 ```
-train.exe selfplay-supervised --out models/lin_value --games 300 --epochs 12
-train.exe imitate             --out models/lin_policy.txt --games 150 --epochs 15
-train.exe tournament          --games 4
+train.exe selfplay-supervised --out models/lin_value --games 250 --epochs 6
+train.exe imitate             --out models/lin_policy.txt --games 150 --epochs 12
+train.exe tournament          --games 10        # single-process, default depth ladder
 train.exe docs                --ml ML.md
 ```
 
-Checkpoints land in `models/` and are recorded in `models/manifest.{json,md}` and
-`data/*.jsonl`. The tournament prints an Elo table mixing every axis and writes
-`agents/library.txt`.
+(The linear value model overfits past ~6-8 epochs on outcome labels, so keep `--epochs`
+small.) Checkpoints land in `models/` and are recorded in `models/manifest.{json,md}` and
+`data/*.jsonl`.
+
+### Parallel depth-laddered tournament
+
+The round-robin is the long pole, and the engine keeps its board/eval state in globals,
+so games can't share a process. Instead games are **sharded across processes** (each its
+own copy of the globals) and merged:
+
+```
+.\tools\run_tournament.ps1 -Workers 12 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 500000
+```
+
+Under the hood: K `train.exe tournament-play --shard i --of K ...` workers each play their
+slice (game index % K == shard) into `data/tourney.jsonl.<i>` with per-move timing, then
+`train.exe tournament-rate` merges them, fits Elo, and prints
+`Elo | ms/move | max ms | games | agent`. The roster is **all working agents**: the
+random/heuristic family (incl. SmartRandom at several N), the learned policy, and Greedy +
+AlphaBeta over a table of evaluator weight presets at each depth.
+
+A per-move **node budget** (`g_nodeBudget`) with **iterative deepening** keeps deep
+searches bounded and sound: an agent "at depth D" deepens 1,2,...,D and keeps the best move
+from the deepest iteration that finished within budget. So Elo rises with depth, then
+plateaus once the budget binds (without it, a plain depth-capped search wastes its budget on
+the first line and plays *worse* at higher depth). The top agent is written to
+`agents/champion.txt` + `agents/champion_params.txt` (a `minimax_params.txt` block).
+Absolute ms/move is inflated by parallel CPU contention; relative order is informative.
+
+### Restricting the roster (`-Only`) and the run archive
+
+To focus a run on a subset (e.g. the strongest few agents plus the learned policy),
+pass `-Only` an agent-name allowlist. The names must already exist in the roster, so
+include their depths in `-Depths` (an `AB6-...` name needs `6` in the ladder):
+
+```
+.\tools\run_tournament.ps1 -Depths "4,6,8,10" -NodeBudget 1000000 `
+  -Only "AB6-Classic-chip,AB8-Classic-chip,AB10-Classic-chip,LearnedPolicy" `
+  -Note "why this run / what changed since last time"
+```
+
+A run with `-Only` does **not** overwrite `agents/library.txt` / `champion*.txt` (those
+stay the full-roster snapshot). Names that do not resolve print a `WARNING` instead of
+silently shrinking the field. `--only` is threaded identically through `tournament-play`
+and `tournament-rate` so the two phases build the same roster.
+
+**Every** run is archived, timestamped, under `runs/<run_id>/`:
+
+| file | contents |
+|------|----------|
+| `config.json` | exact config: depths, node budget, games/pair, seed, workers, board, `only[]`, the pre-run note |
+| `elo.tsv` | this run's ranked Elo table (elo, ms/move, ms_max, games, name, desc) |
+| `results.jsonl` | immutable copy of this run's merged game/timing rows (gitignored, bulky) |
+| `notes.md` | the pre-run note plus any later notes appended with `run-note` |
+
+`runs/index.jsonl` keeps one summary line per run (champion + Elo + counts). The agent
+**registry** (`agents/registry.jsonl` append-only, `agents/registry.md` regenerated) is
+the union of every agent ever rated, so a subset run never erases knowledge of the rest.
+Each row carries a `spec_hash` over the agent's structural fields **and**, for learned
+agents, its model file content, so a retrain / param change / bugfix flags as `changed`.
+
+Attach a realization to a past run without re-running it:
+
+```
+.\train.exe run-note --run 20260628T041236Z --note "CPU was throttled, ignore ms/move"
+```
 
 ## Model file format (text, like `minimax_params.txt`)
 

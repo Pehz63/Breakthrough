@@ -15,36 +15,61 @@ struct EvalSearchScope {
 };
 }
 
-int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for white
-    nodes++;
-    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
-    int moveX1 = -1, moveY, moveX2; //Best move found so far
-    int eval;
-    int alpha = INT_MIN; //Evaluation of this board so far
-    int beta = INT_MAX;
-    int victor = 0;
-    bool isCapture; //Used to undo captures
+// Set true when a recursive node returns early because it hit g_nodeDeadline. The
+// iterative-deepening driver uses it to discard an incomplete (budget-cut) iteration
+// and keep the best move from the deepest iteration that finished within budget.
+static bool s_budgetHit = false;
 
-    //Find the best child by corecursive call and play it:
-
-    //Loop through every possible move to evaluate its sub-tree:
+// One full root search for White to a fixed depth d. Fills the best move into
+// mx/my/mz (mx = -1 if no legal move) and returns its white-centric score. Does NOT
+// play the move. Shared by the single-shot and iterative-deepening drivers.
+static int searchRootWhite(int d, int evaluator, const int* evalParams,
+                           int& mx, int& my, int& mz,
+                           unsigned long long int& nodes, unsigned long long int& leafs) {
+    int alpha = INT_MIN, beta = INT_MAX, eval; bool isCapture; mx = -1;
     for (int y = SIZE-2; y >= 0; y--)
-    {
-        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-        {
+        for (int x = 0; x < SIZE; x++) {
             if (board[x][y] != WHITE) continue;
             int ny = y + 1;
             auto tryMove = [&](int z) {
                 isCapture = simulateMoveWhite(x, y, z);
-                eval = minAlphaBeta(alpha, beta, 1, depth, evaluator, evalParams, nodes, leafs);
+                eval = minAlphaBeta(alpha, beta, 1, d, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveWhite(x, y, z, isCapture);
-                if (eval > alpha) { alpha = eval; moveX1 = x; moveY = y; moveX2 = z; }
+                if (eval > alpha) { alpha = eval; mx = x; my = y; mz = z; }
             };
-            if (x > 0       && board[x-1][ny] == BLACK) tryMove(x-1); //Capture-left
-            if (x < SIZE-1  && board[x+1][ny] == BLACK) tryMove(x+1); //Capture-right
-            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1); //Diagonal-left
-            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1); //Diagonal-right
-            if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
+            if (x > 0       && board[x-1][ny] == BLACK) tryMove(x-1);
+            if (x < SIZE-1  && board[x+1][ny] == BLACK) tryMove(x+1);
+            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1);
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1);
+            if (               board[x  ][ny] == EMPTY) tryMove(x);
+        }
+    return alpha;
+}
+
+int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for white
+    nodes++;
+    g_nodeDeadline = g_nodeBudget ? nodes + g_nodeBudget : 0; //per-move node cap (0=off)
+    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
+    int moveX1 = -1, moveY = 0, moveX2 = 0; //Best move found so far
+    int alpha = INT_MIN;
+    int victor = 0;
+
+    if (!g_nodeDeadline) {
+        // Unbudgeted: a single full-depth search (identical to the original behavior).
+        alpha = searchRootWhite(depth, evaluator, evalParams, moveX1, moveY, moveX2, nodes, leafs);
+    } else {
+        // Budgeted: iterative deepening. Keep the best move from the deepest iteration
+        // that finished within the node budget; a partial (cut) iteration is discarded.
+        for (int d = 1; d <= depth; d++) {
+            s_budgetHit = false;
+            int mx, my, mz;
+            int a = searchRootWhite(d, evaluator, evalParams, mx, my, mz, nodes, leafs);
+            if (mx == -1) break;                 // no legal move
+            if (s_budgetHit && moveX1 != -1) break; // incomplete; keep the previous depth
+            moveX1 = mx; moveY = my; moveX2 = mz; alpha = a;
+            if (s_budgetHit) break;              // budget gone (kept this shallow result)
+            if (nodes >= g_nodeDeadline) break;
+            if (alpha >= WhiteWin - 1024 || alpha <= BlackWin + 1024) break; // decided
         }
     }
     if (moveX1 != -1) g_downEvalWhite = alpha; //best-line score for display
@@ -102,36 +127,52 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
     nodesWhite += nodes;
     return victor;
 }
-int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for black
-    nodes++;
-    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
-    int moveX1 = -1, moveY, moveX2; //Best move found so far
-    int eval;
-    int alpha = INT_MIN;
-    int beta = INT_MAX; //Evaluation of this board so far
-    int victor = 0;
-    bool isCapture; //Used to undo captures
-
-    //Find the best child by corecursive call:
-
-    //Loop through every possible move to evaluate its sub-tree:
+// One full root search for Black to a fixed depth d (minimizing white-centric score).
+// Fills the best move into mx/my/mz (mx = -1 if none) and returns its score. No play.
+static int searchRootBlack(int d, int evaluator, const int* evalParams,
+                           int& mx, int& my, int& mz,
+                           unsigned long long int& nodes, unsigned long long int& leafs) {
+    int alpha = INT_MIN, beta = INT_MAX, eval; bool isCapture; mx = -1;
     for (int y = 1; y <= SIZE-1; y++)
-    {
-        for (int x = 0; x < SIZE; x++) //Loop through board spaces:
-        {
+        for (int x = 0; x < SIZE; x++) {
             if (board[x][y] != BLACK) continue;
             int ny = y - 1;
             auto tryMove = [&](int z) {
                 isCapture = simulateMoveBlack(x, y, z);
-                eval = maxAlphaBeta(alpha, beta, 1, depth, evaluator, evalParams, nodes, leafs);
+                eval = maxAlphaBeta(alpha, beta, 1, d, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveBlack(x, y, z, isCapture);
-                if (eval < beta) { beta = eval; moveX1 = x; moveY = y; moveX2 = z; }
+                if (eval < beta) { beta = eval; mx = x; my = y; mz = z; }
             };
-            if (x > 0       && board[x-1][ny] == WHITE) tryMove(x-1); //Capture-left
-            if (x < SIZE-1  && board[x+1][ny] == WHITE) tryMove(x+1); //Capture-right
-            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1); //Diagonal-left
-            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1); //Diagonal-right
-            if (               board[x  ][ny] == EMPTY) tryMove(x);   //Forward
+            if (x > 0       && board[x-1][ny] == WHITE) tryMove(x-1);
+            if (x < SIZE-1  && board[x+1][ny] == WHITE) tryMove(x+1);
+            if (x > 0       && board[x-1][ny] == EMPTY) tryMove(x-1);
+            if (x < SIZE-1  && board[x+1][ny] == EMPTY) tryMove(x+1);
+            if (               board[x  ][ny] == EMPTY) tryMove(x);
+        }
+    return beta;
+}
+
+int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Get a minimax move for black
+    nodes++;
+    g_nodeDeadline = g_nodeBudget ? nodes + g_nodeBudget : 0; //per-move node cap (0=off)
+    EvalSearchScope evalScope(evaluator, evalParams); //seed + auto-teardown of g_evalPos
+    int moveX1 = -1, moveY = 0, moveX2 = 0; //Best move found so far
+    int beta = INT_MAX;
+    int victor = 0;
+
+    if (!g_nodeDeadline) {
+        beta = searchRootBlack(depth, evaluator, evalParams, moveX1, moveY, moveX2, nodes, leafs);
+    } else {
+        for (int d = 1; d <= depth; d++) {
+            s_budgetHit = false;
+            int mx, my, mz;
+            int b = searchRootBlack(d, evaluator, evalParams, mx, my, mz, nodes, leafs);
+            if (mx == -1) break;
+            if (s_budgetHit && moveX1 != -1) break;
+            moveX1 = mx; moveY = my; moveX2 = mz; beta = b;
+            if (s_budgetHit) break;
+            if (nodes >= g_nodeDeadline) break;
+            if (beta <= BlackWin + 1024 || beta >= WhiteWin - 1024) break; // decided
         }
     }
     if (moveX1 != -1) g_downEvalBlack = beta; //best-line score for display
@@ -191,8 +232,9 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
 }
 int maxAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the AI's best next move
     nodes++;
-    if (level == depth) //Base case: Node is a leaf, use SEF.
+    if (level == depth || (g_nodeDeadline && nodes >= g_nodeDeadline)) //Leaf: depth reached or node budget hit
     {
+        if (g_nodeDeadline && nodes >= g_nodeDeadline && level != depth) s_budgetHit = true;
         leafs++;
         if (canWinWhite()) return WhiteWin;
         if (canWinBlack()) return BlackWin;
@@ -241,8 +283,9 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const
 }
 int minAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const int* evalParams, unsigned long long int& nodes, unsigned long long int& leafs) { //Given a depth, recursively calculates the opponent's best next move
     nodes++;
-    if (level == depth) //Base case: Node is a leaf, use SEF.
+    if (level == depth || (g_nodeDeadline && nodes >= g_nodeDeadline)) //Leaf: depth reached or node budget hit
     {
+        if (g_nodeDeadline && nodes >= g_nodeDeadline && level != depth) s_budgetHit = true;
         leafs++;
         if (canWinBlack()) return BlackWin;
         if (canWinWhite()) return WhiteWin;

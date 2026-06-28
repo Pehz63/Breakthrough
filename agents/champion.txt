@@ -1,0 +1,3 @@
+Champion: AB6-Classic-chip: AlphaBeta(Classic, d6)
+Elo: 2244
+ms/move: 10.0794

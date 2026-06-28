@@ -77,3 +77,8 @@ data/*.jsonl
 models/*_ckpt*.txt
 models/py_linear.txt
 agents/library.txt
+
+# Run archive: keep the curated, human-readable history (config.json, elo.tsv,
+# notes.md, runs/index.jsonl, agents/registry.*), but ignore each run's bulky
+# results.jsonl copy (it mirrors the already-ignored data/tourney.jsonl).
+runs/**/results.jsonl

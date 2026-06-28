@@ -23,4 +23,6 @@ const int* g_activeParams = nullptr;
 int g_activeParamCount = 0;
 int g_downEvalWhite = 0;
 int g_downEvalBlack = 0;
+unsigned long long g_nodeBudget = 0;      // 0 = unlimited
+unsigned long long g_nodeDeadline = 0;    // per-search cutoff (set by miniMax*)
 int SHOW_EVAL = -1;

@@ -1,0 +1,9 @@
+elo	ms_per_move	ms_max	games	name	desc
+2794	50.5935	90.5623	70	AB10-Classic-chip	AB10-Classic-chip: AlphaBeta(Classic, d10)
+2793	50.0294	84.7799	70	AB8-Classic-chip	AB8-Classic-chip: AlphaBeta(Classic, d8)
+2793	8.08434	24.6708	70	AB6-Classic-chip	AB6-Classic-chip: AlphaBeta(Classic, d6)
+1767	0.252261	1.3799	70	AB4-Classic-chip	AB4-Classic-chip: AlphaBeta(Classic, d4)
+752	170.038	317.296	70	AB6-Exp-adv	AB6-Exp-adv: AlphaBeta(Experimental, d6)
+752	206.333	327.653	70	AB10-Exp-adv	AB10-Exp-adv: AlphaBeta(Experimental, d10)
+751	204.355	318.853	70	AB8-Exp-adv	AB8-Exp-adv: AlphaBeta(Experimental, d8)
+-405	0.00162907	0.0059	70	LearnedPolicy	LearnedPolicy: Policy(LearnedPolicy) slot=1

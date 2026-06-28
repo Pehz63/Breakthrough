@@ -1,0 +1,15 @@
+# Champion bot, drop into minimax_params.txt to play it (pick MiniMax, use file).
+white_eval=0
+white_depth=6
+white_turn=1
+white_chip=4
+white_wall=0
+white_column=0
+white_opener=0
+black_eval=0
+black_depth=6
+black_turn=1
+black_chip=4
+black_wall=0
+black_column=0
+black_opener=0

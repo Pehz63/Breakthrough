@@ -1,0 +1,8 @@
+{"run_id":"20260628T041236Z","name":"AB10-Classic-chip","spec_hash":"b4fb89b5c193521c","elo":2794,"ms_per_move":50.5935,"games":70,"desc":"AB10-Classic-chip: AlphaBeta(Classic, d10)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB8-Classic-chip","spec_hash":"2911e6bb849f9123","elo":2793,"ms_per_move":50.0294,"games":70,"desc":"AB8-Classic-chip: AlphaBeta(Classic, d8)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB6-Classic-chip","spec_hash":"182a6a3be0c5f385","elo":2793,"ms_per_move":8.08434,"games":70,"desc":"AB6-Classic-chip: AlphaBeta(Classic, d6)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB4-Classic-chip","spec_hash":"c2fafc05e1bd2da7","elo":1767,"ms_per_move":0.252261,"games":70,"desc":"AB4-Classic-chip: AlphaBeta(Classic, d4)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB6-Exp-adv","spec_hash":"56be420f8a7da342","elo":752,"ms_per_move":170.038,"games":70,"desc":"AB6-Exp-adv: AlphaBeta(Experimental, d6)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB10-Exp-adv","spec_hash":"b3d4b66ea4928909","elo":752,"ms_per_move":206.333,"games":70,"desc":"AB10-Exp-adv: AlphaBeta(Experimental, d10)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"AB8-Exp-adv","spec_hash":"48e2b0b7fb6cfa54","elo":751,"ms_per_move":204.355,"games":70,"desc":"AB8-Exp-adv: AlphaBeta(Experimental, d8)","created_utc":"2026-06-28T04:14:34Z"}
+{"run_id":"20260628T041236Z","name":"LearnedPolicy","spec_hash":"8ab36488892437e8","elo":-405,"ms_per_move":0.00162907,"games":70,"desc":"LearnedPolicy: Policy(LearnedPolicy) slot=1","created_utc":"2026-06-28T04:14:34Z"}

@@ -14,10 +14,26 @@
 #include <cmath>
 #include <ctime>
 #include <sstream>
+#include <chrono>
+#include <map>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 // ============================================================
 // REGISTRY LOOKUPS + SMALL UTILITIES
 // ============================================================
+// Create a directory if it does not already exist (no error if it does).
+static void ensureDir(const string& p) {
+#ifdef _WIN32
+    _mkdir(p.c_str());
+#else
+    mkdir(p.c_str(), 0755);
+#endif
+}
+
 static int explorerIndexByName(const char* n) {
     for (int i = 0; i < g_explorerCount; i++) if (string(g_explorers[i].name) == n) return i;
     return 0;
@@ -315,26 +331,65 @@ int trainImitationPolicy(const string& outFile, const string& boardFile, int gam
 }
 
 // ============================================================
-// TOURNAMENT + RATING
+// TOURNAMENT: roster + sharded play + Elo fit
 // ============================================================
-void rateAgents(std::vector<AgentSpec>& agents, std::vector<double>& ratingsOut,
-                const string& boardFile, int gamesPerPair, unsigned seed) {
-    srand(seed);
-    int n = (int)agents.size();
-    struct GR { int a, b; double sa; };
-    std::vector<GR> results;
+// Reasonable "preset" weightings for the simple evaluators, so the roster has many
+// distinct bots from a handful of presets x depths. Params are the standard layout
+// (turn, chip, wall, column, [advance]); a Learned preset carries the model slot.
+struct EvalPreset {
+    const char* tag;
+    int evaluator;
+    int params[MAX_EVAL_PARAMS];
+};
 
-    for (int i = 0; i < n; i++)
-        for (int j = i + 1; j < n; j++)
-            for (int g = 0; g < gamesPerPair; g++) {
-                bool iWhite = (g % 2 == 0);
-                int wi = iWhite ? i : j, bi = iWhite ? j : i;
-                int oc = gameOutcome(playGame(agents[wi], agents[bi], boardFile, 400, nullptr));
-                double scoreWhite = (oc == 1) ? 1.0 : (oc == 2) ? 0.0 : 0.5;
-                double sa = iWhite ? scoreWhite : (1.0 - scoreWhite);
-                GR r; r.a = i; r.b = j; r.sa = sa; results.push_back(r);
-            }
+static AgentSpec makePresetAgent(const string& name, int explorer, const EvalPreset& p, int depth) {
+    AgentSpec a = agentMakeSearch(name.c_str(), explorer, p.evaluator, depth, 0);
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) a.evalParams[i] = p.params[i];
+    return a;
+}
 
+std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
+                                             bool hasValue, bool hasPolicy) {
+    int abIdx = explorerIndexByName("AlphaBeta");
+    int grIdx = explorerIndexByName("Greedy");
+    int classic = evaluatorIndexByName("Classic");
+    int exper   = evaluatorIndexByName("Experimental");
+    int learned = learnedValueIndex();
+
+    std::vector<EvalPreset> presets;
+    presets.push_back({ "Classic-chip", classic, { 1, 4, 0, 0 } });
+    presets.push_back({ "Classic-wall", classic, { 1, 4, 2, 0 } });
+    presets.push_back({ "Classic-col",  classic, { 1, 4, 0, 2 } });
+    presets.push_back({ "Classic-bal",  classic, { 1, 4, 2, 2 } });
+    presets.push_back({ "Exp-adv",      exper,   { 1, 4, 1, 1, 2 } });
+    if (hasValue && learned >= 0)
+        presets.push_back({ "Learned", learned, { 0 } });   // p[0] = model slot 0
+
+    std::vector<AgentSpec> r;
+    // No-lookahead rung.
+    r.push_back(agentMakePolicy("UniformRandom", chooserIndexByName("UniformRandom"), 0, 0));
+    r.push_back(agentMakePolicy("TieredRandom",  chooserIndexByName("TieredRandom"), 0, 0));
+    int smartIdx = chooserIndexByName("SmartRandom");
+    for (int n : { 2, 4, 6 })
+        r.push_back(agentMakePolicy(("SmartRandom-N" + std::to_string(n)).c_str(), smartIdx, n, 0));
+    if (hasPolicy)
+        r.push_back(agentMakePolicy("LearnedPolicy", chooserIndexByName("LearnedPolicy"), 0, 1));
+
+    // Greedy (1-ply) rung over each preset.
+    for (const EvalPreset& p : presets)
+        r.push_back(makePresetAgent(string("Greedy-") + p.tag, grIdx, p, 1));
+
+    // AlphaBeta ladder over each preset x depth.
+    for (const EvalPreset& p : presets)
+        for (int d : depths)
+            r.push_back(makePresetAgent("AB" + std::to_string(d) + "-" + p.tag, abIdx, p, d));
+
+    return r;
+}
+
+// ---- Elo fit from recorded results (indices into the roster) ----
+struct GameRec { int a, b; double sa; };
+static void fitElo(const std::vector<GameRec>& results, int n, std::vector<double>& ratingsOut) {
     ratingsOut.assign(n, 1500.0);
     double K = 12.0;
     for (int pass = 0; pass < 2000; pass++) {
@@ -342,52 +397,480 @@ void rateAgents(std::vector<AgentSpec>& agents, std::vector<double>& ratingsOut,
             eloUpdate(ratingsOut[results[r].a], ratingsOut[results[r].b], results[r].sa, K);
         if (pass % 200 == 199) K *= 0.7;
     }
-    double mean = 0.0; for (int i = 0; i < n; i++) mean += ratingsOut[i]; mean /= (n ? n : 1);
-    for (int i = 0; i < n; i++) ratingsOut[i] += 1500.0 - mean;
+    if (n > 0) {
+        double mean = 0.0; for (int i = 0; i < n; i++) mean += ratingsOut[i]; mean /= n;
+        for (int i = 0; i < n; i++) ratingsOut[i] += 1500.0 - mean;
+    }
+}
+
+// ---- Minimal JSONL field extractors (our writer emits flat, simple objects) ----
+static bool jsonStr(const string& line, const string& key, string& out) {
+    auto k = line.find("\"" + key + "\":\"");
+    if (k == string::npos) return false;
+    auto s = k + key.size() + 4;
+    auto e = line.find('"', s);
+    if (e == string::npos) return false;
+    out = line.substr(s, e - s);
+    return true;
+}
+static bool jsonNum(const string& line, const string& key, double& out) {
+    auto k = line.find("\"" + key + "\":");
+    if (k == string::npos) return false;
+    auto s = k + key.size() + 3;
+    if (s < line.size() && line[s] == '"') return false;   // it's a string field
+    try { out = std::stod(line.substr(s)); } catch (...) { return false; }
+    return true;
+}
+
+// ============================================================
+// TOURNAMENT: agent allowlist (optional roster subset)
+// ============================================================
+// Split a "a,b,c" list into trimmed, non-empty tokens.
+static std::vector<std::string> parseCsvList(const std::string& s) {
+    std::vector<std::string> out;
+    size_t i = 0;
+    while (i <= s.size()) {
+        size_t c = s.find(',', i);
+        size_t end = (c == std::string::npos) ? s.size() : c;
+        size_t a = i, b = end;
+        while (a < b && (s[a] == ' ' || s[a] == '\t')) a++;
+        while (b > a && (s[b-1] == ' ' || s[b-1] == '\t')) b--;
+        if (b > a) out.push_back(s.substr(a, b - a));
+        if (c == std::string::npos) break;
+        i = c + 1;
+    }
+    return out;
+}
+
+// Reduce a full roster to just the allowlisted names (preserving the full roster's
+// order). Empty `only` returns the full roster unchanged (today's behavior). Any
+// requested name not present is reported, so a typo or a missing --depths rung / model
+// surfaces loudly instead of silently shrinking the field.
+static std::vector<AgentSpec> filterRosterByName(const std::vector<AgentSpec>& full,
+                                                 const std::vector<std::string>& only) {
+    if (only.empty()) return full;
+    std::vector<AgentSpec> out;
+    for (size_t i = 0; i < full.size(); i++)
+        for (size_t k = 0; k < only.size(); k++)
+            if (only[k] == full[i].name) { out.push_back(full[i]); break; }
+    for (size_t k = 0; k < only.size(); k++) {
+        bool found = false;
+        for (size_t i = 0; i < full.size(); i++)
+            if (only[k] == full[i].name) { found = true; break; }
+        if (!found)
+            cout << "WARNING: --only name '" << only[k]
+                 << "' not in roster (check --depths / models)\n";
+    }
+    return out;
+}
+
+// ============================================================
+// TOURNAMENT: play one shard (with per-move timing)
+// ============================================================
+int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
+                   int gamesPerPair, unsigned seed, int shard, int ofK,
+                   unsigned long long nodeBudget, const string& outFile,
+                   const std::vector<std::string>& only) {
+    PRNT = 0;
+    bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
+    bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
+    std::vector<AgentSpec> roster = filterRosterByName(buildTournamentRoster(depths, hasVal, hasPol), only);
+    int n = (int)roster.size();
+
+    g_nodeBudget = nodeBudget;
+    srand(seed * 1000u + (unsigned)shard + 1u);
+
+    std::vector<double> msTotal(n, 0.0), msMax(n, 0.0);
+    std::vector<long long> moveCnt(n, 0);
+
+    std::ofstream out(outFile, std::ios::app);
+    long long gIndex = 0, played = 0;
+    typedef std::chrono::steady_clock clock;
+
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            for (int g = 0; g < gamesPerPair; g++) {
+                long long my = gIndex++;
+                if (my % ofK != shard) continue;
+                bool iWhite = (g % 2 == 0);
+                int wi = iWhite ? i : j, bi = iWhite ? j : i;
+
+                reloadBoard(boardFile);
+                int victor = None;
+                for (int h = 0; h < 400; h++) {
+                    int side = (h % 2 == 0) ? White : Black;
+                    int ai = (side == White) ? wi : bi;
+                    auto t0 = clock::now();
+                    victor = agentChooseMove(roster[ai], side);
+                    double dt = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+                    msTotal[ai] += dt; moveCnt[ai]++; if (dt > msMax[ai]) msMax[ai] = dt;
+                    if (gameOutcome(victor)) break;
+                }
+                int oc = gameOutcome(victor);
+                double scoreWhite = (oc == 1) ? 1.0 : (oc == 2) ? 0.0 : 0.5;
+                double sa = iWhite ? scoreWhite : (1.0 - scoreWhite);
+                out << "{\"a\":\"" << roster[i].name << "\",\"b\":\"" << roster[j].name
+                    << "\",\"sa\":" << sa << "}\n";
+                played++;
+            }
+
+    for (int k = 0; k < n; k++)
+        if (moveCnt[k] > 0)
+            out << "{\"timing\":1,\"name\":\"" << roster[k].name << "\",\"ms_total\":"
+                << msTotal[k] << ",\"moves\":" << moveCnt[k] << ",\"ms_max\":" << msMax[k] << "}\n";
+
+    g_nodeBudget = 0;
+    cout << "shard " << shard << "/" << ofK << ": played " << played << " games -> " << outFile << "\n";
+    return 0;
+}
+
+// ============================================================
+// TOURNAMENT: rate from recorded results + write champion
+// ============================================================
+static void writeChampion(const AgentSpec& champ, int elo, double msMove) {
+    std::ofstream c("agents/champion.txt");
+    if (c.is_open())
+        c << "Champion: " << agentDescribe(champ) << "\nElo: " << elo
+          << "\nms/move: " << msMove << "\n";
+
+    std::ofstream p("agents/champion_params.txt");
+    if (!p.is_open()) return;
+    p << "# Champion bot, drop into minimax_params.txt to play it (pick MiniMax, use file).\n";
+    if (champ.brain != BRAIN_SEARCH || champ.explorer != explorerIndexByName("AlphaBeta")) {
+        p << "# NOTE: champion is " << agentDescribe(champ)
+          << " (not an AlphaBeta agent); not expressible as minimax_params.\n";
+        return;
+    }
+    int ev = champ.evaluator;
+    const char* sides[2] = { "white", "black" };
+    for (int s = 0; s < 2; s++) {
+        p << sides[s] << "_eval=" << ev << "\n";
+        p << sides[s] << "_depth=" << champ.depth << "\n";
+        for (int i = 0; i < g_evaluators[ev].paramCount; i++)
+            p << sides[s] << "_" << g_evaluators[ev].params[i].key << "=" << champ.evalParams[i] << "\n";
+        p << sides[s] << "_opener=0\n";
+    }
+}
+
+// ============================================================
+// RUN ARCHIVE + AGENT REGISTRY
+// ============================================================
+// A "run" is one tournament invocation with a fixed config, archived immutably under
+// runs/<id>/. The agent registry (agents/registry.{jsonl,md}) is the append-only union
+// of every agent ever rated, so a subset run never erases knowledge of the others.
+
+// Current UTC time formatted with `fmt` (strftime spec).
+static string utcTime(const char* fmt) {
+    time_t t = time(nullptr);
+    struct tm g;
+#ifdef _WIN32
+    gmtime_s(&g, &t);
+#else
+    gmtime_r(&t, &g);
+#endif
+    char buf[64];
+    strftime(buf, sizeof(buf), fmt, &g);
+    return string(buf);
+}
+string makeRunId()            { return utcTime("%Y%m%dT%H%M%SZ"); }
+static string nowUtcString()  { return utcTime("%Y-%m-%dT%H:%M:%SZ"); }
+
+// 64-bit FNV-1a over a byte buffer (continuable via the `h` seed).
+static unsigned long long fnv1a64(const char* p, size_t n, unsigned long long h) {
+    for (size_t i = 0; i < n; i++) { h ^= (unsigned char)p[i]; h *= 1099511628211ULL; }
+    return h;
+}
+
+// The model file a learned agent depends on (so a retrain changes its spec hash), or
+// "" for a non-learned agent. Slot 0 = value model, slot 1 = policy model (the
+// tournament's fixed convention; see tournamentPlay/Rate).
+static string slotFile(int slot) {
+    if (slot == 0) return "models/lin_value.txt";
+    if (slot == 1) return "models/lin_policy.txt";
+    return "";
+}
+static string agentModelFile(const AgentSpec& a) {
+    if (a.brain == BRAIN_POLICY && a.chooser == chooserIndexByName("LearnedPolicy"))
+        return slotFile(a.modelSlot);
+    if (a.brain == BRAIN_SEARCH && a.evaluator == learnedValueIndex())
+        return slotFile(a.evalParams[0]);   // learned value preset carries the slot in p[0]
+    return "";
+}
+
+// Stable identity for "this agent's behavior": its structural AgentSpec fields plus,
+// for a learned agent, the content of its model file. A retrain, a param change, or a
+// bugfix that alters a structural field all produce a new hash, which registry.md then
+// flags as "changed".
+static string agentSpecHash(const AgentSpec& a) {
+    std::ostringstream s;
+    s << "b" << a.brain << "x" << a.explorer << "v" << a.evaluator
+      << "d" << a.depth << "c" << a.chooser << "p" << a.chooserParam << "m" << a.modelSlot << "P";
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) s << a.evalParams[i] << ",";
+    string base = s.str();
+    unsigned long long h = fnv1a64(base.data(), base.size(), 1469598103934665603ULL);
+    string mf = agentModelFile(a);
+    if (!mf.empty()) {
+        std::ifstream f(mf, std::ios::binary);
+        if (f.is_open()) {
+            std::ostringstream ss; ss << f.rdbuf();
+            string content = ss.str();
+            h = fnv1a64(content.data(), content.size(), h);
+        }
+    }
+    char buf[20];
+    snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)h);
+    return string(buf);
+}
+
+// runs/<id>/config.json + the notes.md header (pre-run note). Called once per run.
+void writeRunConfig(const string& runId, const std::vector<int>& depths,
+                    unsigned long long nodeBudget, int gamesPerPair, unsigned seed,
+                    int workers, const string& board,
+                    const std::vector<std::string>& only, const string& note) {
+    ensureDir("runs");
+    ensureDir("runs/" + runId);
+    string created = nowUtcString();
+
+    std::ofstream c("runs/" + runId + "/config.json");
+    if (c.is_open()) {
+        c << "{\n  \"run_id\": \"" << runId << "\",\n  \"created_utc\": \"" << created << "\",\n";
+        c << "  \"depths\": [";
+        for (size_t i = 0; i < depths.size(); i++) c << (i ? ", " : "") << depths[i];
+        c << "],\n  \"node_budget\": " << nodeBudget << ",\n  \"games_per_pair\": " << gamesPerPair
+          << ",\n  \"seed\": " << seed << ",\n  \"workers\": " << workers
+          << ",\n  \"board\": \"" << dsJsonEscape(board) << "\",\n  \"only\": [";
+        for (size_t i = 0; i < only.size(); i++) c << (i ? ", " : "") << "\"" << dsJsonEscape(only[i]) << "\"";
+        c << "],\n  \"note\": \"" << dsJsonEscape(note) << "\"\n}\n";
+    }
+
+    std::ofstream m("runs/" + runId + "/notes.md");
+    if (m.is_open()) {
+        m << "# Run " << runId << "\n\n";
+        m << "- Created (UTC): " << created << "\n";
+        m << "- Config: see config.json\n\n";
+        m << "## Pre-run notes (" << created << ")\n\n";
+        m << (note.empty() ? "(none)" : note) << "\n";
+    }
+}
+
+int runNote(const string& runId, const string& note) {
+    string dir = "runs/" + runId;
+    std::ifstream probe(dir + "/notes.md");
+    if (!probe.is_open()) { cout << "No such run: " << dir << "/notes.md not found\n"; return 1; }
+    probe.close();
+    std::ofstream m(dir + "/notes.md", std::ios::app);
+    if (!m.is_open()) { cout << "Cannot append to " << dir << "/notes.md\n"; return 1; }
+    string stamp = nowUtcString();
+    m << "\n## Note (" << stamp << ")\n\n" << note << "\n";
+    cout << "Appended note to " << dir << "/notes.md\n";
+    return 0;
+}
+
+// Copy the merged results file into the run's immutable archive.
+static void archiveRunResults(const string& runId, const string& inFile) {
+    std::ifstream in(inFile, std::ios::binary);
+    if (!in.is_open()) return;
+    std::ofstream out("runs/" + runId + "/results.jsonl", std::ios::binary);
+    if (!out.is_open()) return;
+    out << in.rdbuf();
+}
+
+// This run's Elo table, in ranked order, as a TSV.
+static void writeRunElo(const string& runId, const std::vector<AgentSpec>& roster,
+                        const std::vector<int>& order, const std::vector<double>& ratings,
+                        const std::vector<double>& msMove, const std::vector<double>& msMax,
+                        const std::vector<long long>& games) {
+    std::ofstream e("runs/" + runId + "/elo.tsv");
+    if (!e.is_open()) return;
+    e << "elo\tms_per_move\tms_max\tgames\tname\tdesc\n";
+    for (size_t k = 0; k < order.size(); k++) {
+        int i = order[k];
+        e << (int)ratings[i] << "\t" << msMove[i] << "\t" << msMax[i] << "\t" << games[i]
+          << "\t" << roster[i].name << "\t" << agentDescribe(roster[i]) << "\n";
+    }
+}
+
+// Append one observation per agent to agents/registry.jsonl (the append-only union).
+static void appendRegistry(const string& runId, const std::vector<AgentSpec>& roster,
+                           const std::vector<int>& order, const std::vector<double>& ratings,
+                           const std::vector<double>& msMove, const std::vector<long long>& games,
+                           const string& created) {
+    for (size_t k = 0; k < order.size(); k++) {
+        int i = order[k];
+        std::ostringstream js;
+        js << "{\"run_id\":\"" << runId << "\",\"name\":\"" << roster[i].name
+           << "\",\"spec_hash\":\"" << agentSpecHash(roster[i]) << "\",\"elo\":" << (int)ratings[i]
+           << ",\"ms_per_move\":" << msMove[i] << ",\"games\":" << games[i]
+           << ",\"desc\":\"" << dsJsonEscape(agentDescribe(roster[i])) << "\",\"created_utc\":\"" << created << "\"}";
+        dsAppendLine("agents/registry.jsonl", js.str());
+    }
+}
+
+// Regenerate agents/registry.md: fold registry.jsonl by agent name (last observation
+// wins), ranked by last-known Elo, flagging agents whose spec_hash changed vs. their
+// previous observation. This is the always-complete picture of every agent ever rated.
+static void writeRegistryRollup() {
+    struct Rollup { string name, hash, prevHash, lastRun, desc; int elo; int runs; };
+    std::map<string, Rollup> by;
+    std::vector<string> order;   // insertion order of first sighting
+
+    std::ifstream f("agents/registry.jsonl");
+    if (!f.is_open()) return;
+    string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        string nm, hash, run, desc; double elo = 0;
+        if (!jsonStr(line, "name", nm)) continue;
+        jsonStr(line, "spec_hash", hash);
+        jsonStr(line, "run_id", run);
+        jsonStr(line, "desc", desc);
+        jsonNum(line, "elo", elo);
+        if (!by.count(nm)) { by[nm] = Rollup{ nm, "", "", "", "", 0, 0 }; order.push_back(nm); }
+        Rollup& r = by[nm];
+        r.prevHash = r.hash;   // previous observation's hash
+        r.hash = hash; r.lastRun = run; r.desc = desc; r.elo = (int)elo; r.runs++;
+    }
+
+    std::sort(order.begin(), order.end(),
+              [&](const string& a, const string& b){ return by[a].elo > by[b].elo; });
+
+    std::ofstream m("agents/registry.md");
+    if (!m.is_open()) return;
+    m << "# Agent registry\n\n";
+    m << "Append-only union of every agent ever rated (regenerated each tournament rate).\n";
+    m << "A subset run only ADDS observations, so this stays complete. `changed` flags an\n";
+    m << "agent whose spec_hash differs from its previous observation (a retrain, a param\n";
+    m << "change, or a structural bugfix).\n\n";
+    m << "| agent | last elo | runs | last run | spec_hash | changed | desc |\n";
+    m << "|-------|---------:|-----:|----------|-----------|---------|------|\n";
+    for (size_t i = 0; i < order.size(); i++) {
+        const Rollup& r = by[order[i]];
+        bool changed = (r.runs > 1 && !r.prevHash.empty() && r.prevHash != r.hash);
+        m << "| " << r.name << " | " << r.elo << " | " << r.runs << " | " << r.lastRun
+          << " | " << r.hash << " | " << (changed ? "yes" : "no") << " | " << r.desc << " |\n";
+    }
+}
+
+// One self-describing summary line per run in runs/index.jsonl (the master log).
+static void appendRunIndex(const string& runId, const string& created, int nAgents,
+                           long long nGames, const string& champion, int champElo) {
+    std::ostringstream js;
+    js << "{\"run_id\":\"" << runId << "\",\"created_utc\":\"" << created
+       << "\",\"agents\":" << nAgents << ",\"games\":" << nGames
+       << ",\"champion\":\"" << dsJsonEscape(champion) << "\",\"champ_elo\":" << champElo << "}";
+    dsAppendLine("runs/index.jsonl", js.str());
+}
+
+int tournamentRate(const std::vector<int>& depths, const string& inFile,
+                   const std::vector<std::string>& only,
+                   const string& runId, const string& note) {
+    (void)note;
+    PRNT = 0;
+    bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
+    bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
+    std::vector<AgentSpec> roster = filterRosterByName(buildTournamentRoster(depths, hasVal, hasPol), only);
+    int n = (int)roster.size();
+
+    std::map<string, int> idx;
+    for (int i = 0; i < n; i++) idx[roster[i].name] = i;
+
+    std::vector<GameRec> results;
+    std::vector<double> msTotal(n, 0.0), msMax(n, 0.0);
+    std::vector<long long> moveCnt(n, 0), gamesCnt(n, 0);
+
+    std::ifstream f(inFile);
+    if (!f.is_open()) { cout << "Cannot open " << inFile << "\n"; return 1; }
+    string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        if (line.find("\"timing\"") != string::npos) {
+            string nm; double mt = 0, mv = 0, mx = 0;
+            if (jsonStr(line, "name", nm) && idx.count(nm)) {
+                int k = idx[nm];
+                jsonNum(line, "ms_total", mt); jsonNum(line, "moves", mv); jsonNum(line, "ms_max", mx);
+                msTotal[k] += mt; moveCnt[k] += (long long)mv; if (mx > msMax[k]) msMax[k] = mx;
+            }
+        } else {
+            string an, bn; double sa = 0;
+            if (jsonStr(line, "a", an) && jsonStr(line, "b", bn) &&
+                idx.count(an) && idx.count(bn) && jsonNum(line, "sa", sa)) {
+                GameRec r; r.a = idx[an]; r.b = idx[bn]; r.sa = sa; results.push_back(r);
+                gamesCnt[r.a]++; gamesCnt[r.b]++;
+            }
+        }
+    }
+    cout << "Loaded " << results.size() << " games over " << n << " agents from " << inFile << "\n";
+
+    std::vector<double> ratings;
+    fitElo(results, n, ratings);
+
+    std::vector<int> order(n);
+    for (int i = 0; i < n; i++) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](int a, int b){ return ratings[a] > ratings[b]; });
+
+    // A subset run (only non-empty) must NOT clobber the full-roster snapshot in
+    // agents/library.txt + champion*.txt. Those are refreshed only on a full run; the
+    // subset's table is preserved instead under runs/<id>/elo.tsv + the registry.
+    bool fullRun = only.empty();
+
+    std::vector<double> msMove(n, 0.0);
+    cout << "\n   Elo  ms/move   max ms  games  agent\n";
+    cout << "  ----  -------  -------  -----  -----------------------------------\n";
+    std::ofstream lib;
+    if (fullRun) lib.open("agents/library.txt");
+    char buf[256];
+    for (int k = 0; k < n; k++) {
+        int i = order[k];
+        double mm = moveCnt[i] ? msTotal[i] / moveCnt[i] : 0.0;
+        msMove[i] = mm;
+        snprintf(buf, sizeof(buf), "  %4d  %7.2f  %7.1f  %5lld  %s",
+                 (int)ratings[i], mm, msMax[i], gamesCnt[i], agentDescribe(roster[i]).c_str());
+        cout << buf << "\n";
+        if (lib.is_open()) lib << (int)ratings[i] << "\t" << mm << "\t" << agentDescribe(roster[i]) << "\n";
+        std::ostringstream js;
+        js << "{\"name\":\"" << roster[i].name << "\",\"elo\":" << (int)ratings[i]
+           << ",\"ms_per_move\":" << mm << ",\"ms_max\":" << msMax[i]
+           << ",\"games\":" << gamesCnt[i] << ",\"desc\":\"" << dsJsonEscape(agentDescribe(roster[i])) << "\"}";
+        dsAppendLine("data/agents.jsonl", js.str());
+    }
+
+    string champName; int champElo = 0;
+    if (n > 0) {
+        int champ = order[0];
+        double mm = moveCnt[champ] ? msTotal[champ] / moveCnt[champ] : 0.0;
+        champName = agentDescribe(roster[champ]);
+        champElo = (int)ratings[champ];
+        if (fullRun) writeChampion(roster[champ], champElo, mm);
+        cout << "\nChampion: " << champName << "  (Elo " << champElo << ", " << mm << " ms/move)\n";
+    }
+
+    // Archive this run (timestamped, immutable) and update the agent registry union.
+    if (!runId.empty()) {
+        string created = nowUtcString();
+        archiveRunResults(runId, inFile);
+        writeRunElo(runId, roster, order, ratings, msMove, msMax, gamesCnt);
+        appendRegistry(runId, roster, order, ratings, msMove, gamesCnt, created);
+        writeRegistryRollup();
+        appendRunIndex(runId, created, n, (long long)results.size(), champName, champElo);
+    }
+
+    if (fullRun) cout << "Wrote agents/library.txt, agents/champion*.txt, data/agents.jsonl\n";
+    else         cout << "Subset run: left agents/library.txt + champion*.txt untouched; results in runs/" << runId << "/\n";
+    if (!runId.empty()) cout << "Archived run under runs/" << runId << "/ and updated agents/registry.{jsonl,md}\n";
+    cout << "NOTE: absolute ms/move is inflated by parallel shard contention; relative order is informative.\n";
+    return 0;
 }
 
 int runTournament(const string& boardFile, int gamesPerPair, unsigned seed) {
-    PRNT = 0;
-    bool haveVal = mlLoadSlot(0, "models/lin_value.txt");
-    bool havePol = mlLoadSlot(1, "models/lin_policy.txt");
-
-    int abIdx = explorerIndexByName("AlphaBeta");
-    int grIdx = explorerIndexByName("Greedy");
-    int classic = evaluatorIndexByName("Classic");
-
-    std::vector<AgentSpec> roster;
-    roster.push_back(agentMakePolicy("UniformRandom", chooserIndexByName("UniformRandom"), 0, 0));
-    roster.push_back(agentMakePolicy("TieredRandom", chooserIndexByName("TieredRandom"), 0, 0));
-    roster.push_back(agentMakeSearch("Greedy-Classic", grIdx, classic, 1, 0));
-    roster.push_back(agentMakeSearch("AlphaBeta-Classic-d2", abIdx, classic, 2, 0));
-    if (haveVal) {
-        roster.push_back(agentMakeSearch("Greedy-Learned", grIdx, learnedValueIndex(), 1, 0));
-        roster.push_back(agentMakeSearch("AlphaBeta-Learned-d2", abIdx, learnedValueIndex(), 2, 0));
-    }
-    if (havePol)
-        roster.push_back(agentMakePolicy("LearnedPolicy", chooserIndexByName("LearnedPolicy"), 0, 1));
-
-    std::vector<double> ratings;
-    cout << "Rating " << roster.size() << " agents (" << gamesPerPair << " games/pair)...\n";
-    rateAgents(roster, ratings, boardFile, gamesPerPair, seed);
-
-    std::vector<int> order(roster.size());
-    for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
-    std::sort(order.begin(), order.end(), [&](int a, int b){ return ratings[a] > ratings[b]; });
-
-    cout << "\n  Elo   Agent\n  ----  -----------------------------------\n";
-    std::ofstream lib("agents/library.txt");
-    for (size_t k = 0; k < order.size(); k++) {
-        int i = order[k];
-        cout << "  " << (int)ratings[i] << "  " << agentDescribe(roster[i]) << "\n";
-        if (lib.is_open()) lib << (int)ratings[i] << "\t" << agentDescribe(roster[i]) << "\n";
-        dsAppendLine("data/agents.jsonl",
-                     "{\"name\":\"" + string(roster[i].name) + "\",\"elo\":" +
-                     std::to_string((int)ratings[i]) + ",\"desc\":\"" +
-                     dsJsonEscape(agentDescribe(roster[i])) + "\"}");
-    }
-    cout << "\nWrote agents/library.txt and data/agents.jsonl\n";
-    return 0;
+    std::vector<int> depths = { 2, 4, 6, 8, 10 };
+    const string out = "data/tourney.jsonl";
+    std::vector<std::string> noFilter;
+    string runId = makeRunId();
+    { std::ofstream clear(out, std::ios::trunc); }   // fresh results file
+    writeRunConfig(runId, depths, 300000ULL, gamesPerPair, seed, 1, boardFile, noFilter,
+                   "single-process runTournament");
+    tournamentPlay(boardFile, depths, gamesPerPair, seed, 0, 1, 300000ULL, out, noFilter);
+    return tournamentRate(depths, out, noFilter, runId, "");
 }
 
 // ============================================================

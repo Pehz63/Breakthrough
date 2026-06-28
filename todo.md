@@ -9,6 +9,7 @@
 - Display whose turn it is in the main board area
 - ~~Board state evaluator selector for heuristic, NN, or other BSEFs~~
 - Depth time budget for minimax (so I specify 10 seconds per move and it will stop calculating after going deep enough to do ~10 seconds)
+  - ~~Per-move **node** budget (`g_nodeBudget`) with iterative deepening shipped (used by the tournament). Wall-clock-seconds variant still TODO.~~
 - Parameter study for classic board state evaluator (for ~3, ~10, ~30 second budgets per move)
 - Hyperparameter study for machine learning board state evaluator
 - Best moves list or recommendation arrow
@@ -61,8 +62,8 @@ against the same seams.
 ## Move-Tree Explorers (search)
 - ~~Greedy 1-ply **(P1)**~~
 - ~~AlphaBeta minimax (done; wrapped as an explorer **(P1)**)~~
-- Iterative deepening
-- Time-budgeted search (ties to the "depth time budget for minimax" todo above)
+- ~~Iterative deepening (shipped: used by the node-budgeted search)~~
+- Time-budgeted search by wall-clock seconds (node-budget variant shipped; ties to the "depth time budget for minimax" todo above)
 - Quiescence search (extend on captures / near-wins)
 - MCTS / PUCT (pairs a policy head with a value head)
 
@@ -82,6 +83,9 @@ against the same seams.
 ## Elo / Tournaments
 - ~~Round-robin + Elo rating **(P1)**~~
 - ~~Checkpoints saved + manifest (JSON + Markdown) **(P1)**~~
+- ~~Parallel (process-sharded) depth-laddered round-robin with per-move timing + champion export~~
+- ~~Roster subset via `-Only` agent-name allowlist (subset runs preserve the full-roster `library.txt`)~~
+- ~~Per-run archive (`runs/<id>/` config + elo.tsv + notes.md + results, `runs/index.jsonl` log) + agent registry (`agents/registry.{jsonl,md}` union with a `spec_hash` that flags retrains/changes) + `run-note` for later annotations~~
 - Gauntlet vs fixed anchors
 - BayesElo-style rating with uncertainty
 

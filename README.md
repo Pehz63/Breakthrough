@@ -234,13 +234,43 @@ Inference is pure C++ (no runtime dependencies); heavy model training and analys
 are optional Python. Build and use the trainer:
 
 ```powershell
-.\tools\run_train.ps1 -Build selfplay-supervised --games 300 --epochs 12  # linear value model
+.\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6   # linear value model
 .\tools\run_train.ps1 imitate --out models/lin_policy.txt --games 150      # linear policy move-rater
-.\tools\run_train.ps1 tournament --games 4                                 # mixed Elo ladder
 .\tools\run_train.ps1 docs                                                 # regenerate ML.md tables
 ```
 
-Trained models, an Elo-rated agent library, and an append-only JSONL datastore are
+**Rate everything in a depth-laddered round-robin** (process-sharded across all CPUs,
+since the engine's state is global and can't share a process safely):
+
+```powershell
+.\tools\run_tournament.ps1 -Workers 12 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 500000
+```
+
+This pits every agent (the random/heuristic family, learned policy, and Greedy +
+AlphaBeta over several evaluator weight presets at each depth) against each other and
+prints an `Elo | ms/move | max ms | games | agent` table. A per-move **node budget**
+with iterative deepening keeps deep searches bounded, so depths up to 10 are tractable
+and play soundly (strength rises with depth, then plateaus once the budget binds). The
+top agent is saved to `agents/champion.txt` and `agents/champion_params.txt` (a
+`minimax_params.txt` block you can drop in to play the champion in the console/GUI).
+
+**Restrict the field and archive the run.** Add `-Only "name1,name2,..."` to run just a
+subset (e.g. the strongest few plus the learned policy); include their depths in
+`-Depths` so the names exist. A subset run leaves the full-roster `agents/library.txt` /
+`champion*.txt` snapshot untouched. Every run is archived, timestamped, under
+`runs/<id>/` (`config.json`, `elo.tsv`, `notes.md`, plus a results copy), summarized in
+`runs/index.jsonl`, and folded into the always-complete agent registry
+(`agents/registry.{jsonl,md}`). Pass `-Note "..."` to record why a run was made, and
+`train.exe run-note --run <id> --note "..."` to attach a realization later (e.g. a
+throttled CPU). See **[ML.md](ML.md)** for the full archive layout.
+
+```powershell
+.\tools\run_tournament.ps1 -Depths "4,6,8,10" -NodeBudget 1000000 `
+  -Only "AB6-Classic-chip,AB8-Classic-chip,AB10-Classic-chip,LearnedPolicy" `
+  -Note "strongest few + learned policy at 1M budget"
+```
+
+Trained models, the Elo-rated agent library, and an append-only JSONL datastore are
 written under `models/`, `agents/`, and `data/`; the optional `analysis/analyze.py`
 (DuckDB) answers questions like the highest-Elo agent, the most fairly-matched
 positions, and the average evaluation of a board state. See **[ML.md](ML.md)** for

@@ -1,0 +1,12 @@
+{
+  "run_id": "20260628T041236Z",
+  "created_utc": "2026-06-28T04:12:36Z",
+  "depths": [4, 6, 8, 10],
+  "node_budget": 1000000,
+  "games_per_pair": 10,
+  "seed": 1,
+  "workers": 12,
+  "board": "boards/board1.txt",
+  "only": ["AB4-Classic-chip", "AB6-Classic-chip", "AB8-Classic-chip", "AB10-Classic-chip", "AB6-Exp-adv", "AB8-Exp-adv", "AB10-Exp-adv", "LearnedPolicy"],
+  "note": "Restricted run: top-7 AlphaBeta (Classic-chip d4/6/8/10 + Exp-adv d6/8/10) plus LearnedPolicy, at node budget 1000000 (1M)"
+}

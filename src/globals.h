@@ -57,6 +57,14 @@ extern int g_activeParamCount;
 extern int g_downEvalWhite;
 extern int g_downEvalBlack;
 
+// Per-move search node budget. g_nodeBudget = 0 means unlimited (default; console/GUI
+// unchanged). When > 0, miniMaxWhite/Black seed g_nodeDeadline = nodes + g_nodeBudget at
+// the start of a search, and maxAlphaBeta/minAlphaBeta treat a node as a leaf once the
+// per-move node count reaches the deadline. Lets "depth D" agents stay bounded so a
+// depth-laddered tournament up to depth 10 is tractable.
+extern unsigned long long g_nodeBudget;
+extern unsigned long long g_nodeDeadline;
+
 // Console toggle: 1 = print per-move board evaluations, 0 = hide them.
 extern int SHOW_EVAL;
 
