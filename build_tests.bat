@@ -19,7 +19,8 @@ cl tests\test_main.cpp ^
    src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
    src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
-   src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\ml_train.cpp ^
+   src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp ^
+   src\transposition.cpp src\ml_train.cpp ^
    /I src /I tests /EHsc /O2 /Fo"build\\" /Fe:tests.exe
 
 if errorlevel 1 (

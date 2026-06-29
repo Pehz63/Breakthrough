@@ -63,6 +63,42 @@ static std::vector<std::string> getOnly(int argc, char** argv) {
     return v;
 }
 
+// Parse a "1000,10000,100000" node-budget list for the opt-in budget ladder.
+static std::vector<unsigned long long> getBudgets(int argc, char** argv) {
+    std::vector<unsigned long long> v;
+    const char* s = getOpt(argc, argv, "--budgets", nullptr);
+    if (!s) return v;
+    string str = s; size_t i = 0;
+    while (i <= str.size()) {
+        size_t c = str.find(',', i);
+        string tok = str.substr(i, (c == string::npos ? str.size() : c) - i);
+        if (!tok.empty()) { try { v.push_back(std::stoull(tok)); } catch (...) {} }
+        if (c == string::npos) break;
+        i = c + 1;
+    }
+    return v;
+}
+// Parse a "1,4,2,2,2" weight list into a vector (empty/absent -> empty = registry defaults).
+static std::vector<int> getIntList(int argc, char** argv, const char* key) {
+    std::vector<int> v;
+    const char* s = getOpt(argc, argv, key, nullptr);
+    if (!s) return v;
+    string str = s; size_t i = 0;
+    while (i <= str.size()) {
+        size_t c = str.find(',', i);
+        string tok = str.substr(i, (c == string::npos ? str.size() : c) - i);
+        if (!tok.empty()) { try { v.push_back(std::stoi(tok)); } catch (...) {} }
+        if (c == string::npos) break;
+        i = c + 1;
+    }
+    return v;
+}
+// Presence flag, e.g. "--ablate".
+static bool hasFlag(int argc, char** argv, const char* key) {
+    for (int i = 2; i < argc; i++) if (std::strcmp(argv[i], key) == 0) return true;
+    return false;
+}
+
 static void usage() {
     cout << "Breakthrough ML trainer\n\n";
     cout << "Usage: train.exe <command> [--key value ...]\n\n";
@@ -85,6 +121,12 @@ static void usage() {
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
     cout << "  --note \"text\"      pre-run note stored in the run config / notes (run-config)\n";
+    cout << "  --time-budget-ms n per-move wall-clock budget (0 = off; composes with --node-budget)\n";
+    cout << "  --budgets \"a,b,c\"  add a budget-ladder of unbounded-depth agents, one per node budget\n";
+    cout << "  --ablate           add a feature-ablation family (AB/TT/ordering/aspiration toggles), both evaluators\n";
+    cout << "  --forward-study    add a forward-weight study family (Experimental, forward in 0/1/2/4/8)\n";
+    cout << "  train.exe turn-swing --games 60 --chip 4 --wall 2 --col 2 --forward 2   (calibrate a turn weight)\n";
+    cout << "  train.exe speed --positions 24 --ms 150   (per-move us of learned model vs AB variants/depths)\n";
 }
 
 int main(int argc, char** argv) {
@@ -104,7 +146,9 @@ int main(int argc, char** argv) {
             getInt(argc, argv, "--ckpt-every", 3),
             getInt(argc, argv, "--gen-depth", 2),
             getDbl(argc, argv, "--gen-random", 0.2),
-            seed);
+            seed,
+            getOpt(argc, argv, "--gen-eval", "Classic"),
+            getIntList(argc, argv, "--gen-params"));
     } else if (cmd == "imitate") {
         rc = trainImitationPolicy(
             getOpt(argc, argv, "--out", "models/lin_policy.txt"),
@@ -113,7 +157,9 @@ int main(int argc, char** argv) {
             getInt(argc, argv, "--epochs", 15),
             getDbl(argc, argv, "--lr", 0.1),
             getInt(argc, argv, "--teacher-depth", 3),
-            seed);
+            seed,
+            getOpt(argc, argv, "--teacher-eval", "Classic"),
+            getIntList(argc, argv, "--teacher-params"));
     } else if (cmd == "tournament") {
         rc = runTournament(board, getInt(argc, argv, "--games", 10), seed);
     } else if (cmd == "tournament-play") {
@@ -122,11 +168,27 @@ int main(int argc, char** argv) {
                             getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
                             (unsigned long long)getDbl(argc, argv, "--node-budget", 300000),
                             getOpt(argc, argv, "--out", "data/tourney.jsonl"),
-                            getOnly(argc, argv));
+                            getOnly(argc, argv),
+                            getDbl(argc, argv, "--time-budget-ms", 0.0),
+                            getBudgets(argc, argv), hasFlag(argc, argv, "--ablate"),
+                            hasFlag(argc, argv, "--forward-study"));
     } else if (cmd == "tournament-rate") {
         rc = tournamentRate(getDepths(argc, argv), getOpt(argc, argv, "--in", "data/tourney.jsonl"),
                             getOnly(argc, argv), getOpt(argc, argv, "--run", ""),
-                            getOpt(argc, argv, "--note", ""));
+                            getOpt(argc, argv, "--note", ""),
+                            getBudgets(argc, argv), hasFlag(argc, argv, "--ablate"),
+                            hasFlag(argc, argv, "--forward-study"));
+    } else if (cmd == "speed") {
+        rc = speedBench(board, getInt(argc, argv, "--positions", 24),
+                        getDbl(argc, argv, "--ms", 150.0), seed,
+                        getInt(argc, argv, "--maxdepth", 6));
+    } else if (cmd == "turn-swing") {
+        rc = turnSwing(board, getInt(argc, argv, "--games", 60),
+                       getInt(argc, argv, "--depth", 4), seed,
+                       getInt(argc, argv, "--chip", 4),
+                       getInt(argc, argv, "--wall", 2),
+                       getInt(argc, argv, "--col", 2),
+                       getInt(argc, argv, "--forward", 0));
     } else if (cmd == "run-config") {
         const char* rid = getOpt(argc, argv, "--run", nullptr);
         string runId = rid ? string(rid) : makeRunId();

@@ -17,6 +17,10 @@
 enum ModelHead { HEAD_VALUE = 0, HEAD_POLICY = 1 };
 
 struct Model {
+    // Provenance: how this model was trained (e.g. the teacher/generator agent that
+    // produced its data). Written to the model file as `teacher=...` and surfaced in
+    // the manifest so a saved model self-documents its lineage. Empty = unset.
+    string teacher;
     virtual ~Model() {}
     virtual const char* typeName()       const = 0;   // matches g_modelTypes / file `type=`
     virtual int  head()                  const = 0;   // ModelHead

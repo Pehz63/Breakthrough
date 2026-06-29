@@ -19,6 +19,7 @@ cl gui\main_gui.cpp ^
    src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
    src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
+   src\datastore.cpp src\transposition.cpp ^
    /I src /I gui /I %RAYLIB%\include /EHsc /O2 /MD /Fo"build\\" /Fe:breakthrough_gui.exe ^
    /link /LIBPATH:%RAYLIB%\lib raylib.lib opengl32.lib gdi32.lib winmm.lib kernel32.lib user32.lib shell32.lib
 

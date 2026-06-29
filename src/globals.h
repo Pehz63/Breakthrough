@@ -43,7 +43,7 @@ extern int g_whiteAtEnd;
 extern int g_blackAtEnd;
 
 // Incremental evaluation state (maintained during a minimax search):
-//   g_evalPos          running positional score (structure + advance) of the board
+//   g_evalPos          running positional score (structure + forward) of the board
 //   g_evalIncremental  true while an incremental search is active (gates make/unmake updates)
 //   g_activeParams     the active evaluator's weight array
 //   g_activeParamCount its parameter count
@@ -64,6 +64,31 @@ extern int g_downEvalBlack;
 // depth-laddered tournament up to depth 10 is tractable.
 extern unsigned long long g_nodeBudget;
 extern unsigned long long g_nodeDeadline;
+
+// Per-move wall-clock budget in milliseconds. g_timeBudgetMs = 0 means off (default).
+// When > 0, miniMaxWhite/Black seed a steady_clock deadline at the start of a search
+// and maxAlphaBeta/minAlphaBeta treat a node as a leaf once the deadline passes
+// (checked on a node-count mask to avoid per-node clock reads). Composes with the
+// node budget: whichever cap trips first ends the search.
+extern double g_timeBudgetMs;
+
+// Per-search feature toggles, set by agentChooseMove (saved/restored around the call)
+// so an agent can enable/disable an optimization for ablation comparisons. Defaults
+// (true/0) reproduce the historical behavior for the console and GUI.
+extern bool g_useAlphaBeta;     // false = full minimax (no alpha/beta cutoffs)
+extern bool g_useTT;            // transposition table probe/store
+extern bool g_useMoveOrder;     // TT/killer/history move ordering (capture-first always on)
+extern bool g_keepPartial;      // keep a budget-cut iteration's best move instead of discarding
+extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width at the root
+
+// Per-move search telemetry, written by miniMaxWhite/Black and read by the UIs and the
+// tournament. g_lastEffDepth is fractional: completedDepth + (root moves searched in the
+// cut iteration / total legal root moves), so 5.7 = depth 5 done, 70% into depth 6.
+enum BudgetKind { BUDGET_NONE = 0, BUDGET_DEPTH = 1, BUDGET_NODE = 2, BUDGET_TIME = 3 };
+extern double g_lastEffDepth;
+extern int    g_lastBudgetKind;   // BudgetKind: which cap ended the last search
+extern unsigned long long g_lastNodes;
+extern unsigned long long g_lastLeafs;
 
 // Console toggle: 1 = print per-move board evaluations, 0 = hide them.
 extern int SHOW_EVAL;

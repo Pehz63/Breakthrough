@@ -8,7 +8,7 @@
 // The two shipped evaluators (Classic, Experimental) share the same structure:
 //   leaf score = near-win shortcut, else  turn + chipDiff*chip + positional
 // where "positional" is the wall/column structure terms plus (Experimental) an
-// "Advance" term. The positional part is the only piece that needs a full board
+// "Forward" term. The positional part is the only piece that needs a full board
 // scan, so it is the part maintained incrementally during a minimax search (see
 // g_evalPos and evalPosLocal below). nearWinCheck and the turn/chip combine are
 // cheap and shared so the full and incremental paths can never diverge.
@@ -59,31 +59,31 @@ static inline int structOwner(int x, int y, int wallW, int colW) {
     return pairContrib(x, y, x+1, y, wallW, colW) + pairContrib(x, y, x, y+1, wallW, colW);
 }
 
-// Per-square advance contribution: reward a piece for how far it has pushed
+// Per-square forward contribution: reward a piece for how far it has pushed
 // toward its goal row (White up to SIZE-1, Black down to 0).
-static inline int advContrib(int x, int y, int advW) {
+static inline int forwardContrib(int x, int y, int fwdW) {
     char c = board[x][y];
-    if (c == WHITE) return advW * y;
-    if (c == BLACK) return -advW * (SIZE-1 - y);
+    if (c == WHITE) return fwdW * y;
+    if (c == BLACK) return -fwdW * (SIZE-1 - y);
     return 0;
 }
 
-// Full positional scan (structure + advance) for the current board and weights.
+// Full positional scan (structure + forward) for the current board and weights.
 // This is the part of a leaf score that g_evalPos caches during search.
 int evalPosFull(const int* p, int paramCount) {
     int wallW = p[2], colW = p[3];
-    int advW  = (paramCount > 4) ? p[4] : 0;
-    if (wallW == 0 && colW == 0 && advW == 0) return 0;   // nothing positional to sum
+    int fwdW  = (paramCount > 4) ? p[4] : 0;
+    if (wallW == 0 && colW == 0 && fwdW == 0) return 0;   // nothing positional to sum
 
     int s = 0, x, y;
     if (wallW != 0 || colW != 0)
         for (y = 0; y < SIZE-1; y++)
             for (x = 0; x < SIZE-1; x++)
                 s += structOwner(x, y, wallW, colW);
-    if (advW != 0)
+    if (fwdW != 0)
         for (y = 0; y < SIZE; y++)
             for (x = 0; x < SIZE; x++)
-                s += advContrib(x, y, advW);
+                s += forwardContrib(x, y, fwdW);
     return s;
 }
 
@@ -100,12 +100,12 @@ int evalPosFull(const int* p, int paramCount) {
 // Positional contribution of just the cells affected by a one-step move between
 // (sx,sy) and (dx,dy): a small owner bounding box for structure (a superset of
 // the affected owners, so unaffected owners cancel in the before/after diff) plus
-// the per-square advance of the two changed squares. Called once before and once
+// the per-square forward score of the two changed squares. Called once before and once
 // after the board mutation; the difference is the move's positional delta.
 int evalPosLocal(int sx, int sy, int dx, int dy) {
     const int* p = g_activeParams;
     int wallW = p[2], colW = p[3];
-    int advW  = (g_activeParamCount > 4) ? p[4] : 0;
+    int fwdW  = (g_activeParamCount > 4) ? p[4] : 0;
 
     int s = 0;
     if (wallW != 0 || colW != 0) {
@@ -117,8 +117,8 @@ int evalPosLocal(int sx, int sy, int dx, int dy) {
             for (int x = x0; x <= x1; x++)
                 s += structOwner(x, y, wallW, colW);
     }
-    if (advW != 0)
-        s += advContrib(sx, sy, advW) + advContrib(dx, dy, advW);
+    if (fwdW != 0)
+        s += forwardContrib(sx, sy, fwdW) + forwardContrib(dx, dy, fwdW);
     return s;
 }
 
@@ -158,8 +158,8 @@ static int evalClassic(int turnColor, const int* p) {
     return g_chipDiff * p[1] + turnTerm + evalPosFull(p, 4);
 }
 
-// "Experimental": Classic plus p[4] = advance weight (rewarding piece
-// advancement). Identical to Classic when p[4] == 0. A worked template: edit this
+// "Experimental": Classic plus p[4] = forward weight (rewarding piece
+// forwardness). Identical to Classic when p[4] == 0. A worked template: edit this
 // body and its registry entry below to build your own evaluator.
 static int evalExperimental(int turnColor, const int* p) {
     int nw = nearWinCheck(turnColor);
@@ -178,7 +178,7 @@ static int evalLearnedValue(int turnColor, const int* p) {
 // Evaluator registry. Add an evaluator by appending an EvalDef here and writing its
 // function above; both the console and GUI pick it up automatically. Set
 // `incremental` true only if the evaluator follows the standard layout
-// (p[0]=turn, p[1]=chip, p[2]=wall, p[3]=column, optional p[4]=advance) so the
+// (p[0]=turn, p[1]=chip, p[2]=wall, p[3]=column, optional p[4]=forward) so the
 // shared g_evalPos accumulator scores it correctly.
 const EvalDef g_evaluators[] = {
     { "Classic", 4, {
@@ -192,7 +192,7 @@ const EvalDef g_evaluators[] = {
         { "Chip",    "chip",   4, 0, 10 },
         { "Wall",    "wall",   0, 0, 10 },
         { "Column",  "column", 0, 0, 10 },
-        { "Advance", "adv",    1, 0, 10 },
+        { "Forward", "forward", 1, 0, 10 },
       }, evalExperimental, true },
     { "LearnedValue", 1, {
         { "Model", "model", 0, 0, ML_SLOTS-1 },

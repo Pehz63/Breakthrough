@@ -47,7 +47,7 @@ static const char* kValueNames[MLV_FEATURES] = {
     "white_rank4","white_rank5","white_rank6","white_rank7",
     "black_rank0","black_rank1","black_rank2","black_rank3",
     "black_rank4","black_rank5","black_rank6","black_rank7",
-    "white_advance","black_advance",
+    "white_forward","black_forward",
     "white_phalanx","black_phalanx",
     "white_defended","black_defended",
     "white_threats","black_threats",
@@ -120,7 +120,7 @@ void mlExtractValueFeatures(int turnColor, float* f) {
 // MOVE FEATURES (move -> side-relative float vector)
 // ============================================================
 static const char* kMoveNames[MLM_FEATURES] = {
-    "capture", "adv_to", "adv_from", "is_diagonal", "to_edge",
+    "capture", "fwd_to", "fwd_from", "is_diagonal", "to_edge",
     "reaches_goal", "support_behind", "enemy_forward", "hanging"
 };
 

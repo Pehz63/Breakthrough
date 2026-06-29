@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(breakthrough
     src/main.cpp
+    src/globals.cpp
     src/board_io.cpp
     src/settings.cpp
     src/board_analysis.cpp
@@ -16,6 +17,8 @@ add_executable(breakthrough
     src/ml_features.cpp
     src/ml_model.cpp
     src/ml_eval.cpp
+    src/datastore.cpp
+    src/transposition.cpp
 )
 
 target_include_directories(breakthrough PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -25,4 +25,16 @@ int g_downEvalWhite = 0;
 int g_downEvalBlack = 0;
 unsigned long long g_nodeBudget = 0;      // 0 = unlimited
 unsigned long long g_nodeDeadline = 0;    // per-search cutoff (set by miniMax*)
+double g_timeBudgetMs = 0.0;              // 0 = off
+
+bool g_useAlphaBeta = true;
+bool g_useTT = false;
+bool g_useMoveOrder = false;
+bool g_keepPartial = false;
+int  g_aspirationWindow = 0;
+
+double g_lastEffDepth = 0.0;
+int    g_lastBudgetKind = BUDGET_NONE;
+unsigned long long g_lastNodes = 0;
+unsigned long long g_lastLeafs = 0;
 int SHOW_EVAL = -1;

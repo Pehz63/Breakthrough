@@ -104,7 +104,7 @@ TEST_CASE("evaluateBoard - near-win detection") {
 }
 
 // The Experimental evaluator (index 1) is a copy of Classic (index 0) plus an
-// "Advance" weight, so with Advance = 0 it must score identically. This guards the
+// "Forward" weight, so with Forward = 0 it must score identically. This guards the
 // "does the same thing as the current one" requirement.
 TEST_CASE("evaluateBoard - Experimental matches Classic when Advance is 0") {
     clearBoard();

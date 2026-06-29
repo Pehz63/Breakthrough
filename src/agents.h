@@ -31,6 +31,17 @@ struct AgentSpec {
     // Strength dilution (to spread an Elo ladder):
     double randomMoveProb;              // chance per move to play a random legal move
     int    depthCap;                    // cap search depth (<=0 = no cap)
+
+    // Per-agent search budgets (0 = inherit the global g_nodeBudget / g_timeBudgetMs):
+    unsigned long long nodeBudget;      // per-move node cap for this agent's search
+    double timeBudgetMs;                // per-move wall-clock cap (ms) for this agent
+
+    // Per-feature toggles (defaults reproduce the historical search; see globals.h):
+    bool   useAlphaBeta;                // false = full minimax (ablation baseline)
+    bool   useTT;                       // transposition table
+    bool   useMoveOrder;                // killer/history/TT move ordering
+    bool   keepPartial;                 // keep a budget-cut iteration's best move
+    int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
 };
 
 // Construct common agents (evalParams seeded from the evaluator's registry defaults).

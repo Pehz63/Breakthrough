@@ -31,25 +31,45 @@ struct ModelRecord {
 // ---- Regimes (return 0 on success) ----
 // Supervised value model: generate self-play games with a fixed generator, label
 // positions by outcome, fit a linear value model, checkpoint + manifest each epoch.
+// The generator/teacher evaluator is selectable (genEval = "Classic" or
+// "Experimental") with optional weight overrides (genParams; empty = registry
+// defaults). The chosen teacher spec is written into the model file (`teacher=`),
+// the manifest conditions, and data/models.jsonl so the model self-documents its lineage.
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
-                         double genRandom, unsigned seed);
+                         double genRandom, unsigned seed,
+                         const string& genEval = "Classic",
+                         const std::vector<int>& genParams = {});
 
-// Imitation policy (behavioral cloning): a teacher (AlphaBeta+Classic) plays both
-// sides; its chosen move is the positive label; fit a linear move-rater.
+// Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
+// plays both sides; its chosen move is the positive label; fit a linear move-rater.
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,
-                         int epochs, double lr, int teacherDepth, unsigned seed);
+                         int epochs, double lr, int teacherDepth, unsigned seed,
+                         const string& teacherEval = "Classic",
+                         const std::vector<int>& teacherParams = {});
 
 // Round-robin tournament of the default depth-laddered roster, single process
 // (convenience wrapper: play shard 0/1 then rate). Prints an Elo table.
 int runTournament(const string& boardFile, int gamesPerPair, unsigned seed);
+
+// Calibrate the turn-advantage weight: over self-play-sampled positions, measure the
+// 1-ply white-centric eval swing between "White to move" and "Black to move" (with the
+// turn term zeroed) and report its mean/stddev plus a recommended turn weight.
+int turnSwing(const string& boardFile, int games, int depth, unsigned seed,
+              int chipW = 4, int wallW = 2, int colW = 2, int fwdW = 0);
+
+// Precise per-move speed of the learned model vs AlphaBeta evaluator variants
+// (chip / chip+forward / chip+structures / chip+struct+forward) across a depth ladder.
+int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth = 6);
 
 // ---- Depth-laddered, process-shardable tournament ----
 // Build the deterministic roster (heuristics + SmartRandom variants + LearnedPolicy,
 // plus Greedy and AlphaBeta over a table of evaluator presets at each depth). hasValue/
 // hasPolicy gate the learned agents so play and rate build an identical roster.
 std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
-                                             bool hasValue, bool hasPolicy);
+                                             bool hasValue, bool hasPolicy,
+                                             const std::vector<unsigned long long>& budgets = {},
+                                             bool ablate = false, bool forwardStudy = false);
 
 // Play this shard's share of the full round-robin (game index % ofK == shard),
 // appending result rows {a,b,sa} and per-agent timing rows {timing,name,ms_total,
@@ -59,7 +79,10 @@ std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
 int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
                    int gamesPerPair, unsigned seed, int shard, int ofK,
                    unsigned long long nodeBudget, const string& outFile,
-                   const std::vector<std::string>& only);
+                   const std::vector<std::string>& only,
+                   double timeBudgetMs = 0.0,
+                   const std::vector<unsigned long long>& budgets = {},
+                   bool ablate = false, bool forwardStudy = false);
 
 // Read all result + timing rows from inFile, fit Elo, print the table
 // (Elo | ms/move | max ms | games | agent), append data/agents.jsonl, and (only on a
@@ -71,7 +94,9 @@ int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
 // in config.json / notes.md, written by writeRunConfig).
 int tournamentRate(const std::vector<int>& depths, const string& inFile,
                    const std::vector<std::string>& only,
-                   const string& runId, const string& note);
+                   const string& runId, const string& note,
+                   const std::vector<unsigned long long>& budgets = {},
+                   bool ablate = false, bool forwardStudy = false);
 
 // ---- Run archive (timestamped, append-only history of tournament runs) ----
 // Mint a UTC run id of the form yyyyMMddTHHmmssZ (matches the PowerShell driver).

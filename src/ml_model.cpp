@@ -37,6 +37,7 @@ bool LinearModel::save(const string& path) const {
     std::ofstream f(path);
     if (!f.is_open()) return false;
     f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
     f << "type=linear\n";
     f << "head=" << (headType == HEAD_POLICY ? "policy" : "value") << "\n";
     f << "feature_version=" << featVer << "\n";
@@ -76,6 +77,7 @@ Model* loadModel(const string& path) {
 
     if (type == "linear") {
         LinearModel* m = new LinearModel(head, featVer, n, scale);
+        if (kv.count("teacher")) m->teacher = kv["teacher"];
         if (kv.count("bias")) m->bias = std::stof(kv["bias"]);
         for (int i = 0; i < n; i++) {
             string k = "w" + std::to_string(i);

@@ -1,5 +1,6 @@
 #include "catch.hpp"
 #include "helpers.h"
+#include <cstring>
 
 // These tests call moveWhite/moveBlack with MiniMax and verify it makes the correct
 // decision in positions where there is an obvious best move.
@@ -39,6 +40,36 @@ TEST_CASE("MiniMax - Black forced win in 1") {
     for (int x = 0; x < SIZE; x++)
         if (board[x][0] == BLACK) blackAtWinRow = true;
     REQUIRE(blackAtWinRow == true);
+}
+
+TEST_CASE("MiniMax - move ordering and TT preserve the search value") {
+    // A non-terminal midgame position searched to a fixed depth must yield the same
+    // best-line value (g_downEvalWhite) whether or not the optional efficiency
+    // features (move ordering, transposition table) are enabled - they change how the
+    // tree is explored, never the exact minimax value.
+    clearBoard();
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {5,5,5,6,6};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {2,2,2,1,1};
+    for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
+    g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+
+    char snapshot[SIZE][SIZE];
+    memcpy(snapshot, board, sizeof(board));
+
+    auto runValue = [&](bool tt, bool ord) -> int {
+        memcpy(board, snapshot, sizeof(board));
+        g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+        g_useTT = tt; g_useMoveOrder = ord; g_aspirationWindow = 0;
+        int params[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
+        moveWhite(MiniMax, 4, 0, params, StandardOpener);
+        g_useTT = false; g_useMoveOrder = false;
+        return g_downEvalWhite;
+    };
+
+    int base = runValue(false, false);
+    REQUIRE(runValue(false, true) == base);   // move ordering only
+    REQUIRE(runValue(true,  false) == base);  // transposition table only
+    REQUIRE(runValue(true,  true)  == base);  // both
 }
 
 TEST_CASE("MiniMax - White captures only black piece to win") {

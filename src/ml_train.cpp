@@ -1,3 +1,12 @@
+// Windows headers MUST precede the project headers: globals.h does `#define SIZE 8`,
+// which would otherwise mangle wingdi.h's `SIZE` struct. NOMINMAX keeps std::min/max.
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+#endif
 #include "ml_train.h"
 #include "explorers.h"
 #include "choosers.h"
@@ -7,6 +16,7 @@
 #include "ml_features.h"
 #include "datastore.h"
 #include "board_io.h"
+#include "board_analysis.h"
 #include "moves.h"
 #include "ai_random.h"
 #include <vector>
@@ -21,6 +31,27 @@
 #else
 #include <sys/stat.h>
 #endif
+
+// Emit a process-level resource line (peak working set + total CPU seconds). One shared
+// process serves all agents, so this is a run-level figure, not cleanly per-agent.
+static void emitResourceLine(std::ofstream& out) {
+#ifdef _WIN32
+    double peakMB = 0.0, cpuS = 0.0;
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        peakMB = pmc.PeakWorkingSetSize / (1024.0 * 1024.0);
+    FILETIME ct, et, kt, ut;
+    if (GetProcessTimes(GetCurrentProcess(), &ct, &et, &kt, &ut)) {
+        ULARGE_INTEGER k, u;
+        k.LowPart = kt.dwLowDateTime; k.HighPart = kt.dwHighDateTime;
+        u.LowPart = ut.dwLowDateTime; u.HighPart = ut.dwHighDateTime;
+        cpuS = (double)(k.QuadPart + u.QuadPart) / 1e7;   // 100ns ticks -> seconds
+    }
+    out << "{\"resource\":1,\"peak_ws_mb\":" << peakMB << ",\"cpu_s\":" << cpuS << "}\n";
+#else
+    (void)out;
+#endif
+}
 
 // ============================================================
 // REGISTRY LOOKUPS + SMALL UTILITIES
@@ -138,18 +169,42 @@ static double quickScoreVsRandom(const string& modelPath, bool policy, const str
     return score / (2.0 * n);
 }
 
+// Build a teacher/generator AlphaBeta agent for the given evaluator (by name) and
+// depth, seeding its weights from the evaluator's registry defaults and overriding
+// with `params` where provided. Used by both learning regimes so the teacher is
+// selectable (Classic or Experimental, with any weights), not hard-wired to Classic.
+static AgentSpec makeTeacherAgent(const char* name, const string& evalName, int depth,
+                                  const std::vector<int>& params) {
+    int ev = evaluatorIndexByName(evalName.empty() ? "Classic" : evalName.c_str());
+    if (ev < 0) ev = evaluatorIndexByName("Classic");
+    AgentSpec a = agentMakeSearch(name, explorerIndexByName("AlphaBeta"), ev, depth, 0);
+    for (size_t i = 0; i < params.size() && i < (size_t)MAX_EVAL_PARAMS; i++)
+        a.evalParams[i] = params[i];
+    return a;
+}
+// One-line provenance string: the teacher's evaluator, depth, and actual weights.
+static string teacherSpec(const AgentSpec& a) {
+    int ev = (a.evaluator >= 0 && a.evaluator < g_evalCount) ? a.evaluator : 0;
+    int pc = g_evaluators[ev].paramCount;
+    string s = "AlphaBeta(" + string(g_evaluators[ev].name) + ", d" + std::to_string(a.depth) + ") params=[";
+    for (int i = 0; i < pc; i++) { s += std::to_string(a.evalParams[i]); if (i+1 < pc) s += ","; }
+    return s + "]";
+}
+
 // ============================================================
 // REGIME: SUPERVISED VALUE
 // ============================================================
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
-                         double genRandom, unsigned seed) {
+                         double genRandom, unsigned seed,
+                         const string& genEval, const std::vector<int>& genParams) {
     srand(seed);
     PRNT = 0;
 
-    AgentSpec gen = agentMakeSearch("gen", explorerIndexByName("AlphaBeta"),
-                                    evaluatorIndexByName("Classic"), genDepth, 0);
+    AgentSpec gen = makeTeacherAgent("gen", genEval, genDepth, genParams);
     gen.randomMoveProb = genRandom;       // dilution -> position diversity
+    string teach = teacherSpec(gen);
+    cout << "Teacher/generator: " << teach << "  randomMoveProb=" << genRandom << "\n";
 
     std::vector<std::vector<float> > X;
     std::vector<float> Y;
@@ -173,6 +228,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
     if (X.empty()) { cout << "No data.\n"; return 1; }
 
     LinearModel model(HEAD_VALUE, mlValueFeatureVersion(), MLV_FEATURES, 900.0f);
+    model.teacher = teach;                 // provenance, written into the model file
     for (int i = 0; i < model.n; i++) model.w[i] = randWeight();
 
     std::vector<int> idx(X.size());
@@ -200,13 +256,15 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         ModelRecord r;
         r.id = runId + "_e" + std::to_string(e);
         r.type = "linear"; r.head = "value"; r.regime = "selfplay-supervised";
-        r.conditions = "genDepth=" + std::to_string(genDepth) + ",genRandom=" + std::to_string(genRandom);
+        r.conditions = "genDepth=" + std::to_string(genDepth) + ",genRandom=" + std::to_string(genRandom)
+                     + ",teacher=" + teach;
         r.path = path; r.epoch = e; r.games = games; r.loss = avg; r.winrate = wr; r.elo = elo;
         records.push_back(r);
 
         string ml = "{\"id\":\"" + r.id + "\",\"regime\":\"" + r.regime + "\",\"epoch\":" +
                     std::to_string(e) + ",\"loss\":" + std::to_string(avg) + ",\"winrate_vs_random\":" +
-                    std::to_string(wr) + ",\"elo\":" + std::to_string(elo) + ",\"path\":\"" +
+                    std::to_string(wr) + ",\"elo\":" + std::to_string(elo) +
+                    ",\"teacher\":\"" + dsJsonEscape(teach) + "\",\"path\":\"" +
                     dsJsonEscape(path) + "\"}";
         dsAppendLine("data/models.jsonl", ml);
         dsAppendLine("data/metrics.jsonl",
@@ -262,13 +320,15 @@ static int identifyMove(const char snap[SIZE][SIZE], int side, const Move* mv, i
 }
 
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,
-                         int epochs, double lr, int teacherDepth, unsigned seed) {
+                         int epochs, double lr, int teacherDepth, unsigned seed,
+                         const string& teacherEval, const std::vector<int>& teacherParams) {
     srand(seed);
     PRNT = 0;
 
-    AgentSpec teacher = agentMakeSearch("teacher", explorerIndexByName("AlphaBeta"),
-                                        evaluatorIndexByName("Classic"), teacherDepth, 0);
+    AgentSpec teacher = makeTeacherAgent("teacher", teacherEval, teacherDepth, teacherParams);
     teacher.randomMoveProb = 0.10;       // mild noise for varied positions
+    string teach = teacherSpec(teacher);
+    cout << "Teacher: " << teach << "\n";
 
     std::vector<std::vector<float> > X;
     std::vector<float> Y;
@@ -308,6 +368,7 @@ int trainImitationPolicy(const string& outFile, const string& boardFile, int gam
     if (X.empty()) { cout << "No data.\n"; return 1; }
 
     LinearModel model(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    model.teacher = teach;                 // provenance, written into the model file
     for (int i = 0; i < model.n; i++) model.w[i] = randWeight();
 
     std::vector<int> idx(X.size());
@@ -326,7 +387,8 @@ int trainImitationPolicy(const string& outFile, const string& boardFile, int gam
     dsAppendLine("data/models.jsonl",
                  "{\"id\":\"linpol_" + std::to_string((long)time(nullptr)) +
                  "\",\"regime\":\"imitate\",\"head\":\"policy\",\"winrate_vs_random\":" +
-                 std::to_string(wr) + ",\"path\":\"" + dsJsonEscape(outFile) + "\"}");
+                 std::to_string(wr) + ",\"teacher\":\"" + dsJsonEscape(teach) +
+                 "\",\"path\":\"" + dsJsonEscape(outFile) + "\"}");
     return 0;
 }
 
@@ -335,7 +397,7 @@ int trainImitationPolicy(const string& outFile, const string& boardFile, int gam
 // ============================================================
 // Reasonable "preset" weightings for the simple evaluators, so the roster has many
 // distinct bots from a handful of presets x depths. Params are the standard layout
-// (turn, chip, wall, column, [advance]); a Learned preset carries the model slot.
+// (turn, chip, wall, column, [forward]); a Learned preset carries the model slot.
 struct EvalPreset {
     const char* tag;
     int evaluator;
@@ -348,8 +410,17 @@ static AgentSpec makePresetAgent(const string& name, int explorer, const EvalPre
     return a;
 }
 
+// Compact human label for a node budget (1000 -> "1k", 1500000 -> "1M5", etc.).
+static string budgetLabel(unsigned long long b) {
+    if (b >= 1000000ULL && b % 1000000ULL == 0) return std::to_string(b / 1000000ULL) + "M";
+    if (b >= 1000ULL    && b % 1000ULL == 0)    return std::to_string(b / 1000ULL) + "k";
+    return std::to_string(b);
+}
+
 std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
-                                             bool hasValue, bool hasPolicy) {
+                                             bool hasValue, bool hasPolicy,
+                                             const std::vector<unsigned long long>& budgets,
+                                             bool ablate, bool forwardStudy) {
     int abIdx = explorerIndexByName("AlphaBeta");
     int grIdx = explorerIndexByName("Greedy");
     int classic = evaluatorIndexByName("Classic");
@@ -361,7 +432,13 @@ std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
     presets.push_back({ "Classic-wall", classic, { 1, 4, 2, 0 } });
     presets.push_back({ "Classic-col",  classic, { 1, 4, 0, 2 } });
     presets.push_back({ "Classic-bal",  classic, { 1, 4, 2, 2 } });
-    presets.push_back({ "Exp-adv",      exper,   { 1, 4, 1, 1, 2 } });
+    // Wider chip/structure samples (chip kept well above structure, see plan Part 1d).
+    presets.push_back({ "Classic-chip2", classic, { 2, 3, 1, 1 } });
+    presets.push_back({ "Classic-chip5", classic, { 4, 5, 2, 2 } });
+    // Experimental family (Classic + forward), for evaluator parity in the ladder.
+    presets.push_back({ "Exp-fwd",  exper, { 1, 4, 1, 1, 2 } });   // structure + forward
+    presets.push_back({ "Exp-bal",  exper, { 1, 4, 2, 2, 2 } });   // balanced + forward
+    presets.push_back({ "Exp-push", exper, { 1, 4, 0, 0, 2 } });   // material + forward only
     if (hasValue && learned >= 0)
         presets.push_back({ "Learned", learned, { 0 } });   // p[0] = model slot 0
 
@@ -383,6 +460,61 @@ std::vector<AgentSpec> buildTournamentRoster(const std::vector<int>& depths,
     for (const EvalPreset& p : presets)
         for (int d : depths)
             r.push_back(makePresetAgent("AB" + std::to_string(d) + "-" + p.tag, abIdx, p, d));
+
+    // Opt-in BUDGET LADDER: a representative preset at effectively unbounded depth,
+    // one agent per node budget, so a budget sweep varies strength directly (the
+    // decoupled "budget is the knob" experiment). Built for BOTH evaluators (Classic
+    // 'bal' and Experimental 'ebal' with forward) for evaluator parity.
+    EvalPreset bal  = { "bal",  classic, { 1, 4, 2, 2 } };
+    EvalPreset ebal = { "ebal", exper,   { 1, 4, 2, 2, 2 } };
+    for (unsigned long long b : budgets) {
+        AgentSpec a = makePresetAgent("Bud" + budgetLabel(b) + "-bal", abIdx, bal, 64);
+        a.nodeBudget = b; r.push_back(a);
+        AgentSpec e = makePresetAgent("Bud" + budgetLabel(b) + "-ebal", abIdx, ebal, 64);
+        e.nodeBudget = b; r.push_back(e);
+    }
+
+    // Opt-in FEATURE ABLATION: the same bounded search with each optimization toggled,
+    // so the Elo/telemetry tables show each feature's gain in isolation. Fixed node
+    // budget + unbounded depth so the more efficient variant reaches a higher eff-depth.
+    // Built for BOTH evaluators (C = Classic, E = Experimental) for parity.
+    if (ablate) {
+        const unsigned long long ab = 100000ULL;
+        struct Flag { const char* tag; bool useAB, tt, ord; int asp; };
+        Flag flags[] = {
+            { "base",  true,  false, false, 0  },
+            { "noAB",  false, false, false, 0  },
+            { "ord",   true,  false, true,  0  },
+            { "TT",    true,  true,  false, 0  },
+            { "TTord", true,  true,  true,  0  },
+            { "asp50", true,  false, true,  50 },
+        };
+        struct EvCase { const char* pfx; const EvalPreset* p; } evs[] = { { "AblC-", &bal }, { "AblE-", &ebal } };
+        for (const EvCase& ev : evs)
+            for (const Flag& f : flags) {
+                AgentSpec a = makePresetAgent(string(ev.pfx) + f.tag, abIdx, *ev.p, 64);
+                a.nodeBudget = ab;
+                a.useAlphaBeta = f.useAB;
+                a.useTT = f.tt;
+                a.useMoveOrder = f.ord;
+                a.aspirationWindow = f.asp;
+                r.push_back(a);
+            }
+    }
+
+    // Opt-in FORWARD-WEIGHT STUDY: Experimental agents identical except for the forward
+    // weight (0 = a Classic-equivalent control), fixed budget + unbounded depth, so a
+    // tournament ranks advance weights by playing strength (the analog of turn-swing,
+    // but measured as Elo rather than eval units).
+    if (forwardStudy) {
+        const unsigned long long ab = 100000ULL;
+        for (int fwd : { 0, 1, 2, 4, 8 }) {
+            EvalPreset p = { "fwd", exper, { 1, 4, 1, 1, fwd } };
+            AgentSpec a = makePresetAgent("Fwd" + std::to_string(fwd), abIdx, p, 64);
+            a.nodeBudget = ab;
+            r.push_back(a);
+        }
+    }
 
     return r;
 }
@@ -465,23 +597,47 @@ static std::vector<AgentSpec> filterRosterByName(const std::vector<AgentSpec>& f
 }
 
 // ============================================================
-// TOURNAMENT: play one shard (with per-move timing)
+// TOURNAMENT: play one shard (with per-move timing + search telemetry)
 // ============================================================
+// Streaming per-agent search statistics. Raw accumulators (count, sum, sum-of-squares,
+// min, max) are emitted so a multi-shard rate step can merge them and recover exact
+// mean/stddev/range; budget-kind counts give the node/time/depth breakdown.
+struct AgentStats {
+    long long n = 0;
+    double sumEff = 0, sqEff = 0, minEff = 1e18, maxEff = 0;
+    double sumNodes = 0, maxNodes = 0;
+    double sumBranch = 0;
+    long long kNode = 0, kTime = 0, kDepth = 0;
+    void add(double eff, double nodes, double branch, int kind) {
+        n++; sumEff += eff; sqEff += eff*eff;
+        if (eff < minEff) minEff = eff; if (eff > maxEff) maxEff = eff;
+        sumNodes += nodes; if (nodes > maxNodes) maxNodes = nodes;
+        sumBranch += branch;
+        if (kind == BUDGET_NODE) kNode++; else if (kind == BUDGET_TIME) kTime++; else kDepth++;
+    }
+};
+
 int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
                    int gamesPerPair, unsigned seed, int shard, int ofK,
                    unsigned long long nodeBudget, const string& outFile,
-                   const std::vector<std::string>& only) {
+                   const std::vector<std::string>& only,
+                   double timeBudgetMs,
+                   const std::vector<unsigned long long>& budgets,
+                   bool ablate, bool forwardStudy) {
     PRNT = 0;
     bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
     bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
-    std::vector<AgentSpec> roster = filterRosterByName(buildTournamentRoster(depths, hasVal, hasPol), only);
+    std::vector<AgentSpec> roster = filterRosterByName(
+        buildTournamentRoster(depths, hasVal, hasPol, budgets, ablate, forwardStudy), only);
     int n = (int)roster.size();
 
     g_nodeBudget = nodeBudget;
+    g_timeBudgetMs = timeBudgetMs;
     srand(seed * 1000u + (unsigned)shard + 1u);
 
     std::vector<double> msTotal(n, 0.0), msMax(n, 0.0);
     std::vector<long long> moveCnt(n, 0);
+    std::vector<AgentStats> stat(n);
 
     std::ofstream out(outFile, std::ios::app);
     long long gIndex = 0, played = 0;
@@ -500,10 +656,16 @@ int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
                 for (int h = 0; h < 400; h++) {
                     int side = (h % 2 == 0) ? White : Black;
                     int ai = (side == White) ? wi : bi;
+                    g_lastNodes = 0;   // reset so non-minimax agents (Greedy/Policy) are skipped below
                     auto t0 = clock::now();
                     victor = agentChooseMove(roster[ai], side);
                     double dt = std::chrono::duration<double, std::milli>(clock::now() - t0).count();
                     msTotal[ai] += dt; moveCnt[ai]++; if (dt > msMax[ai]) msMax[ai] = dt;
+                    if (roster[ai].brain == BRAIN_SEARCH && g_lastNodes > 1) {
+                        double branch = (g_lastNodes > g_lastLeafs)
+                            ? (double)(g_lastNodes - 1) / (double)(g_lastNodes - g_lastLeafs) : 0.0;
+                        stat[ai].add(g_lastEffDepth, (double)g_lastNodes, branch, g_lastBudgetKind);
+                    }
                     if (gameOutcome(victor)) break;
                 }
                 int oc = gameOutcome(victor);
@@ -515,11 +677,23 @@ int tournamentPlay(const string& boardFile, const std::vector<int>& depths,
             }
 
     for (int k = 0; k < n; k++)
-        if (moveCnt[k] > 0)
+        if (moveCnt[k] > 0) {
             out << "{\"timing\":1,\"name\":\"" << roster[k].name << "\",\"ms_total\":"
-                << msTotal[k] << ",\"moves\":" << moveCnt[k] << ",\"ms_max\":" << msMax[k] << "}\n";
+                << msTotal[k] << ",\"moves\":" << moveCnt[k] << ",\"ms_max\":" << msMax[k];
+            const AgentStats& s = stat[k];
+            if (s.n > 0)
+                out << ",\"sn\":" << s.n << ",\"se\":" << s.sumEff << ",\"qe\":" << s.sqEff
+                    << ",\"mine\":" << s.minEff << ",\"maxe\":" << s.maxEff
+                    << ",\"snod\":" << s.sumNodes << ",\"mnod\":" << s.maxNodes
+                    << ",\"sbr\":" << s.sumBranch
+                    << ",\"kn\":" << s.kNode << ",\"kt\":" << s.kTime << ",\"kd\":" << s.kDepth;
+            out << "}\n";
+        }
+
+    emitResourceLine(out);
 
     g_nodeBudget = 0;
+    g_timeBudgetMs = 0.0;
     cout << "shard " << shard << "/" << ofK << ": played " << played << " games -> " << outFile << "\n";
     return 0;
 }
@@ -763,12 +937,15 @@ static void appendRunIndex(const string& runId, const string& created, int nAgen
 
 int tournamentRate(const std::vector<int>& depths, const string& inFile,
                    const std::vector<std::string>& only,
-                   const string& runId, const string& note) {
+                   const string& runId, const string& note,
+                   const std::vector<unsigned long long>& budgets,
+                   bool ablate, bool forwardStudy) {
     (void)note;
     PRNT = 0;
     bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
     bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
-    std::vector<AgentSpec> roster = filterRosterByName(buildTournamentRoster(depths, hasVal, hasPol), only);
+    std::vector<AgentSpec> roster = filterRosterByName(
+        buildTournamentRoster(depths, hasVal, hasPol, budgets, ablate, forwardStudy), only);
     int n = (int)roster.size();
 
     std::map<string, int> idx;
@@ -777,18 +954,38 @@ int tournamentRate(const std::vector<int>& depths, const string& inFile,
     std::vector<GameRec> results;
     std::vector<double> msTotal(n, 0.0), msMax(n, 0.0);
     std::vector<long long> moveCnt(n, 0), gamesCnt(n, 0);
+    std::vector<AgentStats> stat(n);   // merged search telemetry per agent
 
+    double resPeakMB = 0.0, resCpuS = 0.0;   // process resource summary (peak / total)
     std::ifstream f(inFile);
     if (!f.is_open()) { cout << "Cannot open " << inFile << "\n"; return 1; }
     string line;
     while (std::getline(f, line)) {
         if (line.empty()) continue;
-        if (line.find("\"timing\"") != string::npos) {
+        if (line.find("\"resource\"") != string::npos) {
+            double pm = 0, cs = 0;
+            jsonNum(line, "peak_ws_mb", pm); jsonNum(line, "cpu_s", cs);
+            if (pm > resPeakMB) resPeakMB = pm;   // peak across shards
+            resCpuS += cs;                        // total CPU across shards
+        } else if (line.find("\"timing\"") != string::npos) {
             string nm; double mt = 0, mv = 0, mx = 0;
             if (jsonStr(line, "name", nm) && idx.count(nm)) {
                 int k = idx[nm];
                 jsonNum(line, "ms_total", mt); jsonNum(line, "moves", mv); jsonNum(line, "ms_max", mx);
                 msTotal[k] += mt; moveCnt[k] += (long long)mv; if (mx > msMax[k]) msMax[k] = mx;
+                double sn = 0;
+                if (jsonNum(line, "sn", sn) && sn > 0) {
+                    double se=0,qe=0,mine=0,maxe=0,snod=0,mnod=0,sbr=0,kn=0,kt=0,kd=0;
+                    jsonNum(line,"se",se); jsonNum(line,"qe",qe); jsonNum(line,"mine",mine);
+                    jsonNum(line,"maxe",maxe); jsonNum(line,"snod",snod); jsonNum(line,"mnod",mnod);
+                    jsonNum(line,"sbr",sbr); jsonNum(line,"kn",kn); jsonNum(line,"kt",kt); jsonNum(line,"kd",kd);
+                    AgentStats& s = stat[k];
+                    s.n += (long long)sn; s.sumEff += se; s.sqEff += qe;
+                    if (mine < s.minEff) s.minEff = mine; if (maxe > s.maxEff) s.maxEff = maxe;
+                    s.sumNodes += snod; if (mnod > s.maxNodes) s.maxNodes = mnod;
+                    s.sumBranch += sbr;
+                    s.kNode += (long long)kn; s.kTime += (long long)kt; s.kDepth += (long long)kd;
+                }
             }
         } else {
             string an, bn; double sa = 0;
@@ -834,6 +1031,38 @@ int tournamentRate(const std::vector<int>& depths, const string& inFile,
         dsAppendLine("data/agents.jsonl", js.str());
     }
 
+    // Search telemetry: effective depth (mean +/- std [min..max]), nodes/move, branching
+    // factor, and the node/time/depth budget-kind breakdown. The decisive readout for
+    // "is depth 6 really searching as deep as depth 8/10, and does more budget help?".
+    bool anyStats = false;
+    for (int k = 0; k < n; k++) if (stat[k].n > 0) { anyStats = true; break; }
+    if (anyStats) {
+        cout << "\n  eff-depth (mean+-std [min..max])   nodes/mv   branch   budget(N/T/D%)  agent\n";
+        cout << "  --------------------------------  ---------  -------  --------------  ---------------\n";
+        for (int kk = 0; kk < n; kk++) {
+            int i = order[kk];
+            const AgentStats& s = stat[i];
+            if (s.n == 0) continue;
+            double mean = s.sumEff / s.n;
+            double var  = s.sqEff / s.n - mean*mean; if (var < 0) var = 0;
+            double sd   = std::sqrt(var);
+            double avgNodes = s.sumNodes / s.n;
+            double avgBranch = s.sumBranch / s.n;
+            double tot = (double)(s.kNode + s.kTime + s.kDepth); if (tot < 1) tot = 1;
+            char b2[320];
+            snprintf(b2, sizeof(b2),
+                "  %5.2f +- %4.2f [%4.1f..%4.1f]        %9.0f  %7.2f  %3.0f/%3.0f/%3.0f     %s",
+                mean, sd, s.minEff, s.maxEff, avgNodes, avgBranch,
+                100.0*s.kNode/tot, 100.0*s.kTime/tot, 100.0*s.kDepth/tot,
+                agentDescribe(roster[i]).c_str());
+            cout << b2 << "\n";
+        }
+    }
+
+    if (resPeakMB > 0.0 || resCpuS > 0.0)
+        cout << "\nResources: peak working set " << resPeakMB << " MB, total CPU "
+             << resCpuS << " s (process-level; one process serves all agents)\n";
+
     string champName; int champElo = 0;
     if (n > 0) {
         int champ = order[0];
@@ -858,6 +1087,169 @@ int tournamentRate(const std::vector<int>& depths, const string& inFile,
     else         cout << "Subset run: left agents/library.txt + champion*.txt untouched; results in runs/" << runId << "/\n";
     if (!runId.empty()) cout << "Archived run under runs/" << runId << "/ and updated agents/registry.{jsonl,md}\n";
     cout << "NOTE: absolute ms/move is inflated by parallel shard contention; relative order is informative.\n";
+    return 0;
+}
+
+// Best 1-ply white-centric eval for `side` to move, with the given (turn-zeroed) params.
+static double tempoBest1ply(int side, int evaluator, const int* params) {
+    Move mv[ML_MAX_MOVES];
+    int nm = generateMoves(side, mv);
+    if (nm == 0) return (side == White) ? -1e9 : 1e9;
+    if (side == White) {
+        double best = -1e18;
+        for (int i = 0; i < nm; i++) {
+            bool cap = simulateMoveWhite(mv[i].sx, mv[i].sy, mv[i].dx);
+            double s = evaluateBoard(Black, evaluator, params);
+            unsimulateMoveWhite(mv[i].sx, mv[i].sy, mv[i].dx, cap);
+            if (s > best) best = s;
+        }
+        return best;
+    }
+    double best = 1e18;
+    for (int i = 0; i < nm; i++) {
+        bool cap = simulateMoveBlack(mv[i].sx, mv[i].sy, mv[i].dx);
+        double s = evaluateBoard(White, evaluator, params);
+        unsimulateMoveBlack(mv[i].sx, mv[i].sy, mv[i].dx, cap);
+        if (s < best) best = s;
+    }
+    return best;
+}
+
+int turnSwing(const string& boardFile, int games, int depth, unsigned seed,
+              int chipW, int wallW, int colW, int fwdW) {
+    (void)depth;                          // 1-ply tempo measure (cheap, no full search)
+    PRNT = 0;
+    srand(seed);
+    // Use Experimental (== Classic when forward == 0) so the forward term can be varied.
+    int evalr = evaluatorIndexByName("Experimental");
+    if (chipW <= 0) chipW = 4;            // reference: chip weight per piece
+    int params0[MAX_EVAL_PARAMS] = { 0, chipW, wallW, colW, fwdW }; // turn term zeroed for the measure
+    cout << "Measuring with weights chip=" << chipW << " wall=" << wallW
+         << " column=" << colW << " forward=" << fwdW << "\n";
+
+    AgentSpec gen = agentMakeSearch("gen", explorerIndexByName("AlphaBeta"), evalr, 2, 0);
+    gen.randomMoveProb = 0.25;            // noise -> position diversity
+
+    std::vector<double> swings;
+    for (int g = 0; g < games; g++) {
+        reloadBoard(boardFile);
+        int victor = None;
+        for (int h = 0; h < 200 && !gameOutcome(victor); h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            if (h >= 2 && !canWinWhite() && !canWinBlack()) {
+                double sw = tempoBest1ply(White, evalr, params0);
+                double sb = tempoBest1ply(Black, evalr, params0);
+                // Skip near-win sentinels (evaluateBoard flags positions one step from
+                // the goal row): keep only ordinary positional/material swings.
+                if (std::fabs(sw) < 100000.0 && std::fabs(sb) < 100000.0)
+                    swings.push_back(sw - sb);
+            }
+            victor = agentChooseMove(gen, side);
+        }
+    }
+
+    if (swings.empty()) { cout << "turn-swing: no positions sampled.\n"; return 1; }
+    double sum = 0, sq = 0, lo = 1e18, hi = -1e18;
+    for (double v : swings) { sum += v; sq += v*v; if (v < lo) lo = v; if (v > hi) hi = v; }
+    double mean = sum / swings.size();
+    double var = sq / swings.size() - mean*mean; if (var < 0) var = 0;
+    double sd = std::sqrt(var);
+    cout << "Turn-swing over " << swings.size() << " positions (white-centric eval units):\n";
+    cout << "  mean=" << mean << "  std=" << sd << "  [" << lo << ".." << hi << "]\n";
+    cout << "  chip weight reference = " << chipW << " per piece (a tempo ~ "
+         << (mean / chipW) << " captures)\n";
+    cout << "  recommended turn weight ~ " << (int)std::lround(mean / 2.0)
+         << " (half the side-to-move swing)\n";
+    return 0;
+}
+
+// ============================================================
+// SPEED BENCHMARK: precise per-move cost of evaluator variants vs the learned model
+// ============================================================
+// Times thousands of repeated move selections on a fixed set of mid-game positions
+// (high-resolution clock), so sub-millisecond costs resolve. Reports us/move and
+// nodes/move, and maps the learned 1-ply model's time onto each AlphaBeta variant's
+// depth ladder so "what depth runs in the learned model's time" is answerable.
+struct GState { char b[SIZE][SIZE]; int wc, bc, cd, we, be; };
+static void snapState(GState& s) {
+    for (int y=0;y<SIZE;y++) for (int x=0;x<SIZE;x++) s.b[x][y]=board[x][y];
+    s.wc=g_whiteCount; s.bc=g_blackCount; s.cd=g_chipDiff; s.we=g_whiteAtEnd; s.be=g_blackAtEnd;
+}
+static void restoreState(const GState& s) {
+    for (int y=0;y<SIZE;y++) for (int x=0;x<SIZE;x++) board[x][y]=s.b[x][y];
+    g_whiteCount=s.wc; g_blackCount=s.bc; g_chipDiff=s.cd; g_whiteAtEnd=s.we; g_blackAtEnd=s.be;
+}
+
+int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth) {
+    if (maxDepth < 1) maxDepth = 6;
+    PRNT = 0; srand(seed);
+    bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
+    bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
+
+    // Build a set of distinct mid-game positions with White to move.
+    AgentSpec rnd = agentMakePolicy("rnd", chooserIndexByName("TieredRandom"), 0, 0);
+    std::vector<GState> pos;
+    for (int i = 0; i < positions; i++) {
+        reloadBoard(boardFile);
+        int K = 6 + (rand() % 12); K &= ~1;          // even -> White to move
+        int v = None;
+        for (int h = 0; h < K && !gameOutcome(v); h++)
+            v = agentChooseMove(rnd, (h % 2 == 0) ? White : Black);
+        if (gameOutcome(v)) { i--; continue; }       // skip finished games
+        GState s; snapState(s); pos.push_back(s);
+    }
+    if (pos.empty()) { cout << "speed: no positions.\n"; return 1; }
+    cout << "Speed benchmark over " << pos.size() << " mid-game positions, ~"
+         << msPerAgent << " ms/agent (us/move, lower = faster):\n\n";
+
+    int abIdx = explorerIndexByName("AlphaBeta"), grIdx = explorerIndexByName("Greedy");
+    int classic = evaluatorIndexByName("Classic"), exper = evaluatorIndexByName("Experimental");
+
+    struct Bench { string name; AgentSpec a; bool search; };
+    std::vector<Bench> bs;
+    if (hasPol) bs.push_back({ "LearnedPolicy (1-ply)",
+        agentMakePolicy("lp", chooserIndexByName("LearnedPolicy"), 0, 1), false });
+    if (hasVal) { AgentSpec g = agentMakeSearch("lv", grIdx, learnedValueIndex(), 1, 0);
+        bs.push_back({ "Greedy+LearnedValue (1-ply)", g, false }); }
+
+    struct Var { const char* tag; int ev; int p[5]; };
+    Var vars[] = {
+        { "chip            ", classic, { 0, 4, 0, 0, 0 } },
+        { "chip+forward    ", exper,   { 0, 4, 0, 0, 2 } },
+        { "chip+structures ", classic, { 0, 4, 2, 2, 0 } },
+        { "chip+struct+fwd ", exper,   { 0, 4, 2, 2, 2 } },
+    };
+    for (Var& v : vars)
+        for (int d = 1; d <= maxDepth; d++) {
+            AgentSpec a = agentMakeSearch("ab", abIdx, v.ev, d, 0);
+            for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+            bs.push_back({ string(v.tag) + "d" + std::to_string(d), a, true });
+        }
+
+    typedef std::chrono::high_resolution_clock hclock;
+    char buf[160];
+    snprintf(buf, sizeof(buf), "  %-26s %12s %14s", "agent", "us/move", "nodes/move");
+    cout << buf << "\n  " << string(54, '-') << "\n";
+    for (Bench& bch : bs) {
+        double el = 0; long reps = 0; unsigned long long nodes = 0;
+        while (el < msPerAgent) {
+            for (GState& s : pos) {
+                if (el >= msPerAgent) break;
+                restoreState(s);
+                g_lastNodes = 0;
+                auto t0 = hclock::now();
+                agentChooseMove(bch.a, White);
+                el += std::chrono::duration<double, std::milli>(hclock::now() - t0).count();
+                reps++; nodes += g_lastNodes;
+            }
+        }
+        double us = reps ? el * 1000.0 / reps : 0.0;
+        if (bch.search) snprintf(buf, sizeof(buf), "  %-26s %12.3f %14.0f",
+                                 bch.name.c_str(), us, reps ? (double)nodes / reps : 0.0);
+        else            snprintf(buf, sizeof(buf), "  %-26s %12.3f %14s",
+                                 bch.name.c_str(), us, "-");
+        cout << buf << "\n";
+    }
     return 0;
 }
 

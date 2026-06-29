@@ -8,9 +8,11 @@
   - ~~For tree search or other algorithms (like minimax), show both immediate evaluation and the AI's predicted downstream evaluation~~
 - Display whose turn it is in the main board area
 - ~~Board state evaluator selector for heuristic, NN, or other BSEFs~~
-- Depth time budget for minimax (so I specify 10 seconds per move and it will stop calculating after going deep enough to do ~10 seconds)
-  - ~~Per-move **node** budget (`g_nodeBudget`) with iterative deepening shipped (used by the tournament). Wall-clock-seconds variant still TODO.~~
-- Parameter study for classic board state evaluator (for ~3, ~10, ~30 second budgets per move)
+- ~~Depth time budget for minimax (so I specify 10 seconds per move and it will stop calculating after going deep enough to do ~10 seconds)~~
+  - ~~Per-move **node** budget (`g_nodeBudget`) with iterative deepening shipped (used by the tournament).~~
+  - ~~Wall-clock **time** budget (`g_timeBudgetMs`) shipped: `--time-budget-ms` / per-agent `timeBudgetMs`, composes with the node budget.~~
+  - ~~Budget is now decoupled from depth: per-agent `nodeBudget`/`timeBudgetMs` + an unbounded-depth budget ladder (`--budgets`), so a budget sweep varies strength. Per-move telemetry reports fractional effective depth (e.g. 5.7), which cap ended the search (node/time/depth), nodes/move, and branching-factor distribution.~~
+- ~~Parameter study for classic board state evaluator (turn weight calibrated via `train.exe turn-swing`; wider chip/structure presets + `--ablate` feature comparison shipped)~~
 - Hyperparameter study for machine learning board state evaluator
 - Best moves list or recommendation arrow
 - Interpret board analysis
@@ -38,8 +40,13 @@ against the same seams.
 ## Models (value head: board -> scalar)
 - ~~Linear value model **(P1)**~~
 - MLP value model (1-2 hidden layers, hand-written forward pass)
+- Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness)
 - NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`)
 - Transformer value model (squares as tokens) -- teacher / label generator only, not in-search
+- Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
+  instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
+  hidden terms cancel/zero out (e.g. ReLU gating so unchanged regions contribute a constant), the
+  way the heuristic `g_evalPos` already does an owner-bounding-box local delta.
 
 ## Models (policy head: board + move -> score / move-rater)
 - ~~Linear move-rater **(P1)**~~
@@ -63,9 +70,11 @@ against the same seams.
 - ~~Greedy 1-ply **(P1)**~~
 - ~~AlphaBeta minimax (done; wrapped as an explorer **(P1)**)~~
 - ~~Iterative deepening (shipped: used by the node-budgeted search)~~
-- Time-budgeted search by wall-clock seconds (node-budget variant shipped; ties to the "depth time budget for minimax" todo above)
+- ~~Time-budgeted search by wall-clock seconds (`g_timeBudgetMs`, shipped)~~
+- ~~Transposition table + move ordering (killers/history) shipped as opt-in, ablatable features (`useTT`/`useMoveOrder`); aspiration windows too (`aspirationWindow`)~~
 - Quiescence search (extend on captures / near-wins)
 - MCTS / PUCT (pairs a policy head with a value head)
+- TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too
 
 ## Training Regimes
 - ~~Supervised on self-play outcomes (value) **(P1)**~~
@@ -74,6 +83,21 @@ against the same seams.
 - Population / other-play tournaments as a data source
 - Elo-tie labeling: label a position by the interpolated Elo E* at which expected score = 0.5
 - Distillation from deep search or from a teacher model
+
+## Weight optimization / geometry mapping
+A single per-weight sweep is insufficient: each weight only matters RELATIVE to the others
+(if chip=300, then forward 1 vs 2 vs 10 is indistinguishable), interactions are non-obvious
+(forward may need to be HIGHER when structure is high, to offset the structure lost by
+advancing; forward could even be NEGATIVE to keep pieces back and advance together), and the
+optimum is a surface, not a point. Replace single sweeps with a search that maps the geometry:
+- Coordinate-free local search: a few parallel hill-climbers, each re-centering its weights
+  every few rounds on its best result (random restarts to escape local optima).
+- Evolutionary tournament: each round, mutate the top-couple-Elo agents (unique random
+  perturbations of their weights) into new agents, add them to the round-robin, drop the
+  weakest, and iterate -- so the population crawls the weight surface by selection.
+- Always normalize/anchor one weight (e.g. chip) so the others are measured relative to it.
+- Test signed weights (negative forward, etc.) and structure x forward interaction explicitly.
+- Report a response surface, not a single recommended value.
 
 ## Strength Dilution (to spread an Elo ladder)
 - ~~Random-move probability **(P1)**~~
