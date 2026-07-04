@@ -287,24 +287,29 @@ Where the tournament above is a one-off experiment runner, `rank.exe` is the
 encodes the whole agent, for example:
 
 ```
-rand.v1                                          uniform random (the Elo-0 anchor)
-smart(4).v1                                      SmartRandom over the furthest 4 pieces
-ab(d6,tt,ord,nb200k).classic(t2,c10,w3,l2).v1    alpha-beta d6 + TT + ordering + node budget,
-                                                 Classic eval with those weights
-ab(d4).classic(t1,c4,w0,l0).dil(r10).v1          10% random-move dilution
-greedy.learned(s0,7cc8a70d).v1                   learned value model (content-hashed)
+rand@1                                             uniform random (the Elo-0 anchor)
+smart(4)@1                                         SmartRandom over the furthest 4 pieces
+ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1     alpha-beta d6 + TT + ordering + node budget,
+                                                   Classic eval with those weights
+ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1         10% random-move dilution
+greedy@1.learned(s0,7cc8a70d)@1                    learned value model (content-hashed)
 ```
 
 The head names the move choice / search, then the evaluator with all its weights,
-optional `dil()` dilution, and a version you bump when engine changes alter an
-agent's behavior. IDs are canonical: `rank.exe check` rejects a non-canonical
-spelling and prints the exact form to paste.
+then optional `dil()` dilution. Every module segment carries its own `@N` **code
+version**, a constant in the codec tables in `src/ranking.cpp`: when a module's
+code changes behavior (say the alpha-beta search improves), bump that one
+constant and only the agents using that module get new identities and fresh
+history, while everyone else keeps theirs. Learned segments embed a model-file
+content hash instead, so a retrain is automatically a new identity. IDs are
+canonical: `rank.exe check` rejects a stale version or non-canonical spelling
+and prints the exact form to paste.
 
 Agents live in the hand-edited `ranking/roster.txt` (`anchor|on|off <id>` per
 line). The scheduler only plays each active pair's **missing** games, so adding
 one agent to an N-agent pool costs N pairings, and nothing is ever recomputed.
 Ratings are a deterministic **Bradley-Terry maximum-likelihood refit** of the
-full store, anchored so `rand.v1` = Elo 0 (an agent only rates negative if it is
+full store, anchored so `rand@1` = Elo 0 (an agent only rates negative if it is
 genuinely worse than uniform random), with a `+/-` standard error per agent.
 
 ```powershell
@@ -312,15 +317,22 @@ genuinely worse than uniform random), with a `+/-` standard error per agent.
 .\tools\run_rank.ps1 run --games 8       # play pending games (live progress), then rate
 .\tools\run_rank.ps1 -Workers 8 --games 8   # same, process-sharded across 8 workers
 .\rank.exe history --agent "ab(d4"       # one agent's record vs every opponent
-.\rank.exe gauntlet --id "ab(d5).classic(t1,c4,w0,l0).v1" --games 4
+.\rank.exe gauntlet --id "ab(d5)@1.classic(t1,c4,w0,l0)@1" --games 4
 ```
 
-`rate` writes `ranking/ratings.tsv` (machine-readable, a ground-truth label file
-for training) and `ranking/report.md` (ranked table with W-L-D, ms/move and
-nodes/move, a head-to-head matrix, and per-agent match history with actual vs
-expected scores). `gauntlet` rates one candidate against the frozen pool in O(N)
-games without touching the store (add `--keep` to persist them), which is the
-cheap evaluation step for weight hill-climbing over Elo vs compute.
+Each game records wall time per side, **process CPU time** per side (via
+GetProcessTimes deltas, so it stays honest under parallel contention), end piece
+counts, ply count, node totals, and effective search depth. `rate` writes
+`ranking/ratings.tsv` (machine-readable, a ground-truth label file for
+training), `ranking/games.tsv` (one row per stored game for pandas/DuckDB), and
+`ranking/report.md`: the ranked table with W-L split by color, average plies,
+end-piece margin, cpu/move, and `eff` = Elo / log2(1 + cpu_us/move) (the Elo
+bought per doubling of per-move compute), plus a **compute-efficiency table**
+marking the Elo-vs-CPU pareto frontier, a head-to-head matrix, and per-agent
+match history with actual vs expected scores. `gauntlet` rates one candidate
+against the frozen pool in O(N) games without touching the store (add `--keep`
+to persist them), which is the cheap evaluation step for weight hill-climbing
+along that pareto frontier.
 
 ### Human move format
 

@@ -51,7 +51,7 @@ static void usage() {
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
     cout << "  rank.exe history --agent \"ab(d4\"\n";
-    cout << "  rank.exe gauntlet --id \"ab(d5).classic(t1,c4,w0,l0).v1\" --games 4\n";
+    cout << "  rank.exe gauntlet --id \"ab(d5)@1.classic(t1,c4,w0,l0)@1\" --games 4\n";
     cout << "  (use tools\\run_rank.ps1 -Workers 8 to shard play across processes)\n";
 }
 

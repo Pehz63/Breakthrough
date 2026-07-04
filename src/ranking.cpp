@@ -8,6 +8,14 @@
 // utilities it shares (ensureDir, fnv1a64, json extractors, registry lookups)
 // are replicated here as statics so rank.exe never links the trainer.
 
+// Windows headers MUST precede the project headers: globals.h does `#define SIZE 8`,
+// which would otherwise mangle wingdi.h's `SIZE` struct (same pattern as ml_train.cpp).
+// windows.h supplies GetProcessTimes for the per-move CPU-time measurement.
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 #include "ranking.h"
 #include "explorers.h"
 #include "choosers.h"
@@ -130,27 +138,37 @@ static string fmtN(double v, int decimals) {
 // Hand-maintained codec tables mapping registry names to ID tokens. Weight
 // letters are explicit (not derived from first letters) so collisions are a
 // deliberate choice; rankEvalCodecComplete() asserts coverage + uniqueness.
-struct RankNameCodec { const char* regName; const char* idName; };
+//
+// MODULE VERSIONS: each row carries the current code version of that module,
+// emitted as "@V" on its ID segment. Bump a row's version whenever that
+// module's CODE changes behavior (e.g. the alpha-beta search is improved ->
+// bump the "ab" row): every agent using the module then gets a new canonical
+// ID, so a fresh history accumulates while other modules' agents keep theirs.
+// A stale "@N" in a roster fails the canonical check and prints the fix.
+struct RankNameCodec { const char* regName; const char* idName; int version; };
 static const RankNameCodec g_rkChoosers[] = {
-    { "UniformRandom", "rand"   },
-    { "TieredRandom",  "tiered" },
-    { "SmartRandom",   "smart"  },
-    { "LearnedPolicy", "policy" },
+    { "UniformRandom", "rand",   1 },
+    { "TieredRandom",  "tiered", 1 },
+    { "SmartRandom",   "smart",  1 },
+    { "LearnedPolicy", "policy", 1 },
 };
 static const int g_rkChooserCount = sizeof(g_rkChoosers) / sizeof(g_rkChoosers[0]);
 static const RankNameCodec g_rkExplorers[] = {
-    { "Greedy",    "greedy" },
-    { "AlphaBeta", "ab"     },
+    { "Greedy",    "greedy", 1 },
+    { "AlphaBeta", "ab",     1 },
 };
 static const int g_rkExplorerCount = sizeof(g_rkExplorers) / sizeof(g_rkExplorers[0]);
 
-struct RankEvalCodec { const char* regName; const char* idName; const char* letters; };
+struct RankEvalCodec { const char* regName; const char* idName; const char* letters; int version; };
 static const RankEvalCodec g_rkEvals[] = {
-    { "Classic",      "classic", "tcwl"  },   // turn, chip, wall, column
-    { "Experimental", "exp",     "tcwlf" },   // + forward
-    { "LearnedValue", "learned", ""      },   // special arg form: s<slot>,<hash8>
+    { "Classic",      "classic", "tcwl",  1 },   // turn, chip, wall, column
+    { "Experimental", "exp",     "tcwlf", 1 },   // + forward
+    { "LearnedValue", "learned", "",      1 },   // special arg form: s<slot>,<hash8>
 };
 static const int g_rkEvalCount = sizeof(g_rkEvals) / sizeof(g_rkEvals[0]);
+// The dilution wrapper is a module too (agentChooseMove's random-move coin).
+static const int RK_DIL_VERSION = 1;
+// The linpol payload carries NO version: its model-content hash is its identity.
 
 static const RankEvalCodec* evalCodecByRegName(const char* regName) {
     for (int i = 0; i < g_rkEvalCount; i++)
@@ -217,25 +235,28 @@ static string fmtPct(double prob) {
     return s;
 }
 
-string rankAgentId(const AgentSpec& a, int version) {
+string rankAgentId(const AgentSpec& a) {
     string s;
     if (a.brain == BRAIN_POLICY) {
         const char* cname = (a.chooser >= 0 && a.chooser < g_chooserCount)
                           ? g_choosers[a.chooser].name : "";
-        string idn = "?";
+        const RankNameCodec* row = nullptr;
         for (int i = 0; i < g_rkChooserCount; i++)
-            if (string(g_rkChoosers[i].regName) == cname) idn = g_rkChoosers[i].idName;
+            if (string(g_rkChoosers[i].regName) == cname) row = &g_rkChoosers[i];
+        string idn = row ? row->idName : "?";
         if (idn == "smart") s = "smart(" + std::to_string(a.chooserParam) + ")";
         else                s = idn;
+        s += "@" + std::to_string(row ? row->version : 1);
         if (idn == "policy")
             s += ".linpol(s" + std::to_string(a.modelSlot) + ","
                + rankFileHash8(slotFile(a.modelSlot)) + ")";
     } else {
         const char* ename = (a.explorer >= 0 && a.explorer < g_explorerCount)
                           ? g_explorers[a.explorer].name : "";
-        string idn = "?";
+        const RankNameCodec* row = nullptr;
         for (int i = 0; i < g_rkExplorerCount; i++)
-            if (string(g_rkExplorers[i].regName) == ename) idn = g_rkExplorers[i].idName;
+            if (string(g_rkExplorers[i].regName) == ename) row = &g_rkExplorers[i];
+        string idn = row ? row->idName : "?";
         if (idn == "ab") {
             s = "ab(d" + std::to_string(a.depth);
             if (!a.useAlphaBeta)        s += ",noab";
@@ -250,26 +271,27 @@ string rankAgentId(const AgentSpec& a, int version) {
         } else {
             s = idn;   // greedy (always 1-ply, no arguments)
         }
+        s += "@" + std::to_string(row ? row->version : 1);
         const char* vname = (a.evaluator >= 0 && a.evaluator < g_evalCount)
                           ? g_evaluators[a.evaluator].name : "";
-        const RankEvalCodec* row = evalCodecByRegName(vname);
-        if (row && row->letters[0] == '\0') {
+        const RankEvalCodec* ev = evalCodecByRegName(vname);
+        if (ev && ev->letters[0] == '\0') {
             s += ".learned(s" + std::to_string(a.modelSlot) + ","
-               + rankFileHash8(slotFile(a.modelSlot)) + ")";
-        } else if (row) {
-            s += "." + string(row->idName) + "(";
+               + rankFileHash8(slotFile(a.modelSlot)) + ")@" + std::to_string(ev->version);
+        } else if (ev) {
+            s += "." + string(ev->idName) + "(";
             int pc = g_evaluators[a.evaluator].paramCount;
             for (int i = 0; i < pc; i++) {
                 if (i) s += ",";
-                s += string(1, row->letters[i]) + std::to_string(a.evalParams[i]);
+                s += string(1, ev->letters[i]) + std::to_string(a.evalParams[i]);
             }
-            s += ")";
+            s += ")@" + std::to_string(ev->version);
         } else {
             s += ".?";
         }
     }
-    if (a.randomMoveProb > 0.0) s += ".dil(r" + fmtPct(a.randomMoveProb) + ")";
-    s += ".v" + std::to_string(version);
+    if (a.randomMoveProb > 0.0)
+        s += ".dil(r" + fmtPct(a.randomMoveProb) + ")@" + std::to_string(RK_DIL_VERSION);
     return s;
 }
 
@@ -295,17 +317,33 @@ static bool splitSegs(const string& id, std::vector<string>& segs, string& err) 
     return true;
 }
 
-// Split "word(a,b,c)" into word + args. A bare word gives hasParens=false.
-static bool splitTok(const string& tok, string& word, std::vector<string>& args,
-                     bool& hasParens, string& err) {
-    word.clear(); args.clear(); hasParens = false;
+static bool lenientInt(const string& s, bool allowNeg, long long& v);
+
+// Split "word(a,b,c)@V" into word + args + module version. A bare word gives
+// hasParens=false; a missing "@V" gives atV=-1 (each call site decides whether
+// the segment requires or forbids one).
+static bool splitTok(const string& tok0, string& word, std::vector<string>& args,
+                     bool& hasParens, long long& atV, string& err) {
+    word.clear(); args.clear(); hasParens = false; atV = -1;
+    string tok = tok0;
+    size_t at = tok.rfind('@');
+    if (at != string::npos) {
+        long long n;
+        if (!lenientInt(tok.substr(at + 1), false, n) || n < 1) {
+            err = "bad module version after '@' in '" + tok0 + "' (expected @1, @2, ...)";
+            return false;
+        }
+        atV = n;
+        tok = tok.substr(0, at);
+        if (tok.empty()) { err = "segment is only a version in '" + tok0 + "'"; return false; }
+    }
     size_t p = tok.find('(');
     if (p == string::npos) {
-        if (tok.find(')') != string::npos) { err = "stray ')' in '" + tok + "'"; return false; }
+        if (tok.find(')') != string::npos) { err = "stray ')' in '" + tok0 + "'"; return false; }
         word = tok;
         return !word.empty();
     }
-    if (tok[tok.size()-1] != ')') { err = "expected ')' at the end of '" + tok + "'"; return false; }
+    if (tok[tok.size()-1] != ')') { err = "expected ')' at the end of '" + tok0 + "'"; return false; }
     word = tok.substr(0, p);
     if (word.empty()) { err = "segment starts with '(' in '" + tok + "'"; return false; }
     hasParens = true;
@@ -386,27 +424,17 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     err.clear();
     std::vector<string> segs;
     if (!splitSegs(id, segs, err)) return false;
-    if (segs.size() < 2) {
-        err = "id needs at least a head and a version, e.g. rand.v1";
-        return false;
-    }
 
-    // Version: the mandatory last segment, v<N>.
-    {
-        const string& v = segs[segs.size()-1];
-        long long n;
-        if (v.size() < 2 || v[0] != 'v' || !lenientInt(v.substr(1), false, n) || n < 1) {
-            err = "id must end with a version segment like v1 (got '" + v + "')";
-            return false;
-        }
-        out.version = (int)n;
-    }
-
-    // Head segment.
+    // Head segment (must carry its module version, e.g. rand@1 or ab(d6)@1).
     string headWord, word;
     std::vector<string> args;
     bool parens;
-    if (!splitTok(segs[0], headWord, args, parens, err)) return false;
+    long long atV;
+    if (!splitTok(segs[0], headWord, args, parens, atV, err)) return false;
+    if (atV < 1) {
+        err = "head segment '" + segs[0] + "' needs a module version like @1";
+        return false;
+    }
 
     bool isSearch = false;
     int explorerIdx = -1, chooserIdx = -1, chooserParam = 0, depth = 1;
@@ -499,22 +527,25 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         }
     } else {
         err = "unknown head '" + headWord
-            + "' (expected rand, tiered, smart(N), policy, greedy, or ab(...))";
+            + "' (expected rand, tiered, smart(N), policy, greedy, or ab(...), each with @<version>)";
         return false;
     }
 
-    // Middle segments: evaluator / model / dilution, each at most once.
+    // Remaining segments: evaluator / model / dilution, each at most once.
+    // Evaluator and dil segments carry their module version; linpol does not
+    // (its model-content hash is its identity).
     int evalIdx = -1, modelSlot = -1;
     std::vector<long long> weights;
     bool haveEval = false, haveModel = false, haveDil = false;
     string modelHash;
     double dilProb = 0.0;
 
-    for (size_t si = 1; si + 1 < segs.size(); si++) {
-        if (!splitTok(segs[si], word, args, parens, err)) return false;
+    for (size_t si = 1; si < segs.size(); si++) {
+        if (!splitTok(segs[si], word, args, parens, atV, err)) return false;
         if (word == "dil") {
             if (haveDil) { err = "duplicate dil() segment"; return false; }
-            if (!parens) { err = "dil needs an argument, e.g. dil(r5)"; return false; }
+            if (atV < 1) { err = "dil segment '" + segs[si] + "' needs a module version like @1"; return false; }
+            if (!parens) { err = "dil needs an argument, e.g. dil(r5)@1"; return false; }
             if (args.size() > 1) {
                 err = "extra dil() argument '" + args[1]
                     + "' is reserved for future dilution kinds and not supported yet";
@@ -530,11 +561,13 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         } else if (word == "learned" || word == "linpol") {
             if (word == "learned") {
                 if (haveEval) { err = "more than one evaluator segment"; return false; }
+                if (atV < 1) { err = "learned segment '" + segs[si] + "' needs a module version like @1"; return false; }
                 haveEval = true;
                 evalIdx = learnedValueIndex();
                 if (evalIdx < 0) { err = "evaluator 'LearnedValue' not in registry"; return false; }
             } else {
                 if (haveModel) { err = "duplicate linpol() segment"; return false; }
+                if (atV >= 1) { err = "linpol carries no module version (its model hash is its identity)"; return false; }
                 haveModel = true;
             }
             long long sl;
@@ -553,6 +586,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             const RankEvalCodec* row = evalCodecByIdName(word);
             if (!row || row->letters[0] == '\0') { err = "unknown segment '" + segs[si] + "'"; return false; }
             if (haveEval) { err = "more than one evaluator segment"; return false; }
+            if (atV < 1) { err = "evaluator segment '" + segs[si] + "' needs a module version like @1"; return false; }
             haveEval = true;
             evalIdx = evaluatorIndexByName(row->regName);
             if (evalIdx < 0) { err = string("evaluator '") + row->regName + "' not in registry"; return false; }
@@ -631,8 +665,9 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     }
     a.randomMoveProb = dilProb;
 
-    // Canonical form check: re-emitting must reproduce the input exactly.
-    string canon = rankAgentId(a, out.version);
+    // Canonical form check: re-emitting must reproduce the input exactly. This
+    // also rejects stale module versions, pointing at the current form.
+    string canon = rankAgentId(a);
     if (canon != id) {
         err = "id is not canonical; use: " + canon;
         return false;
@@ -714,8 +749,12 @@ string rankFormatMatchRow(const RankMatchRow& m) {
     o << "{\"t\":\"g\",\"w\":\"" << dsJsonEscape(m.w) << "\",\"b\":\"" << dsJsonEscape(m.b)
       << "\",\"r\":\"" << m.r << "\",\"plies\":" << m.plies
       << ",\"wms\":" << fmtN(m.wms, 3) << ",\"bms\":" << fmtN(m.bms, 3)
+      << ",\"wcpu\":" << fmtN(m.wcpu, 3) << ",\"bcpu\":" << fmtN(m.bcpu, 3)
       << ",\"wmv\":" << m.wmv << ",\"bmv\":" << m.bmv
       << ",\"wnod\":" << (long long)m.wnod << ",\"bnod\":" << (long long)m.bnod
+      << ",\"wpc\":" << m.wpc << ",\"bpc\":" << m.bpc
+      << ",\"wed\":" << fmtN(m.wed, 2) << ",\"bed\":" << fmtN(m.bed, 2)
+      << ",\"wsn\":" << m.wsn << ",\"bsn\":" << m.bsn
       << ",\"seed\":" << m.seed << ",\"board\":\"" << dsJsonEscape(m.board)
       << "\",\"par\":" << m.par << ",\"ts\":\"" << m.ts << "\",\"run\":\"" << m.run << "\"}";
     return o.str();
@@ -739,6 +778,15 @@ bool rankParseMatchRow(const string& line, RankMatchRow& out) {
     out.bnod = jsonNum(line, "bnod", d) ? d : 0.0;
     out.seed = jsonNum(line, "seed", d) ? (unsigned)d : 0u;
     out.par  = jsonNum(line, "par", d)  ? (int)d : 1;
+    // Later-generation fields: -1 = not recorded (rows from before the field).
+    out.wpc  = jsonNum(line, "wpc", d)  ? (int)d : -1;
+    out.bpc  = jsonNum(line, "bpc", d)  ? (int)d : -1;
+    out.wcpu = jsonNum(line, "wcpu", d) ? d : -1.0;
+    out.bcpu = jsonNum(line, "bcpu", d) ? d : -1.0;
+    out.wed  = jsonNum(line, "wed", d)  ? d : 0.0;
+    out.bed  = jsonNum(line, "bed", d)  ? d : 0.0;
+    out.wsn  = jsonNum(line, "wsn", d)  ? (int)d : 0;
+    out.bsn  = jsonNum(line, "bsn", d)  ? (int)d : 0;
     out.board.clear(); out.ts.clear(); out.run.clear();
     jsonStr(line, "board", out.board);
     jsonStr(line, "ts", out.ts);
@@ -984,6 +1032,23 @@ double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double
 // ============================================================
 // GAME RUNNER
 // ============================================================
+// Total CPU time (kernel + user, ms) this process has consumed, or -1 when the
+// platform cannot say. Unlike wall time, deltas of this are contention-safe:
+// a move that waited for a core does not get charged for the wait, so cpu/move
+// stays honest in -Workers runs.
+static double processCpuMs() {
+#ifdef _WIN32
+    FILETIME ct, et, kt, ut;
+    if (!GetProcessTimes(GetCurrentProcess(), &ct, &et, &kt, &ut)) return -1.0;
+    ULARGE_INTEGER k, u;
+    k.LowPart = kt.dwLowDateTime; k.HighPart = kt.dwHighDateTime;
+    u.LowPart = ut.dwLowDateTime; u.HighPart = ut.dwHighDateTime;
+    return (double)(k.QuadPart + u.QuadPart) / 1e4;   // 100ns ticks -> ms
+#else
+    return -1.0;
+#endif
+}
+
 // Play one game on the live engine board, filling a match row (timing, node
 // totals, result). The caller has already srand()'d with the game's seed.
 static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& board,
@@ -995,23 +1060,34 @@ static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& 
     m.wms = m.bms = 0.0;
     m.wmv = m.bmv = 0;
     m.wnod = m.bnod = 0.0;
+    m.wed = m.bed = 0.0;
+    m.wsn = m.bsn = 0;
+    bool haveCpu = (processCpuMs() >= 0.0);
+    m.wcpu = m.bcpu = haveCpu ? 0.0 : -1.0;
     int victor = None;
     for (int h = 0; h < 400; h++) {
         int side = (h % 2 == 0) ? White : Black;
         const RankAgent& ag = (side == White) ? wa : ba;
         g_lastNodes = 0;   // so non-search brains contribute 0 nodes
+        double c0 = haveCpu ? processCpuMs() : 0.0;
         clk::time_point t0 = clk::now();
         victor = agentChooseMove(ag.spec, side);
         double dt = std::chrono::duration<double, std::milli>(clk::now() - t0).count();
+        if (haveCpu) {
+            double dc = processCpuMs() - c0;
+            if (side == White) m.wcpu += dc; else m.bcpu += dc;
+        }
         if (side == White) { m.wms += dt; m.wmv++; }
         else               { m.bms += dt; m.bmv++; }
         if (ag.spec.brain == BRAIN_SEARCH && g_lastNodes > 1) {
-            if (side == White) m.wnod += (double)g_lastNodes;
-            else               m.bnod += (double)g_lastNodes;
+            if (side == White) { m.wnod += (double)g_lastNodes; m.wed += g_lastEffDepth; m.wsn++; }
+            else               { m.bnod += (double)g_lastNodes; m.bed += g_lastEffDepth; m.bsn++; }
         }
         m.plies = h + 1;
         if (gameOutcome(victor)) break;
     }
+    m.wpc = g_whiteCount;
+    m.bpc = g_blackCount;
     int oc = gameOutcome(victor);
     m.r = (oc == 1) ? 'W' : (oc == 2) ? 'B' : 'D';
     return true;
@@ -1107,7 +1183,7 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
         ln << pre << "[" << std::setw(4) << (p + 1) << "/" << pending.size() << "] "
            << gm.w << " (W) vs " << gm.b << " : " << m.r << " in " << m.plies
            << " plies, " << fmtN((m.wms + m.bms) / 1000.0, 1) << "s | pair "
-           << t.w << "-" << t.l << "-" << t.d;
+           << t.w << "-" << t.l;
         cout << ln.str() << "\n" << flush;
     }
     cout << pre << "played " << played << " game(s) -> " << outFile << "\n";
@@ -1119,29 +1195,45 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
 // ============================================================
 struct AgentAgg {
     long long games = 0, wins = 0, losses = 0, draws = 0;
+    long long winsW = 0, lossesW = 0, winsB = 0, lossesB = 0;   // split by color played
     double msSerial = 0.0, msAll = 0.0, nodSerial = 0.0, nodAll = 0.0;
     long long mvSerial = 0, mvAll = 0;
+    long long pliesSum = 0;                    // over all games (avg game length)
+    double marginSum = 0.0; long long marginGames = 0;   // own minus opp end pieces
+    double cpuSum = 0.0; long long cpuMv = 0;  // CPU ms + moves, rows that recorded cpu
+    double edSum = 0.0; long long edCnt = 0;   // effective search depth accumulators
 };
 struct PairAgg {   // from the lexicographically smaller id's perspective
     double n = 0.0, s = 0.0;
     long long w = 0, l = 0, d = 0;
+    long long pliesSum = 0;
 };
 
 static void aggregateAgents(const std::vector<RankMatchRow>& rows, std::map<string, AgentAgg>& agg) {
     for (size_t k = 0; k < rows.size(); k++) {
         const RankMatchRow& m = rows[k];
         for (int side = 0; side < 2; side++) {
-            const string& id = (side == 0) ? m.w : m.b;
+            bool meWhite = (side == 0);
+            const string& id = meWhite ? m.w : m.b;
             AgentAgg& a = agg[id];
             a.games++;
             if (m.r == 'D') a.draws++;
-            else if ((m.r == 'W') == (side == 0)) a.wins++;
-            else a.losses++;
-            double ms  = (side == 0) ? m.wms : m.bms;
-            double nod = (side == 0) ? m.wnod : m.bnod;
-            long long mv = (side == 0) ? m.wmv : m.bmv;
+            else if ((m.r == 'W') == meWhite) { a.wins++; if (meWhite) a.winsW++; else a.winsB++; }
+            else { a.losses++; if (meWhite) a.lossesW++; else a.lossesB++; }
+            a.pliesSum += m.plies;
+            double ms  = meWhite ? m.wms : m.bms;
+            double nod = meWhite ? m.wnod : m.bnod;
+            long long mv = meWhite ? m.wmv : m.bmv;
             a.msAll += ms; a.nodAll += nod; a.mvAll += mv;
             if (m.par <= 1) { a.msSerial += ms; a.nodSerial += nod; a.mvSerial += mv; }
+            if (m.wpc >= 0 && m.bpc >= 0) {
+                a.marginSum += meWhite ? (m.wpc - m.bpc) : (m.bpc - m.wpc);
+                a.marginGames++;
+            }
+            double cpu = meWhite ? m.wcpu : m.bcpu;
+            if (cpu >= 0.0) { a.cpuSum += cpu; a.cpuMv += mv; }
+            int sn = meWhite ? m.wsn : m.bsn;
+            if (sn > 0) { a.edSum += meWhite ? m.wed : m.bed; a.edCnt += sn; }
         }
     }
 }
@@ -1157,10 +1249,24 @@ static void aggregatePairs(const std::vector<RankMatchRow>& rows,
         PairAgg& e = pa[key];
         e.n += 1.0;
         e.s += sSmall;
+        e.pliesSum += m.plies;
         if (m.r == 'D') e.d++;
         else if (sSmall == 1.0) e.w++;
         else e.l++;
     }
+}
+
+// Per-agent derived compute figures. cpuMsMove is -1 when no row recorded CPU.
+static double cpuMsPerMove(const AgentAgg& a) {
+    return (a.cpuMv > 0) ? a.cpuSum / a.cpuMv : -1.0;
+}
+// Elo per compute doubling: how much rating each doubling of per-move CPU buys.
+// Undefined (returns "-") below 1us/move or at/below the anchor's strength.
+static string effCol(double elo, double cpuMsMove) {
+    if (cpuMsMove < 0.0) return "-";
+    double us = cpuMsMove * 1000.0;
+    if (us < 1.0 || elo <= 0.0) return "-";
+    return fmtN(elo / std::log2(1.0 + us), 0);
 }
 
 static const AgentAgg& aggFor(const std::map<string, AgentAgg>& m, const string& id) {
@@ -1188,25 +1294,29 @@ static double eloExpectedScore(double ra, double rb) {
     return 1.0 / (1.0 + std::pow(10.0, (rb - ra) / 400.0));
 }
 
+static long long roundElo(double e) {
+    return (long long)(e < 0 ? e - 0.5 : e + 0.5);
+}
+
 static void printConsoleTable(const RankFit& fit, const std::vector<int>& order,
                               const std::map<string, AgentAgg>& agg,
                               const std::map<string, string>& state) {
-    cout << "\n rank    Elo    +/-   games        W-L-D     ms/move    nodes/mv  id\n";
+    cout << "\n rank    Elo    +/-   games   W-L asW   W-L asB   cpu ms/mv    eff  id\n";
     for (size_t r = 0; r < order.size(); r++) {
         int i = order[r];
         const string& id = fit.ids[i];
         const AgentAgg& a = aggFor(agg, id);
         string st = stateFor(state, id);
         string pm = (st == "anchor") ? "anchor" : fmtN(fit.se[i], 0);
-        string wld = std::to_string(a.wins) + "-" + std::to_string(a.losses)
-                   + "-" + std::to_string(a.draws);
-        string ms, nod;
-        timingCols(a, ms, nod);
+        string wlW = std::to_string(a.winsW) + "-" + std::to_string(a.lossesW);
+        string wlB = std::to_string(a.winsB) + "-" + std::to_string(a.lossesB);
+        double cpu = cpuMsPerMove(a);
         std::ostringstream ln;
-        ln << std::setw(5) << (r + 1) << "  " << std::setw(5) << (long long)(fit.elo[i] < 0 ? fit.elo[i] - 0.5 : fit.elo[i] + 0.5)
+        ln << std::setw(5) << (r + 1) << "  " << std::setw(5) << roundElo(fit.elo[i])
            << "  " << std::setw(6) << pm << "  " << std::setw(6) << a.games
-           << "  " << std::setw(11) << wld << "  " << std::setw(10) << ms
-           << "  " << std::setw(10) << nod << "  " << id;
+           << "  " << std::setw(8) << wlW << "  " << std::setw(8) << wlB
+           << "  " << std::setw(10) << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
+           << "  " << std::setw(5) << effCol(fit.elo[i], cpu) << "  " << id;
         if (fit.provisional[i]) ln << " ~provisional";
         if (st == "off") ln << " (off)";
         if (st == "gone") ln << " (retired)";
@@ -1215,16 +1325,13 @@ static void printConsoleTable(const RankFit& fit, const std::vector<int>& order,
     cout << "\n";
 }
 
-static long long roundElo(double e) {
-    return (long long)(e < 0 ? e - 0.5 : e + 0.5);
-}
-
 static void writeRatingsTsv(const RankFit& fit, const std::vector<int>& order,
                             const std::map<string, AgentAgg>& agg,
                             const std::map<string, string>& state) {
     std::ofstream f("ranking/ratings.tsv");
     if (!f.is_open()) return;
-    f << "rank\telo\tpm\tgames\twins\tlosses\tdraws\tms_move\tnodes_move\tactive\tid\n";
+    f << "rank\telo\tpm\tgames\twins\tlosses\twhite_wins\twhite_losses\tblack_wins\tblack_losses\t"
+      << "avg_plies\tms_move\tcpu_ms_move\tnodes_move\teff\tactive\tid\n";
     for (size_t r = 0; r < order.size(); r++) {
         int i = order[r];
         const string& id = fit.ids[i];
@@ -1233,10 +1340,36 @@ static void writeRatingsTsv(const RankFit& fit, const std::vector<int>& order,
         long long mv = serial ? a.mvSerial : a.mvAll;
         double ms  = (mv > 0) ? (serial ? a.msSerial : a.msAll) / mv : 0.0;
         double nod = (mv > 0) ? (serial ? a.nodSerial : a.nodAll) / mv : 0.0;
+        double cpu = cpuMsPerMove(a);
         f << (r + 1) << "\t" << roundElo(fit.elo[i]) << "\t" << roundElo(fit.se[i]) << "\t"
-          << a.games << "\t" << a.wins << "\t" << a.losses << "\t" << a.draws << "\t"
-          << fmtN(ms, 3) << "\t" << fmtN(nod, 0) << "\t" << stateFor(state, id) << "\t"
-          << id << "\n";
+          << a.games << "\t" << a.wins << "\t" << a.losses << "\t"
+          << a.winsW << "\t" << a.lossesW << "\t" << a.winsB << "\t" << a.lossesB << "\t"
+          << fmtN(a.games > 0 ? (double)a.pliesSum / a.games : 0.0, 1) << "\t"
+          << fmtN(ms, 3) << "\t" << (cpu >= 0.0 ? fmtN(cpu, 3) : string("")) << "\t"
+          << fmtN(nod, 0) << "\t" << effCol(fit.elo[i], cpu) << "\t"
+          << stateFor(state, id) << "\t" << id << "\n";
+    }
+}
+
+// Machine-readable per-game export (one row per stored game, empty = unrecorded).
+static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
+    std::ofstream f("ranking/games.tsv");
+    if (!f.is_open()) return;
+    f << "ts\trun\tboard\twhite\tblack\tresult\tplies\twpc\tbpc\twms\tbms\twcpu\tbcpu\t"
+      << "wmv\tbmv\twnod\tbnod\twed\tbed\twsn\tbsn\tseed\tpar\n";
+    for (size_t k = 0; k < rows.size(); k++) {
+        const RankMatchRow& m = rows[k];
+        f << m.ts << "\t" << m.run << "\t" << m.board << "\t" << m.w << "\t" << m.b << "\t"
+          << m.r << "\t" << m.plies << "\t"
+          << (m.wpc >= 0 ? std::to_string(m.wpc) : string("")) << "\t"
+          << (m.bpc >= 0 ? std::to_string(m.bpc) : string("")) << "\t"
+          << fmtN(m.wms, 3) << "\t" << fmtN(m.bms, 3) << "\t"
+          << (m.wcpu >= 0.0 ? fmtN(m.wcpu, 3) : string("")) << "\t"
+          << (m.bcpu >= 0.0 ? fmtN(m.bcpu, 3) : string("")) << "\t"
+          << m.wmv << "\t" << m.bmv << "\t"
+          << (long long)m.wnod << "\t" << (long long)m.bnod << "\t"
+          << fmtN(m.wed, 2) << "\t" << fmtN(m.bed, 2) << "\t" << m.wsn << "\t" << m.bsn << "\t"
+          << m.seed << "\t" << m.par << "\n";
     }
 }
 
@@ -1259,7 +1392,10 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << nRows << " games from `" << storeFile << "`, " << fit.ids.size() << " rated agents.\n\n";
     f << "Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, "
       << "anchor `" << anchorId << "` = Elo 0. `+/-` is one standard error. "
-      << "`*` marks timing that includes parallel-run (contended) moves. "
+      << "`cpu/mv` is per-move process CPU time in ms (contention-safe, valid in parallel runs). "
+      << "`eff` = Elo / log2(1 + cpu_us/move), the Elo bought per doubling of per-move compute. "
+      << "`wall/mv` prefers serial games; `*` marks a fallback that includes contended parallel moves. "
+      << "`margin` is the average end-of-game piece lead (own minus opponent). "
       << "`~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000).\n\n";
     if (!fit.anchored)
         f << "**WARNING:** the anchor has no games yet, so all ratings are centered on mean 1000 instead of anchor = 0.\n\n";
@@ -1282,15 +1418,24 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
             string pm = (st == "anchor") ? "(anchor)" : fmtN(fit.se[i], 0);
             string ms, nod;
             timingCols(a, ms, nod);
+            double cpu = cpuMsPerMove(a);
             f << "| " << rank << " | " << roundElo(fit.elo[i]) << (fit.provisional[i] ? "~" : "")
-              << " | " << pm << " | " << a.games << " | " << a.wins << "-" << a.losses << "-"
-              << a.draws << " | " << ms << " | " << nod << " | " << st << " | `" << id << "` |\n";
+              << " | " << pm << " | " << a.games
+              << " | " << a.winsW << "-" << a.lossesW << " | " << a.winsB << "-" << a.lossesB
+              << " | " << fmtN(a.games > 0 ? (double)a.pliesSum / a.games : 0.0, 0)
+              << " | " << (a.marginGames > 0 ? fmtN(a.marginSum / a.marginGames, 1) : string("-"))
+              << " | " << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
+              << " | " << effCol(fit.elo[i], cpu)
+              << " | " << ms << " | " << nod << " | " << st << " | `" << id << "` |\n";
+        }
+        static void head(std::ofstream& f) {
+            f << "| rank | Elo | +/- | games | W-L as White | W-L as Black | avg plies | margin | cpu/mv | eff | wall/mv | nodes/mv | state | id |\n";
+            f << "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
         }
     };
 
     f << "## Ratings (active agents)\n\n";
-    f << "| rank | Elo | +/- | games | W-L-D | ms/move | nodes/move | state | id |\n";
-    f << "|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
+    Row::head(f);
     for (size_t r = 0; r < activeOrder.size(); r++)
         Row::emit(f, r + 1, activeOrder[r], fit, agg, state);
     f << "\n";
@@ -1299,11 +1444,53 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         f << "## Inactive and retired agents\n\n";
         f << "Still rated from their stored games (history is never lost). `off` = in the roster "
           << "but benched, `gone` = no longer in the roster.\n\n";
-        f << "| rank | Elo | +/- | games | W-L-D | ms/move | nodes/move | state | id |\n";
-        f << "|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
+        Row::head(f);
         for (size_t r = 0; r < otherOrder.size(); r++)
             Row::emit(f, r + 1, otherOrder[r], fit, agg, state);
         f << "\n";
+    }
+
+    // Compute efficiency: the Elo-vs-CPU surface a weight/feature hill climber
+    // optimizes over. Frontier = no other agent is both stronger and cheaper.
+    {
+        std::vector<int> byCpu;
+        for (size_t r = 0; r < activeOrder.size(); r++)
+            if (cpuMsPerMove(aggFor(agg, fit.ids[activeOrder[r]])) >= 0.0)
+                byCpu.push_back(activeOrder[r]);
+        struct ByCpuAsc {
+            const RankFit* fit;
+            const std::map<string, AgentAgg>* agg;
+            bool operator()(int x, int y) const {
+                double cx = cpuMsPerMove(aggFor(*agg, fit->ids[x]));
+                double cy = cpuMsPerMove(aggFor(*agg, fit->ids[y]));
+                if (cx != cy) return cx < cy;
+                return fit->elo[x] > fit->elo[y];
+            }
+        };
+        ByCpuAsc cmp; cmp.fit = &fit; cmp.agg = &agg;
+        std::sort(byCpu.begin(), byCpu.end(), cmp);
+        if (!byCpu.empty()) {
+            f << "## Compute efficiency (active agents)\n\n";
+            f << "Sorted by per-move CPU time. `*` = on the Elo-vs-compute pareto frontier "
+              << "(no other active agent is both stronger and cheaper).\n\n";
+            f << "| cpu ms/mv | Elo | eff | frontier | id |\n";
+            f << "|---:|---:|---:|:---:|---|\n";
+            for (size_t x = 0; x < byCpu.size(); x++) {
+                int i = byCpu[x];
+                double ci = cpuMsPerMove(aggFor(agg, fit.ids[i]));
+                bool frontier = true;
+                for (size_t y = 0; y < byCpu.size(); y++) {
+                    if (y == x) continue;
+                    int j = byCpu[y];
+                    double cj = cpuMsPerMove(aggFor(agg, fit.ids[j]));
+                    if (cj <= ci && fit.elo[j] > fit.elo[i]) { frontier = false; break; }
+                }
+                f << "| " << fmtN(ci, 3) << " | " << roundElo(fit.elo[i]) << " | "
+                  << effCol(fit.elo[i], ci) << " | " << (frontier ? "*" : "") << " | `"
+                  << fit.ids[i] << "` |\n";
+            }
+            f << "\n";
+        }
     }
 
     // Roster agents with no games yet.
@@ -1380,8 +1567,8 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         ByElo cmp; cmp.eloBy = &eloBy;
         std::sort(opps.begin(), opps.end(), cmp);
 
-        f << "| opponent | games | W-L-D | score | expected | delta |\n";
-        f << "|---|---:|---:|---:|---:|---:|\n";
+        f << "| opponent | games | W-L | score | expected | delta | avg plies |\n";
+        f << "|---|---:|---:|---:|---:|---:|---:|\n";
         for (size_t k = 0; k < opps.size(); k++) {
             const OppRow& o = opps[k];
             double sc = o.pa.s / o.pa.n;
@@ -1395,8 +1582,9 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                 expS = fmtN(exp, 2);
                 dltS = (dlt >= 0 ? "+" : "") + fmtN(dlt, 2);
             }
-            f << "| `" << o.opp << "` | " << (long long)o.pa.n << " | " << w << "-" << l << "-"
-              << o.pa.d << " | " << fmtN(sc, 2) << " | " << expS << " | " << dltS << " |\n";
+            f << "| `" << o.opp << "` | " << (long long)o.pa.n << " | " << w << "-" << l
+              << " | " << fmtN(sc, 2) << " | " << expS << " | " << dltS
+              << " | " << fmtN((double)o.pa.pliesSum / o.pa.n, 0) << " |\n";
         }
         f << "\n";
     }
@@ -1449,6 +1637,7 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
 
     ensureDir("ranking");
     writeRatingsTsv(fit, order, agg, state);
+    writeGamesTsv(rows);
     writeReportMd(fit, order, agg, state, roster, pairs, board, storeFile, rows.size(), anchorId);
     printConsoleTable(fit, order, agg, state);
     int unrated = 0;
@@ -1459,7 +1648,7 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
     }
     if (unrated)
         cout << unrated << " roster agent(s) have no games yet (see report.md); run 'rank.exe play'\n";
-    cout << "wrote ranking/ratings.tsv and ranking/report.md\n";
+    cout << "wrote ranking/ratings.tsv, ranking/games.tsv and ranking/report.md\n";
     return 0;
 }
 
@@ -1510,7 +1699,7 @@ int rankHistory(const string& storeFile, const string& agentQuery, int lastN, co
     if (mine.empty()) { cout << "No games for " << id << "\n"; return 1; }
 
     cout << "\nHistory for " << id << " (" << mine.size() << " games, board " << board << ")\n\n";
-    cout << " games        W-L-D   score  opponent\n";
+    cout << " games      W-L   score  opponent\n";
     std::vector<std::pair<string, Opp> > ov(opp.begin(), opp.end());
     struct ByGames {
         bool operator()(const std::pair<string, Opp>& a, const std::pair<string, Opp>& b) const {
@@ -1521,9 +1710,9 @@ int rankHistory(const string& storeFile, const string& agentQuery, int lastN, co
     std::sort(ov.begin(), ov.end(), ByGames());
     for (size_t i = 0; i < ov.size(); i++) {
         const Opp& o = ov[i].second;
-        string wld = std::to_string(o.w) + "-" + std::to_string(o.l) + "-" + std::to_string(o.d);
+        string wl = std::to_string(o.w) + "-" + std::to_string(o.l);
         std::ostringstream ln;
-        ln << std::setw(6) << o.g << "  " << std::setw(11) << wld << "  "
+        ln << std::setw(6) << o.g << "  " << std::setw(7) << wl << "  "
            << std::setw(6) << fmtN(o.s / o.g, 2) << "  " << ov[i].first;
         cout << ln.str() << "\n";
     }
@@ -1566,8 +1755,9 @@ static bool readRatingsTsv(const string& path, std::map<string, double>& elo) {
             if (t == string::npos) break;
             i = t + 1;
         }
-        if (cols.size() < 11) continue;
-        try { elo[cols[10]] = std::stod(cols[1]); } catch (...) {}
+        if (cols.size() < 3) continue;
+        // The id is always the LAST column, so added metric columns never break this.
+        try { elo[cols[cols.size()-1]] = std::stod(cols[1]); } catch (...) {}
     }
     return !elo.empty();
 }
@@ -1679,7 +1869,7 @@ int rankGauntlet(const string& rosterFile, const string& storeFile, const string
             std::ostringstream ln;
             ln << "[" << std::setw(4) << played << "/" << total << "] "
                << m.w << " (W) vs " << m.b << " : " << m.r << " in " << m.plies
-               << " plies | vs this opponent " << w << "-" << l << "-" << d;
+               << " plies | vs this opponent " << w << "-" << l;
             cout << ln.str() << "\n" << flush;
         }
     }

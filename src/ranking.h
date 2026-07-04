@@ -16,45 +16,54 @@
 // maximum-likelihood refit over the full store, anchored so the roster's anchor
 // agent (UniformRandom by convention) sits at Elo 0.
 //
-// ID grammar (canonical form; parse rejects anything else and prints the fix):
-//   id      := head { "." segment } "." version
-//   head    := "rand" | "tiered" | "smart(" N ")" | "policy"      (policy brains)
-//            | "greedy" | "ab(" "d" N { "," flag } ")"            (search brains)
+// ID grammar (canonical form; parse rejects anything else and prints the fix).
+// Each MODULE carries its own "@<version>", sourced from the codec tables in
+// ranking.cpp, so changing one module's code re-identifies only the agents that
+// use it (bump the version constant once, and every affected agent gets a new
+// identity and a fresh rating; old games stay as history). A stale "@N" in the
+// roster fails the canonical check and prints the current form to paste.
+//   id      := head [ "." evalseg ] [ "." dilseg ]                (policy: head [ "." linpol ] [ "." dilseg ])
+//   head    := ( "rand" | "tiered" | "smart(" N ")" | "policy"    (policy brains)
+//              | "greedy" | "ab(" "d" N { "," flag } ")" ) "@" V  (search brains)
 //   flag    := "noab" | "tt" | "ord" | "part" | "asp" N
 //            | "nb" budget | "tb" N "ms" | "cap" N                (budget: 200k, 2m, raw)
-//   segment := evalseg | dilseg
-//   evalseg := "classic(" weights ")" | "exp(" weights ")"        (search brains only)
-//            | "learned(s" slot "," hash8 ")"                     (LearnedValue)
-//            | "linpol(s" slot "," hash8 ")"                      (policy-head model)
+//   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
+//              | "learned(s" slot "," hash8 ")" ) "@" V           (LearnedValue; hash = weights)
+//   linpol  := "linpol(s" slot "," hash8 ")"                      (policy-head model payload, no "@V")
 //   weights := letter int { "," letter int }                      (ALL params, registry order)
-//   dilseg  := "dil(r" pct ")"                                    (r5 = 5% random moves)
-//   version := "v" N                                              (required, always last)
-// Examples: rand.v1  smart(4).v1  ab(d6).classic(t2,c10,w3,l2).v1
-//           ab(d8,tt,ord,nb200k).exp(t2,c10,w3,l2,f2).dil(r5).v1
-//           greedy.learned(s0,ab12cd34).v1  policy.linpol(s1,9f3e21aa).v1
+//   dilseg  := "dil(r" pct ")" "@" V                              (r5 = 5% random moves)
+//   V       := positive int, the module's code version (from the codec tables)
+// Examples: rand@1  smart(4)@1  ab(d6)@1.classic(t2,c10,w3,l2)@1
+//           ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@1.dil(r5)@1
+//           greedy@1.learned(s0,ab12cd34)@1  policy@1.linpol(s1,9f3e21aa)
 
 // A roster entry: the engine-playable spec plus the identity fields that
-// AgentSpec cannot hold (the full ID string and the user-bumped version).
+// AgentSpec cannot hold (the full canonical ID string, which embeds each
+// module's code version, and the roster toggles).
 struct RankAgent {
     AgentSpec   spec;
     std::string id;       // canonical ID, the permanent match-history key
-    int         version;  // the trailing v<N> (identity salt, bumped by the user)
     bool        active;   // "on" or "anchor" in the roster
     bool        anchor;   // the Elo-0 reference agent (exactly one per roster)
 };
 
-// One played game in ranking/matches.jsonl.
+// One played game in ranking/matches.jsonl. Fields added after the first
+// release default to -1 = "not recorded" so old rows keep parsing.
 struct RankMatchRow {
-    std::string w, b;          // white / black agent IDs
-    char        r;             // 'W', 'B', or 'D' (400-half-move cap)
-    int         plies;         // half-moves played
-    double      wms, bms;      // per-side total move time (ms)
-    int         wmv, bmv;      // per-side move counts
-    double      wnod, bnod;    // per-side total search nodes (0 for policy brains)
-    unsigned    seed;          // the srand seed this game was played with
-    std::string board;         // starting board file
-    int         par;           // shard count the game ran under (1 = clean timing)
-    std::string ts, run;       // UTC write time, UTC run stamp
+    std::string w, b;              // white / black agent IDs
+    char        r;                 // 'W', 'B', or 'D' (400-half-move cap; D never occurs in practice)
+    int         plies;             // half-moves played
+    double      wms, bms;          // per-side total move wall time (ms)
+    int         wmv, bmv;          // per-side move counts
+    double      wnod, bnod;        // per-side total search nodes (0 for policy brains)
+    unsigned    seed;              // the srand seed this game was played with
+    std::string board;             // starting board file
+    int         par;               // shard count the game ran under (1 = clean wall timing)
+    std::string ts, run;           // UTC write time, UTC run stamp
+    int         wpc = -1, bpc = -1;        // end-of-game piece counts
+    double      wcpu = -1.0, bcpu = -1.0;  // per-side process CPU time (ms), contention-safe
+    double      wed = 0.0, bed = 0.0;      // per-side summed effective search depth
+    int         wsn = 0, bsn = 0;          // per-side count of search moves behind wed/bed
 };
 
 // One not-yet-played game (colors already assigned, seed derived).
@@ -73,10 +82,11 @@ struct RankFit {
 };
 
 // ---- ID codec ----
-// Emit the canonical ID for a spec + version (hashes the model file for learned
-// agents). Parse validates, builds the spec, and enforces canonical form; on
-// failure returns false with a human-readable reason in err.
-std::string rankAgentId(const AgentSpec& spec, int version);
+// Emit the canonical ID for a spec: module versions come from the codec tables
+// in ranking.cpp, and learned agents hash their model file. Parse validates,
+// builds the spec, and enforces canonical form (which also rejects stale
+// module versions); on failure returns false with a human-readable reason.
+std::string rankAgentId(const AgentSpec& spec);
 bool rankAgentFromId(const std::string& id, RankAgent& out, std::string& err);
 // First 8 lowercase hex chars of FNV-1a-64 over a file's bytes ("" if unreadable).
 std::string rankFileHash8(const std::string& path);

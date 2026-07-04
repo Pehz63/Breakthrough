@@ -4,22 +4,61 @@
 #   on      active: scheduled for games and shown in the main table
 #   off     benched: keeps its identity and stored games, plays no new ones
 # Edit freely. Match history in ranking/matches.jsonl is keyed by the exact id,
-# so toggling on/off never loses games. Changing an agent's behavior means a new
-# id (bump the trailing version), not an edit to its history.
+# so toggling on/off never loses games. Every module segment carries its code
+# version as @N (head, evaluator, dil). When a module's CODE changes behavior,
+# bump that module's version constant in src/ranking.cpp: affected agents then
+# need their roster ids updated (check prints the fix) and start fresh history.
 # Run "rank.exe check" to validate this file and print model hashes.
 #
-# The seed set varies one axis at a time so per-feature Elo deltas are readable.
+# The set varies one axis at a time so per-feature Elo deltas are readable.
 
-anchor  rand.v1                                        # UniformRandom, pinned at Elo 0
-on      tiered.v1                                      # win/capture/normal tiers
-on      smart(4).v1                                    # tiered, furthest-4 pieces
-on      greedy.classic(t1,c4,w0,l0).v1                 # 1-ply, registry-default weights
-on      greedy.classic(t2,c10,w3,l2).v1                # 1-ply, structure-weighted
-on      ab(d2).classic(t1,c4,w0,l0).v1                 # shallow search
-on      ab(d4).classic(t1,c4,w0,l0).v1                 # medium search
-on      ab(d6,nb200k).classic(t1,c4,w0,l0).v1          # deep, node-budgeted
-on      ab(d6,tt,ord,nb200k).classic(t1,c4,w0,l0).v1   # + TT and ordering (feature delta vs previous)
-on      ab(d4).exp(t1,c4,w0,l0,f2).v1                  # forward-weight delta vs ab(d4)
-on      ab(d3).classic(t1,c4,w0,l0).v1                 # depth-ladder gap filler
-on      ab(d4).classic(t1,c4,w0,l0).dil(r10).v1        # 10% dilution delta vs ab(d4)
-# off   policy.linpol(s1,00000000).v1                  # enable after training; rank.exe check prints the real hash
+anchor  rand@1                                                  # UniformRandom, pinned at Elo 0
+
+# Random family: tier ladder around the furthest-N knob.
+on      tiered@1                                                # win/capture/normal tiers
+on      smart(2)@1                                              # tiered, furthest-2 pieces
+on      smart(4)@1
+on      smart(6)@1
+
+# 1-ply greedy: default vs structure-weighted Classic.
+on      greedy@1.classic(t1,c4,w0,l0)@1
+on      greedy@1.classic(t2,c10,w3,l2)@1
+
+# Depth ladder, Classic default weights.
+on      ab(d1)@1.classic(t1,c4,w0,l0)@1
+on      ab(d2)@1.classic(t1,c4,w0,l0)@1
+on      ab(d3)@1.classic(t1,c4,w0,l0)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1
+on      ab(d5)@1.classic(t1,c4,w0,l0)@1
+
+# Eval-weight variants at d4: structure-weighted Classic + the forward ladder.
+on      ab(d4)@1.classic(t2,c10,w3,l2)@1
+on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@1
+on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@1
+on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@1
+on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@1
+
+# Dilution ladder on ab(d4): Elo vs random-move probability.
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r5)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r25)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r50)@1
+
+# Pruning ladder at a fixed 200k-node budget, depth cap 6: from no pruning at
+# all up to TT + ordering + tight aspiration windows. Same compute, more
+# cutoffs = more effective depth = Elo (watch the eff-depth telemetry).
+on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@1             # full minimax floor
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1                  # plain alpha-beta
+on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@1               # + transposition table
+on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@1              # + move ordering only
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1           # + both
+on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@1     # + tight aspiration window
+on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@1
+on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@1
+
+# Dilution ladder on the budgeted d6 (mirrors the d4 ladder at higher strength).
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r25)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r50)@1
+
+# off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
