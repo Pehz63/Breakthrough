@@ -129,6 +129,30 @@ Attach a realization to a past run without re-running it:
 .\train.exe run-note --run 20260628T041236Z --note "CPU was throttled, ignore ms/move"
 ```
 
+## Persistent Elo ranking (`rank.exe`)
+
+The tournament above is a **one-off experiment runner**: it recomputes Elo from a
+transient results file, and its roster lives in C++ code. The separate `rank.exe`
+system (see [src/ranking.h](src/ranking.h) and the README's "Agent Elo ranking"
+section) is the **permanent incremental ladder** and the ground-truth strength
+label for training:
+
+- Agents are canonical ID strings (`ab(d6,tt,ord,nb200k).classic(t2,c10,w3,l2).v1`)
+  listed in the hand-edited `ranking/roster.txt` with `anchor|on|off` toggles.
+- Every game is appended forever to `ranking/matches.jsonl`, keyed by those IDs, so
+  the scheduler only plays missing pairings. Adding one agent costs O(N) games and
+  nothing is recomputed.
+- Ratings are a deterministic anchored Bradley-Terry refit (UniformRandom = Elo 0)
+  with per-agent standard errors, written to `ranking/ratings.tsv` (machine-readable
+  labels) and `ranking/report.md` (head-to-head matrix, per-agent match history).
+- `rank.exe gauntlet --id <candidate>` rates one new agent against the frozen pool
+  in O(N) games, the cheap evaluation step for a weight hill-climber over Elo vs
+  compute time.
+
+Learned agents embed a model-file content hash in their ID, so a retrain is a new
+identity and old match rows stay truthful. Use the tournament for parameter sweeps
+and ablation studies; use the ranker for the durable leaderboard and ML labels.
+
 ## Model file format (text, like `minimax_params.txt`)
 
 ```

@@ -35,7 +35,7 @@ cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Buil
 Build and run the unit and integration test suite (uses [Catch2 v2](https://github.com/catchorg/Catch2/tree/v2.x), header already included in `tests/`):
 
 ```powershell
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp tests\test_ml.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\transposition.cpp src\ml_train.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
+cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp tests\test_ml.cpp tests\test_ranking.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\transposition.cpp src\ml_train.cpp src\ranking.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
 ```
 
 The preferred one-liner is `.\tools\run_tests.ps1 -Build` (see [CLAUDE.md](CLAUDE.md)).
@@ -74,7 +74,9 @@ for visually and how to capture matchup-gated controls.
 | `datastore.cpp` | Append-only JSONL writer + canonical position keys (also the TT hash) |
 | `transposition.cpp` | Opt-in transposition table (`g_useTT`): probe/store + best-move ordering hint |
 | `ml_train.cpp` | Training regimes, Elo, tournaments, checkpoints, manifest + doc export |
+| `ranking.cpp` | Persistent agent Elo ranking: canonical agent-ID codec, roster file, append-only match store, incremental scheduler, anchored Bradley-Terry fit, reports |
 | `tools/train_main.cpp` | `train.exe` CLI front end |
+| `tools/rank_main.cpp` | `rank.exe` CLI front end |
 | `gui/main_gui.cpp` | raylib + raygui front end: window, per-frame state machine, board rendering, click-to-move, widget panel, move log |
 | `gui/raygui.h` | Vendored single-header raygui widget library |
 | `gui/shell.html` | Emscripten HTML shell for the web build |
@@ -276,6 +278,49 @@ written under `models/`, `agents/`, and `data/`; the optional `analysis/analyze.
 (DuckDB) answers questions like the highest-Elo agent, the most fairly-matched
 positions, and the average evaluation of a board state. See **[ML.md](ML.md)** for
 the full design and the "how to add more" workflow.
+
+### Agent Elo ranking (rank.exe)
+
+Where the tournament above is a one-off experiment runner, `rank.exe` is the
+**permanent, incremental ladder**: every game is stored forever in
+`ranking/matches.jsonl`, keyed by a canonical human-readable **agent ID** that
+encodes the whole agent, for example:
+
+```
+rand.v1                                          uniform random (the Elo-0 anchor)
+smart(4).v1                                      SmartRandom over the furthest 4 pieces
+ab(d6,tt,ord,nb200k).classic(t2,c10,w3,l2).v1    alpha-beta d6 + TT + ordering + node budget,
+                                                 Classic eval with those weights
+ab(d4).classic(t1,c4,w0,l0).dil(r10).v1          10% random-move dilution
+greedy.learned(s0,7cc8a70d).v1                   learned value model (content-hashed)
+```
+
+The head names the move choice / search, then the evaluator with all its weights,
+optional `dil()` dilution, and a version you bump when engine changes alter an
+agent's behavior. IDs are canonical: `rank.exe check` rejects a non-canonical
+spelling and prints the exact form to paste.
+
+Agents live in the hand-edited `ranking/roster.txt` (`anchor|on|off <id>` per
+line). The scheduler only plays each active pair's **missing** games, so adding
+one agent to an N-agent pool costs N pairings, and nothing is ever recomputed.
+Ratings are a deterministic **Bradley-Terry maximum-likelihood refit** of the
+full store, anchored so `rand.v1` = Elo 0 (an agent only rates negative if it is
+genuinely worse than uniform random), with a `+/-` standard error per agent.
+
+```powershell
+.\tools\run_rank.ps1 -Build check        # validate the roster, print model hashes
+.\tools\run_rank.ps1 run --games 8       # play pending games (live progress), then rate
+.\tools\run_rank.ps1 -Workers 8 --games 8   # same, process-sharded across 8 workers
+.\rank.exe history --agent "ab(d4"       # one agent's record vs every opponent
+.\rank.exe gauntlet --id "ab(d5).classic(t1,c4,w0,l0).v1" --games 4
+```
+
+`rate` writes `ranking/ratings.tsv` (machine-readable, a ground-truth label file
+for training) and `ranking/report.md` (ranked table with W-L-D, ms/move and
+nodes/move, a head-to-head matrix, and per-agent match history with actual vs
+expected scores). `gauntlet` rates one candidate against the frozen pool in O(N)
+games without touching the store (add `--keep` to persist them), which is the
+cheap evaluation step for weight hill-climbing over Elo vs compute.
 
 ### Human move format
 

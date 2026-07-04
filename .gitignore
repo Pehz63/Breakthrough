@@ -82,3 +82,9 @@ agents/library.txt
 # notes.md, runs/index.jsonl, agents/registry.*), but ignore each run's bulky
 # results.jsonl copy (it mirrors the already-ignored data/tourney.jsonl).
 runs/**/results.jsonl
+
+# Agent Elo ranking (rank.exe). Unlike data/*.jsonl, ranking/matches.jsonl is
+# deliberately KEPT: it is the never-recomputed match history the ratings are
+# built from. Only per-shard temp files and the gauntlet scratch are ignored.
+ranking/matches.jsonl.*
+ranking/gauntlet.jsonl

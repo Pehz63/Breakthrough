@@ -14,6 +14,9 @@
   - ~~Budget is now decoupled from depth: per-agent `nodeBudget`/`timeBudgetMs` + an unbounded-depth budget ladder (`--budgets`), so a budget sweep varies strength. Per-move telemetry reports fractional effective depth (e.g. 5.7), which cap ended the search (node/time/depth), nodes/move, and branching-factor distribution.~~
 - ~~Parameter study for classic board state evaluator (turn weight calibrated via `train.exe turn-swing`; wider chip/structure presets + `--ablate` feature comparison shipped)~~
 - Hyperparameter study for machine learning board state evaluator
+- Add variety in openers and moves
+  - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
+  - Random move chooser out of top candidates (especially ties), maybe add random noise to the board state evaluator that's usually dominated by the actual evaluation so the whole tree is sorted randomly
 - Best moves list or recommendation arrow
 - Interpret board analysis
   - Which piece is most impactful to the current evaluation?
@@ -110,8 +113,9 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Parallel (process-sharded) depth-laddered round-robin with per-move timing + champion export~~
 - ~~Roster subset via `-Only` agent-name allowlist (subset runs preserve the full-roster `library.txt`)~~
 - ~~Per-run archive (`runs/<id>/` config + elo.tsv + notes.md + results, `runs/index.jsonl` log) + agent registry (`agents/registry.{jsonl,md}` union with a `spec_hash` that flags retrains/changes) + `run-note` for later annotations~~
-- Gauntlet vs fixed anchors
-- BayesElo-style rating with uncertainty
+- ~~Gauntlet vs fixed anchors~~ (rank.exe gauntlet: one candidate vs the frozen pool, O(N) games)
+- ~~BayesElo-style rating with uncertainty~~ (rank.exe: anchored Bradley-Terry MLE + Fisher standard errors)
+- ~~Persistent incremental Elo ranking (rank.exe: canonical agent IDs, editable roster with on/off toggles, append-only match store, anchored BT refit, per-agent head-to-head reports)~~
 
 ## Agent Composition + Play
 - ~~AgentSpec (explorer + evaluator + chooser + model slots + dilution) **(P1)**~~

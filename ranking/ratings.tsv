@@ -1,0 +1,13 @@
+rank	elo	pm	games	wins	losses	draws	ms_move	nodes_move	active	id
+1	1108	91	44	42	2	0	4.884	118445	on	ab(d6,nb200k).classic(t1,c4,w0,l0).v1
+2	1011	79	44	39	5	0	5.844	30829	on	ab(d6,tt,ord,nb200k).classic(t1,c4,w0,l0).v1
+3	878	71	44	34	10	0	0.151	3538	on	ab(d4).classic(t1,c4,w0,l0).v1
+4	830	70	44	32	12	0	0.047	1086	on	ab(d3).classic(t1,c4,w0,l0).v1
+5	830	70	44	32	12	0	0.151	3568	on	ab(d4).classic(t1,c4,w0,l0).dil(r10).v1
+6	622	68	44	23	21	0	0.487	10033	on	ab(d4).exp(t1,c4,w0,l0,f2).v1
+7	555	68	44	20	24	0	0.005	116	on	ab(d2).classic(t1,c4,w0,l0).v1
+8	372	70	44	12	32	0	0.003	0	on	greedy.classic(t2,c10,w3,l2).v1
+9	372	70	44	12	32	0	0.000	0	off	tiered.v1
+10	324	72	44	10	34	0	0.000	0	on	smart(4).v1
+11	273	74	44	8	36	0	0.001	0	on	greedy.classic(t1,c4,w0,l0).v1
+12	0	112	44	0	44	0	0.000	0	anchor	rand.v1

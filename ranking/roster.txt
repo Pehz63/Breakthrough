@@ -1,0 +1,25 @@
+# Agent ranking roster (read by rank.exe; see README "Agent Elo ranking").
+# One agent per line: <state> <id>, where state is anchor, on, or off.
+#   anchor  the Elo-0 reference agent (exactly one line; implicitly active)
+#   on      active: scheduled for games and shown in the main table
+#   off     benched: keeps its identity and stored games, plays no new ones
+# Edit freely. Match history in ranking/matches.jsonl is keyed by the exact id,
+# so toggling on/off never loses games. Changing an agent's behavior means a new
+# id (bump the trailing version), not an edit to its history.
+# Run "rank.exe check" to validate this file and print model hashes.
+#
+# The seed set varies one axis at a time so per-feature Elo deltas are readable.
+
+anchor  rand.v1                                        # UniformRandom, pinned at Elo 0
+on      tiered.v1                                      # win/capture/normal tiers
+on      smart(4).v1                                    # tiered, furthest-4 pieces
+on      greedy.classic(t1,c4,w0,l0).v1                 # 1-ply, registry-default weights
+on      greedy.classic(t2,c10,w3,l2).v1                # 1-ply, structure-weighted
+on      ab(d2).classic(t1,c4,w0,l0).v1                 # shallow search
+on      ab(d4).classic(t1,c4,w0,l0).v1                 # medium search
+on      ab(d6,nb200k).classic(t1,c4,w0,l0).v1          # deep, node-budgeted
+on      ab(d6,tt,ord,nb200k).classic(t1,c4,w0,l0).v1   # + TT and ordering (feature delta vs previous)
+on      ab(d4).exp(t1,c4,w0,l0,f2).v1                  # forward-weight delta vs ab(d4)
+on      ab(d3).classic(t1,c4,w0,l0).v1                 # depth-ladder gap filler
+on      ab(d4).classic(t1,c4,w0,l0).dil(r10).v1        # 10% dilution delta vs ab(d4)
+# off   policy.linpol(s1,00000000).v1                  # enable after training; rank.exe check prints the real hash

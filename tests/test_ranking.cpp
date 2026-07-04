@@ -1,0 +1,484 @@
+#include "catch.hpp"
+#include "ranking.h"
+#include "ai_eval.h"
+#include <sstream>
+#include <set>
+#include <cstdlib>
+#include <fstream>
+
+// ============================================================
+// Helpers
+// ============================================================
+// Parse an ID, assert success, and assert the canonical round trip (emit(parse(id)) == id).
+static RankAgent parseOk(const string& id) {
+    RankAgent a;
+    string err;
+    bool ok = rankAgentFromId(id, a, err);
+    INFO("id: " << id << "  parse error: " << err);
+    REQUIRE(ok);
+    REQUIRE(rankAgentId(a.spec, a.version) == id);
+    return a;
+}
+// Parse an ID, assert clean failure, and return the error message.
+static string parseErr(const string& id) {
+    RankAgent a;
+    string err;
+    bool ok = rankAgentFromId(id, a, err);
+    INFO("id: " << id << " unexpectedly parsed");
+    REQUIRE_FALSE(ok);
+    REQUIRE_FALSE(err.empty());
+    return err;
+}
+static int rkEvalIdx(const char* n) {
+    for (int i = 0; i < g_evalCount; i++) if (string(g_evaluators[i].name) == n) return i;
+    return -1;
+}
+
+// ============================================================
+// ID codec
+// ============================================================
+TEST_CASE("ranking id - canonical round trips") {
+    RankAgent a;
+
+    a = parseOk("rand.v1");
+    REQUIRE(a.spec.brain == BRAIN_POLICY);
+    REQUIRE(a.version == 1);
+    REQUIRE(a.spec.randomMoveProb == 0.0);
+
+    a = parseOk("tiered.v2");
+    REQUIRE(a.version == 2);
+
+    a = parseOk("smart(4).v1");
+    REQUIRE(a.spec.chooserParam == 4);
+
+    a = parseOk("greedy.classic(t1,c4,w0,l0).v1");
+    REQUIRE(a.spec.brain == BRAIN_SEARCH);
+    REQUIRE(a.spec.depth == 1);
+    REQUIRE(a.spec.evaluator == rkEvalIdx("Classic"));
+    REQUIRE(a.spec.evalParams[0] == 1);
+    REQUIRE(a.spec.evalParams[1] == 4);
+    REQUIRE(a.spec.evalParams[2] == 0);
+    REQUIRE(a.spec.evalParams[3] == 0);
+
+    a = parseOk("ab(d6).classic(t2,c10,w3,l2).v1");
+    REQUIRE(a.spec.depth == 6);
+    REQUIRE(a.spec.useAlphaBeta);
+    REQUIRE_FALSE(a.spec.useTT);
+    REQUIRE(a.spec.evalParams[1] == 10);
+
+    a = parseOk("ab(d8,tt,ord,nb200k).exp(t2,c10,w3,l2,f2).dil(r5).v1");
+    REQUIRE(a.spec.depth == 8);
+    REQUIRE(a.spec.useTT);
+    REQUIRE(a.spec.useMoveOrder);
+    REQUIRE(a.spec.nodeBudget == 200000ULL);
+    REQUIRE(a.spec.evaluator == rkEvalIdx("Experimental"));
+    REQUIRE(a.spec.evalParams[4] == 2);
+    REQUIRE(a.spec.randomMoveProb == Approx(0.05));
+
+    a = parseOk("ab(d3,noab,part,asp50,tb250ms,cap2).classic(t1,c4,w0,l0).v1");
+    REQUIRE_FALSE(a.spec.useAlphaBeta);
+    REQUIRE(a.spec.keepPartial);
+    REQUIRE(a.spec.aspirationWindow == 50);
+    REQUIRE(a.spec.timeBudgetMs == Approx(250.0));
+    REQUIRE(a.spec.depthCap == 2);
+
+    a = parseOk("smart(4).dil(r2.5).v1");
+    REQUIRE(a.spec.randomMoveProb == Approx(0.025));
+
+    a = parseOk("greedy.exp(t1,c4,w0,l0,f-2).v1");
+    REQUIRE(a.spec.evalParams[4] == -2);
+
+    a = parseOk("ab(d4,nb2m).classic(t1,c4,w0,l0).v1");
+    REQUIRE(a.spec.nodeBudget == 2000000ULL);
+    a = parseOk("ab(d4,nb1500).classic(t1,c4,w0,l0).v1");
+    REQUIRE(a.spec.nodeBudget == 1500ULL);
+}
+
+TEST_CASE("ranking id - non-canonical and malformed ids are rejected") {
+    // Non-canonical spellings name the canonical form to paste.
+    REQUIRE(parseErr("smart(04).v1").find("smart(4).v1") != string::npos);
+    REQUIRE(parseErr("greedy.classic(c4,t1,w0,l0).v1").find("greedy.classic(t1,c4,w0,l0).v1") != string::npos);
+    REQUIRE(parseErr("ab(d4,nb2000k).classic(t1,c4,w0,l0).v1").find("nb2m") != string::npos);
+
+    // Structural errors.
+    parseErr("rand");                                    // missing version
+    parseErr("rand.v0");                                 // versions start at 1
+    parseErr("mcts(d4).v1");                             // unknown head
+    parseErr("ab(d4,zz).classic(t1,c4,w0,l0).v1");       // unknown ab() flag
+    parseErr("ab(d4).classic(t1,c4,w0).v1");             // missing weight
+    parseErr("ab(d4).v1");                               // search brain needs an evaluator
+    parseErr("greedy(2).classic(t1,c4,w0,l0).v1");       // greedy takes no arguments
+    parseErr("rand.classic(t1,c4,w0,l0).v1");            // policy brain, no evaluator segment
+    parseErr("policy.v1");                               // policy needs linpol(...)
+    parseErr("rand.linpol(s1,0011aabb).v1");             // linpol only after the policy head
+    parseErr("smart(0).v1");                             // smart N >= 1
+    parseErr("rand.dil(r0).v1");                         // dilution must be > 0 (omit dil() instead)
+    REQUIRE(parseErr("rand.dil(r5,n10).v1").find("reserved") != string::npos);   // future dil args
+    parseErr("rand.v1.v2");                              // stray extra segment
+    parseErr("ab(d4).classic(t1,c4,w0,l0)");             // ends without version
+}
+
+TEST_CASE("ranking id - learned model hashes (when model files exist)") {
+    string hv = rankFileHash8("models/lin_value.txt");
+    if (hv.empty()) {
+        SUCCEED("models/lin_value.txt not present; learned-value id test skipped");
+    } else {
+        RankAgent a = parseOk("greedy.learned(s0," + hv + ").v1");
+        REQUIRE(a.spec.brain == BRAIN_SEARCH);
+        REQUIRE(a.spec.evaluator == rkEvalIdx("LearnedValue"));
+        REQUIRE(a.spec.modelSlot == 0);
+        // A wrong hash is rejected and the error names the real one.
+        string bad = string(1, hv[0] == '0' ? '1' : '0') + hv.substr(1);
+        REQUIRE(parseErr("greedy.learned(s0," + bad + ").v1").find(hv) != string::npos);
+    }
+    string hp = rankFileHash8("models/lin_policy.txt");
+    if (hp.empty()) {
+        SUCCEED("models/lin_policy.txt not present; policy id test skipped");
+    } else {
+        RankAgent a = parseOk("policy.linpol(s1," + hp + ").v1");
+        REQUIRE(a.spec.brain == BRAIN_POLICY);
+        REQUIRE(a.spec.modelSlot == 1);
+    }
+    REQUIRE(rankFileHash8("models/no_such_model_file.txt") == "");
+}
+
+TEST_CASE("ranking codec - covers every registered evaluator with unique letters") {
+    string err;
+    bool ok = rankEvalCodecComplete(err);
+    INFO(err);
+    REQUIRE(ok);
+}
+
+// ============================================================
+// Roster
+// ============================================================
+TEST_CASE("ranking roster - parse, toggles, and validation") {
+    {
+        std::istringstream in(
+            "# comment line\r\n"
+            "\r\n"
+            "anchor  rand.v1   # the anchor\r\n"
+            "on      tiered.v1\n"
+            "off     smart(4).v1\n");
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE(rankLoadRoster(in, r, err));
+        REQUIRE(r.size() == 3);
+        REQUIRE(r[0].anchor);
+        REQUIRE(r[0].active);          // anchor is implicitly active
+        REQUIRE(r[1].active);
+        REQUIRE_FALSE(r[1].anchor);
+        REQUIRE_FALSE(r[2].active);
+        REQUIRE(r[2].id == "smart(4).v1");
+    }
+    {
+        std::istringstream in("on rand.v1\n");   // no anchor
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE_FALSE(rankLoadRoster(in, r, err));
+        REQUIRE(err.find("anchor") != string::npos);
+    }
+    {
+        std::istringstream in("anchor rand.v1\nanchor tiered.v1\n");   // two anchors
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE_FALSE(rankLoadRoster(in, r, err));
+    }
+    {
+        std::istringstream in("anchor rand.v1\non rand.v1\n");   // duplicate id
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE_FALSE(rankLoadRoster(in, r, err));
+        REQUIRE(err.find("duplicate") != string::npos);
+    }
+    {
+        std::istringstream in("anchor rand.v1\nenabled tiered.v1\n");   // bad state word
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE_FALSE(rankLoadRoster(in, r, err));
+    }
+    {
+        std::istringstream in("anchor rand.v1\non tiered.v1 junk\n");   // text after the id
+        std::vector<RankAgent> r;
+        string err;
+        REQUIRE_FALSE(rankLoadRoster(in, r, err));
+    }
+}
+
+// ============================================================
+// Match store
+// ============================================================
+TEST_CASE("ranking match rows - format/parse round trip") {
+    RankMatchRow m;
+    m.w = "ab(d4).classic(t1,c4,w0,l0).v1";
+    m.b = "rand.v1";
+    m.r = 'W';
+    m.plies = 57;
+    m.wms = 812.4; m.bms = 1.9;
+    m.wmv = 29; m.bmv = 28;
+    m.wnod = 181233; m.bnod = 0;
+    m.seed = 3141592653u;
+    m.board = "boards/board1.txt";
+    m.par = 1;
+    m.ts = "2026-07-03T12:34:56Z";
+    m.run = "20260703T123456Z";
+
+    RankMatchRow p;
+    REQUIRE(rankParseMatchRow(rankFormatMatchRow(m), p));
+    REQUIRE(p.w == m.w);
+    REQUIRE(p.b == m.b);
+    REQUIRE(p.r == 'W');
+    REQUIRE(p.plies == 57);
+    REQUIRE(p.wms == Approx(812.4));
+    REQUIRE(p.bms == Approx(1.9));
+    REQUIRE(p.wmv == 29);
+    REQUIRE(p.bmv == 28);
+    REQUIRE(p.wnod == Approx(181233));
+    REQUIRE(p.bnod == Approx(0));
+    REQUIRE(p.seed == 3141592653u);
+    REQUIRE(p.board == m.board);
+    REQUIRE(p.par == 1);
+    REQUIRE(p.ts == m.ts);
+    REQUIRE(p.run == m.run);
+
+    REQUIRE_FALSE(rankParseMatchRow("not json at all", p));
+    REQUIRE_FALSE(rankParseMatchRow("{\"t\":\"g\",\"w\":\"a\",\"b\":\"b\"}", p));   // no result
+    REQUIRE_FALSE(rankParseMatchRow("{\"t\":\"x\",\"w\":\"a\",\"b\":\"b\",\"r\":\"W\",\"plies\":3}", p));
+}
+
+TEST_CASE("ranking match store - board filter and malformed-line counting") {
+    const char* path = "build\\test_rank_store.tmp";
+    {
+        std::ofstream f(path, std::ios::trunc);
+        RankMatchRow m;
+        m.w = "rand.v1"; m.b = "tiered.v1"; m.r = 'W'; m.plies = 9;
+        m.wms = m.bms = 0; m.wmv = m.bmv = 5; m.wnod = m.bnod = 0;
+        m.seed = 1; m.par = 1; m.ts = ""; m.run = "";
+        m.board = "boards/board1.txt";
+        f << rankFormatMatchRow(m) << "\n";
+        m.board = "boards/board2.txt";
+        f << rankFormatMatchRow(m) << "\n";
+        f << "garbage line\n";
+    }
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(path, "boards/board1.txt", rows, skipped));
+    REQUIRE(rows.size() == 1);
+    REQUIRE(skipped == 1);
+    REQUIRE(rankLoadMatches(path, "", rows, skipped));   // empty filter keeps all boards
+    REQUIRE(rows.size() == 2);
+}
+
+// ============================================================
+// Scheduler
+// ============================================================
+static RankAgent mkActive(const string& id) {
+    RankAgent a;
+    string err;
+    bool ok = rankAgentFromId(id, a, err);
+    INFO(err);
+    REQUIRE(ok);
+    a.active = true;
+    return a;
+}
+static RankMatchRow asRow(const RankPendingGame& g) {
+    RankMatchRow m;
+    m.w = g.w; m.b = g.b; m.r = 'W'; m.plies = 9;
+    m.wms = m.bms = 0; m.wmv = m.bmv = 5; m.wnod = m.bnod = 0;
+    m.seed = g.seed; m.board = ""; m.par = 1;
+    return m;
+}
+
+TEST_CASE("ranking scheduler - color balance, incremental top-up, determinism") {
+    std::vector<RankAgent> roster;
+    roster.push_back(mkActive("rand.v1"));
+    roster.push_back(mkActive("tiered.v1"));
+    roster.push_back(mkActive("smart(4).v1"));
+
+    std::vector<RankMatchRow> store;
+    std::vector<RankPendingGame> p1 = rankSchedule(roster, store, 4, 1);
+    REQUIRE(p1.size() == 12);   // 3 pairs x 4 games
+
+    // Color balance: every pair gets 2 games with each color assignment.
+    std::map<std::pair<string,string>, int> colorCount;
+    std::set<unsigned> seeds;
+    for (size_t i = 0; i < p1.size(); i++) {
+        colorCount[std::make_pair(p1[i].w, p1[i].b)]++;
+        seeds.insert(p1[i].seed);
+    }
+    REQUIRE(colorCount.size() == 6);   // 3 pairs x 2 color assignments
+    for (std::map<std::pair<string,string>, int>::iterator it = colorCount.begin();
+         it != colorCount.end(); ++it)
+        REQUIRE(it->second == 2);
+    REQUIRE(seeds.size() == 12);       // per-game seeds are all distinct
+
+    // Deterministic: same inputs give the identical pending list.
+    std::vector<RankPendingGame> p2 = rankSchedule(roster, store, 4, 1);
+    REQUIRE(p2.size() == p1.size());
+    for (size_t i = 0; i < p1.size(); i++) {
+        REQUIRE(p1[i].w == p2[i].w);
+        REQUIRE(p1[i].b == p2[i].b);
+        REQUIRE(p1[i].seed == p2[i].seed);
+    }
+
+    // Feed the games back as played: nothing is pending anymore.
+    for (size_t i = 0; i < p1.size(); i++) store.push_back(asRow(p1[i]));
+    REQUIRE(rankSchedule(roster, store, 4, 1).empty());
+
+    // Add one agent: exactly (N-1) x 4 new games, all involving the newcomer.
+    string newcomer = "greedy.classic(t1,c4,w0,l0).v1";
+    roster.push_back(mkActive(newcomer));
+    std::vector<RankPendingGame> p3 = rankSchedule(roster, store, 4, 1);
+    REQUIRE(p3.size() == 12);   // 3 new pairs x 4 games
+    for (size_t i = 0; i < p3.size(); i++)
+        REQUIRE((p3[i].w == newcomer || p3[i].b == newcomer));
+
+    // Raising the target tops every pair up incrementally.
+    REQUIRE(rankSchedule(roster, store, 6, 1).size() == 12 + 6 * 2);   // 3 played pairs need 2 more, 3 new pairs need 6
+}
+
+TEST_CASE("ranking scheduler - rebalances lopsided colors without deleting games") {
+    std::vector<RankAgent> roster;
+    roster.push_back(mkActive("rand.v1"));
+    roster.push_back(mkActive("smart(4).v1"));
+
+    // 4 stored games, all with rand.v1 as White (the smaller id already over target).
+    std::vector<RankMatchRow> store;
+    RankPendingGame g;
+    g.w = "rand.v1"; g.b = "smart(4).v1"; g.seed = 0;
+    for (int i = 0; i < 4; i++) store.push_back(asRow(g));
+
+    std::vector<RankPendingGame> p = rankSchedule(roster, store, 4, 1);
+    REQUIRE(p.size() == 2);   // only the missing smart-as-White games
+    for (size_t i = 0; i < p.size(); i++)
+        REQUIRE(p[i].w == "smart(4).v1");
+}
+
+// ============================================================
+// Bradley-Terry fit
+// ============================================================
+// Sample n games between a and b where a wins with probability pa (deterministic
+// under the srand the caller set). Colors alternate.
+static void addGames(std::vector<RankMatchRow>& rows, const string& a, const string& b,
+                     int n, double pa) {
+    for (int g = 0; g < n; g++) {
+        RankMatchRow m;
+        bool aWhite = (g % 2 == 0);
+        m.w = aWhite ? a : b;
+        m.b = aWhite ? b : a;
+        double u = (double)rand() / (double)RAND_MAX;
+        bool aWins = (u < pa);
+        m.r = (aWins == aWhite) ? 'W' : 'B';
+        m.plies = 9; m.wms = m.bms = 0; m.wmv = m.bmv = 5; m.wnod = m.bnod = 0;
+        m.seed = 0; m.par = 1;
+        rows.push_back(m);
+    }
+}
+static void addDraws(std::vector<RankMatchRow>& rows, const string& a, const string& b, int n) {
+    for (int g = 0; g < n; g++) {
+        RankMatchRow m;
+        m.w = (g % 2 == 0) ? a : b;
+        m.b = (g % 2 == 0) ? b : a;
+        m.r = 'D';
+        m.plies = 400; m.wms = m.bms = 0; m.wmv = m.bmv = 200; m.wnod = m.bnod = 0;
+        m.seed = 0; m.par = 1;
+        rows.push_back(m);
+    }
+}
+static int fitIndexOf(const RankFit& fit, const string& id) {
+    for (size_t i = 0; i < fit.ids.size(); i++) if (fit.ids[i] == id) return (int)i;
+    return -1;
+}
+
+TEST_CASE("ranking BT fit - anchored, accurate, deterministic, bounded") {
+    // True strengths: A = 0, B = 200, C = 400 Elo.
+    srand(4242);
+    std::vector<RankMatchRow> rows;
+    double pAB = 1.0 / (1.0 + pow(10.0, 200.0 / 400.0));
+    double pAC = 1.0 / (1.0 + pow(10.0, 400.0 / 400.0));
+    double pBC = 1.0 / (1.0 + pow(10.0, 200.0 / 400.0));
+    addGames(rows, "A", "B", 300, pAB);
+    addGames(rows, "A", "C", 300, pAC);
+    addGames(rows, "B", "C", 300, pBC);
+
+    RankFit fit;
+    rankFitBT(rows, "A", fit);
+    REQUIRE(fit.anchored);
+    int ia = fitIndexOf(fit, "A"), ib = fitIndexOf(fit, "B"), ic = fitIndexOf(fit, "C");
+    REQUIRE(ia >= 0); REQUIRE(ib >= 0); REQUIRE(ic >= 0);
+    REQUIRE(fit.elo[ia] == Approx(0.0).margin(1e-6));    // the anchor is pinned exactly
+    REQUIRE(fit.elo[ib] == Approx(200.0).margin(60.0));
+    REQUIRE(fit.elo[ic] == Approx(400.0).margin(60.0));
+    REQUIRE_FALSE(fit.provisional[ia]);
+    REQUIRE(fit.se[ib] > 0.0);
+
+    // Deterministic: a refit of the same rows is bit-identical.
+    RankFit fit2;
+    rankFitBT(rows, "A", fit2);
+    for (size_t i = 0; i < fit.ids.size(); i++) {
+        REQUIRE(fit.elo[i] == fit2.elo[i]);
+        REQUIRE(fit.se[i] == fit2.se[i]);
+    }
+
+    // An undefeated agent stays finite (prior) and is less certain than a mixed one.
+    addGames(rows, "D", "A", 8, 1.0);
+    addGames(rows, "D", "B", 8, 1.0);
+    addGames(rows, "D", "C", 8, 1.0);
+    RankFit fit3;
+    rankFitBT(rows, "A", fit3);
+    int id3 = fitIndexOf(fit3, "D"), ib3 = fitIndexOf(fit3, "B");
+    REQUIRE(id3 >= 0);
+    REQUIRE(fit3.elo[id3] < 3000.0);
+    REQUIRE(fit3.elo[id3] > fit3.elo[fitIndexOf(fit3, "C")]);
+    REQUIRE(fit3.se[id3] > fit3.se[ib3]);
+
+    // A draw-heavy pair fits to (almost) no gap.
+    std::vector<RankMatchRow> drows;
+    addDraws(drows, "E", "F", 20);
+    RankFit dfit;
+    rankFitBT(drows, "E", dfit);
+    REQUIRE(dfit.elo[fitIndexOf(dfit, "E")] == Approx(0.0).margin(1e-6));
+    REQUIRE(dfit.elo[fitIndexOf(dfit, "F")] == Approx(0.0).margin(1.0));
+}
+
+TEST_CASE("ranking BT fit - disconnected components and missing anchor") {
+    srand(99);
+    std::vector<RankMatchRow> rows;
+    addGames(rows, "A", "B", 8, 0.5);
+    addGames(rows, "X", "Y", 8, 0.5);   // never plays A or B
+
+    RankFit fit;
+    rankFitBT(rows, "A", fit);
+    REQUIRE(fit.anchored);
+    REQUIRE_FALSE(fit.provisional[fitIndexOf(fit, "A")]);
+    REQUIRE_FALSE(fit.provisional[fitIndexOf(fit, "B")]);
+    REQUIRE(fit.provisional[fitIndexOf(fit, "X")]);
+    REQUIRE(fit.provisional[fitIndexOf(fit, "Y")]);
+    // The stray component centers on mean 1000.
+    double mx = (fit.elo[fitIndexOf(fit, "X")] + fit.elo[fitIndexOf(fit, "Y")]) / 2.0;
+    REQUIRE(mx == Approx(1000.0).margin(1e-6));
+
+    // With no anchor in the data, everything centers on mean 1000 and a warning
+    // is the caller's job (anchored == false signals it).
+    RankFit fit2;
+    rankFitBT(rows, "not-a-player", fit2);
+    REQUIRE_FALSE(fit2.anchored);
+    double ma = (fit2.elo[fitIndexOf(fit2, "A")] + fit2.elo[fitIndexOf(fit2, "B")]) / 2.0;
+    REQUIRE(ma == Approx(1000.0).margin(1e-6));
+}
+
+TEST_CASE("ranking gauntlet fit - candidate rated against a frozen pool") {
+    // Scoring 50% against a 300-Elo pool means the candidate is at 300.
+    std::vector<double> oppElo(10, 300.0), score;
+    for (int i = 0; i < 10; i++) score.push_back(i % 2 == 0 ? 1.0 : 0.0);
+    double se = 0.0;
+    REQUIRE(rankFitSingle(oppElo, score, se) == Approx(300.0).margin(1.0));
+    REQUIRE(se > 0.0);
+
+    // An undefeated candidate stays finite thanks to the prior.
+    std::vector<double> opp2(8, 0.0), score2(8, 1.0);
+    double se2 = 0.0;
+    double elo2 = rankFitSingle(opp2, score2, se2);
+    REQUIRE(elo2 > 300.0);
+    REQUIRE(elo2 < 2000.0);
+}
