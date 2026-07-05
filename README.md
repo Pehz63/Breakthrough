@@ -292,11 +292,15 @@ smart(4)@1                                         SmartRandom over the furthest
 ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1     alpha-beta d6 + TT + ordering + node budget,
                                                    Classic eval with those weights
 ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1         10% random-move dilution
+ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1   30% depth-3 dilution of a d6
 greedy@1.learned(s0,7cc8a70d)@1                    learned value model (content-hashed)
 ```
 
 The head names the move choice / search, then the evaluator with all its weights,
-then optional `dil()` dilution. Every module segment carries its own `@N` **code
+then optional `dil()` dilution. Dilution weakens an agent to spread the Elo ladder:
+`dil(rP)` plays a fully random move `P`% of the time, while `dil(rP,dN)` instead
+plays a shallower depth-`N` search `P`% of the time (a plausible-but-weaker move
+rather than a blunder, `0 < N <` the agent depth). Every module segment carries its own `@N` **code
 version**, a constant in the codec tables in `src/ranking.cpp`: when a module's
 code changes behavior (say the alpha-beta search improves), bump that one
 constant and only the agents using that module get new identities and fresh
@@ -333,6 +337,29 @@ match history with actual vs expected scores. `gauntlet` rates one candidate
 against the frozen pool in O(N) games without touching the store (add `--keep`
 to persist them), which is the cheap evaluation step for weight hill-climbing
 along that pareto frontier.
+
+**Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Experimental
+evaluator's weight mix for the highest Elo at a fixed search depth, using
+`gauntlet` as its fitness function. Turn is pinned at 20 and chip/wall/column/forward
+are renormalized to sum to 80 (total 100), so the search varies the relative mix
+rather than the scale (the evaluator is scale-invariant for move selection) and
+scalar-duplicate candidates dedupe. Each step mutates the best-so-far, with an
+occasional drastic reset of the chip weight, and accepts on an Elo gain. It plays
+against a fast, mostly-stochastic pool (`ranking/climb_roster.txt`), so a candidate
+earns a smooth win rate instead of replaying one deterministic line against a
+deterministic opponent. `-Promote` appends the top finds to `ranking/roster.txt`
+and runs a full refit so they are rated on the shared scale.
+
+```powershell
+.\tools\hill_climb.ps1 -Build -Iters 4 -Games 2 -Depth 2   # quick smoke
+.\tools\hill_climb.ps1 -Iters 40 -Games 4                  # real climb at d4
+.\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2    # then rank the winners
+```
+
+To keep the top of the ladder well-resolved (and to supply the climber with
+non-deterministic opponents), `ranking/roster.txt` also carries a dense ladder of
+diluted variants of the strongest pruned d6 agent, both random-move (`dil(rP)`) and
+stochastic-depth (`dil(rP,d3)` / `dil(rP,d4)`).
 
 ### Human move format
 

@@ -29,8 +29,10 @@ struct AgentSpec {
     int    modelSlot;                   // model slot for learned eval / policy
 
     // Strength dilution (to spread an Elo ladder):
-    double randomMoveProb;              // chance per move to play a random legal move
+    double randomMoveProb;              // chance per move to dilute (see dilDepth)
     int    depthCap;                    // cap search depth (<=0 = no cap)
+    int    dilDepth;                    // dilution move: 0 = a fully random move (default),
+                                        // >0 = a shallower depth-N search instead (search brain only)
 
     // Per-agent search budgets (0 = inherit the global g_nodeBudget / g_timeBudgetMs):
     unsigned long long nodeBudget;      // per-move node cap for this agent's search

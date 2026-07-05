@@ -48,6 +48,7 @@ AgentSpec agentMakeSearch(const char* name, int explorer, int evaluator, int dep
     a.modelSlot = modelSlot;
     a.randomMoveProb = 0.0;
     a.depthCap = 0;
+    a.dilDepth = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, evaluator);
     return a;
@@ -64,6 +65,7 @@ AgentSpec agentMakePolicy(const char* name, int chooser, int chooserParam, int m
     a.modelSlot = modelSlot;
     a.randomMoveProb = 0.0;
     a.depthCap = 0;
+    a.dilDepth = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, 0);
     return a;
@@ -73,8 +75,12 @@ AgentSpec agentMakePolicy(const char* name, int chooser, int chooserParam, int m
 // MOVE SELECTION (composes explorer/chooser + dilution)
 // ============================================================
 int agentChooseMove(const AgentSpec& a, int side) {
-    // Dilution: occasionally throw a fully random move to weaken the agent.
-    if (a.randomMoveProb > 0.0 && ((double)rand() / (double)RAND_MAX) < a.randomMoveProb)
+    // Dilution: with probability randomMoveProb, weaken this move. The diluted move is
+    // either a fully random move (dilDepth <= 0) or a shallower depth-dilDepth search
+    // (dilDepth > 0, search brain only) for a plausible-but-weaker blunder.
+    bool dilute = (a.randomMoveProb > 0.0
+                   && ((double)rand() / (double)RAND_MAX) < a.randomMoveProb);
+    if (dilute && (a.dilDepth <= 0 || a.brain != BRAIN_SEARCH))
         return (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
 
     if (a.brain == BRAIN_POLICY) {
@@ -84,6 +90,7 @@ int agentChooseMove(const AgentSpec& a, int side) {
 
     // SEARCH brain.
     int depth = a.depth;
+    if (dilute && a.dilDepth > 0) depth = a.dilDepth;              // stochastic depth dilution
     if (a.depthCap > 0 && depth > a.depthCap) depth = a.depthCap;   // dilution
     int params[MAX_EVAL_PARAMS];
     for (int i = 0; i < MAX_EVAL_PARAMS; i++) params[i] = a.evalParams[i];
@@ -129,6 +136,7 @@ string agentDescribe(const AgentSpec& a) {
     }
     if (usesModel) s += " slot=" + std::to_string(a.modelSlot);
     if (a.randomMoveProb > 0.0) s += " rnd=" + std::to_string(a.randomMoveProb);
+    if (a.dilDepth > 0)         s += " dil-d" + std::to_string(a.dilDepth);
     if (a.depthCap > 0)         s += " cap=" + std::to_string(a.depthCap);
     if (a.brain == BRAIN_SEARCH) {
         if (a.nodeBudget)         s += " nb=" + std::to_string(a.nodeBudget);

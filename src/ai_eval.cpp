@@ -97,26 +97,39 @@ int evalPosFull(const int* p, int paramCount) {
 // the turn term. Only evaluators flagged `incremental` use this path; others fall
 // back to a full evaluateBoard at the leaf.
 
+// Sum of the (up to 4) orthogonally-adjacent same-color pairs that touch square
+// (x,y). Unlike structOwner's fixed right+upper "owned" pairs, this counts a
+// square's pairs in all four directions, so summing it over the two changed
+// squares captures every adjacency the move can alter.
+static inline int neighborStruct(int x, int y, int wallW, int colW) {
+    int s = 0;
+    if (x+1 < SIZE) s += pairContrib(x, y, x+1, y, wallW, colW);
+    if (x-1 >= 0)   s += pairContrib(x, y, x-1, y, wallW, colW);
+    if (y+1 < SIZE) s += pairContrib(x, y, x, y+1, wallW, colW);
+    if (y-1 >= 0)   s += pairContrib(x, y, x, y-1, wallW, colW);
+    return s;
+}
+
 // Positional contribution of just the cells affected by a one-step move between
-// (sx,sy) and (dx,dy): a small owner bounding box for structure (a superset of
-// the affected owners, so unaffected owners cancel in the before/after diff) plus
-// the per-square forward score of the two changed squares. Called once before and once
-// after the board mutation; the difference is the move's positional delta.
+// (sx,sy) and (dx,dy): a true neighbor-local structure delta (the orthogonal
+// pairs touching the two changed squares) plus the per-square forward score of
+// those squares. Called once before and once after the board mutation; the
+// difference is the move's positional delta. Both squares' four-neighbor pairs
+// are summed: for a diagonal move the two squares are not orthogonally adjacent
+// so no pair is shared; for a straight move they are adjacent, but a straight
+// move only lands on an empty square (dest empty before, source empty after), so
+// the shared source-dest pair is 0 in both passes and cancels. Every other
+// changed pair is counted once per pass, so the before/after subtraction yields
+// exactly the move's structure delta (guarded by the equivalence test in
+// tests/test_eval.cpp).
 int evalPosLocal(int sx, int sy, int dx, int dy) {
     const int* p = g_activeParams;
     int wallW = p[2], colW = p[3];
     int fwdW  = (g_activeParamCount > 4) ? p[4] : 0;
 
     int s = 0;
-    if (wallW != 0 || colW != 0) {
-        int x0 = (sx < dx ? sx : dx) - 1, x1 = (sx > dx ? sx : dx);
-        int y0 = (sy < dy ? sy : dy) - 1, y1 = (sy > dy ? sy : dy);
-        if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
-        if (x1 > SIZE-2) x1 = SIZE-2; if (y1 > SIZE-2) y1 = SIZE-2;
-        for (int y = y0; y <= y1; y++)
-            for (int x = x0; x <= x1; x++)
-                s += structOwner(x, y, wallW, colW);
-    }
+    if (wallW != 0 || colW != 0)
+        s += neighborStruct(sx, sy, wallW, colW) + neighborStruct(dx, dy, wallW, colW);
     if (fwdW != 0)
         s += forwardContrib(sx, sy, fwdW) + forwardContrib(dx, dy, fwdW);
     return s;

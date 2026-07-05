@@ -21,44 +21,71 @@ on      smart(4)@1
 on      smart(6)@1
 
 # 1-ply greedy: default vs structure-weighted Classic.
-on      greedy@1.classic(t1,c4,w0,l0)@1
-on      greedy@1.classic(t2,c10,w3,l2)@1
+on      greedy@1.classic(t1,c4,w0,l0)@2
+on      greedy@1.classic(t2,c10,w3,l2)@2
 
 # Depth ladder, Classic default weights.
-on      ab(d1)@1.classic(t1,c4,w0,l0)@1
-on      ab(d2)@1.classic(t1,c4,w0,l0)@1
-on      ab(d3)@1.classic(t1,c4,w0,l0)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@1
-on      ab(d5)@1.classic(t1,c4,w0,l0)@1
+on      ab(d1)@1.classic(t1,c4,w0,l0)@2
+on      ab(d2)@1.classic(t1,c4,w0,l0)@2
+on      ab(d3)@1.classic(t1,c4,w0,l0)@2
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2
+on      ab(d5)@1.classic(t1,c4,w0,l0)@2
 
 # Eval-weight variants at d4: structure-weighted Classic + the forward ladder.
-on      ab(d4)@1.classic(t2,c10,w3,l2)@1
-on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@1
-on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@1
-on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@1
-on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@1
+on      ab(d4)@1.classic(t2,c10,w3,l2)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@2
 
 # Dilution ladder on ab(d4): Elo vs random-move probability.
-on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r5)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r25)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r50)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
 
 # Pruning ladder at a fixed 200k-node budget, depth cap 6: from no pruning at
 # all up to TT + ordering + tight aspiration windows. Same compute, more
 # cutoffs = more effective depth = Elo (watch the eff-depth telemetry).
-on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@1             # full minimax floor
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1                  # plain alpha-beta
-on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@1               # + transposition table
-on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@1              # + move ordering only
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1           # + both
-on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@1     # + tight aspiration window
-on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@1
-on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@1
+on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@2             # full minimax floor
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2                  # plain alpha-beta
+on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2               # + transposition table
+on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2              # + move ordering only
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2           # + both
+on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2     # + tight aspiration window
+on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
 
 # Dilution ladder on the budgeted d6 (mirrors the d4 ladder at higher strength).
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r25)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r50)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+
+# Dense dilution ladder over the strongest pruned d6, to resolve the top-end ties and to
+# give the hill climber (tools/hill_climb.ps1) non-deterministic opponents. Random-move
+# dilution dil(rP) plays a fully random move P% of the time; stochastic depth dilution
+# dil(rP,dN) instead plays a shallower depth-N search P% of the time (plausible-but-weaker).
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r14)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r28)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r52)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r75)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d4)@1
 
 # off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
+on      ab(d4)@1.exp(t20,c64,w0,l1,f15)@2
+on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2

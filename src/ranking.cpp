@@ -161,8 +161,8 @@ static const int g_rkExplorerCount = sizeof(g_rkExplorers) / sizeof(g_rkExplorer
 
 struct RankEvalCodec { const char* regName; const char* idName; const char* letters; int version; };
 static const RankEvalCodec g_rkEvals[] = {
-    { "Classic",      "classic", "tcwl",  1 },   // turn, chip, wall, column
-    { "Experimental", "exp",     "tcwlf", 1 },   // + forward
+    { "Classic",      "classic", "tcwl",  2 },   // turn, chip, wall, column (@2: neighbor-local structure delta)
+    { "Experimental", "exp",     "tcwlf", 2 },   // + forward (@2: neighbor-local structure delta)
     { "LearnedValue", "learned", "",      1 },   // special arg form: s<slot>,<hash8>
 };
 static const int g_rkEvalCount = sizeof(g_rkEvals) / sizeof(g_rkEvals[0]);
@@ -290,8 +290,11 @@ string rankAgentId(const AgentSpec& a) {
             s += ".?";
         }
     }
-    if (a.randomMoveProb > 0.0)
-        s += ".dil(r" + fmtPct(a.randomMoveProb) + ")@" + std::to_string(RK_DIL_VERSION);
+    if (a.randomMoveProb > 0.0) {
+        s += ".dil(r" + fmtPct(a.randomMoveProb);
+        if (a.dilDepth > 0) s += ",d" + std::to_string(a.dilDepth);  // stochastic depth dilution
+        s += ")@" + std::to_string(RK_DIL_VERSION);
+    }
     return s;
 }
 
@@ -539,6 +542,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     bool haveEval = false, haveModel = false, haveDil = false;
     string modelHash;
     double dilProb = 0.0;
+    int dilDepth = 0;
 
     for (size_t si = 1; si < segs.size(); si++) {
         if (!splitTok(segs[si], word, args, parens, atV, err)) return false;
@@ -546,9 +550,9 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             if (haveDil) { err = "duplicate dil() segment"; return false; }
             if (atV < 1) { err = "dil segment '" + segs[si] + "' needs a module version like @1"; return false; }
             if (!parens) { err = "dil needs an argument, e.g. dil(r5)@1"; return false; }
-            if (args.size() > 1) {
-                err = "extra dil() argument '" + args[1]
-                    + "' is reserved for future dilution kinds and not supported yet";
+            if (args.size() > 2) {
+                err = "dil() takes at most r<percent> and an optional d<depth>, got '"
+                    + segs[si] + "'";
                 return false;
             }
             double pct;
@@ -557,6 +561,26 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
                 return false;
             }
             dilProb = pct / 100.0;
+            // Optional second argument d<depth>: dilute with a shallower search instead of a
+            // fully random move. Requires a search head and a depth strictly below the agent's.
+            if (args.size() == 2) {
+                long long dd;
+                if (args[1].size() < 2 || args[1][0] != 'd'
+                    || !lenientInt(args[1].substr(1), false, dd) || dd < 1) {
+                    err = "bad dil() argument '" + args[1] + "' (expected d<depth>, e.g. d3)";
+                    return false;
+                }
+                if (!isSearch) {
+                    err = "dil() depth dilution '" + args[1] + "' needs a search head (ab/greedy)";
+                    return false;
+                }
+                if (dd >= depth) {
+                    err = "dil() depth dilution must be shallower than the agent depth d"
+                        + std::to_string(depth) + " (got '" + args[1] + "')";
+                    return false;
+                }
+                dilDepth = (int)dd;
+            }
             haveDil = true;
         } else if (word == "learned" || word == "linpol") {
             if (word == "learned") {
@@ -664,6 +688,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         a = agentMakePolicy("", chooserIdx, chooserParam, modelSlot >= 0 ? modelSlot : 0);
     }
     a.randomMoveProb = dilProb;
+    a.dilDepth = dilDepth;
 
     // Canonical form check: re-emitting must reproduce the input exactly. This
     // also rejects stale module versions, pointing at the current form.

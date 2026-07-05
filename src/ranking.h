@@ -31,10 +31,14 @@
 //              | "learned(s" slot "," hash8 ")" ) "@" V           (LearnedValue; hash = weights)
 //   linpol  := "linpol(s" slot "," hash8 ")"                      (policy-head model payload, no "@V")
 //   weights := letter int { "," letter int }                      (ALL params, registry order)
-//   dilseg  := "dil(r" pct ")" "@" V                              (r5 = 5% random moves)
+//   dilseg  := "dil(r" pct [ "," "d" N ] ")" "@" V                (r5 = 5% diluted moves;
+//                                                                  ,dN = those moves use a
+//                                                                  depth-N search, 0<N<depth,
+//                                                                  search head only; else random)
 //   V       := positive int, the module's code version (from the codec tables)
 // Examples: rand@1  smart(4)@1  ab(d6)@1.classic(t2,c10,w3,l2)@1
 //           ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@1.dil(r5)@1
+//           ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1
 //           greedy@1.learned(s0,ab12cd34)@1  policy@1.linpol(s1,9f3e21aa)
 
 // A roster entry: the engine-playable spec plus the identity fields that

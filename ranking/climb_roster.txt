@@ -1,0 +1,19 @@
+# Fast opponent pool for the eval-weight hill climber (tools/hill_climb.ps1).
+#
+# gauntlet plays a candidate against every ACTIVE agent here that already has a
+# rating in ranking/ratings.tsv, so these must first be rated by a full
+# `rank.exe run` on the main roster (ranking/roster.txt). A reduced pool keeps each
+# hill-climb evaluation cheap; point the climber at ranking/roster.txt for full
+# fidelity instead. Opponents lean on the diluted strong-d6 ladder so games are
+# non-deterministic (smooth win rates, few ties). Exactly one anchor is required.
+
+anchor  rand@1
+on      smart(6)@1
+on      ab(d3)@1.classic(t1,c4,w0,l0)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r22)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r43)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r63)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d4)@1

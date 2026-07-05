@@ -88,3 +88,4 @@ runs/**/results.jsonl
 # built from. Only per-shard temp files and the gauntlet scratch are ignored.
 ranking/matches.jsonl.*
 ranking/gauntlet.jsonl
+ranking/climb_*.tsv

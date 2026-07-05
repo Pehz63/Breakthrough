@@ -93,18 +93,24 @@ A single per-weight sweep is insufficient: each weight only matters RELATIVE to 
 (forward may need to be HIGHER when structure is high, to offset the structure lost by
 advancing; forward could even be NEGATIVE to keep pieces back and advance together), and the
 optimum is a surface, not a point. Replace single sweeps with a search that maps the geometry:
-- Coordinate-free local search: a few parallel hill-climbers, each re-centering its weights
-  every few rounds on its best result (random restarts to escape local optima).
+- ~~Coordinate-free local search: a hill climber that re-centers on its best result, with
+  random drastic restarts to escape local optima~~ (shipped: `tools/hill_climb.ps1`, a greedy
+  hill climber over the Experimental weight mix with `gauntlet` Elo as fitness; drastic
+  chip-weight resets provide the restarts. Parallel multi-climber not yet done.)
 - Evolutionary tournament: each round, mutate the top-couple-Elo agents (unique random
   perturbations of their weights) into new agents, add them to the round-robin, drop the
   weakest, and iterate -- so the population crawls the weight surface by selection.
-- Always normalize/anchor one weight (e.g. chip) so the others are measured relative to it.
+- ~~Always normalize/anchor one weight (e.g. chip) so the others are measured relative to it.~~
+  (shipped in `hill_climb.ps1`: turn pinned at 20, chip/wall/column/forward renormalized to
+  sum 80, so the search moves on a fixed-magnitude simplex and scalar duplicates dedupe.)
 - Test signed weights (negative forward, etc.) and structure x forward interaction explicitly.
 - Report a response surface, not a single recommended value.
 
 ## Strength Dilution (to spread an Elo ladder)
 - ~~Random-move probability **(P1)**~~
 - ~~Depth cap **(P1)**~~
+- ~~Stochastic depth dilution: play a shallower depth-N search P% of the time (`dil(rP,dN)`),
+  a plausible-but-weaker move rather than a blunder~~
 - Evaluation noise (jitter the eval to weaken without full randomness)
 
 ## Elo / Tournaments

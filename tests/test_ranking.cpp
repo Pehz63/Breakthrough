@@ -49,7 +49,7 @@ TEST_CASE("ranking id - canonical round trips") {
     a = parseOk("smart(4)@1");
     REQUIRE(a.spec.chooserParam == 4);
 
-    a = parseOk("greedy@1.classic(t1,c4,w0,l0)@1");
+    a = parseOk("greedy@1.classic(t1,c4,w0,l0)@2");
     REQUIRE(a.spec.brain == BRAIN_SEARCH);
     REQUIRE(a.spec.depth == 1);
     REQUIRE(a.spec.evaluator == rkEvalIdx("Classic"));
@@ -58,13 +58,13 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.evalParams[2] == 0);
     REQUIRE(a.spec.evalParams[3] == 0);
 
-    a = parseOk("ab(d6)@1.classic(t2,c10,w3,l2)@1");
+    a = parseOk("ab(d6)@1.classic(t2,c10,w3,l2)@2");
     REQUIRE(a.spec.depth == 6);
     REQUIRE(a.spec.useAlphaBeta);
     REQUIRE_FALSE(a.spec.useTT);
     REQUIRE(a.spec.evalParams[1] == 10);
 
-    a = parseOk("ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@1.dil(r5)@1");
+    a = parseOk("ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@2.dil(r5)@1");
     REQUIRE(a.spec.depth == 8);
     REQUIRE(a.spec.useTT);
     REQUIRE(a.spec.useMoveOrder);
@@ -73,7 +73,7 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.evalParams[4] == 2);
     REQUIRE(a.spec.randomMoveProb == Approx(0.05));
 
-    a = parseOk("ab(d3,noab,part,asp50,tb250ms,cap2)@1.classic(t1,c4,w0,l0)@1");
+    a = parseOk("ab(d3,noab,part,asp50,tb250ms,cap2)@1.classic(t1,c4,w0,l0)@2");
     REQUIRE_FALSE(a.spec.useAlphaBeta);
     REQUIRE(a.spec.keepPartial);
     REQUIRE(a.spec.aspirationWindow == 50);
@@ -82,27 +82,33 @@ TEST_CASE("ranking id - canonical round trips") {
 
     a = parseOk("smart(4)@1.dil(r2.5)@1");
     REQUIRE(a.spec.randomMoveProb == Approx(0.025));
+    REQUIRE(a.spec.dilDepth == 0);   // plain dilution = fully random move
 
-    a = parseOk("greedy@1.exp(t1,c4,w0,l0,f-2)@1");
+    // Stochastic depth dilution: dilute with a shallower search instead of a random move.
+    a = parseOk("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1");
+    REQUIRE(a.spec.randomMoveProb == Approx(0.30));
+    REQUIRE(a.spec.dilDepth == 3);
+
+    a = parseOk("greedy@1.exp(t1,c4,w0,l0,f-2)@2");
     REQUIRE(a.spec.evalParams[4] == -2);
 
-    a = parseOk("ab(d4,nb2m)@1.classic(t1,c4,w0,l0)@1");
+    a = parseOk("ab(d4,nb2m)@1.classic(t1,c4,w0,l0)@2");
     REQUIRE(a.spec.nodeBudget == 2000000ULL);
-    a = parseOk("ab(d4,nb1500)@1.classic(t1,c4,w0,l0)@1");
+    a = parseOk("ab(d4,nb1500)@1.classic(t1,c4,w0,l0)@2");
     REQUIRE(a.spec.nodeBudget == 1500ULL);
 }
 
 TEST_CASE("ranking id - stale or missing module versions are rejected") {
     // A stale version fails the canonical check and names the current form.
     REQUIRE(parseErr("rand@2").find("rand@1") != string::npos);
-    REQUIRE(parseErr("ab(d6)@1.classic(t2,c10,w3,l2)@7").find("classic(t2,c10,w3,l2)@1") != string::npos);
+    REQUIRE(parseErr("ab(d6)@1.classic(t2,c10,w3,l2)@7").find("classic(t2,c10,w3,l2)@2") != string::npos);
     REQUIRE(parseErr("smart(4)@1.dil(r5)@3").find("dil(r5)@1") != string::npos);
 
     // Missing versions are named per segment.
     REQUIRE(parseErr("rand").find("module version") != string::npos);
     REQUIRE(parseErr("rand.v1").find("module version") != string::npos);   // the old grammar
     REQUIRE(parseErr("ab(d4)@1.classic(t1,c4,w0,l0)").find("module version") != string::npos);
-    REQUIRE(parseErr("ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r5)").find("module version") != string::npos);
+    REQUIRE(parseErr("ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)").find("module version") != string::npos);
 
     // linpol is the one segment that must NOT carry a version (hash = identity).
     REQUIRE(parseErr("policy@1.linpol(s1,0011aabb)@1").find("no module version") != string::npos);
@@ -116,23 +122,28 @@ TEST_CASE("ranking id - stale or missing module versions are rejected") {
 TEST_CASE("ranking id - non-canonical and malformed ids are rejected") {
     // Non-canonical spellings name the canonical form to paste.
     REQUIRE(parseErr("smart(04)@1").find("smart(4)@1") != string::npos);
-    REQUIRE(parseErr("greedy@1.classic(c4,t1,w0,l0)@1").find("greedy@1.classic(t1,c4,w0,l0)@1") != string::npos);
-    REQUIRE(parseErr("ab(d4,nb2000k)@1.classic(t1,c4,w0,l0)@1").find("nb2m") != string::npos);
+    REQUIRE(parseErr("greedy@1.classic(c4,t1,w0,l0)@1").find("greedy@1.classic(t1,c4,w0,l0)@2") != string::npos);
+    REQUIRE(parseErr("ab(d4,nb2000k)@1.classic(t1,c4,w0,l0)@2").find("nb2m") != string::npos);
 
     // Structural errors.
     parseErr("mcts(d4)@1");                                  // unknown head
-    parseErr("ab(d4,zz)@1.classic(t1,c4,w0,l0)@1");          // unknown ab() flag
+    parseErr("ab(d4,zz)@1.classic(t1,c4,w0,l0)@2");          // unknown ab() flag
     parseErr("ab(d4)@1.classic(t1,c4,w0)@1");                // missing weight
     parseErr("ab(d4)@1");                                    // search brain needs an evaluator
-    parseErr("greedy(2)@1.classic(t1,c4,w0,l0)@1");          // greedy takes no arguments
-    parseErr("rand@1.classic(t1,c4,w0,l0)@1");               // policy brain, no evaluator segment
+    parseErr("greedy(2)@1.classic(t1,c4,w0,l0)@2");          // greedy takes no arguments
+    parseErr("rand@1.classic(t1,c4,w0,l0)@2");               // policy brain, no evaluator segment
     parseErr("policy@1");                                    // policy needs linpol(...)
     parseErr("rand@1.linpol(s1,0011aabb)");                  // linpol only after the policy head
     parseErr("smart(0)@1");                                  // smart N >= 1
     parseErr("rand@1.dil(r0)@1");                            // dilution must be > 0 (omit dil() instead)
-    REQUIRE(parseErr("rand@1.dil(r5,n10)@1").find("reserved") != string::npos);   // future dil args
+    parseErr("rand@1.dil(r5,r10)@1");                        // 2nd dil arg must be d<depth>, not another r
+    parseErr("rand@1.dil(r5,d3,d2)@1");                      // at most two dil() arguments
+    REQUIRE(parseErr("rand@1.dil(r5,d3)@1").find("search head") != string::npos);        // depth dilution needs a search head
+    REQUIRE(parseErr("ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5,d0)@1").find("d<depth>") != string::npos);  // depth >= 1
+    REQUIRE(parseErr("ab(d3)@1.classic(t1,c4,w0,l0)@2.dil(r5,d3)@1").find("shallower") != string::npos); // must be < agent depth
+    REQUIRE(parseErr("ab(d5)@1.classic(t1,c4,w0,l0)@2.dil(r5,d9)@1").find("shallower") != string::npos);
     parseErr("rand@1.x7@1");                                 // unknown segment
-    parseErr("ab(d4)@1.classic(t1,c4,w0,l0)@1.");            // trailing dot
+    parseErr("ab(d4)@1.classic(t1,c4,w0,l0)@2.");            // trailing dot
 }
 
 TEST_CASE("ranking id - learned model hashes (when model files exist)") {
@@ -227,7 +238,7 @@ TEST_CASE("ranking roster - parse, toggles, and validation") {
 // ============================================================
 TEST_CASE("ranking match rows - format/parse round trip") {
     RankMatchRow m;
-    m.w = "ab(d4)@1.classic(t1,c4,w0,l0)@1";
+    m.w = "ab(d4)@1.classic(t1,c4,w0,l0)@2";
     m.b = "rand@1";
     m.r = 'W';
     m.plies = 57;
@@ -365,7 +376,7 @@ TEST_CASE("ranking scheduler - color balance, incremental top-up, determinism") 
     REQUIRE(rankSchedule(roster, store, 4, 1).empty());
 
     // Add one agent: exactly (N-1) x 4 new games, all involving the newcomer.
-    string newcomer = "greedy@1.classic(t1,c4,w0,l0)@1";
+    string newcomer = "greedy@1.classic(t1,c4,w0,l0)@2";
     roster.push_back(mkActive(newcomer));
     std::vector<RankPendingGame> p3 = rankSchedule(roster, store, 4, 1);
     REQUIRE(p3.size() == 12);   // 3 new pairs x 4 games
