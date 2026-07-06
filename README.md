@@ -62,7 +62,7 @@ for visually and how to capture matchup-gated controls.
 | `settings.cpp` | `getSettings`, `printVictor` |
 | `board_analysis.cpp` | `countChips`, `chipDiff`, `findWin*`, `canWin*` |
 | `moves.cpp` | Move validation, execution, simulation, player input, move routing |
-| `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard` — the board heuristic used by minimax and the move dispatcher |
+| `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard`, the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
 | `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets, opt-in transposition/ordering/aspiration |
 | `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation |
@@ -91,10 +91,10 @@ Run from the project root (required so board file paths resolve correctly):
 
 ## Graphical interface (GUI)
 
-The GUI is an additive front end built with [raylib](https://www.raylib.com/) and
-[raygui](https://github.com/raysan5/raygui). It reuses the exact same C++ game
-logic and AI as the console app, so AI strength and speed are unchanged. The same
-source builds both a native Windows window and a WebAssembly version for the web.
+The GUI is a front end built with [raylib](https://www.raylib.com/) and
+[raygui](https://github.com/raysan5/raygui). It uses the same C++ game logic and AI
+as the console app. The same source builds a native Windows window and a
+WebAssembly version for the web.
 
 First-time setup (download raylib, plus Emscripten for the web build) is described
 in [INSTALL.md](INSTALL.md).
@@ -190,7 +190,7 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
 
 The game runs interactively in the console. At startup you will be prompted to:
 
-1. **Enter a board file** — e.g. `boards/board1.txt` through `boards/board5.txt`, or a puzzle like `boards/puzzle1.txt`
+1. **Enter a board file**, e.g. `boards/board1.txt` through `boards/board5.txt`, or a puzzle like `boards/puzzle1.txt`
 2. **Choose a player type** for White and Black:
    - `0` = Human
    - `1` = Uniform Random
@@ -216,25 +216,24 @@ function body. The new evaluator and its parameters then appear automatically in
 both the console prompts and the GUI's Eval dropdown / sliders, and can be saved per
 side in `minimax_params.txt` via `<side>_eval` plus each weight's `<side>_<key>`.
 
-For speed, the MiniMax search evaluates positions **incrementally**: since a move
-changes only two squares, the positional score is updated by a small per-move delta
-instead of rescanning the whole board at every leaf. This is internal and does not
-change the scores, so AI play is identical — just faster when positional (wall /
-column / advance) weights are enabled at higher depths.
+MiniMax evaluates the board incrementally: a move changes only two squares, so each
+score term (material, wall, column, advance) updates just those squares and their
+neighbors instead of rescanning all 64 at every leaf. It returns the same score as a
+full recompute, so it affects speed only, not the moves played.
 
 ### Machine learning system
 
-Beyond the hand-written evaluators, the project has a modular ML system of
-interchangeable parts that can be **composed into agents**, made to **fight in
-tournaments**, **Elo-rated**, and used to **generate training data**. The four
+Beyond the hand-written evaluators, the project has an ML system whose
+interchangeable parts combine into agents. Agents can play tournaments, be
+Elo-rated, and generate training data. The four
 pluggable axes are board-state **evaluators** (value), move-tree **explorers**
 (search), move **choosers/policies** (direct, no-lookahead, including a learned
 **move-rater**), and the **models** behind the learned parts (linear now;
 MLP/NNUE/transformer registered for later). A `LearnedValue` evaluator appears in
 the console prompts and GUI Eval dropdown automatically once a model is trained.
 
-Inference is pure C++ (no runtime dependencies); heavy model training and analysis
-are optional Python. Build and use the trainer:
+Inference is pure C++ with no runtime dependencies. Model training and analysis use
+optional Python. Build and use the trainer:
 
 ```powershell
 .\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6   # linear value model
@@ -252,8 +251,8 @@ since the engine's state is global and can't share a process safely):
 This pits every agent (the random/heuristic family, learned policy, and Greedy +
 AlphaBeta over several evaluator weight presets at each depth) against each other and
 prints an `Elo | ms/move | max ms | games | agent` table. A per-move **node budget**
-with iterative deepening keeps deep searches bounded, so depths up to 10 are tractable
-and play soundly (strength rises with depth, then plateaus once the budget binds). The
+with iterative deepening bounds deep searches, so depths up to 10 stay tractable.
+Strength rises with depth, then plateaus once the budget binds. The
 top agent is saved to `agents/champion.txt` and `agents/champion_params.txt` (a
 `minimax_params.txt` block you can drop in to play the champion in the console/GUI).
 
@@ -281,18 +280,18 @@ the full design and the "how to add more" workflow.
 
 ### Agent Elo ranking (rank.exe)
 
-Where the tournament above is a one-off experiment runner, `rank.exe` is the
-**permanent, incremental ladder**: every game is stored forever in
-`ranking/matches.jsonl`, keyed by a canonical human-readable **agent ID** that
+Unlike the one-off tournament runner above, `rank.exe` maintains a persistent,
+incremental ladder: every game is appended to `ranking/matches.jsonl` and never
+overwritten, keyed by a canonical human-readable **agent ID** that
 encodes the whole agent, for example:
 
 ```
 rand@1                                             uniform random (the Elo-0 anchor)
 smart(4)@1                                         SmartRandom over the furthest 4 pieces
-ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1     alpha-beta d6 + TT + ordering + node budget,
+ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@2     alpha-beta d6 + TT + ordering + node budget,
                                                    Classic eval with those weights
-ab(d4)@1.classic(t1,c4,w0,l0)@1.dil(r10)@1         10% random-move dilution
-ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1   30% depth-3 dilution of a d6
+ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1         10% random-move dilution
+ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1   30% depth-3 dilution of a d6
 greedy@1.learned(s0,7cc8a70d)@1                    learned value model (content-hashed)
 ```
 
@@ -301,10 +300,9 @@ then optional `dil()` dilution. Dilution weakens an agent to spread the Elo ladd
 `dil(rP)` plays a fully random move `P`% of the time, while `dil(rP,dN)` instead
 plays a shallower depth-`N` search `P`% of the time (a plausible-but-weaker move
 rather than a blunder, `0 < N <` the agent depth). Every module segment carries its own `@N` **code
-version**, a constant in the codec tables in `src/ranking.cpp`: when a module's
-code changes behavior (say the alpha-beta search improves), bump that one
-constant and only the agents using that module get new identities and fresh
-history, while everyone else keeps theirs. Learned segments embed a model-file
+version**, a constant in the codec tables in `src/ranking.cpp`. When a module's
+behavior changes, bump its constant. Only agents using that module get new
+identities and fresh history, and the rest are unaffected. Learned segments embed a model-file
 content hash instead, so a retrain is automatically a new identity. IDs are
 canonical: `rank.exe check` rejects a stale version or non-canonical spelling
 and prints the exact form to paste.
@@ -313,30 +311,33 @@ Agents live in the hand-edited `ranking/roster.txt` (`anchor|on|off <id>` per
 line). The scheduler only plays each active pair's **missing** games, so adding
 one agent to an N-agent pool costs N pairings, and nothing is ever recomputed.
 Ratings are a deterministic **Bradley-Terry maximum-likelihood refit** of the
-full store, anchored so `rand@1` = Elo 0 (an agent only rates negative if it is
-genuinely worse than uniform random), with a `+/-` standard error per agent.
+full store, anchored so `rand@1` = Elo 0 (an agent rates negative only when it is
+worse than uniform random), with a `+/-` standard error per agent.
 
 ```powershell
 .\tools\run_rank.ps1 -Build check        # validate the roster, print model hashes
 .\tools\run_rank.ps1 run --games 8       # play pending games (live progress), then rate
 .\tools\run_rank.ps1 -Workers 8 --games 8   # same, process-sharded across 8 workers
 .\rank.exe history --agent "ab(d4"       # one agent's record vs every opponent
-.\rank.exe gauntlet --id "ab(d5)@1.classic(t1,c4,w0,l0)@1" --games 4
+.\rank.exe gauntlet --id "ab(d5)@1.classic(t1,c4,w0,l0)@2" --games 4
 ```
 
 Each game records wall time per side, **process CPU time** per side (via
 GetProcessTimes deltas, so it stays honest under parallel contention), end piece
-counts, ply count, node totals, and effective search depth. `rate` writes
-`ranking/ratings.tsv` (machine-readable, a ground-truth label file for
-training), `ranking/games.tsv` (one row per stored game for pandas/DuckDB), and
-`ranking/report.md`: the ranked table with W-L split by color, average plies,
-end-piece margin, cpu/move, and `eff` = Elo / log2(1 + cpu_us/move) (the Elo
-bought per doubling of per-move compute), plus a **compute-efficiency table**
-marking the Elo-vs-CPU pareto frontier, a head-to-head matrix, and per-agent
-match history with actual vs expected scores. `gauntlet` rates one candidate
-against the frozen pool in O(N) games without touching the store (add `--keep`
-to persist them), which is the cheap evaluation step for weight hill-climbing
-along that pareto frontier.
+counts, ply count, node totals, and effective search depth. `rate` writes three
+files:
+
+- `ranking/ratings.tsv`: machine-readable ratings, usable as a label file for training.
+- `ranking/games.tsv`: one row per stored game, for pandas/DuckDB.
+- `ranking/report.md`: the ranked table (W-L split by color, average plies,
+  end-piece margin, cpu/move, and `eff` = Elo / log2(1 + cpu_us/move), the Elo
+  bought per doubling of per-move compute), plus a **compute-efficiency table**
+  marking the Elo-vs-CPU pareto frontier, a head-to-head matrix, and per-agent
+  match history with actual vs expected scores.
+
+`gauntlet` rates one candidate against the frozen pool in O(N) games without
+touching the store (add `--keep` to persist them). This is the cheap evaluation
+step for weight hill-climbing along the pareto frontier.
 
 **Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Experimental
 evaluator's weight mix for the highest Elo at a fixed search depth, using

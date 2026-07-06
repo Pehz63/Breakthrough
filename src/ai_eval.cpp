@@ -98,15 +98,21 @@ int evalPosFull(const int* p, int paramCount) {
 // back to a full evaluateBoard at the leaf.
 
 // Sum of the (up to 4) orthogonally-adjacent same-color pairs that touch square
-// (x,y). Unlike structOwner's fixed right+upper "owned" pairs, this counts a
-// square's pairs in all four directions, so summing it over the two changed
-// squares captures every adjacency the move can alter.
+// (x,y), counted under the SAME single-ownership convention as evalPosFull /
+// structOwner: a pair is scored once, "owned" by its lower-left cell, and only if
+// that owner lies in [0, SIZE-2] on both axes. That excludes top-row walls and
+// rightmost-column columns exactly as the full scan does, so summing this over
+// the two squares a move changes reproduces evalPosFull's total incrementally.
 static inline int neighborStruct(int x, int y, int wallW, int colW) {
     int s = 0;
-    if (x+1 < SIZE) s += pairContrib(x, y, x+1, y, wallW, colW);
-    if (x-1 >= 0)   s += pairContrib(x, y, x-1, y, wallW, colW);
-    if (y+1 < SIZE) s += pairContrib(x, y, x, y+1, wallW, colW);
-    if (y-1 >= 0)   s += pairContrib(x, y, x, y-1, wallW, colW);
+    // Right pair (x,y)-(x+1,y), owner (x,y).
+    if (x <= SIZE-2 && y <= SIZE-2) s += pairContrib(x, y, x+1, y, wallW, colW);
+    // Left pair (x-1,y)-(x,y), owner (x-1,y).
+    if (x-1 >= 0    && y <= SIZE-2) s += pairContrib(x-1, y, x, y, wallW, colW);
+    // Upper pair (x,y)-(x,y+1), owner (x,y).
+    if (x <= SIZE-2 && y <= SIZE-2) s += pairContrib(x, y, x, y+1, wallW, colW);
+    // Lower pair (x,y-1)-(x,y), owner (x,y-1).
+    if (x <= SIZE-2 && y-1 >= 0)    s += pairContrib(x, y-1, x, y, wallW, colW);
     return s;
 }
 
