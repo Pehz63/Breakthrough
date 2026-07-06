@@ -65,9 +65,9 @@ for visually and how to capture matchup-gated controls.
 | `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard`, the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
 | `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets, opt-in transposition/ordering/aspiration |
-| `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation |
+| `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation; value features v1 (dense aggregates) and v2 (sparse piece-square) |
 | `ml_model.cpp` | `Model` base + `LinearModel`, model-type registry, save/load (`type=` format) |
-| `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy) |
+| `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy), incremental v2 accumulator (`mlIncrementalBegin`/`mlLeafScore`) |
 | `explorers.cpp` | Move-tree explorer registry (`Greedy`, `AlphaBeta`) |
 | `choosers.cpp` | Direct move-chooser registry (random family + `LearnedPolicy`) |
 | `agents.cpp` | `AgentSpec` composition + `agentChooseMove` (search/policy + dilution) |
@@ -240,6 +240,38 @@ optional Python. Build and use the trainer:
 .\tools\run_train.ps1 imitate --out models/lin_policy.txt --games 150      # linear policy move-rater
 .\tools\run_train.ps1 docs                                                 # regenerate ML.md tables
 ```
+
+Value models come in two feature layouts. Version 1 is 30 dense board aggregates
+(material, rank counts, structure counts, mobility): informative, but every leaf of a
+search recomputes all of them, including two full move generations. Version 2
+(`--feature-version 2`) is a sparse piece-square layout: one binary input per (color,
+square) plus side to move. A linear model over it is a piece-square table. Because a
+move changes only 2 or 3 of those inputs, the engine keeps the model's output in a
+running accumulator during search, updated by a few weight additions per make/unmake
+instead of a rescan, the same pattern the heuristic evaluators use for their
+positional term. This drops the learned leaf's cost per node by roughly 9x (measured
+with `train.exe speed`, which benchmarks both layouts side by side). The v2 route is
+the substrate for future NNUE-style models: widen the scalar accumulator to a vector
+and add hidden layers. Train one with:
+
+```powershell
+.\tools\run_train.ps1 selfplay-supervised --out models/pst_value --feature-version 2 --games 250 --epochs 6
+```
+
+The trainer's data source and schedule are configurable: `--gen-random-floor` +
+`--gen-random-decay-plies` decay the teacher's random-move dilution over the game
+(explore early, play late moves for real), `--gen-model` makes a previously-trained
+model the self-play generator, `--l2` adds weight decay, and `--from-data` fits on
+positions replayed from the real ranked match history by `rank.exe extract`
+(`rank.exe extract --out data/replay_v2.jsonl --feature-version 2 --sample 3000`).
+`tools/sweep_pst_v2.ps1` combines all of it into a training-hyperparameter sweep
+whose candidates are rated together in one `rank.exe run`. The first 78-candidate
+study's findings are in `plans/training-sweep-results-1-luminous-snail.md`: seed
+noise dominates, more data helps, teacher depth does not, dilution decay is the
+best default, and replay extraction beats bespoke single-teacher self-play (the
+follow-up scaling study `tools/train_scaling.ps1` measured ~+250 Elo from
+replay-training on the full 46k-game match history; the best model reached
+d6 gauntlet Elo 920 and is the current `models/pst_value.txt`).
 
 **Rate everything in a depth-laddered round-robin** (process-sharded across all CPUs,
 since the engine's state is global and can't share a process safely):

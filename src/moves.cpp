@@ -2,6 +2,7 @@
 #include "ai_random.h"
 #include "ai_minimax.h"
 #include "ai_eval.h"
+#include "ml_features.h"   // mlSqW/mlSqB piece-square indices for the g_mlAcc updates
 
 // ============================================================
 // MOVE DISPATCH -- moveWhite / moveBlack
@@ -286,6 +287,10 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     if (moveY+1 == SIZE-1) g_whiteAtEnd++;
 
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
+    if (g_mlIncremental) {
+        g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY+1)] - g_mlWeights[mlSqW(moveX1, moveY)];
+        if (isCapture) g_mlAcc -= g_mlWeights[mlSqB(moveX2, moveY+1)];
+    }
     return isCapture;
 }
 bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the given move for black and returns 1 if it was a capture
@@ -305,6 +310,10 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
     if (moveY-1 == 0) g_blackAtEnd++;
 
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
+    if (g_mlIncremental) {
+        g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY-1)] - g_mlWeights[mlSqB(moveX1, moveY)];
+        if (isCapture) g_mlAcc -= g_mlWeights[mlSqW(moveX2, moveY-1)];
+    }
     return isCapture;
 }
 void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for white
@@ -320,6 +329,10 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
     } else
         board[moveX2][moveY+1] = EMPTY;
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
+    if (g_mlIncremental) {
+        g_mlAcc += g_mlWeights[mlSqW(moveX1, moveY)] - g_mlWeights[mlSqW(moveX2, moveY+1)];
+        if (isCapture) g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY+1)];
+    }
     return;
 }
 void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //Undoes the given move for black
@@ -336,5 +349,9 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
     } else
         board[moveX2][moveY-1] = EMPTY;
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
+    if (g_mlIncremental) {
+        g_mlAcc += g_mlWeights[mlSqB(moveX1, moveY)] - g_mlWeights[mlSqB(moveX2, moveY-1)];
+        if (isCapture) g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY-1)];
+    }
     return;
 }

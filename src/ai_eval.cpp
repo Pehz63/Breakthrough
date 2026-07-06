@@ -141,24 +141,38 @@ int evalPosLocal(int sx, int sy, int dx, int dy) {
     return s;
 }
 
+// Forward declaration (defined below with the registry) so evalBeginSearch can
+// recognize the LearnedValue evaluator without depending on agents.cpp (which
+// not every binary links).
+static int evalLearnedValue(int turnColor, const int* p);
+
 void evalBeginSearch(int evaluator, const int* params) {
     if (evaluator < 0 || evaluator >= g_evalCount) evaluator = 0;
     g_evalIncremental  = g_evaluators[evaluator].incremental;
     g_activeParams     = params;
     g_activeParamCount = g_evaluators[evaluator].paramCount;
     if (g_evalIncremental) g_evalPos = evalPosFull(params, g_activeParamCount);
+    // LearnedValue with a sparse piece-square model (feature v2) gets its own
+    // accumulator, maintained by the same make/unmake hooks as g_evalPos. Any
+    // other model leaves g_mlIncremental false and the leaf falls back to the
+    // full-scan mlValueScore path.
+    if (g_evaluators[evaluator].fn == evalLearnedValue)
+        mlIncrementalBegin(params[0]);
 }
 
 void evalEndSearch() {
     g_evalIncremental = false;
     g_activeParams = nullptr;
     g_activeParamCount = 0;
+    mlIncrementalEnd();
 }
 
 // Fast leaf score for minimax. When an incremental search is active, reuse the
-// maintained g_evalPos; otherwise fall back to the full evaluator. Incremental
-// evaluators promise the standard layout: p[0]=turn, p[1]=chip.
+// maintained accumulator (g_mlAcc for a sparse learned model, g_evalPos for the
+// heuristic evaluators); otherwise fall back to the full evaluator. Incremental
+// heuristic evaluators promise the standard layout: p[0]=turn, p[1]=chip.
 int evalLeaf(int turnColor, int evaluator, const int* p) {
+    if (g_mlIncremental) return mlLeafScore(turnColor);
     if (!g_evalIncremental) return evaluateBoard(turnColor, evaluator, p);
     int nw = nearWinCheck(turnColor);
     if (nw) return nw;
@@ -188,8 +202,11 @@ static int evalExperimental(int turnColor, const int* p) {
 }
 
 // "LearnedValue": delegates to a machine-learned value model. p[0] = model slot
-// (see ml_eval.h). Non-incremental: the full feature scan runs at each leaf via the
-// evalLeaf fallback path, so `incremental` must stay false in its registry entry.
+// (see ml_eval.h). Its registry `incremental` flag stays false (that flag drives
+// the heuristic g_evalPos path). Instead, when the slot holds a sparse
+// piece-square model (feature v2), evalBeginSearch enables the separate g_mlAcc
+// accumulator and evalLeaf reads it via mlLeafScore; any other model (feature v1
+// aggregates) runs this full feature scan at each leaf via the evalLeaf fallback.
 static int evalLearnedValue(int turnColor, const int* p) {
     return mlValueScore(turnColor, p[0]);
 }

@@ -21,14 +21,14 @@ static inline float sigmoidf(float z) {
     float e = expf(z); return e / (1.0f + e);
 }
 
-float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr) {
+float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr, float l2) {
     int lim = (m < n) ? m : n;
     float z = forward(x, lim);
     float p = sigmoidf(z);
     float eps = 1e-7f;
     float loss = -(target * logf(p + eps) + (1.0f - target) * logf(1.0f - p + eps));
     float g = (p - target);                 // dL/dz for logistic
-    for (int i = 0; i < lim; i++) w[i] -= lr * g * x[i];
+    for (int i = 0; i < lim; i++) w[i] -= lr * (g * x[i] + l2 * w[i]);
     bias -= lr * g;
     return loss;
 }

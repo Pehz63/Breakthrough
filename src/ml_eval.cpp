@@ -39,6 +39,17 @@ void mlAutoLoadDefaultSlots() {
 // with the +/-WIN sentinels handled by nearWinCheck / canWin*.
 static const int ML_EVAL_CAP = INT_MAX - 4096;   // < WhiteWin-1024, > BlackWin+1024 when negated
 
+// Shared tail of every learned value score: tanh squash, scale, round, clamp.
+// Used by both the full-scan path (mlValueScore) and the incremental leaf read
+// (mlLeafScore) so the two can never diverge in how a raw output becomes an eval.
+static int mlSquashToEval(double out, float scale) {
+    double scaled = std::tanh(out) * scale;   // bounded in (-out_scale, out_scale)
+    int v = (int)lround(scaled);
+    if (v >  ML_EVAL_CAP) v =  ML_EVAL_CAP;
+    if (v < -ML_EVAL_CAP) v = -ML_EVAL_CAP;
+    return v;
+}
+
 int mlValueScore(int turnColor, int slot) {
     int nw = nearWinCheck(turnColor);
     if (nw) return nw;
@@ -51,14 +62,67 @@ int mlValueScore(int turnColor, int slot) {
         return evaluateBoard(turnColor, 0, defs);
     }
 
+    // Dispatch the extractor on the model's feature version: v1 = dense
+    // aggregates, v2 = sparse piece-square. This full-scan path serves the GUI
+    // readout, the Greedy explorer, and the reference side of the incremental
+    // equivalence tests.
+    if (m->featureVersion() == 2) {
+        float feats[MLV2_FEATURES];
+        mlExtractValueFeaturesV2(turnColor, feats);
+        return mlSquashToEval(m->forward(feats, MLV2_FEATURES), m->outputScale());
+    }
     float feats[MLV_FEATURES];
     mlExtractValueFeatures(turnColor, feats);
-    float out = m->forward(feats, MLV_FEATURES);
-    float scaled = std::tanh(out) * m->outputScale();   // bounded in (-out_scale, out_scale)
-    int v = (int)lround(scaled);
-    if (v >  ML_EVAL_CAP) v =  ML_EVAL_CAP;
-    if (v < -ML_EVAL_CAP) v = -ML_EVAL_CAP;
-    return v;
+    return mlSquashToEval(m->forward(feats, MLV_FEATURES), m->outputScale());
+}
+
+// ============================================================
+// INCREMENTAL VALUE PATH (feature v2 accumulator)
+// ============================================================
+// The scalar analog of NNUE's accumulator: for a linear model over the sparse
+// piece-square inputs, the whole forward pass short of the squash is
+//   bias + sum(weights of occupied piece-squares) + stmW * sideToMove.
+// The board-dependent part is kept in g_mlAcc, updated by 2-3 weight
+// adds/subtracts per make/unmake (see moves.cpp). The side-to-move term is
+// applied at read time so unmake never has to know whose turn it was.
+static float g_mlStmW = 0.0f;       // weight of the side-to-move input
+static float g_mlOutScale = 1.0f;   // active model's output scale
+
+bool mlIncrementalBegin(int slot) {
+    mlIncrementalEnd();
+    Model* m = mlGetModel(slot);
+    if (!m || m->head() != HEAD_VALUE || m->featureVersion() != 2) return false;
+    LinearModel* lm = dynamic_cast<LinearModel*>(m);
+    if (!lm || lm->n != MLV2_FEATURES) return false;
+
+    g_mlWeights  = lm->w.data();
+    g_mlStmW     = lm->w[MLV2_STM];
+    g_mlOutScale = lm->outScale;
+
+    double acc = lm->bias;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            char c = board[x][y];
+            if (c == WHITE)      acc += g_mlWeights[mlSqW(x, y)];
+            else if (c == BLACK) acc += g_mlWeights[mlSqB(x, y)];
+        }
+    g_mlAcc = acc;
+    g_mlIncremental = true;
+    return true;
+}
+
+void mlIncrementalEnd() {
+    g_mlIncremental = false;
+    g_mlWeights = nullptr;
+    g_mlStmW = 0.0f;
+    g_mlOutScale = 1.0f;
+}
+
+int mlLeafScore(int turnColor) {
+    int nw = nearWinCheck(turnColor);
+    if (nw) return nw;
+    double out = g_mlAcc + g_mlStmW * ((turnColor == White) ? 1.0 : -1.0);
+    return mlSquashToEval(out, g_mlOutScale);
 }
 
 int mlRateMoves(int side, int slot, const Move* moves, int n, float* scoresOut) {

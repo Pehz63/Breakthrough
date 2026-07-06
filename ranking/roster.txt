@@ -89,3 +89,12 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d4)@1
 # off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
 on      ab(d4)@1.exp(t20,c64,w0,l1,f15)@2
 on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
+
+# Best learned model to date: trained on 4000 games REPLAYED from this store's
+# own match history (rank.exe extract, the full diverse agent pool as teachers),
+# d6 gauntlet Elo 920 +/- 28, up from 855 (sweep winner) and 595 (original PST).
+# See plans/training-sweep-results-1-luminous-snail.md. Flip to "on" to fold it
+# into the standing ladder; a retrain of models/pst_value.txt changes the hash.
+# Caveat: trained on the pool's own games and rated against that pool, so part
+# of the number may be style-fit; the held-out-agent probe (todo.md) tests this.
+# off   ab(d6,tt,ord,nb200k)@1.learned(s2,59815079)@1

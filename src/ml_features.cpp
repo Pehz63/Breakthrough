@@ -117,6 +117,49 @@ void mlExtractValueFeatures(int turnColor, float* f) {
 }
 
 // ============================================================
+// VALUE FEATURES V2 (sparse piece-square, board -> 0/1 vector)
+// ============================================================
+// Names are built once on first use: w_a1..w_h8, b_a1..b_h8, side_to_move.
+// File letter = x (a..h), rank digit = y+1 (1..8), matching mlSqW/mlSqB.
+static char g_valueNamesV2[MLV2_FEATURES][16];
+static bool g_valueNamesV2Built = false;
+
+static void buildValueNamesV2() {
+    for (int c = 0; c < 2; c++)
+        for (int y = 0; y < SIZE; y++)
+            for (int x = 0; x < SIZE; x++) {
+                char* s = g_valueNamesV2[c*SIZE*SIZE + x + SIZE*y];
+                s[0] = (c == 0) ? 'w' : 'b';
+                s[1] = '_';
+                s[2] = (char)('a' + x);
+                s[3] = (char)('1' + y);
+                s[4] = '\0';
+            }
+    // strcpy without <cstring>: the literal fits the 16-char slot.
+    const char* stm = "side_to_move";
+    char* d = g_valueNamesV2[MLV2_STM];
+    int i = 0;
+    while ((d[i] = stm[i]) != '\0') i++;
+    g_valueNamesV2Built = true;
+}
+
+const char* mlValueFeatureNameV2(int i) {
+    if (!g_valueNamesV2Built) buildValueNamesV2();
+    return (i >= 0 && i < MLV2_FEATURES) ? g_valueNamesV2[i] : "";
+}
+
+void mlExtractValueFeaturesV2(int turnColor, float* f) {
+    for (int i = 0; i < MLV2_FEATURES; i++) f[i] = 0.0f;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            char c = board[x][y];
+            if (c == WHITE)      f[mlSqW(x, y)] = 1.0f;
+            else if (c == BLACK) f[mlSqB(x, y)] = 1.0f;
+        }
+    f[MLV2_STM] = (turnColor == White) ? 1.0f : -1.0f;
+}
+
+// ============================================================
 // MOVE FEATURES (move -> side-relative float vector)
 // ============================================================
 static const char* kMoveNames[MLM_FEATURES] = {

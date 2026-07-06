@@ -110,6 +110,15 @@ static void usage() {
     cout << "  --seed <n>       RNG seed (default: time)\n";
     cout << "\nExamples:\n";
     cout << "  train.exe selfplay-supervised --out models/lin_value --games 300 --epochs 12\n";
+    cout << "  train.exe selfplay-supervised --out models/pst_value --feature-version 2 --games 300 --epochs 6\n";
+    cout << "      (--feature-version 2 = sparse piece-square features, the incremental-search layout)\n";
+    cout << "  train.exe selfplay-supervised --out models/pst_boot1 --feature-version 2 --gen-model models/pst_value.txt --gen-model-explorer alphabeta --gen-depth 4 --games 200\n";
+    cout << "      (self-play bootstrap: the teacher IS a previously-trained model instead of a heuristic)\n";
+    cout << "  train.exe selfplay-supervised --out models/pst_replay --feature-version 2 --from-data data/replay_v2.jsonl\n";
+    cout << "      (fit on positions replayed from ranking/matches.jsonl by rank.exe extract, instead of fresh self-play)\n";
+    cout << "  --l2 <f>                     weight decay in the SGD step (0 = off, the historical behavior)\n";
+    cout << "  --gen-random-floor <f> --gen-random-decay-plies <n>  linearly decay teacher dilution from\n";
+    cout << "      --gen-random to --gen-random-floor over that many half-moves (0 plies = off, constant dilution)\n";
     cout << "  train.exe imitate --out models/lin_policy.txt --games 150 --epochs 15\n";
     cout << "  train.exe tournament --games 10                  (single-process, default depths)\n";
     cout << "  train.exe tournament-play --shard 0 --of 8 --depths \"2,4,6,8,10\" --games 10 --node-budget 300000\n";
@@ -148,7 +157,14 @@ int main(int argc, char** argv) {
             getDbl(argc, argv, "--gen-random", 0.2),
             seed,
             getOpt(argc, argv, "--gen-eval", "Classic"),
-            getIntList(argc, argv, "--gen-params"));
+            getIntList(argc, argv, "--gen-params"),
+            getInt(argc, argv, "--feature-version", 1),
+            getDbl(argc, argv, "--l2", 0.0),
+            getDbl(argc, argv, "--gen-random-floor", 0.0),
+            getInt(argc, argv, "--gen-random-decay-plies", 0),
+            getOpt(argc, argv, "--gen-model", ""),
+            getOpt(argc, argv, "--gen-model-explorer", "alphabeta"),
+            getOpt(argc, argv, "--from-data", ""));
     } else if (cmd == "imitate") {
         rc = trainImitationPolicy(
             getOpt(argc, argv, "--out", "models/lin_policy.txt"),

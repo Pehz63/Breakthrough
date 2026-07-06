@@ -2,7 +2,7 @@
 // Persistent agent Elo ranking (rank.exe) -- see ranking.h
 // ============================================================
 // Sections: SMALL UTILITIES, ID CODEC, ROSTER, MATCH STORE, SCHEDULER,
-// BRADLEY-TERRY FIT, GAME RUNNER, RATE + REPORTS, HISTORY, GAUNTLET, CHECK.
+// BRADLEY-TERRY FIT, GAME RUNNER, RATE + REPORTS, HISTORY, GAUNTLET, EXTRACT, CHECK.
 //
 // Deliberately independent of ml_train.cpp (whose helpers are static): the tiny
 // utilities it shares (ensureDir, fnv1a64, json extractors, registry lookups)
@@ -112,10 +112,16 @@ static int gameOutcome(int victor) {
     return 0;
 }
 
-// The model file behind a slot (the project's fixed convention).
+// The model file behind a slot. Slots 0/1/2 are the project's fixed, named
+// conventions; slots 3.. are a generic sweep/experiment convention so many
+// independently-trained candidates can each get a permanent identity (a slot +
+// file) and be rated together in one process, instead of one shared file being
+// swapped serially between gauntlet calls.
 static string slotFile(int slot) {
     if (slot == 0) return "models/lin_value.txt";
     if (slot == 1) return "models/lin_policy.txt";
+    if (slot == 2) return "models/pst_value.txt";   // sparse piece-square value model (feature v2, incremental)
+    if (slot >= 3 && slot < ML_SLOTS) return "models/sweep/slot" + std::to_string(slot) + ".txt";
     return "";
 }
 
@@ -1913,6 +1919,111 @@ int rankGauntlet(const string& rosterFile, const string& storeFile, const string
 }
 
 // ============================================================
+// EXTRACT
+// ============================================================
+// Replay a sample of historical matches from the store, capturing labeled value-
+// model training positions instead of the summary-only match row. This reuses
+// the existing, already-diverse, already-Elo-differentiated agent pool (every
+// depth/dilution/evaluator/TT variant ever rated) as a training data source
+// instead of a bespoke self-play generator. Games are replayed deterministically
+// (same seed, same board) via the exact agents the id encodes; ml_train.cpp's
+// selfplay-supervised --from-data fits a model on the file this writes.
+static int playOneGameCapture(const RankAgent& wa, const RankAgent& ba, const string& board,
+                              int featVer, std::vector<int>& capSide,
+                              std::vector<std::vector<float> >& capFeat) {
+    if (!reloadBoard(board)) return None;
+    int victor = None;
+    for (int h = 0; h < 400; h++) {
+        int side = (h % 2 == 0) ? White : Black;
+        const RankAgent& ag = (side == White) ? wa : ba;
+        std::vector<float> feat(featVer == 2 ? MLV2_FEATURES : MLV_FEATURES);
+        if (featVer == 2) mlExtractValueFeaturesV2(side, feat.data());
+        else              mlExtractValueFeatures(side, feat.data());
+        capSide.push_back(side);
+        capFeat.push_back(feat);
+        victor = agentChooseMove(ag.spec, side);
+        if (gameOutcome(victor)) break;
+    }
+    return victor;
+}
+
+int rankExtract(const string& storeFile, const string& outFile, const string& board,
+                int featVer, int sampleN, unsigned seed) {
+    if (featVer != 1 && featVer != 2) featVer = 2;
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    rankLoadMatches(storeFile, board, rows, skipped);
+    if (rows.empty()) {
+        cout << "ERROR: no matches for board " << board << " in " << storeFile << "\n";
+        return 1;
+    }
+    cout << "Loaded " << rows.size() << " match rows (" << skipped << " store-parse skipped) for board " << board << "\n";
+
+    // Deterministic shuffle so a re-run with the same --seed samples the same
+    // games, and a bigger --sample is a superset-ish extension of a smaller one
+    // (same prefix order) rather than an unrelated draw.
+    std::vector<int> order(rows.size());
+    for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
+    srand(seed);
+    for (size_t i = order.size(); i > 1; i--) {
+        size_t j = (size_t)(((double)rand() / ((double)RAND_MAX + 1.0)) * i);
+        if (j >= i) j = i - 1;
+        std::swap(order[i-1], order[j]);
+    }
+    int target = (sampleN > 0) ? sampleN : (int)order.size();
+
+    ensureDir("data");
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+
+    int replayed = 0, idSkipped = 0, mismatchSkipped = 0, positions = 0;
+    for (size_t k = 0; k < order.size() && replayed < target; k++) {
+        const RankMatchRow& row = rows[order[k]];
+        RankAgent wa, ba;
+        string err;
+        if (!rankAgentFromId(row.w, wa, err) || !rankAgentFromId(row.b, ba, err)) { idSkipped++; continue; }
+        std::vector<const RankAgent*> pair;
+        pair.push_back(&wa); pair.push_back(&ba);
+        if (!loadModelSlots(pair, err)) { idSkipped++; continue; }
+
+        srand(row.seed);
+        std::vector<int> capSide;
+        std::vector<std::vector<float> > capFeat;
+        int victor = playOneGameCapture(wa, ba, board, featVer, capSide, capFeat);
+        int oc = gameOutcome(victor);
+        char r = (oc == 1) ? 'W' : (oc == 2) ? 'B' : 'D';
+        if (r != row.r) { mismatchSkipped++; continue; }   // determinism drift guard: don't label an unreproduced game
+
+        float label = (oc == 1) ? 1.0f : (oc == 2) ? 0.0f : 0.5f;
+        for (size_t p = 0; p < capFeat.size(); p++) {
+            const std::vector<float>& f = capFeat[p];
+            std::ostringstream ln;
+            if (featVer == 2) {
+                ln << "{\"ver\":2,\"stm\":" << (capSide[p] == White ? 1 : -1) << ",\"label\":" << label << ",\"idx\":[";
+                bool first = true;
+                for (int i = 0; i < MLV2_STM; i++)
+                    if (f[i] != 0.0f) { if (!first) ln << ","; ln << i; first = false; }
+                ln << "]}";
+            } else {
+                ln << "{\"ver\":1,\"label\":" << label << ",\"f\":[";
+                for (int i = 0; i < MLV_FEATURES; i++) { if (i) ln << ","; ln << f[i]; }
+                ln << "]}";
+            }
+            out << ln.str() << "\n";
+            positions++;
+        }
+        replayed++;
+        if (replayed % 200 == 0) cout << "  replayed " << replayed << "/" << target << " games, " << positions << " positions\n";
+    }
+    out.close();
+    cout << "Replayed " << replayed << " games (" << idSkipped << " unparseable/stale ids, "
+         << mismatchSkipped << " determinism mismatches skipped), " << positions
+         << " positions -> " << outFile << " (feature v" << featVer << ")\n";
+    mlClearSlots();
+    return replayed > 0 ? 0 : 1;
+}
+
+// ============================================================
 // CHECK
 // ============================================================
 int rankCheck(const string& rosterFile, const string& storeFile, int gamesPerPair,
@@ -1922,7 +2033,7 @@ int rankCheck(const string& rosterFile, const string& storeFile, int gamesPerPai
 
     // Model hashes first: they are what a user needs to paste into a learned
     // agent's id, and they help even when the roster fails to parse.
-    for (int slot = 0; slot < 2; slot++) {
+    for (int slot = 0; slot < ML_SLOTS; slot++) {
         string h = rankFileHash8(slotFile(slot));
         if (!h.empty())
             cout << "model hash: " << slotFile(slot) << " = " << h << " (slot " << slot << ")\n";

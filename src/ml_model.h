@@ -50,8 +50,10 @@ struct LinearModel : public Model {
     bool save(const string& path) const override;
 
     // One logistic-regression SGD step toward `target` in [0,1]; returns the
-    // pre-update cross-entropy loss so callers can watch it fall.
-    float sgdLogisticStep(const float* x, int m, float target, float lr);
+    // pre-update cross-entropy loss so callers can watch it fall. l2 (default 0 =
+    // unregularized, the historical behavior) applies simple weight decay
+    // w[i] -= lr*l2*w[i] alongside the gradient step (bias is not decayed).
+    float sgdLogisticStep(const float* x, int m, float target, float lr, float l2 = 0.0f);
 };
 
 // ---- Factory / loader ----

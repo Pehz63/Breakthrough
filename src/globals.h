@@ -52,6 +52,19 @@ extern bool g_evalIncremental;
 extern const int* g_activeParams;
 extern int g_activeParamCount;
 
+// Incremental ML value state (maintained during a minimax search when the
+// LearnedValue evaluator holds a sparse piece-square model, feature version 2):
+//   g_mlAcc          running dot product of the board's piece-square inputs with
+//                    the model weights, bias included (double so add/subtract
+//                    drift stays far below the eval's integer resolution)
+//   g_mlIncremental  true while an ML-incremental search is active (gates the
+//                    make/unmake updates in moves.cpp)
+//   g_mlWeights      the active model's weight array (indexed by mlSqW/mlSqB)
+// Seeded/cleared by mlIncrementalBegin/End (ml_eval.cpp) via evalBegin/EndSearch.
+extern double g_mlAcc;
+extern bool g_mlIncremental;
+extern const float* g_mlWeights;
+
 // Last minimax best-line ("predicted downstream") evaluations, white-centric.
 // Set by miniMaxWhite/Black from the root alpha/beta; surfaced by the UIs.
 extern int g_downEvalWhite;

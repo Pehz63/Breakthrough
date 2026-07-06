@@ -141,3 +141,11 @@ int rankHistory(const std::string& storeFile, const std::string& agentQuery,
 int rankGauntlet(const std::string& rosterFile, const std::string& storeFile,
                  const std::string& candidateId, int gamesPerOpp, bool keep,
                  unsigned runSeed, const std::string& board);
+// Replay a deterministic sample of storeFile's historical matches (filtered to
+// board), capturing labeled value-model training positions to outFile in the
+// format ml_train.cpp's selfplay-supervised --from-data reads. sampleN <= 0
+// means replay everything. featVer selects which feature layout to extract (1
+// dense aggregates, 2 sparse piece-square). Reuses the existing rated agent
+// pool as a training data source instead of a bespoke generator.
+int rankExtract(const std::string& storeFile, const std::string& outFile,
+                const std::string& board, int featVer, int sampleN, unsigned seed);

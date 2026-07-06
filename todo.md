@@ -71,6 +71,25 @@ against the same seams.
   instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
   hidden terms cancel/zero out (e.g. ReLU gating so unchanged regions contribute a constant), the
   way the heuristic `g_evalPos` already does a true neighbor-local delta. `[Later]`
+  - ~~Substrate shipped: sparse piece-square value features (v2, 129 binary inputs) plus the
+    `g_mlAcc` scalar accumulator, updated by 2-3 weight adds per make/unmake and read at the
+    leaf by `mlLeafScore`. A linear v2 model is an incremental PST with zero approximation
+    (~9x lower cost per node than the v1 full-scan learned leaf). The NNUE step is widening
+    the scalar to a vector and adding hidden layers on the same seams.~~
+- Joint value + policy + next-value model trained to minimize its own recomputation `[Later]`
+  - With ReLU units, a hidden unit that remains clamped at 0 before and after a move contributes
+    no changed downstream value (equivalently, the derivative through the ReLU pre-activation is
+    0 except at the kink). So add a penalty (L0, or an L1/sigmoid surrogate) on the count of
+    hidden units whose output changes across the move the policy head picks. The model must
+    jointly learn the board value, the best move, and the successor value, because which units
+    must recompute depends on which move is played: it co-learns playing strength and its own
+    recomputation cost, preferring representations where the lines it likes are also cheap.
+  - Caveats: the sparsity term must stay a light regularizer or the model will prefer cheap moves
+    over good ones. Alpha-beta explores all moves at a node, so architectural locality (conv or
+    locally connected first layer) is what bounds worst-case per-move cost, while the learned
+    clamping cheapens the chosen lines on top. Training needs the Python track (a custom
+    three-head loss is beyond the C++ SGD in `ml_train.cpp`); inference plugs into the same
+    `g_mlAcc`-style accumulator seams shipped above.
 
 ## Models (policy head: board + move -> score / move-rater)
 - ~~Linear move-rater **(P1)**~~
@@ -103,6 +122,25 @@ against the same seams.
 ## Training Regimes
 - ~~Supervised on self-play outcomes (value) **(P1)**~~
 - ~~Imitation / behavioral cloning from a stronger agent (policy) **(P1)**~~
+- Eval-blended labels: label each position with lambda*outcome + (1-lambda)*sigmoid(teacherEval/scale)
+  instead of outcome alone. The teacher already computes a root search score every move and throws
+  it away; blending turns one noisy bit per game into a real-valued signal per position (the NNUE
+  training recipe) and should also improve move ordering, where the PST prunes 3x worse than
+  Classic `[Now]`
+- Weight symmetrization + seed-ensembling for linear models: after training, average each weight
+  with its left-right mirror (exact symmetry projection, free variance cut), and average the
+  weights of K seed-replicas (for a linear model the ensemble IS the average). Directly attacks
+  the measured 50-150 Elo training-seed noise `[Now]`
+- Extraction quality controls in rank.exe extract: --min-elo floor or Elo-confidence weighting
+  (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
+  held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),
+  and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]`
+- Tapered / phase-split PST: separate opening/endgame weight tables interpolated by piece count
+  (piece count changes only on capture, so it stays fully incremental). The natural capacity step
+  before MLP `[Next]`
+- Validation split + early stopping instead of the fixed 6-epoch folklore cap `[Next]`
+- PV/leaf position harvesting: train on positions from inside the teacher's search tree labeled
+  by subtree value, matching the off-path distribution the eval actually sees in search `[Later]`
 - TD-Leaf(lambda) self-play bootstrap (value) `[Later]`
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
@@ -158,4 +196,13 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - Python analysis layer (DuckDB queries: top Elo, fairest positions, avg eval per position) `[Later]`
 - Python training (PyTorch) for MLP/NNUE/transformer, exporting C++-format weights `[Later]`
 - Optional Weights & Biases tracking (local metrics by default, W&B opt-in) `[Dream]`
-- Hyperparameter study for the ML evaluators/policies `[Next]`
+- ~~Hyperparameter study for the ML evaluators/policies~~ (done for the linear v2 PST:
+  78 models across teacher depth x games x dilution(+decay) x bootstrap x replay-data x L2,
+  rated in one Bradley-Terry fit; see `plans/training-sweep-results-1-luminous-snail.md`.
+  Headlines: training-seed noise (50-150 Elo) dominates every axis, more data helps ~+38,
+  teacher depth is irrelevant, dilution decay is the best default, replay extraction from
+  the rank pool beats bespoke self-play for free, and the linear class itself is the
+  ceiling. The follow-up scaling study (`tools/train_scaling.ps1`) then showed replay
+  training on the grown 46k-game store beats single-teacher self-play by ~250 Elo:
+  best model d6 Elo 920, promoted to `models/pst_value.txt`. Redo only after a capacity
+  jump (MLP/NNUE).)

@@ -10,7 +10,13 @@
 // Black (or many tournament agents) can each use a different model at once. The
 // LearnedValue evaluator and the LearnedPolicy chooser both reference a slot.
 
-#define ML_SLOTS 8
+// Slots 0/1/2 have fixed file conventions (lin_value/lin_policy/pst_value, see
+// ranking.cpp's slotFile()); slots 3.. are generic sweep/experiment slots
+// (models/sweep/slot<N>.txt) so a large hyperparameter sweep can hold many
+// independently-trained candidates rated together in one process, instead of
+// serially swapping one shared file. The trainer's internal quick-score-vs-random
+// check (see ml_train.cpp) always uses the LAST slot as scratch.
+#define ML_SLOTS 128
 
 // Best-effort: load the default trained models into their conventional slots
 // (models/lin_value.txt -> slot 0, models/lin_policy.txt -> slot 1) if present, so
@@ -30,6 +36,18 @@ void   mlClearSlots();
 // (BlackWin, WhiteWin) sentinels. Falls back to Classic defaults if the slot is
 // empty, so callers always get a usable number.
 int mlValueScore(int turnColor, int slot);
+
+// ---- Incremental ML value path (sparse piece-square models, feature v2) ----
+// mlIncrementalBegin: if the model in `slot` is a value head over the v2 sparse
+// piece-square features, seed g_mlAcc (bias + occupied piece-square weights, one
+// board scan), latch g_mlWeights, and return true. Returns false (and leaves the
+// globals cleared) for any other model, so callers fall back to the full-scan
+// path. mlIncrementalEnd clears the state. mlLeafScore reads the maintained
+// accumulator at a search leaf: near-win shortcut, then
+// tanh(acc + stmW*turn) * out_scale, clamped exactly like mlValueScore.
+bool mlIncrementalBegin(int slot);
+void mlIncrementalEnd();
+int  mlLeafScore(int turnColor);
 
 // Score each move in moves[0..n) for `side` with the policy model in `slot`,
 // writing raw scores to scoresOut[] (may be null). Returns the index of the

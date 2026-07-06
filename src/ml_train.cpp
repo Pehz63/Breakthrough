@@ -80,6 +80,12 @@ static int evaluatorIndexByName(const char* n) {
 static double frand() { return (double)rand() / (double)RAND_MAX; }
 static float  randWeight() { return (float)((frand() * 2.0 - 1.0) * 0.05); }
 
+// Forward declaration: defined near the JSONL field extractors below (~line 560),
+// used by trainSupervisedValue's --from-data path (see ml_train.h).
+static bool loadReplayDataset(const string& path, int featVer, int featCount,
+                              std::vector<std::vector<float> >& X, std::vector<float>& Y,
+                              string& err);
+
 template <class T> static void shuffleVec(std::vector<T>& v) {
     for (size_t i = v.size(); i > 1; i--) {
         size_t j = (size_t)(frand() * i);
@@ -125,23 +131,41 @@ struct PosCap {
     string              enc;
 };
 
+// genRandomDecayPlies > 0 linearly decays each side's randomMoveProb from its
+// starting value (at ply 0) to genRandomFloor by that many half-moves, then
+// holds at the floor -- explore early, play the late (most outcome-informative)
+// moves for real. 0 (the default) is the historical constant-probability
+// behavior; existing callers are unaffected.
 static int playGame(const AgentSpec& w, const AgentSpec& b, const string& boardFile,
-                    int maxHalf, std::vector<PosCap>* cap) {
+                    int maxHalf, std::vector<PosCap>* cap, int featVer = 1,
+                    double genRandomFloor = 0.0, int genRandomDecayPlies = 0) {
     reloadBoard(boardFile);
     int victor = None;
+    bool decay = genRandomDecayPlies > 0;
+    AgentSpec ww = w, bb = b;
     for (int h = 0; h < maxHalf; h++) {
         int side = (h % 2 == 0) ? White : Black;
+        if (decay) {
+            double t = std::min(1.0, h / (double)genRandomDecayPlies);
+            double p = w.randomMoveProb * (1.0 - t) + genRandomFloor * t;
+            ww.randomMoveProb = p; bb.randomMoveProb = p;
+        }
         if (cap) {
             PosCap pc;
-            pc.f.resize(MLV_FEATURES);
-            mlExtractValueFeatures(side, pc.f.data());
+            if (featVer == 2) {
+                pc.f.resize(MLV2_FEATURES);
+                mlExtractValueFeaturesV2(side, pc.f.data());
+            } else {
+                pc.f.resize(MLV_FEATURES);
+                mlExtractValueFeatures(side, pc.f.data());
+            }
             pc.side = side;
             PosKey k = positionKey(side, true);
             pc.hash = k.hash;
             pc.enc  = k.enc;
             cap->push_back(pc);
         }
-        victor = agentChooseMove(side == White ? w : b, side);
+        victor = agentChooseMove(side == White ? ww : bb, side);
         if (gameOutcome(victor)) break;
     }
     return victor;
@@ -197,37 +221,74 @@ static string teacherSpec(const AgentSpec& a) {
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
-                         const string& genEval, const std::vector<int>& genParams) {
+                         const string& genEval, const std::vector<int>& genParams,
+                         int featVer, double l2, double genRandomFloor,
+                         int genRandomDecayPlies, const string& genModelPath,
+                         const string& genModelExplorer, const string& fromDataFile) {
     srand(seed);
     PRNT = 0;
-
-    AgentSpec gen = makeTeacherAgent("gen", genEval, genDepth, genParams);
-    gen.randomMoveProb = genRandom;       // dilution -> position diversity
-    string teach = teacherSpec(gen);
-    cout << "Teacher/generator: " << teach << "  randomMoveProb=" << genRandom << "\n";
+    if (featVer != 1 && featVer != 2) featVer = 1;
+    const int featCount = (featVer == 2) ? MLV2_FEATURES : MLV_FEATURES;
 
     std::vector<std::vector<float> > X;
     std::vector<float> Y;
-    std::vector<unsigned long long> H;     // position hash (parallel to X)
-    std::vector<string> E;                 // position encoding
-    std::vector<int> S;                    // side to move
-    int wWins = 0, bWins = 0, draws = 0;
-    for (int g = 0; g < games; g++) {
-        std::vector<PosCap> gf;
-        int v = playGame(gen, gen, boardFile, 400, &gf);
-        int oc = gameOutcome(v);
-        if (oc == 1) wWins++; else if (oc == 2) bWins++; else draws++;
-        float y = (oc == 1) ? 1.0f : (oc == 2) ? 0.0f : 0.5f;
-        for (size_t k = 0; k < gf.size(); k++) {
-            X.push_back(gf[k].f); Y.push_back(y);
-            H.push_back(gf[k].hash); E.push_back(gf[k].enc); S.push_back(gf[k].side);
+    std::vector<unsigned long long> H;     // position hash (parallel to X); empty when fromDataFile is used
+    std::vector<string> E;                 // position encoding; empty when fromDataFile is used
+    std::vector<int> S;                    // side to move; empty when fromDataFile is used
+    string teach;
+
+    if (!fromDataFile.empty()) {
+        // Skip self-play generation entirely: fit on positions replayed from the
+        // existing rank.exe agent pool's real match history instead of a fresh,
+        // hand-picked teacher (see rank.exe's "extract" subcommand).
+        string err;
+        if (!loadReplayDataset(fromDataFile, featVer, featCount, X, Y, err)) {
+            cout << "ERROR: " << err << "\n";
+            return 1;
         }
+        teach = "replay:" + fromDataFile;
+        cout << "Data source: " << teach << "  (" << X.size() << " positions, feature v" << featVer << ")\n";
+    } else {
+        AgentSpec gen;
+        if (!genModelPath.empty()) {
+            // Self-play bootstrap: the teacher IS a previously-trained value model,
+            // wrapped in a search, instead of the fixed Classic/Experimental heuristic.
+            int scratchSlot = ML_SLOTS - 2;
+            if (!mlLoadSlot(scratchSlot, genModelPath)) {
+                cout << "ERROR: cannot load generator model " << genModelPath << "\n";
+                return 1;
+            }
+            int expIdx = explorerIndexByName(genModelExplorer == "greedy" ? "Greedy" : "AlphaBeta");
+            gen = agentMakeSearch("gen-bootstrap", expIdx, learnedValueIndex(), genDepth, scratchSlot);
+            teach = "self-play-bootstrap(" + genModelExplorer + (genModelExplorer == "greedy" ? "" : ",d" + std::to_string(genDepth))
+                  + ",model=" + genModelPath + ")";
+        } else {
+            gen = makeTeacherAgent("gen", genEval, genDepth, genParams);
+            teach = teacherSpec(gen);
+        }
+        gen.randomMoveProb = genRandom;       // dilution -> position diversity (start value; see decay below)
+        cout << "Teacher/generator: " << teach << "  randomMoveProb=" << genRandom;
+        if (genRandomDecayPlies > 0) cout << " decaying to " << genRandomFloor << " over " << genRandomDecayPlies << " plies";
+        cout << "\n";
+
+        int wWins = 0, bWins = 0, draws = 0;
+        for (int g = 0; g < games; g++) {
+            std::vector<PosCap> gf;
+            int v = playGame(gen, gen, boardFile, 400, &gf, featVer, genRandomFloor, genRandomDecayPlies);
+            int oc = gameOutcome(v);
+            if (oc == 1) wWins++; else if (oc == 2) bWins++; else draws++;
+            float y = (oc == 1) ? 1.0f : (oc == 2) ? 0.0f : 0.5f;
+            for (size_t k = 0; k < gf.size(); k++) {
+                X.push_back(gf[k].f); Y.push_back(y);
+                H.push_back(gf[k].hash); E.push_back(gf[k].enc); S.push_back(gf[k].side);
+            }
+        }
+        cout << "Generated " << games << " games (" << wWins << " W / " << bWins << " B / "
+             << draws << " draw), " << X.size() << " positions.\n";
     }
-    cout << "Generated " << games << " games (" << wWins << " W / " << bWins << " B / "
-         << draws << " draw), " << X.size() << " positions.\n";
     if (X.empty()) { cout << "No data.\n"; return 1; }
 
-    LinearModel model(HEAD_VALUE, mlValueFeatureVersion(), MLV_FEATURES, 900.0f);
+    LinearModel model(HEAD_VALUE, featVer, featCount, 900.0f);
     model.teacher = teach;                 // provenance, written into the model file
     for (int i = 0; i < model.n; i++) model.w[i] = randWeight();
 
@@ -241,7 +302,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         shuffleVec(idx);
         double sum = 0.0;
         for (size_t i = 0; i < idx.size(); i++)
-            sum += model.sgdLogisticStep(X[idx[i]].data(), MLV_FEATURES, Y[idx[i]], lr);
+            sum += model.sgdLogisticStep(X[idx[i]].data(), featCount, Y[idx[i]], lr, (float)l2);
         double avg = sum / X.size();
 
         bool ckpt = (e % ckptEvery == 0) || (e == epochs);
@@ -257,6 +318,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         r.id = runId + "_e" + std::to_string(e);
         r.type = "linear"; r.head = "value"; r.regime = "selfplay-supervised";
         r.conditions = "genDepth=" + std::to_string(genDepth) + ",genRandom=" + std::to_string(genRandom)
+                     + ",featVer=" + std::to_string(featVer) + ",l2=" + std::to_string(l2)
                      + ",teacher=" + teach;
         r.path = path; r.epoch = e; r.games = games; r.loss = avg; r.winrate = wr; r.elo = elo;
         records.push_back(r);
@@ -278,15 +340,17 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
 
     // Emit a sample of positions + outcome labels + this model's evaluations to the
     // datastore so the Python/DuckDB analysis layer has joinable data (positions <-
-    // labels, evaluations). Capped so a big run does not write a huge file.
-    {
+    // labels, evaluations). Capped so a big run does not write a huge file. Skipped
+    // for replayed data: H/E/S carry no fresh provenance in that path (the source
+    // positions' provenance was already recorded when rank.exe extracted them).
+    if (!H.empty()) {
         std::vector<int> sample(X.size());
         for (size_t i = 0; i < sample.size(); i++) sample[i] = (int)i;
         shuffleVec(sample);
         int cap = (int)std::min((size_t)800, sample.size());
         for (int s = 0; s < cap; s++) {
             int i = sample[s];
-            int ev = (int)lround(tanh(model.forward(X[i].data(), MLV_FEATURES)) * model.outScale);
+            int ev = (int)lround(tanh(model.forward(X[i].data(), featCount)) * model.outScale);
             string hh = std::to_string(H[i]);
             dsAppendLine("data/positions.jsonl",
                          "{\"hash\":" + hh + ",\"enc\":\"" + E[i] + "\",\"side\":\"" +
@@ -551,6 +615,69 @@ static bool jsonNum(const string& line, const string& key, double& out) {
     auto s = k + key.size() + 3;
     if (s < line.size() && line[s] == '"') return false;   // it's a string field
     try { out = std::stod(line.substr(s)); } catch (...) { return false; }
+    return true;
+}
+// Parse a JSON array of numbers, "key":[1,2,3], appending the values to out.
+static bool jsonNumArr(const string& line, const string& key, std::vector<double>& out) {
+    auto k = line.find("\"" + key + "\":[");
+    if (k == string::npos) return false;
+    auto s = k + key.size() + 4;
+    auto e = line.find(']', s);
+    if (e == string::npos) return false;
+    out.clear();
+    std::stringstream ss(line.substr(s, e - s));
+    string tok;
+    while (std::getline(ss, tok, ',')) {
+        if (tok.empty()) continue;
+        try { out.push_back(std::stod(tok)); } catch (...) {}
+    }
+    return true;
+}
+
+// Load a dataset extracted by rank.exe's "extract" subcommand: one JSON object
+// per line, either {"ver":1,"label":f,"f":[...]} (dense, v1 aggregates) or
+// {"ver":2,"stm":+-1,"label":f,"idx":[...]} (sparse piece-square "on" indices,
+// v2; stm is applied to MLV2_STM separately since it isn't part of "idx"). Rows
+// whose declared ver doesn't match featVer are skipped (a mixed-version replay
+// file is not an error, just a partial yield). Lets a model be trained on real
+// historical games played by the existing rank.exe agent pool instead of a
+// freshly self-played, hand-picked teacher.
+static bool loadReplayDataset(const string& path, int featVer, int featCount,
+                              std::vector<std::vector<float> >& X, std::vector<float>& Y,
+                              string& err) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) { err = "cannot open " + path; return false; }
+    string line;
+    long long lineNo = 0, skipped = 0;
+    while (std::getline(f, line)) {
+        lineNo++;
+        if (line.empty()) continue;
+        double verD = 0.0, labelD = 0.0;
+        if (!jsonNum(line, "ver", verD) || !jsonNum(line, "label", labelD)) { skipped++; continue; }
+        if ((int)verD != featVer) { skipped++; continue; }
+        std::vector<float> feat(featCount, 0.0f);
+        if (featVer == 2) {
+            double stm = 0.0;
+            jsonNum(line, "stm", stm);
+            std::vector<double> idxs;
+            jsonNumArr(line, "idx", idxs);
+            for (double d : idxs) { int i = (int)d; if (i >= 0 && i < featCount) feat[i] = 1.0f; }
+            if (MLV2_STM < featCount) feat[MLV2_STM] = (float)stm;
+        } else {
+            std::vector<double> vals;
+            if (!jsonNumArr(line, "f", vals)) { skipped++; continue; }
+            for (size_t i = 0; i < vals.size() && (int)i < featCount; i++) feat[i] = (float)vals[i];
+        }
+        X.push_back(feat);
+        Y.push_back((float)labelD);
+    }
+    if (X.empty()) {
+        err = "no usable rows in " + path + " (" + std::to_string(skipped) + " of "
+            + std::to_string(lineNo) + " skipped: wrong feature version or malformed)";
+        return false;
+    }
+    if (skipped > 0)
+        cout << "  (skipped " << skipped << "/" << lineNo << " rows: wrong feature version or malformed)\n";
     return true;
 }
 
@@ -1185,6 +1312,9 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
     PRNT = 0; srand(seed);
     bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
     bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
+    // Sparse piece-square value model (feature v2) -> slot 2, so one run compares
+    // the full-scan learned leaf (v1, slot 0) against the incremental one (v2).
+    bool hasPst = mlLoadSlot(2, "models/pst_value.txt");
 
     // Build a set of distinct mid-game positions with White to move.
     AgentSpec rnd = agentMakePolicy("rnd", chooserIndexByName("TieredRandom"), 0, 0);
@@ -1225,6 +1355,18 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
             for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
             bs.push_back({ string(v.tag) + "d" + std::to_string(d), a, true });
         }
+    // Learned-value AB ladders: v1 (dense aggregates, full feature scan + two
+    // move generations at every leaf) vs v2 (sparse piece-square, incremental
+    // g_mlAcc accumulator; the leaf is a tanh of a maintained scalar). us/move
+    // over nodes/move is the per-node cost these two differ on.
+    if (hasVal)
+        for (int d = 1; d <= maxDepth; d++)
+            bs.push_back({ string("learned-v1-scan  d") + std::to_string(d),
+                agentMakeSearch("lv1", abIdx, learnedValueIndex(), d, 0), true });
+    if (hasPst)
+        for (int d = 1; d <= maxDepth; d++)
+            bs.push_back({ string("learned-v2-incr  d") + std::to_string(d),
+                agentMakeSearch("lv2", abIdx, learnedValueIndex(), d, 2), true });
 
     typedef std::chrono::high_resolution_clock hclock;
     char buf[160];
@@ -1332,6 +1474,13 @@ static void emitTables(std::ostream& o) {
       << mlValueFeatureCount() << ")\n\n";
     for (int i = 0; i < mlValueFeatureCount(); i++)
         o << (i ? ", " : "") << mlValueFeatureName(i);
+    o << "\n\n### Value features (v2, " << MLV2_FEATURES << ", sparse piece-square)\n\n"
+      << "One binary input per (color, square) plus side to move: "
+      << mlValueFeatureNameV2(mlSqW(0, 0)) << ".." << mlValueFeatureNameV2(mlSqW(SIZE-1, SIZE-1))
+      << " (64), " << mlValueFeatureNameV2(mlSqB(0, 0)) << ".." << mlValueFeatureNameV2(mlSqB(SIZE-1, SIZE-1))
+      << " (64), " << mlValueFeatureNameV2(MLV2_STM)
+      << ". A move changes 2-3 inputs, which is what the incremental g_mlAcc search "
+      << "accumulator exploits (train with selfplay-supervised --feature-version 2).";
     o << "\n\n### Move features (v" << mlMoveFeatureVersion() << ", "
       << mlMoveFeatureCount() << ")\n\n";
     for (int i = 0; i < mlMoveFeatureCount(); i++)

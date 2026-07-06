@@ -89,3 +89,7 @@ runs/**/results.jsonl
 ranking/matches.jsonl.*
 ranking/gauntlet.jsonl
 ranking/climb_*.tsv
+
+# Training hyperparameter sweeps (tools/sweep_pst.ps1): throwaway model
+# checkpoints + generated report, regenerable by re-running the sweep.
+models/sweep/

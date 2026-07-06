@@ -1,10 +1,17 @@
 #include "catch.hpp"
 #include "ranking.h"
 #include "ai_eval.h"
+#include "ml_model.h"
+#include "ml_eval.h"
 #include <sstream>
 #include <set>
 #include <cstdlib>
 #include <fstream>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 // ============================================================
 // Helpers
@@ -168,6 +175,33 @@ TEST_CASE("ranking id - learned model hashes (when model files exist)") {
         REQUIRE(a.spec.modelSlot == 1);
     }
     REQUIRE(rankFileHash8("models/no_such_model_file.txt") == "");
+}
+
+// Sweep/experiment slots (3..ML_SLOTS-1) use a generic models/sweep/slot<N>.txt
+// convention (see slotFile() in ranking.cpp) instead of a fixed named file, so a
+// large hyperparameter sweep can give each independently-trained candidate its
+// own permanent identity and be rated together in one process.
+TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
+    const int slot = 5;
+    const string path = "models/sweep/slot5.txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    m.bias = 0.1f;
+    for (int i = 0; i < m.n; i++) m.w[i] = 0.01f * i;
+    REQUIRE(m.save(path));
+
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+    RankAgent a = parseOk("greedy@1.learned(s" + std::to_string(slot) + "," + h + ")@1");
+    REQUIRE(a.spec.brain == BRAIN_SEARCH);
+    REQUIRE(a.spec.modelSlot == slot);
+
+    // A slot beyond ML_SLOTS is rejected, not silently accepted.
+    REQUIRE(parseErr("greedy@1.learned(s" + std::to_string(ML_SLOTS) + "," + h + ")@1").find("slot") != string::npos);
 }
 
 TEST_CASE("ranking codec - covers every registered evaluator with unique letters") {

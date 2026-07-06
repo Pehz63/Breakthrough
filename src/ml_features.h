@@ -37,6 +37,24 @@ const char*  mlValueFeatureName(int i);
 // side-to-move feature; the rest are white-centric (positive favors White).
 void         mlExtractValueFeatures(int turnColor, float* out);
 
+// ---- Value features, version 2 (sparse piece-square, white-centric) ----
+// One binary input per (color, square) plus a side-to-move input. A move changes
+// only 2-3 inputs (source off, destination on, captured square off), which is what
+// makes a model over this layout incrementally updatable during search (see the
+// g_mlAcc accumulator in ml_eval.h). Index layout:
+//   0..63    White piece on square (x + SIZE*y)
+//   64..127  Black piece on square (x + SIZE*y)
+//   128      side to move (+1 White, -1 Black), applied at read time, never
+//            stored in the accumulator
+#define MLV2_FEATURES 129
+#define MLV2_STM      128
+inline int mlSqW(int x, int y) { return x + SIZE*y; }
+inline int mlSqB(int x, int y) { return SIZE*SIZE + x + SIZE*y; }
+const char* mlValueFeatureNameV2(int i);
+// Fill out[0..MLV2_FEATURES-1] from the current board (single scan, no move
+// generation). turnColor sets the side-to-move input.
+void        mlExtractValueFeaturesV2(int turnColor, float* out);
+
 // ---- Move features (move -> float vector, side-relative) ----
 #define MLM_FEATURES 9
 int          mlMoveFeatureCount();

@@ -21,6 +21,9 @@ int g_evalPos = 0;
 bool g_evalIncremental = false;
 const int* g_activeParams = nullptr;
 int g_activeParamCount = 0;
+double g_mlAcc = 0.0;
+bool g_mlIncremental = false;
+const float* g_mlWeights = nullptr;
 int g_downEvalWhite = 0;
 int g_downEvalBlack = 0;
 unsigned long long g_nodeBudget = 0;      // 0 = unlimited

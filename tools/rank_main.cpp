@@ -37,6 +37,7 @@ static void usage() {
     cout << "  run        serial play then rate (the everyday command)\n";
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
+    cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
     cout << "  --in ranking/matches.jsonl    the append-only match store\n";
@@ -47,11 +48,13 @@ static void usage() {
     cout << "\nplay:     --out <file> (default = --in), --shard i --of k (process sharding)\n";
     cout << "history:  --agent <id or unique prefix>, --last 20\n";
     cout << "gauntlet: --id <candidate id>, --keep (append to the store instead of scratch)\n";
+    cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
     cout << "\nExamples:\n";
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
     cout << "  rank.exe history --agent \"ab(d4\"\n";
     cout << "  rank.exe gauntlet --id \"ab(d5)@1.classic(t1,c4,w0,l0)@1\" --games 4\n";
+    cout << "  rank.exe extract --out data/replay_v2.jsonl --feature-version 2 --sample 3000\n";
     cout << "  (use tools\\run_rank.ps1 -Workers 8 to shard play across processes)\n";
 }
 
@@ -82,6 +85,10 @@ int main(int argc, char** argv) {
     } else if (cmd == "gauntlet") {
         rc = rankGauntlet(roster, store, getOpt(argc, argv, "--id", ""), games,
                           hasFlag(argc, argv, "--keep"), seed, board);
+    } else if (cmd == "extract") {
+        rc = rankExtract(store, getOpt(argc, argv, "--out", "data/replay.jsonl"), board,
+                         getInt(argc, argv, "--feature-version", 2),
+                         getInt(argc, argv, "--sample", 0), seed);
     } else {
         cout << "Unknown command: " << cmd << "\n\n";
         usage();

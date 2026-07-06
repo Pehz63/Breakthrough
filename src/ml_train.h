@@ -35,11 +35,43 @@ struct ModelRecord {
 // "Experimental") with optional weight overrides (genParams; empty = registry
 // defaults). The chosen teacher spec is written into the model file (`teacher=`),
 // the manifest conditions, and data/models.jsonl so the model self-documents its lineage.
+// featVer selects the value feature set: 1 = dense aggregates (MLV_FEATURES),
+// 2 = sparse piece-square (MLV2_FEATURES, the layout the incremental g_mlAcc
+// search accumulator requires). l2 (0 = off) applies weight decay in the SGD step.
+//
+// Dilution decay: the teacher's random-move probability starts at genRandom and
+// linearly decays to genRandomFloor over genRandomDecayPlies half-moves (0 =
+// off, the historical constant-probability behavior), then holds at the floor.
+// Rationale: early exploration for position diversity, but late-game moves (the
+// ones closest to, and most informative about, the eventual outcome) are played
+// for real rather than continuing to be randomized.
+//
+// Self-play bootstrap: if genModelPath is non-empty, the teacher IS a
+// previously-trained value model wrapped in genModelExplorer ("alphabeta" at
+// depth genDepth, or "greedy"), loaded into a reserved scratch slot
+// (ML_SLOTS-2), instead of the fixed Classic/Experimental heuristic
+// (genEval/genParams are then ignored). Lets one generation's output become the
+// next generation's generator.
+//
+// Data source: if fromDataFile is non-empty, self-play generation is skipped
+// entirely and (games/epochs-of-generation/genDepth/genRandom/genModelPath/...)
+// are ignored; positions + labels are read from that file instead (see
+// rank.exe's "extract" subcommand, which replays sampled historical matches from
+// ranking/matches.jsonl -- the existing diverse, already-Elo-differentiated
+// agent pool -- deterministically by seed and emits this format). The file's
+// declared feature version must match featVer.
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
                          const string& genEval = "Classic",
-                         const std::vector<int>& genParams = {});
+                         const std::vector<int>& genParams = {},
+                         int featVer = 1,
+                         double l2 = 0.0,
+                         double genRandomFloor = 0.0,
+                         int genRandomDecayPlies = 0,
+                         const string& genModelPath = "",
+                         const string& genModelExplorer = "alphabeta",
+                         const string& fromDataFile = "");
 
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
