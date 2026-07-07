@@ -148,6 +148,16 @@ label for training:
 - `rank.exe gauntlet --id <candidate>` rates one new agent against the frozen pool
   in O(N) games, the cheap evaluation step for a weight hill-climber over Elo vs
   compute time.
+- `rank.exe extract` replays a deterministic sample of the stored match history into
+  labeled value-training positions (`train.exe --from-data` consumes the file), which
+  turns the whole rated pool into a training data source.
+- `rank.exe pairgen` plays FRESH games between any two canonical IDs into the same
+  training-data format, with a per-side dilution override (vary a deterministic
+  agent's games without changing its identity), random opening plies, a winner
+  filter, and branch-from-win mining (rewind a kept win, substitute a different
+  move, keep the tail if the winner wins again). Each dataset gets a `.meta.json`
+  sidecar recording the full recipe and outcome tallies. The vs-champion study
+  (`tools/train_vs_champion.ps1`) is built on it.
 
 Learned agents embed a model-file content hash in their ID, so a retrain is a new
 identity and old match rows stay truthful. Use the tournament for parameter sweeps

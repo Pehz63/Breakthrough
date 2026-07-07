@@ -22,6 +22,10 @@ static int getInt(int argc, char** argv, const char* key, int def) {
     const char* v = getOpt(argc, argv, key, nullptr);
     return v ? atoi(v) : def;
 }
+static double getDbl(int argc, char** argv, const char* key, double def) {
+    const char* v = getOpt(argc, argv, key, nullptr);
+    return v ? atof(v) : def;
+}
 static bool hasFlag(int argc, char** argv, const char* key) {
     for (int i = 2; i < argc; i++) if (std::strcmp(argv[i], key) == 0) return true;
     return false;
@@ -38,6 +42,7 @@ static void usage() {
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
+    cout << "  pairgen    play FRESH games between two named agents, capturing labeled training data\n";
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
     cout << "  --in ranking/matches.jsonl    the append-only match store\n";
@@ -49,12 +54,19 @@ static void usage() {
     cout << "history:  --agent <id or unique prefix>, --last 20\n";
     cout << "gauntlet: --id <candidate id>, --keep (append to the store instead of scratch)\n";
     cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
+    cout << "pairgen:  --a <id> --b <id> --games 100 --out data/pairgen.jsonl, --feature-version 2,\n";
+    cout << "          --dil-apply a|b|both|none (dilute that agent: --dil-start 0.3 --dil-floor 0.05\n";
+    cout << "          --dil-decay-plies 30), --open-plies K (random first K half-moves, both sides),\n";
+    cout << "          --filter winner=a|b|any (emit only that agent's wins), --branch-tries T (rewind\n";
+    cout << "          kept A-wins to a random A ply, try a different move, keep the tail if A wins\n";
+    cout << "          again), --shard i --of k (vary --out per shard, then concatenate)\n";
     cout << "\nExamples:\n";
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
     cout << "  rank.exe history --agent \"ab(d4\"\n";
     cout << "  rank.exe gauntlet --id \"ab(d5)@1.classic(t1,c4,w0,l0)@1\" --games 4\n";
     cout << "  rank.exe extract --out data/replay_v2.jsonl --feature-version 2 --sample 3000\n";
+    cout << "  rank.exe pairgen --a \"ab(d2)@1.classic(t1,c4,w0,l0)@1\" --b \"ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2\" --games 100 --dil-apply a --out data/pg.jsonl\n";
     cout << "  (use tools\\run_rank.ps1 -Workers 8 to shard play across processes)\n";
 }
 
@@ -89,6 +101,26 @@ int main(int argc, char** argv) {
         rc = rankExtract(store, getOpt(argc, argv, "--out", "data/replay.jsonl"), board,
                          getInt(argc, argv, "--feature-version", 2),
                          getInt(argc, argv, "--sample", 0), seed);
+    } else if (cmd == "pairgen") {
+        string dilApply = getOpt(argc, argv, "--dil-apply", "none");
+        RankDilOverride dil;
+        dil.apply = (dilApply == "a") ? 1 : (dilApply == "b") ? 2
+                  : (dilApply == "both") ? 3 : (dilApply == "none") ? 0 : -1;
+        if (dil.apply < 0) { cout << "ERROR: --dil-apply must be a, b, both, or none\n"; return 1; }
+        dil.start      = getDbl(argc, argv, "--dil-start", 0.3);
+        dil.floorProb  = getDbl(argc, argv, "--dil-floor", 0.05);
+        dil.decayPlies = getInt(argc, argv, "--dil-decay-plies", 30);
+        string filt = getOpt(argc, argv, "--filter", "any");
+        if (filt.rfind("winner=", 0) == 0) filt = filt.substr(7);
+        int fw = (filt == "a") ? 1 : (filt == "b") ? 2 : (filt == "any") ? 0 : -1;
+        if (fw < 0) { cout << "ERROR: --filter must be winner=a, winner=b, or any\n"; return 1; }
+        rc = rankPairGen(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
+                         getInt(argc, argv, "--games", 100),
+                         getOpt(argc, argv, "--out", "data/pairgen.jsonl"), board,
+                         getInt(argc, argv, "--feature-version", 2), seed, dil,
+                         getInt(argc, argv, "--open-plies", 0), fw,
+                         getInt(argc, argv, "--branch-tries", 0),
+                         getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1));
     } else {
         cout << "Unknown command: " << cmd << "\n\n";
         usage();

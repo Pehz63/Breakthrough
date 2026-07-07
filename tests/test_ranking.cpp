@@ -566,3 +566,108 @@ TEST_CASE("ranking gauntlet fit - candidate rated against a frozen pool") {
     REQUIRE(elo2 > 300.0);
     REQUIRE(elo2 < 2000.0);
 }
+
+// ============================================================
+// Pairgen
+// ============================================================
+static string slurpFile(const string& path) {
+    std::ifstream in(path.c_str(), std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+// Pull an integer field out of the one-line meta sidecar (fields are flat).
+static long metaInt(const string& meta, const string& key) {
+    size_t k = meta.find("\"" + key + "\":");
+    REQUIRE(k != string::npos);
+    return atol(meta.c_str() + k + key.size() + 3);
+}
+
+TEST_CASE("pairgen dilution schedule - linear decay to a held floor") {
+    REQUIRE(rankDilutedProb(0.3, 0.05, 30, 0)  == Approx(0.3));
+    REQUIRE(rankDilutedProb(0.3, 0.05, 30, 15) == Approx(0.175));
+    REQUIRE(rankDilutedProb(0.3, 0.05, 30, 30) == Approx(0.05));
+    REQUIRE(rankDilutedProb(0.3, 0.05, 30, 99) == Approx(0.05));
+    // decayPlies <= 0 means a constant start value.
+    REQUIRE(rankDilutedProb(0.3, 0.05, 0, 50)  == Approx(0.3));
+}
+
+TEST_CASE("pairgen - deterministic output, valid rows, honest meta tallies") {
+    const string idA = "ab(d2)@1.classic(t1,c4,w0,l0)@2";
+    const string idB = "ab(d1)@1.classic(t1,c4,w0,l0)@2";
+    const string out1 = "build/pairgen_t1.jsonl", out2 = "build/pairgen_t2.jsonl";
+    RankDilOverride dil;
+    dil.apply = 1; dil.start = 0.3; dil.floorProb = 0.05; dil.decayPlies = 30;
+
+    REQUIRE(rankPairGen(idA, idB, 4, out1, "boards/board1.txt", 2, 42, dil, 0, 0, 0, 0, 1) == 0);
+    REQUIRE(rankPairGen(idA, idB, 4, out2, "boards/board1.txt", 2, 42, dil, 0, 0, 0, 0, 1) == 0);
+
+    string d1 = slurpFile(out1), d2 = slurpFile(out2);
+    REQUIRE_FALSE(d1.empty());
+    REQUIRE(d1 == d2);   // same ids + seed reproduce byte-identical data
+
+    // Rows are in the loadReplayDataset v2 format.
+    REQUIRE(d1.find("\"ver\":2") != string::npos);
+    REQUIRE(d1.find("\"stm\":") != string::npos);
+    REQUIRE(d1.find("\"label\":") != string::npos);
+    REQUIRE(d1.find("\"idx\":[") != string::npos);
+
+    // Meta sidecar tallies agree with an unfiltered run.
+    string meta = slurpFile(out1 + ".meta.json");
+    REQUIRE_FALSE(meta.empty());
+    REQUIRE(metaInt(meta, "played") == 4);
+    REQUIRE(metaInt(meta, "kept") == 4);
+    REQUIRE(metaInt(meta, "a_wins") + metaInt(meta, "b_wins") + metaInt(meta, "draws") == 4);
+    REQUIRE(metaInt(meta, "positions") > 0);
+}
+
+TEST_CASE("pairgen - a zero override plays exactly like no override") {
+    const string idA = "ab(d2)@1.classic(t1,c4,w0,l0)@2";
+    const string idB = "ab(d1)@1.classic(t1,c4,w0,l0)@2";
+    RankDilOverride none;                       // apply = 0
+    RankDilOverride zero;
+    zero.apply = 1; zero.start = 0.0; zero.floorProb = 0.0; zero.decayPlies = 0;
+
+    REQUIRE(rankPairGen(idA, idB, 2, "build/pairgen_n.jsonl", "boards/board1.txt", 2, 7, none, 0, 0, 0, 0, 1) == 0);
+    REQUIRE(rankPairGen(idA, idB, 2, "build/pairgen_z.jsonl", "boards/board1.txt", 2, 7, zero, 0, 0, 0, 0, 1) == 0);
+    REQUIRE(slurpFile("build/pairgen_n.jsonl") == slurpFile("build/pairgen_z.jsonl"));
+}
+
+TEST_CASE("pairgen - winner filter keeps only that agent's wins") {
+    const string idA = "ab(d3)@1.classic(t1,c4,w0,l0)@2";   // stronger
+    const string idB = "ab(d1)@1.classic(t1,c4,w0,l0)@2";
+    RankDilOverride dil;
+    dil.apply = 1; dil.start = 0.2; dil.floorProb = 0.05; dil.decayPlies = 20;
+
+    rankPairGen(idA, idB, 4, "build/pairgen_f.jsonl", "boards/board1.txt", 2, 11, dil, 0, 1 /*winner=a*/, 0, 0, 1);
+    string meta = slurpFile("build/pairgen_f.jsonl.meta.json");
+    REQUIRE_FALSE(meta.empty());
+    REQUIRE(metaInt(meta, "played") == 4);
+    REQUIRE(metaInt(meta, "kept") == metaInt(meta, "a_wins"));
+}
+
+TEST_CASE("pairgen - open plies spread a deterministic pair, branch mode is deterministic") {
+    const string idA = "ab(d2)@1.classic(t1,c4,w0,l0)@2";
+    const string idB = "ab(d2)@1.classic(t1,c4,w0,l0)@2";
+    RankDilOverride none;
+
+    // Two clean deterministic agents: without open plies every game is one of
+    // two fixed transcripts, so an open-plies run must produce different data.
+    REQUIRE(rankPairGen(idA, idB, 4, "build/pairgen_o0.jsonl", "boards/board1.txt", 2, 5, none, 0, 0, 0, 0, 1) == 0);
+    REQUIRE(rankPairGen(idA, idB, 4, "build/pairgen_o6.jsonl", "boards/board1.txt", 2, 5, none, 6, 0, 0, 0, 1) == 0);
+    REQUIRE(slurpFile("build/pairgen_o0.jsonl") != slurpFile("build/pairgen_o6.jsonl"));
+    string meta = slurpFile("build/pairgen_o6.jsonl.meta.json");
+    REQUIRE(metaInt(meta, "positions") > 0);
+
+    // Branch mode: deterministic across runs, tallies present.
+    RankDilOverride dil;
+    dil.apply = 1; dil.start = 0.3; dil.floorProb = 0.05; dil.decayPlies = 30;
+    const string idW = "ab(d3)@1.classic(t1,c4,w0,l0)@2";   // A strong enough to win bases
+    const string idL = "ab(d1)@1.classic(t1,c4,w0,l0)@2";
+    REQUIRE(rankPairGen(idW, idL, 4, "build/pairgen_b1.jsonl", "boards/board1.txt", 2, 9, dil, 0, 1, 2, 0, 1) == 0);
+    REQUIRE(rankPairGen(idW, idL, 4, "build/pairgen_b2.jsonl", "boards/board1.txt", 2, 9, dil, 0, 1, 2, 0, 1) == 0);
+    REQUIRE(slurpFile("build/pairgen_b1.jsonl") == slurpFile("build/pairgen_b2.jsonl"));
+    string bmeta = slurpFile("build/pairgen_b1.jsonl.meta.json");
+    REQUIRE(metaInt(bmeta, "branch_tried") >= metaInt(bmeta, "branch_kept"));
+    REQUIRE(metaInt(bmeta, "branch_kept") >= 0);
+}

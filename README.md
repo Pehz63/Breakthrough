@@ -371,6 +371,26 @@ files:
 touching the store (add `--keep` to persist them). This is the cheap evaluation
 step for weight hill-climbing along the pareto frontier.
 
+`pairgen` plays fresh games between any two canonical agent IDs and captures
+labeled value-model training data in the same format `extract` writes and
+`train.exe --from-data` reads, plus a `.meta.json` sidecar recording the full
+generation recipe. Knobs: `--dil-apply a|b|both|none` overrides one side's
+random-move dilution (`--dil-start`/`--dil-floor`/`--dil-decay-plies`) so a
+deterministic agent's games vary without changing its identity, `--open-plies K`
+plays a uniform-random opening for both sides, `--filter winner=a|b` keeps only
+one agent's wins, and `--branch-tries T` rewinds each kept win to a random ply,
+substitutes a different legal move, and keeps the tail if the winner wins again
+(mined alternative winning lines). `--shard`/`--of` split generation across
+processes. First use: the vs-champion training study
+(`tools/train_vs_champion.ps1`), which trains value models on champion-sourced
+data (learner vs champion, diluted champion vs itself, a deeper oracle vs
+champion, champion-loss cherry-picks, branch-mined wins) and compares them
+against the replay and self-play baselines.
+
+```
+.\rank.exe pairgen --a "ab(d2)@1.classic(t1,c4,w0,l0)@2" --b "ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2" --games 200 --dil-apply a --out data/pg.jsonl
+```
+
 **Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Experimental
 evaluator's weight mix for the highest Elo at a fixed search depth, using
 `gauntlet` as its fitness function. Turn is pinned at 20 and chip/wall/column/forward

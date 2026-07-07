@@ -1928,23 +1928,109 @@ int rankGauntlet(const string& rosterFile, const string& storeFile, const string
 // instead of a bespoke self-play generator. Games are replayed deterministically
 // (same seed, same board) via the exact agents the id encodes; ml_train.cpp's
 // selfplay-supervised --from-data fits a model on the file this writes.
-static int playOneGameCapture(const RankAgent& wa, const RankAgent& ba, const string& board,
-                              int featVer, std::vector<int>& capSide,
-                              std::vector<std::vector<float> >& capFeat) {
-    if (!reloadBoard(board)) return None;
+// A raw board snapshot, cheap enough to keep one per half-move of a game.
+struct BoardSnap { char sq[SIZE][SIZE]; };
+
+static void snapBoard(BoardSnap& s) { std::memcpy(s.sq, board, sizeof(s.sq)); }
+
+// Restore a snapshot and rebuild the incremental counters exactly the way
+// reloadBoard seeds them, so play can resume mid-game from the snapshot.
+static void restoreBoardSnapshot(const BoardSnap& s) {
+    std::memcpy(board, s.sq, sizeof(s.sq));
+    g_whiteCount = 0; g_blackCount = 0; g_chipDiff = 0;
+    g_whiteAtEnd = 0; g_blackAtEnd = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            if (board[x][y] == WHITE) {
+                g_whiteCount++;
+                g_chipDiff++;
+                if (y == SIZE-1) g_whiteAtEnd++;
+            } else if (board[x][y] == BLACK) {
+                g_blackCount++;
+                g_chipDiff--;
+                if (y == 0) g_blackAtEnd++;
+            }
+        }
+}
+
+// Per-ply dilution probability for the pairgen override schedule: linear from
+// `start` at ply 0 to `floorProb` at ply `decayPlies`, held at the floor after.
+double rankDilutedProb(double start, double floorProb, int decayPlies, int ply) {
+    if (decayPlies <= 0) return start;
+    if (ply >= decayPlies) return floorProb;
+    return start + (floorProb - start) * ((double)ply / (double)decayPlies);
+}
+
+// Continue play from the current board state at half-move index startHalf,
+// capturing features (and optional board snapshots) before every move.
+// dil, if present, is a COLOR mask override (1 = White, 2 = Black, 3 = both)
+// that replaces that side's randomMoveProb per half-move; the caller-visible
+// specs are never mutated (locals are). For h < openPlies both sides play a
+// uniform-random legal move instead of consulting their brain.
+static int playoutCapture(const RankAgent& wa, const RankAgent& ba, int startHalf,
+                          int featVer, std::vector<int>& capSide,
+                          std::vector<std::vector<float> >& capFeat,
+                          const RankDilOverride* dil = nullptr, int openPlies = 0,
+                          std::vector<BoardSnap>* snaps = nullptr) {
+    AgentSpec wSpec = wa.spec, bSpec = ba.spec;
     int victor = None;
-    for (int h = 0; h < 400; h++) {
+    for (int h = startHalf; h < 400; h++) {
         int side = (h % 2 == 0) ? White : Black;
-        const RankAgent& ag = (side == White) ? wa : ba;
         std::vector<float> feat(featVer == 2 ? MLV2_FEATURES : MLV_FEATURES);
         if (featVer == 2) mlExtractValueFeaturesV2(side, feat.data());
         else              mlExtractValueFeatures(side, feat.data());
         capSide.push_back(side);
         capFeat.push_back(feat);
-        victor = agentChooseMove(ag.spec, side);
+        if (snaps) { snaps->push_back(BoardSnap()); snapBoard(snaps->back()); }
+        if (h < openPlies) {
+            victor = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+        } else {
+            if (dil && dil->apply) {
+                if (dil->apply & 1)
+                    wSpec.randomMoveProb = rankDilutedProb(dil->start, dil->floorProb, dil->decayPlies, h);
+                if (dil->apply & 2)
+                    bSpec.randomMoveProb = rankDilutedProb(dil->start, dil->floorProb, dil->decayPlies, h);
+            }
+            victor = agentChooseMove(side == White ? wSpec : bSpec, side);
+        }
         if (gameOutcome(victor)) break;
     }
     return victor;
+}
+
+static int playOneGameCapture(const RankAgent& wa, const RankAgent& ba, const string& board,
+                              int featVer, std::vector<int>& capSide,
+                              std::vector<std::vector<float> >& capFeat,
+                              const RankDilOverride* dil = nullptr, int openPlies = 0,
+                              std::vector<BoardSnap>* snaps = nullptr) {
+    if (!reloadBoard(board)) return None;
+    return playoutCapture(wa, ba, 0, featVer, capSide, capFeat, dil, openPlies, snaps);
+}
+
+// Append one labeled training row per captured position, in the exact format
+// ml_train.cpp's loadReplayDataset reads. Returns the number of rows written.
+static int emitCapturedRows(std::ofstream& out, int featVer, float label,
+                            const std::vector<int>& capSide,
+                            const std::vector<std::vector<float> >& capFeat) {
+    int positions = 0;
+    for (size_t p = 0; p < capFeat.size(); p++) {
+        const std::vector<float>& f = capFeat[p];
+        std::ostringstream ln;
+        if (featVer == 2) {
+            ln << "{\"ver\":2,\"stm\":" << (capSide[p] == White ? 1 : -1) << ",\"label\":" << label << ",\"idx\":[";
+            bool first = true;
+            for (int i = 0; i < MLV2_STM; i++)
+                if (f[i] != 0.0f) { if (!first) ln << ","; ln << i; first = false; }
+            ln << "]}";
+        } else {
+            ln << "{\"ver\":1,\"label\":" << label << ",\"f\":[";
+            for (int i = 0; i < MLV_FEATURES; i++) { if (i) ln << ","; ln << f[i]; }
+            ln << "]}";
+        }
+        out << ln.str() << "\n";
+        positions++;
+    }
+    return positions;
 }
 
 int rankExtract(const string& storeFile, const string& outFile, const string& board,
@@ -1995,23 +2081,7 @@ int rankExtract(const string& storeFile, const string& outFile, const string& bo
         if (r != row.r) { mismatchSkipped++; continue; }   // determinism drift guard: don't label an unreproduced game
 
         float label = (oc == 1) ? 1.0f : (oc == 2) ? 0.0f : 0.5f;
-        for (size_t p = 0; p < capFeat.size(); p++) {
-            const std::vector<float>& f = capFeat[p];
-            std::ostringstream ln;
-            if (featVer == 2) {
-                ln << "{\"ver\":2,\"stm\":" << (capSide[p] == White ? 1 : -1) << ",\"label\":" << label << ",\"idx\":[";
-                bool first = true;
-                for (int i = 0; i < MLV2_STM; i++)
-                    if (f[i] != 0.0f) { if (!first) ln << ","; ln << i; first = false; }
-                ln << "]}";
-            } else {
-                ln << "{\"ver\":1,\"label\":" << label << ",\"f\":[";
-                for (int i = 0; i < MLV_FEATURES; i++) { if (i) ln << ","; ln << f[i]; }
-                ln << "]}";
-            }
-            out << ln.str() << "\n";
-            positions++;
-        }
+        positions += emitCapturedRows(out, featVer, label, capSide, capFeat);
         replayed++;
         if (replayed % 200 == 0) cout << "  replayed " << replayed << "/" << target << " games, " << positions << " positions\n";
     }
@@ -2021,6 +2091,172 @@ int rankExtract(const string& storeFile, const string& outFile, const string& bo
          << " positions -> " << outFile << " (feature v" << featVer << ")\n";
     mlClearSlots();
     return replayed > 0 ? 0 : 1;
+}
+
+// ============================================================
+// PAIRGEN
+// ============================================================
+// Generate FRESH labeled training games between two named agents (the queued
+// pool-pair generation idea), instead of replaying stored history (extract) or
+// one teacher's self-play (train.exe). First use: the vs-champion training
+// study, where agent B is the reigning champion and agent A is a generator,
+// an oracle, or a diluted champion copy. See rankPairGen in ranking.h for the
+// knob semantics (dilution override, open plies, winner filter, branch mining).
+
+static const char* dilApplyName(int apply) {
+    return (apply == 1) ? "a" : (apply == 2) ? "b" : (apply == 3) ? "both" : "none";
+}
+static const char* filterName(int fw) {
+    return (fw == 1) ? "a" : (fw == 2) ? "b" : "any";
+}
+
+int rankPairGen(const string& idA, const string& idB, int games, const string& outFile,
+                const string& board, int featVer, unsigned runSeed,
+                const RankDilOverride& dil, int openPlies, int filterWinner,
+                int branchTries, int shard, int ofK) {
+    if (featVer != 1 && featVer != 2) featVer = 2;
+    if (ofK < 1) ofK = 1;
+    if (shard < 0 || shard >= ofK) { cout << "ERROR: --shard must be in [0, --of)\n"; return 1; }
+    if (games <= 0)                { cout << "ERROR: --games must be positive\n"; return 1; }
+    if (idA.empty() || idB.empty()) { cout << "ERROR: pairgen needs --a <id> and --b <id>\n"; return 1; }
+
+    RankAgent A, B;
+    string err;
+    if (!rankAgentFromId(idA, A, err)) { cout << "ERROR: --a: " << err << "\n"; return 1; }
+    if (!rankAgentFromId(idB, B, err)) { cout << "ERROR: --b: " << err << "\n"; return 1; }
+    std::vector<const RankAgent*> pairAgents;
+    pairAgents.push_back(&A);
+    pairAgents.push_back(&B);
+    if (!loadModelSlots(pairAgents, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    ensureDir("data");
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+
+    int played = 0, kept = 0, aWins = 0, bWins = 0, draws = 0, positions = 0;
+    int brTried = 0, brKept = 0, brPositions = 0;
+    for (int g = 0; g < games; g++) {
+        if (g % ofK != shard) continue;
+        bool aWhite = (g % 2 == 0);
+        const RankAgent& wa = aWhite ? A : B;
+        const RankAgent& ba = aWhite ? B : A;
+
+        // Map the A/B dilution choice onto this game's colors.
+        RankDilOverride cd = dil;
+        cd.apply = (dil.apply == 1) ? (aWhite ? 1 : 2)
+                 : (dil.apply == 2) ? (aWhite ? 2 : 1)
+                 : dil.apply;
+
+        srand(gameSeed(wa.id, ba.id, g, runSeed));
+        std::vector<int> capSide;
+        std::vector<std::vector<float> > capFeat;
+        std::vector<BoardSnap> snaps;
+        int victor = playOneGameCapture(wa, ba, board, featVer, capSide, capFeat,
+                                        cd.apply ? &cd : nullptr, openPlies,
+                                        branchTries > 0 ? &snaps : nullptr);
+        int oc = gameOutcome(victor);
+        played++;
+        int winnerAB = (oc == 0) ? 0 : (((oc == 1) == aWhite) ? 1 : 2);
+        if (winnerAB == 1) aWins++; else if (winnerAB == 2) bWins++; else draws++;
+
+        bool keep = (filterWinner == 0) || (winnerAB == filterWinner);
+        if (keep) {
+            float label = (oc == 1) ? 1.0f : (oc == 2) ? 0.0f : 0.5f;
+            positions += emitCapturedRows(out, featVer, label, capSide, capFeat);
+            kept++;
+        }
+
+        // Branch-from-win: mine alternative winning lines out of kept games
+        // agent A won. Rewind to a random ply where A was to move (never the
+        // game's final move), substitute a different legal move, play out
+        // clean (no dilution override), and keep the tail only if A wins
+        // again. The shared prefix is not re-emitted (the base game already
+        // covers it), so only the positions after the divergence are new.
+        if (branchTries > 0 && keep && winnerAB == 1 && capSide.size() >= 2) {
+            int aColor = aWhite ? White : Black;
+            std::vector<int> aPlies;
+            for (size_t h = 0; h + 1 < capSide.size(); h++)
+                if (capSide[h] == aColor) aPlies.push_back((int)h);
+            for (int bi = 0; bi < branchTries && !aPlies.empty(); bi++) {
+                brTried++;
+                string bk = wa.id + "|" + ba.id + "|" + std::to_string(g) + "|br"
+                          + std::to_string(bi) + "|" + std::to_string(runSeed);
+                srand((unsigned)(fnv1a64(bk.data(), bk.size(), 1469598103934665603ULL) & 0xffffffffULL));
+
+                int t = aPlies[rand() % aPlies.size()];
+                restoreBoardSnapshot(snaps[t]);
+                Move mv[ML_MAX_MOVES];
+                int n = generateMoves(aColor, mv);
+                if (n <= 1) continue;   // no alternative exists at this ply
+
+                // Identify the originally played move: the unique candidate
+                // that transforms snapshot t into snapshot t+1.
+                int playedIdx = -1;
+                for (int i = 0; i < n && playedIdx < 0; i++) {
+                    BoardSnap sim = snaps[t];
+                    sim.sq[mv[i].sx][mv[i].sy] = EMPTY;
+                    sim.sq[mv[i].dx][mv[i].dy] = (aColor == White) ? WHITE : BLACK;
+                    if (std::memcmp(sim.sq, snaps[t+1].sq, sizeof(sim.sq)) == 0) playedIdx = i;
+                }
+                int pick = rand() % (playedIdx >= 0 ? n - 1 : n);
+                if (playedIdx >= 0 && pick >= playedIdx) pick++;
+
+                int bv = (aColor == White)
+                    ? playMoveWhite(mv[pick].sx, mv[pick].sy, mv[pick].dx)
+                    : playMoveBlack(mv[pick].sx, mv[pick].sy, mv[pick].dx);
+                std::vector<int> brSide;
+                std::vector<std::vector<float> > brFeat;
+                if (!gameOutcome(bv))
+                    bv = playoutCapture(wa, ba, t + 1, featVer, brSide, brFeat);
+                int boc = gameOutcome(bv);
+                if (boc != 0 && ((boc == 1) == aWhite)) {   // A won the branch too
+                    float label = (boc == 1) ? 1.0f : 0.0f;
+                    brPositions += emitCapturedRows(out, featVer, label, brSide, brFeat);
+                    brKept++;
+                }
+            }
+        }
+
+        if (played % 100 == 0)
+            cout << "  played " << played << " games, kept " << kept
+                 << ", A record " << aWins << "-" << bWins << "-" << draws
+                 << ", " << (positions + brPositions) << " positions\n" << flush;
+    }
+    out.close();
+
+    // Provenance sidecar: the full generation recipe plus outcome tallies, so
+    // a model's teacher=replay:<file> line stays traceable to how the file
+    // was made (the known provenance-gap fix for generated datasets).
+    {
+        std::ofstream meta((outFile + ".meta.json").c_str(), std::ios::trunc);
+        if (meta.is_open()) {
+            meta << "{\"a\":\"" << idA << "\",\"b\":\"" << idB << "\""
+                 << ",\"games\":" << games << ",\"shard\":" << shard << ",\"of\":" << ofK
+                 << ",\"seed\":" << runSeed << ",\"board\":\"" << board << "\""
+                 << ",\"feature_version\":" << featVer
+                 << ",\"dil_apply\":\"" << dilApplyName(dil.apply) << "\""
+                 << ",\"dil_start\":" << dil.start << ",\"dil_floor\":" << dil.floorProb
+                 << ",\"dil_decay_plies\":" << dil.decayPlies
+                 << ",\"open_plies\":" << openPlies
+                 << ",\"filter_winner\":\"" << filterName(filterWinner) << "\""
+                 << ",\"branch_tries\":" << branchTries
+                 << ",\"played\":" << played << ",\"kept\":" << kept
+                 << ",\"a_wins\":" << aWins << ",\"b_wins\":" << bWins << ",\"draws\":" << draws
+                 << ",\"positions\":" << positions
+                 << ",\"branch_tried\":" << brTried << ",\"branch_kept\":" << brKept
+                 << ",\"branch_positions\":" << brPositions << "}\n";
+        }
+    }
+
+    cout << "pairgen: " << played << " games played, " << kept << " kept ("
+         << filterName(filterWinner) << " filter), A record " << aWins << "-" << bWins
+         << "-" << draws << " (W-L-D), " << positions << " positions";
+    if (branchTries > 0)
+        cout << "; branches " << brKept << "/" << brTried << " kept, +" << brPositions
+             << " positions";
+    cout << " -> " << outFile << " (feature v" << featVer << ")\n";
+    mlClearSlots();
+    return kept > 0 ? 0 : 1;
 }
 
 // ============================================================

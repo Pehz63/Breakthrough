@@ -98,3 +98,10 @@ on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
 # Caveat: trained on the pool's own games and rated against that pool, so part
 # of the number may be style-fit; the held-out-agent probe (todo.md) tests this.
 # off   ab(d6,tt,ord,nb200k)@1.learned(s2,59815079)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s99,59815079)@1
+on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2

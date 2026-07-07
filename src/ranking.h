@@ -149,3 +149,39 @@ int rankGauntlet(const std::string& rosterFile, const std::string& storeFile,
 // pool as a training data source instead of a bespoke generator.
 int rankExtract(const std::string& storeFile, const std::string& outFile,
                 const std::string& board, int featVer, int sampleN, unsigned seed);
+
+// ---- Pair-play training-data generation (pairgen) ----
+// A dilution override applied on top of the two agents' own specs during
+// generation, so games between deterministic agents still vary without
+// changing either agent's identity. apply: 0 = none, 1 = agent A, 2 = agent B,
+// 3 = both (rankPairGen maps A/B to colors per game; inside the game runner
+// the same field is a color mask, 1 = White, 2 = Black). The override REPLACES
+// the chosen side's randomMoveProb each half-move with a linear decay from
+// `start` at ply 0 to `floorProb` at ply `decayPlies` (held at the floor
+// after); decayPlies <= 0 means a constant `start`. Diluted moves are fully
+// random (dilDepth is not touched).
+struct RankDilOverride {
+    int    apply;
+    double start, floorProb;
+    int    decayPlies;
+    RankDilOverride() : apply(0), start(0.0), floorProb(0.0), decayPlies(0) {}
+};
+// The per-ply dilution probability under that schedule (pure, testable).
+double rankDilutedProb(double start, double floorProb, int decayPlies, int ply);
+
+// Play `games` fresh games between two roster-style canonical IDs, alternating
+// colors (A is White in even games), capturing labeled value-model training
+// positions to outFile in the same format rankExtract writes (plus a
+// <outFile>.meta.json provenance sidecar). Per-game seeds derive from the IDs +
+// ordinal + runSeed, so runs and shard splits reproduce identical games.
+// openPlies: both sides play uniform-random moves for the first N half-moves
+// (position spread for deterministic pairs). filterWinner: 0 = keep every
+// game, 1 = keep only games agent A won, 2 = only agent B (draws dropped when
+// filtering). branchTries: after each kept game agent A won, make N attempts
+// to rewind to a random ply where A was to move, substitute a different legal
+// move, play out clean, and keep the tail positions only if A wins again
+// (mined alternative winning lines). Games with g % ofK != shard are skipped.
+int rankPairGen(const std::string& idA, const std::string& idB, int games,
+                const std::string& outFile, const std::string& board, int featVer,
+                unsigned runSeed, const RankDilOverride& dil, int openPlies,
+                int filterWinner, int branchTries, int shard, int ofK);

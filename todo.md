@@ -47,12 +47,31 @@ which is either a **Search** (a **Move-Tree Explorer** + a **Board-State Evaluat
 is a registry, so adding one is a single table entry + a function body, and everything
 (UIs, tournaments, docs) picks it up automatically.
 
+**Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
+depth, then at lower compute (deeper-for-cheaper). Yardstick in the current fit
+(post vs-champion study, 2026-07): champion classic d6 = Elo 1140, best learned
+PST at d6 = 1137 (`learned(s98)`, oracle-vs-champ data), a statistical tie at
++/- 22 SE and roughly equal cpu/move. The d8/nb2m oracle tops the table at 1267
+(reference, not the target). Next Elo probably comes from more games at the top
+(the tie is under-sampled at 8 games/pair), the refutation opening book, or a
+capacity jump (MLP/NNUE) on the proven champdil + oracle data recipe.
+
+**Standing loop:** the recurring success criterion for any new agent is dethroning
+the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by
+countering its specific build/weaknesses (see the adversarial counter-agent idea
+below). rank.exe's pool + gauntlet already measures this on every run.
+
 Legend: **(P1)** = built in the first pass (versatility proof). Everything else is future work
 against the same seams.
 
 - Add variety in openers and moves `[Now]`
   - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
   - Random move chooser out of top candidates (especially ties), or add random noise to the board state evaluator that's usually dominated by the actual evaluation so the whole tree is sorted randomly (jitter the eval to weaken without full randomness)
+  - Elo-rate the existing openers as ID modules: an optional `op(o|d)@1` ID segment (Offensive/Defensive, absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly `[Next]`
+  - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]`
+  - ~~Random-first-K-plies opening diversity for data generation~~ (shipped as pairgen `--open-plies`); extend the same knob to tournament and self-play generation `[Next]`
+  - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase `[Later]`
+  - Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction. The most promising follow-up for the standing dethrone goal `[Next]`
 - Interpret board analysis
   - Which piece is most impactful to the current evaluation? `[Later]`
   - What's the cheapest strategy to beat each given bot/parameters, even if overfitted? `[Dream]`
@@ -97,6 +116,33 @@ against the same seams.
 - Transformer policy `[Dream]`
 - Softmax / temperature sampling over move scores (for exploration + diverse self-play) `[Now]`
 
+## Models (difficulty head: board -> how hard is this position)
+- Blunder labeling by branch replay: play a game between two strong deterministic
+  agents, rewind to a move by the eventual winner, substitute a random different move,
+  and replay from there. If the winner changes, label the substitute a blunder. Also a
+  per-turn difficulty probe: turn difficulty = how few of the legal moves preserve the
+  win. `[Later]`
+- Position difficulty as a learned target: position difficulty = an aggregate of this
+  turn's and the following turns' difficulty. A strong move lowers your future
+  difficulty; a risky move raises it while still winning. Computing it exactly needs
+  near-exhaustive tree exploration (intractable except trivial endgames), which makes
+  it a natural ML target: generate labels by branch replay / sampling where it IS
+  computable, train a model to predict it anywhere. `[Later]`
+  - Uses: difficulty-aware move choice (prefer low-difficulty winning lines against a
+    tricky opponent), rating the difficulty of puzzles/positions for humans,
+    difficulty-aware time allocation in search.
+
+## Adversarial / Opponent-Modeling Agents
+- Counter-agent trained against one specific opponent: mine that opponent's alpha-beta
+  search for moves it pruned early (cut off before full evaluation) and check whether
+  continuing into that line actually wins. Train a policy that preferentially steers
+  into an opponent's under-explored lines. Deliberately overfits to one opponent's
+  build/pruning behavior, so it is fragile against everyone else by design. `[Later]`
+  - Purpose is not a standalone strong agent: keep counter-agents in the rank.exe pool
+    on purpose. They force every other agent, especially the reigning #1, to be robust
+    not only to raw strength but to opponent-specific exploitation, the same way the
+    dilution ladder forces robustness to weaker/noisier play.
+
 ## Board-State Evaluators (BSEFs)
 - ~~Classic (done)~~
 - ~~Experimental (done)~~
@@ -135,12 +181,36 @@ against the same seams.
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),
   and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]`
+- ~~Pool-pair game generation: generate FRESH training games by pairing agents from the
+  rank.exe pool (instead of one teacher's self-play), with the dilution-decay schedule
+  overriding each agent's own dilution. Combines replay's diverse-teachers win (~+250
+  Elo) with unlimited new data, decoupling training-set size from the stored match
+  history~~ (shipped: `rank.exe pairgen` plays any two canonical IDs with a per-side
+  dilution override, random opening plies, a winner filter, and branch-from-win mining.
+  First use = the vs-champion training study, `tools/train_vs_champion.ps1`.)
+- ~~Vs-champion training regime (first pairgen study): train value models on games
+  involving the reigning champion, sourced every plausible way (learner vs champ,
+  diluted champ vs champ, oracle vs champ, champion-loss cherry-picks, branch-mined
+  winning lines), and compare against the replay/self-play baselines.~~ (done, see
+  `plans/vs-champion-training-results-1-cozy-forest.md`. Headlines: diluted-champion
+  vs clean-champion games are the best value-training data found so far (beats
+  replay), oracle-vs-champ close behind, and the best model ties the champion at d6
+  (1137 vs 1140). Cherry-picked one-sided datasets (champloss, branch-wins) fail from
+  degenerate labels, and a d2 generator on one side drags data quality below the
+  self-play control. Theory 1 (out-of-distribution fragility) refuted in the current
+  pool, Theory 2 (dilution data can't approach the champ) refuted on strength but
+  head-to-head unresolved at n=8.) Standing longitudinal check: after each future
+  batch of diverse agents joins the pool, re-run `tools/train_vs_champion.ps1
+  -AnalysisOnly` to re-test the out-of-distribution theory `[Now]`
 - Tapered / phase-split PST: separate opening/endgame weight tables interpolated by piece count
   (piece count changes only on capture, so it stays fully incremental). The natural capacity step
   before MLP `[Next]`
 - Validation split + early stopping instead of the fixed 6-epoch folklore cap `[Next]`
 - PV/leaf position harvesting: train on positions from inside the teacher's search tree labeled
   by subtree value, matching the off-path distribution the eval actually sees in search `[Later]`
+- Active / hard-example mining: oversample positions where the current model most
+  disagrees with the teacher label or with a deeper search, instead of uniform
+  sampling `[Later]`
 - TD-Leaf(lambda) self-play bootstrap (value) `[Later]`
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
@@ -180,6 +250,24 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Gauntlet vs fixed anchors~~ (rank.exe gauntlet: one candidate vs the frozen pool, O(N) games)
 - ~~BayesElo-style rating with uncertainty~~ (rank.exe: anchored Bradley-Terry MLE + Fisher standard errors)
 - ~~Persistent incremental Elo ranking (rank.exe: canonical agent IDs, editable roster with on/off toggles, append-only match store, anchored BT refit, per-agent head-to-head reports)~~
+- Standing project loop: on every new agent, check whether it lowers the current #1's
+  Elo, by outrating it outright or by countering its specific build (see the
+  adversarial counter-agent idea above). Treat "dethrone the champion" as the
+  recurring success criterion, not just "raise some Elo" in isolation `[Now]`
+- Roster curation policy (interim, until the classifier below exists): keep `on` the
+  anchor, the dilution ladder, the reigning champion family, one oracle, the best agent
+  per distinct data-source family (replay, self-play, vs-champion, oracle-mimic,
+  branch-mined), and any agent with a distinctive opponent-bucket profile (e.g. a
+  counter-agent that beats the champ but loses broadly). Retire (`off`) near-duplicates
+  whose head-to-head profiles match an existing agent, since their games stay in
+  `matches.jsonl` forever `[Now]`
+- Agent behavioral classifier: characterize agents by how they PLAY, not just Elo, and
+  use it to decide which agents are interesting enough to keep active. Features:
+  position-distribution overlap between agents (shared `positionKey` histograms over
+  their stored games, so two agents reaching the same positions 99% of the time rate as
+  near-identical), a left-right symmetry measure, and responses against a fixed
+  discriminator agent as a feature vector. Cluster k-means-style and keep the most
+  interesting few per cluster. Big project, deliberately deferred `[Later]`
 
 ## Agent Composition + Play
 - ~~AgentSpec (explorer + evaluator + chooser + model slots + dilution) **(P1)**~~
@@ -196,6 +284,12 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - Python analysis layer (DuckDB queries: top Elo, fairest positions, avg eval per position) `[Later]`
 - Python training (PyTorch) for MLP/NNUE/transformer, exporting C++-format weights `[Later]`
 - Optional Weights & Biases tracking (local metrics by default, W&B opt-in) `[Dream]`
+- ~~Provenance gap: the model file's teacher= string omits the dilution-decay parameters
+  (--gen-random-floor / --gen-random-decay-plies) and the --from-data source, so two
+  differently-trained models can carry identical provenance. Record the full recipe~~
+  (self-play teacher= now appends `dil(start->floor/Np)`, --from-data was already
+  recorded as `replay:<file>`, and pairgen datasets carry a full-recipe
+  `<out>.meta.json` sidecar)
 - ~~Hyperparameter study for the ML evaluators/policies~~ (done for the linear v2 PST:
   78 models across teacher depth x games x dilution(+decay) x bootstrap x replay-data x L2,
   rated in one Bradley-Terry fit; see `plans/training-sweep-results-1-luminous-snail.md`.

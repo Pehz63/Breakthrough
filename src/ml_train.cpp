@@ -267,6 +267,16 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
             teach = teacherSpec(gen);
         }
         gen.randomMoveProb = genRandom;       // dilution -> position diversity (start value; see decay below)
+        // Record the generation dilution in the provenance string, so two models
+        // trained with different diversity recipes never carry identical teacher=
+        // lines (the decay params were previously omitted).
+        if (genRandom > 0.0) {
+            std::ostringstream dl;
+            dl << " dil(" << genRandom;
+            if (genRandomDecayPlies > 0) dl << "->" << genRandomFloor << "/" << genRandomDecayPlies << "p";
+            dl << ")";
+            teach += dl.str();
+        }
         cout << "Teacher/generator: " << teach << "  randomMoveProb=" << genRandom;
         if (genRandomDecayPlies > 0) cout << " decaying to " << genRandomFloor << " over " << genRandomDecayPlies << " plies";
         cout << "\n";
