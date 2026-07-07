@@ -45,7 +45,8 @@ dangling reference.
      - An **"Ideas This Inspired"** section: a lightweight, untethered list of new ideas the work brought to mind, whether or not they relate to this session's conclusions. Lower bar than Future Work -- a reminder to think of new ideas while reflecting on the work, not required to justify itself against a specific finding
      - (A) This list is not exhaustive. Include other outcome-worthy content even when it is not listed here.
      - (B) When you notice a recurring category worth capturing that is not yet listed, help grow this list, but do not edit `CLAUDE.md` unprompted. Confirm with the developer via the multiple-choice prompt that it is a meaningful addition first.
-  5. Suggest 2-3 **candidate commit messages** (message text only, not the full `git commit` command), then give a **top recommendation**
+  5. **Update the theory log.** If the results doc confirms, refutes, or opens a new testable theory, add or update its entry in `Docs/theories.md` (status, origin plan, tested-in link, and a citation key in Notes if it draws on external research).
+  6. Suggest 2-3 **candidate commit messages** (message text only, not the full `git commit` command), then give a **top recommendation**
      - Before suggesting, check `git status` to see what is actually uncommitted. If this change will be bundled with other uncommitted work from the session, write the message to cover **all** of those changes together, not just the latest one
      - Use `Add` for files being committed for the first time, `Update` only if the file was already in a prior commit
 - **Grow this file with lessons learned.** Beyond the routine factual updates in step 2 above, use each session as a moment to reflect on the project's purpose and how to best support the developer, then propose durable lessons, new workflow steps, or new instruction categories to record here so a fresh session starts better informed. This applies to every part of `CLAUDE.md`, not only the results-section list above. Do not add such discretionary changes unprompted. When you identify a meaningful addition, confirm it with the developer using the multiple-choice prompt before writing it.
@@ -211,6 +212,8 @@ first, `#undef`s `WHITE`/`BLACK`, then includes `globals.h` and draws with expli
 |---|---|
 | `README.md` | User-facing docs: build, run, game rules, move notation |
 | `CLAUDE.md` | Claude reference and workflow instructions (this file) |
+| `Docs/theories.md` | Running log of testable theories from AI-development sessions (dilution recipes, data sources, model capacity, etc.), each with a status (confirmed/refuted/open), the plan that raised it, and the plan/results doc that tested it. Updated per the "After every functional change" workflow above. |
+| `Docs/terminology.md` | Glossary of project-specific and domain terms (agent, ply, evaluator, explorer, etc.) with a one-sentence definition and an example sentence for each. |
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
 | `minimax_params.txt` | Saved MiniMax weights, loaded automatically when MiniMax player is selected |
 | `.gitignore` | Excludes `.exe`, `.obj`, `build/`, `third_party/`, and ML generated artifacts (`data/*.jsonl`, `models/*_ckpt*.txt`) |
