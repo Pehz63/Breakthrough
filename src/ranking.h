@@ -172,8 +172,12 @@ double rankDilutedProb(double start, double floorProb, int decayPlies, int ply);
 // Play `games` fresh games between two roster-style canonical IDs, alternating
 // colors (A is White in even games), capturing labeled value-model training
 // positions to outFile in the same format rankExtract writes (plus a
-// <outFile>.meta.json provenance sidecar). Per-game seeds derive from the IDs +
-// ordinal + runSeed, so runs and shard splits reproduce identical games.
+// <outFile>.meta.json provenance sidecar, which also records A's color-split
+// record over ALL played games -- a_white_games/a_white_wins/a_white_draws and
+// the _black_ equivalents -- so a color asymmetry doesn't hide inside an
+// aggregate a_wins/b_wins tally; B's per-color record is the complement).
+// Per-game seeds derive from the IDs + ordinal + runSeed, so runs and shard
+// splits reproduce identical games.
 // openPlies: both sides play uniform-random moves for the first N half-moves
 // (position spread for deterministic pairs). filterWinner: 0 = keep every
 // game, 1 = keep only games agent A won, 2 = only agent B (draws dropped when

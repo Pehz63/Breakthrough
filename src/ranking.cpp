@@ -2135,6 +2135,14 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
 
     int played = 0, kept = 0, aWins = 0, bWins = 0, draws = 0, positions = 0;
     int brTried = 0, brKept = 0, brPositions = 0;
+    // Color-stratified tallies over ALL played games (not just kept ones), so
+    // the recipe's actual white/black split and per-color win rate can be
+    // read back later instead of assumed. Tracked from A's perspective: which
+    // color A held that game (aWhiteGames/aBlackGames) and how A did in each
+    // (aWhiteWins/aBlackWins); B's per-color record is the complement (B was
+    // Black whenever A was White, and vice versa).
+    int aWhiteGames = 0, aWhiteWins = 0, aWhiteDraws = 0;
+    int aBlackGames = 0, aBlackWins = 0, aBlackDraws = 0;
     for (int g = 0; g < games; g++) {
         if (g % ofK != shard) continue;
         bool aWhite = (g % 2 == 0);
@@ -2158,6 +2166,13 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
         played++;
         int winnerAB = (oc == 0) ? 0 : (((oc == 1) == aWhite) ? 1 : 2);
         if (winnerAB == 1) aWins++; else if (winnerAB == 2) bWins++; else draws++;
+        if (aWhite) {
+            aWhiteGames++;
+            if (oc == 1) aWhiteWins++; else if (oc == 0) aWhiteDraws++;
+        } else {
+            aBlackGames++;
+            if (oc == 2) aBlackWins++; else if (oc == 0) aBlackDraws++;
+        }
 
         bool keep = (filterWinner == 0) || (winnerAB == filterWinner);
         if (keep) {
@@ -2242,6 +2257,10 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
                  << ",\"branch_tries\":" << branchTries
                  << ",\"played\":" << played << ",\"kept\":" << kept
                  << ",\"a_wins\":" << aWins << ",\"b_wins\":" << bWins << ",\"draws\":" << draws
+                 << ",\"a_white_games\":" << aWhiteGames << ",\"a_white_wins\":" << aWhiteWins
+                 << ",\"a_white_draws\":" << aWhiteDraws
+                 << ",\"a_black_games\":" << aBlackGames << ",\"a_black_wins\":" << aBlackWins
+                 << ",\"a_black_draws\":" << aBlackDraws
                  << ",\"positions\":" << positions
                  << ",\"branch_tried\":" << brTried << ",\"branch_kept\":" << brKept
                  << ",\"branch_positions\":" << brPositions << "}\n";
@@ -2250,7 +2269,11 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
 
     cout << "pairgen: " << played << " games played, " << kept << " kept ("
          << filterName(filterWinner) << " filter), A record " << aWins << "-" << bWins
-         << "-" << draws << " (W-L-D), " << positions << " positions";
+         << "-" << draws << " (W-L-D), " << positions << " positions"
+         << "; A as White " << aWhiteWins << "-" << (aWhiteGames - aWhiteWins - aWhiteDraws)
+         << "-" << aWhiteDraws << " (" << aWhiteGames << " games), A as Black "
+         << aBlackWins << "-" << (aBlackGames - aBlackWins - aBlackDraws) << "-" << aBlackDraws
+         << " (" << aBlackGames << " games)";
     if (branchTries > 0)
         cout << "; branches " << brKept << "/" << brTried << " kept, +" << brPositions
              << " positions";

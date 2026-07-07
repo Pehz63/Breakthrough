@@ -646,6 +646,32 @@ TEST_CASE("pairgen - winner filter keeps only that agent's wins") {
     REQUIRE(metaInt(meta, "kept") == metaInt(meta, "a_wins"));
 }
 
+TEST_CASE("pairgen - color-stratified tallies reconcile with the aggregate record") {
+    const string idA = "ab(d3)@1.classic(t1,c4,w0,l0)@2";
+    const string idB = "ab(d1)@1.classic(t1,c4,w0,l0)@2";
+    RankDilOverride dil;
+    dil.apply = 1; dil.start = 0.2; dil.floorProb = 0.05; dil.decayPlies = 20;
+
+    // 8 games, unsharded: color alternates strictly by game index, so A must
+    // hold White in exactly half and Black in exactly half.
+    rankPairGen(idA, idB, 8, "build/pairgen_color.jsonl", "boards/board1.txt", 2, 13, dil, 0, 0, 0, 0, 1);
+    string meta = slurpFile("build/pairgen_color.jsonl.meta.json");
+    REQUIRE_FALSE(meta.empty());
+
+    long wg = metaInt(meta, "a_white_games"), bg = metaInt(meta, "a_black_games");
+    long ww = metaInt(meta, "a_white_wins"), bw = metaInt(meta, "a_black_wins");
+    long wd = metaInt(meta, "a_white_draws"), bd = metaInt(meta, "a_black_draws");
+    REQUIRE(wg == 4);
+    REQUIRE(bg == 4);
+    REQUIRE(wg + bg == metaInt(meta, "played"));
+    REQUIRE(ww <= wg);
+    REQUIRE(bw <= bg);
+    REQUIRE(ww + wd <= wg);
+    REQUIRE(bw + bd <= bg);
+    // The color-split wins must reconcile exactly with the aggregate A record.
+    REQUIRE(ww + bw == metaInt(meta, "a_wins"));
+}
+
 TEST_CASE("pairgen - open plies spread a deterministic pair, branch mode is deterministic") {
     const string idA = "ab(d2)@1.classic(t1,c4,w0,l0)@2";
     const string idB = "ab(d2)@1.classic(t1,c4,w0,l0)@2";

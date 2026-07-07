@@ -67,10 +67,13 @@ against the same seams.
 - Add variety in openers and moves `[Now]`
   - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
   - Random move chooser out of top candidates (especially ties), or add random noise to the board state evaluator that's usually dominated by the actual evaluation so the whole tree is sorted randomly (jitter the eval to weaken without full randomness)
-  - Elo-rate the existing openers as ID modules: an optional `op(o|d)@1` ID segment (Offensive/Defensive, absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly `[Next]`
+  - Elo-rate the existing openers as ID modules: an optional `op(o|d)@1` ID segment (Offensive/Defensive, absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences)
   - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]`
   - ~~Random-first-K-plies opening diversity for data generation~~ (shipped as pairgen `--open-plies`); extend the same knob to tournament and self-play generation `[Next]`
-  - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase `[Later]`
+  - Sweep `--open-plies` length for the oracle-vs-champion training regime (0/2/4/6/8/12 tried against the single untested value of 6 used in the first vs-champion study), gauntlet-screen each, to check whether 6 was actually a good choice or just a guess `[Next]`
+  - Asymmetric opener for `pairgen`: add `--open-plies-side a|b|both` so only ONE named agent plays random moves during the opener window while the other plays its own normal policy throughout. Needed because the current symmetric `--open-plies` may be handicapping a strong deterministic opponent (e.g. the champion) with a bad forced start it would never choose, which would inflate the apparent win rate of whoever it's tested against -- see `plans/vs-champion-training-results-1-cozy-forest.md`'s Future Work #1 for the full analysis and the two experiments (retrain + bias quantification) this would enable `[Next]`
+  - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase. Specific angle worth testing: train the opener on WINNING-line data (see the refutation-book idea below) and hand off to a cheaper depth-5 search after the opener phase, on the theory that a strong precomputed opening plus a shallower live search could beat the d6 champion for less total compute -- directly on-target for the session's "beat d6 without searching deeper" goal `[Later]`
+  - Single-line refutation book (extended, more concrete version of the offline-refutation idea below): find ONE oracle-verified winning line against the champion for each color (2 lines total), play that fixed line against every other deterministic agent in the roster, and whenever an opponent deviates from the line (or the line stops applying), use the oracle to find a new winning continuation from that deviation point. Builds a small branching decision tree rooted at "beat the champion," tested for robustness against the whole pool, not just the champion. Consider separate White/Black book models plus a combined one `[Later]`
   - Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction. The most promising follow-up for the standing dethrone goal `[Next]`
 - Interpret board analysis
   - Which piece is most impactful to the current evaluation? `[Later]`
@@ -272,6 +275,18 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 ## Agent Composition + Play
 - ~~AgentSpec (explorer + evaluator + chooser + model slots + dilution) **(P1)**~~
 - ~~Saved agent library file **(P1)**~~
+- Determinism classification: classify each agent component (explorer, evaluator, chooser,
+  dilution) as deterministic or not, and classify each agent as the LEAST deterministic of
+  its components (any random part makes the whole agent non-deterministic). For a
+  deterministic-vs-deterministic pairing, one game per color is provably sufficient --
+  repeats are guaranteed identical -- so the scheduler (`rankSchedule`) and `pairgen` could
+  skip redundant games instead of replaying the same game `gamesPerPair` times. Motivated by
+  a real bug found this session: an early `pairgen` head-to-head eval used no dilution/opening
+  randomness and silently replayed only 2 distinct games ~120 times each, producing a
+  misleadingly exact 50/50 split. Unit test: build a randomly-configured deterministic agent,
+  play it against itself/an opponent twice, assert repeated games are identical (final
+  position at minimum; the full move sequence if cheap, since compute is dominated by the
+  search itself, not the check) `[Next]`
 
 ## Data + Infrastructure
 - ~~Model file format (text, `type=`/`head=` header) **(P1)**~~

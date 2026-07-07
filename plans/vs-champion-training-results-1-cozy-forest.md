@@ -11,7 +11,8 @@ it, the best learned model (`learned(s98)`, trained on oracle-vs-champion games)
 rates a statistical tie with the champion on the shared scale: 1137 vs 1140, with
 standard errors of about +/- 22 each, at roughly equal per-move CPU (11.6 vs 9.9
 cpu-ms/move) and fewer nodes (47k vs 71k). The new #1 overall is the d8 oracle
-itself (1267), which is a reference point, not the goal agent.
+itself (1267), which is a reference point, not the goal agent. This tie is not
+fully settled -- see Future Work #1 and #6 for two open validity questions on it.
 
 The single biggest surprise: training data from a DILUTED CHAMPION playing its
 clean self was the best-or-equal data source tested, beating the established
@@ -121,7 +122,8 @@ and turned out to also be measuring mostly-repeated deterministic games (see
 addendum). A dedicated 80-game head-to-head with randomized 6-ply openings
 gives the dilution agent (s96) a real 50-30 (62.5%) record against the clean
 champion at d6 -- dilution-sourced data DID produce a genuine champion-beater,
-contrary to the theory.
+contrary to the theory. Caveat: see Future Work #1 -- this measurement used a
+shared random 6-ply opener that may itself have handicapped the champion.
 
 ## Addendum: champloss-only follow-up (why did it fail so badly?)
 
@@ -151,9 +153,36 @@ making the sample size real. This is a general lesson for anyone using
 
 champloss-only did not win a single game out of 280, at either depth. This
 directly answers "did it learn to beat the champion head-to-head": no, cleanly
-no. The rostered dilution model, by contrast, has a real winning record
-against the champion at d6 (though it loses more often than it wins at the
-shallower d4 depth it was trained/screened at).
+no.
+
+**Color-stratified re-run.** `pairgen`'s `.meta.json` was extended (this
+addendum) to track A's win record separately by which color it held that
+game, since the champion's OWN historical record (`ranking/ratings.tsv`, 792
+games) already shows a real asymmetry: White 382-14 (96.5%) vs Black 348-48
+(87.9%), a ~9-point gap. Re-running the head-to-head with the new tracking:
+
+| Model | as White vs champion | as Black vs champion |
+|---|---|---|
+| champloss-only, d4 (100 games/color) | 0-100 (0%) | 0-100 (0%) |
+| champloss-only, d6 (40 games/color) | 0-40 (0%) | 0-40 (0%) |
+| champdil-vs-champ (s96), d4 (100/color) | 35-65 (35%) | 24-76 (24%) |
+| champdil-vs-champ (s96), d6 (40/color) | 27-13 (67.5%) | 23-17 (57.5%) |
+
+Two things follow. First, champloss's shutout is not color-related -- it is
+exactly 0% in both colors at both depths, consistent with the "systematic
+miscalibration" explanation below rather than a color-specific weakness.
+Second, the champdil model shows the SAME asymmetry direction as the
+champion's own historical record: it does consistently better as White than
+as Black (by ~11 points at d4, ~10 points at d6), which is the mirror image of
+the champion itself being weaker as Black. This is corroborating, not
+independent, evidence -- both observations point at Black being the harder
+side to play well in this engine/board, at least for search agents in this
+strength range, which future tempo/turn-weight calibration work could probe
+directly (`train.exe turn-swing` already exists for this).
+
+The rostered dilution model, by contrast, has a real winning record against
+the champion at d6 (though it loses more often than it wins at the shallower
+d4 depth it was trained/screened at).
 
 **Data-volume test.** champloss-only used only 43,932 positions (950 kept
 games out of 4000 played, `--filter winner=a` keeping only games the diluted
@@ -243,18 +272,153 @@ and s97 (branch) if they stay uninteresting in the buckets.
 - Datasets carry their recipes in `data/*.meta.json`.
 - Tests: `.\tools\run_tests.ps1 -Build` (501 assertions).
 
-## Follow-ups this study motivates
+## Future Work
 
-1. Close the last 3 Elo honestly: more games per champion pairing (the 8-game
-   target leaves the top statistically tied), then a dedicated
-   champion-vs-s98/s96 series.
-2. The champion-refutation opening book (todo.md): the strongest remaining
-   dethrone idea that also REDUCES live compute.
-3. Oracle-labeled positions (eval-blended labels, already `[Now]` in todo.md):
-   this study only used oracle GAMES with outcome labels; the oracle's root
-   scores per move are still being thrown away.
-4. Capacity jump (MLP/NNUE) now has a proven best data recipe: champdil +
-   oracle pairgen data.
+Each entry is tethered to the specific experiment/conclusion above it would
+confirm or refute, not just a general improvement idea (general project ideas
+that aren't specific to this study's conclusions live in `todo.md` instead;
+several entries below are also filed there, restated here with the tether).
+
+1. **Both-random-opener training/evaluation may inflate every "beats the
+   champion" result in this study.** *Tied to:* the headline tie (1137 vs
+   1140), the oracle family's d6 confirm (1137, trained entirely on
+   `pg_oracle_champ`), and Theory 2's verdict (REFUTED, based on champdil's
+   62.5% d6 head-to-head).
+   *The hole:* `pg_oracle_champ`'s generation used `--open-plies 6` on BOTH
+   sides, and every later head-to-head re-measurement (the source of the
+   62.5%/29.5%/35%/24% numbers in the addendum above) used the same symmetric
+   `--open-plies 6`. In every one of those games the champion was forced to
+   play 6 fully random moves it would never choose before either side's real
+   policy takes over. If those random plies frequently leave the champion in
+   an objectively worse position than its own opening choices would, then the
+   oracle's 71.9% training-data win rate and champdil's 62.5% real head-to-head
+   record could be measuring "beats a champion sometimes handicapped by a bad
+   random start," not "beats the champion's actual best play."
+   *Proposed test A (retrain):* add an asymmetric opener mode to `pairgen`
+   (currently `--open-plies` always applies to both sides; would need e.g.
+   `--open-plies-side a|b|both`) so ONLY the oracle plays random for the first
+   6 plies while the champion plays its own normal deterministic policy
+   throughout, including its own choices within that window. Retrain on this
+   data, screen and d6-confirm, and compare against the existing oracle
+   family's 785 screen mean / 1137 d6 confirm -- if it drops meaningfully, the
+   theory is confirmed and the headline tie is partly an artifact.
+   *Proposed test B (quantify the bias directly):* for a sample of the
+   existing `pg_oracle_champ` games, replay each game's shared random prefix
+   but substitute the champion's OWN normal-policy move at each of its plies
+   within that window instead of the recorded random one, compare the
+   resulting position's static eval against the recorded (all-random)
+   position at the same ply, and tabulate what fraction of games gave the
+   champion a materially worse start than it would have chosen -- split by
+   the champion's color that game, both as the natural cross-check and
+   because it's the direct measurement requested.
+   *Asymmetry worth noting:* this confound can only inflate "X beats the
+   champion" conclusions, not "X fails to beat the champion" ones --
+   champloss went 0-280 under the exact same symmetric-opener evaluation, so
+   if this bias is real it would make that null result STRONGER, not weaker
+   (champloss couldn't capitalize even on games where the champion may have
+   been handicapped). The relative White-vs-Black comparison in the
+   color-split addendum is also more likely to survive this than the absolute
+   win-rate numbers, since the random opener has no way to know or prefer a
+   color -- but that's an argument, not a verified result.
+
+2. **Theory 1's "no out-of-distribution weakness" verdict rests on a small,
+   weak diverse bucket.** *Tied to:* Theory 1 verdict (REFUTED in the current
+   pool). *The hole:* the diverse bucket (n=80 per agent) is drawn entirely
+   from already-rostered, mostly-retired sweep models that play no new games;
+   it may not represent what a genuinely novel, differently-built agent would
+   do. *Test:* re-run `tools/train_vs_champion.ps1 -AnalysisOnly` after the
+   next batch of structurally different agents (e.g. the refutation-book
+   agent or an MLP, both `todo.md` items) joins the pool -- the standing
+   longitudinal check already noted above, restated here with the tether.
+
+3. **The champdil recipe has a structurally weaker version of the same
+   opener-bias concern as item 1.** *Tied to:* Theory 2 verdict, the champdil
+   family's 820 screen mean / 1121 full-fit Elo. *The hole:* champdil's clean
+   champion side plays its own true best response at every move (no forced
+   randomness, unlike item 1), but its diluted opponent's unusual early moves
+   could still occasionally push the clean champion into a genuinely
+   unfamiliar line it has no "book" preparation for -- a weaker but analogous
+   version of "the champion didn't get to play its normal game." *Test:*
+   compare the clean champion's own per-move search score in champdil games
+   against its score in games where both sides play normally, at the same
+   ply -- if the clean champion's self-evaluation is systematically worse
+   early in champdil games, that supports the concern.
+
+4. **Champloss's failure mode (systematic miscalibration from filtered
+   one-sided labels) was diagnosed, not fixed.** *Tied to:* the champloss
+   addendum's "not a data-volume problem" conclusion. *The hole:* a
+   higher-capacity nonlinear model (MLP/NNUE) might localize the "recovered
+   from a bad start" pattern as a conditional exception instead of
+   corrupting the global linear eval -- untested. *Test:* once an MLP value
+   head exists (`todo.md`), train it on the same filtered champloss-style
+   data and see whether the 0% head-to-head result changes.
+
+5. **The `--open-plies 6` value was never justified or swept.** *Tied to:*
+   the oracle training regime and every head-to-head re-measurement in the
+   champloss addendum. *The hole:* 6 was a guess ("enough to diverge the
+   midgame without swamping the tactical signal"); no other length was
+   tried. *Test:* sweep `--open-plies` (e.g. 0/2/4/6/8/12) for the
+   oracle-vs-champion recipe, gauntlet-screen each. Interacts with item 1: an
+   asymmetric opener at different lengths is a 2-D sweep, not two independent
+   ones -- worth designing together rather than sequentially.
+
+6. **The headline "statistical tie" (1137 vs 1140) is under-sampled.** *Tied
+   to:* the headline claim itself. *The hole:* the champion-bucket sample is
+   n=8 per promoted agent in the full re-rate; even the dedicated 80-game
+   head-to-heads only cover champdil and champloss, not the oracle model
+   (s98) that is actually tied with the champion. *Test:* a dedicated,
+   large-sample champion-vs-s98 and champion-vs-s96 series (color-balanced),
+   ideally using an opener scheme resolved by item 1, before calling the tie
+   real.
+
+7. **Oracle games only used outcome labels, not per-move search scores.**
+   *Tied to:* the oracle recipe's data efficiency, not a conclusion at risk.
+   *The hole:* the d8 oracle computes a real root search score every move
+   and it is currently thrown away; eval-blended labels
+   (`lambda*outcome + (1-lambda)*sigmoid(oracleEval/scale)`, already a
+   `[Now]` `todo.md` item for self-play generally) would turn each oracle
+   game into a much richer training signal. *Test:* extend `pairgen` to
+   optionally record the mover's search score alongside the label, blend it
+   into training, and compare against the outcome-only oracle arm.
+
+Nothing above overturns a conclusion outright -- items 1 and 3 in particular
+are real, not-yet-run experiments that could move the headline number, and
+should be treated as open questions rather than settled until run.
+
+## Ideas This Inspired
+
+Lighter-weight, not tied to a specific conclusion above -- a reminder-style
+list rather than a validity audit. Several of these are already filed in
+`todo.md` (noted); a couple are new brainstorm from writing this doc.
+
+- Opener length sweep, asymmetric opener flag, single-line refutation book,
+  opener + depth-5 handoff, determinism classification + unit test, and
+  generalized opener-Elo-rating -- all filed in `todo.md` this session, born
+  directly from this study's questions and gotchas.
+- **Color-specific evaluator weights** (new): every evaluator in `ai_eval.cpp`
+  is symmetric by construction (the `structOwner` mirroring convention, one
+  weight set applied to both colors). Given the champion's own measured
+  White/Black asymmetry (96.5% vs 87.9%) and the matching pattern in champdil,
+  a genuinely new idea is letting an agent carry TWO weight profiles, one per
+  color, so it can compensate for whichever side is structurally harder to
+  play instead of using one compromise weight set for both. Cheap to test:
+  duplicate `evalParams` per color in `AgentSpec`, hill-climb each half
+  separately, see if the combined agent beats the single-profile version.
+- **Iterative-depth bootstrap** (new): the one-shot bootstrap arm failed
+  because its d2 generator stayed fixed and weak throughout (168-3832 record,
+  see the generation tallies table). A curriculum variant -- start the
+  generator at d2, retrain, promote the retrained model to a deeper search
+  once it clears a screening bar, repeat -- might succeed where the single
+  fixed-depth bootstrap didn't, since it avoids ever training on one
+  permanently weak side.
+- **Branch-mined positions as a trap-detection benchmark, not training data**
+  (new): branch-from-win mining had a healthy 45.9% re-win rate but produced
+  poor training data (degenerate labels, see the champloss addendum). The
+  same divergence points -- "the position right before a losing side would
+  have blundered into an alternate loss" -- could instead seed a benchmark
+  suite: does agent X notice and avoid this trap? That sidesteps the
+  labeling problem entirely, since it isn't training the value function, just
+  evaluating whether a candidate agent's search finds the refutation.
 
 ## Candidate commit messages
 
