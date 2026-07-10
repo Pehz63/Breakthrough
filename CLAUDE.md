@@ -28,7 +28,8 @@ dangling reference.
 
 ## Standing Instructions
 
-- **Never run `git commit` or `git push`.** The developer makes all commits manually.
+- **Commit at natural checkpoints, without waiting to be asked.** After finishing a task or functional change (normally as the last step of the "After every functional change" workflow below, once the results doc and other updates are in place), create the commit yourself. Review `git status`/`git diff` first and never stage or commit anything that looks like a secret. **Never run `git push`** without explicit developer instruction given in that session; a prior commit approval does not carry forward to pushing.
+- **Tests must pass before committing.** Run `.\tools\run_tests.ps1 -Build` (or confirm it already passed against the current code this session) before every commit. If any assertion fails, fix it or, if that isn't possible in scope, stop and tell the developer instead of committing. The one exception is a commit that touches no `src/`/`tests/`/build-affecting file (e.g. docs-only or `plans/`-only changes), where the test suite is a no-op anyway.
 - **Todo list:** Project tasks are tracked in `todo.md`. When a task is completed, cross it out using Markdown strikethrough (`~~like this~~`) rather than deleting it.
 - **Writing style:** Avoid semicolons and em dashes. Use a comma or period instead, restructuring the sentence if needed. Avoid special Unicode characters like arrows or comparison signs. Use standard keyboard equivalents instead, such as `->` for a right-pointing arrow and `>=` for a greater-than-or-equal sign.
   - **Voice:** Write documentation as a factual guide to what things do, not as marketing. Avoid persuasive or self-congratulatory adjectives (for example "powerful", "seamless", "robust", "just faster"), do not restate the same point twice, and break long run-on sentences into shorter ones. State what a feature does and how to use it, and let the facts speak.
@@ -37,7 +38,7 @@ dangling reference.
   2. Update this file (`CLAUDE.md`) to reflect new files, renamed functions, or changed behavior
   3. Tell the developer **how to test** the change and **what new behavior to expect**
   4. **Archive the plan, and write a companion results document.** If the work was driven by a plan (for example a session plan under `~/.claude/plans/`), copy that plan into the repo `plans/` folder under a cleaner, descriptive name matching the existing style (`<topic>-plan-<N>-<suffix>.md`, keeping the original trailing random-word suffix). Then create a **separate companion results document** next to it named `<topic>-results-<N>-<suffix>.md` (the same name with `plan` replaced by `results`). Keep the two files separate: the plan captures intent, the results doc captures outcome. The results doc is a permanent record of the same substance you would give in the end-of-session rundown, not just a chat log. Here is a **non-exhaustive** list of what to include in this document:
-     - The end-of-session rundown: a summary of all the changes made, how to test them, and the candidate commit messages
+     - The end-of-session rundown: a summary of all the changes made, how to test them, and the commit message(s) used
      - Results of implemented optimizations as concrete numbers: percent speedup, cpu/node before and after, Elo change, win-rate deltas, and how they were measured
      - Implementation details and any differences between the planned document and the final implementation (what changed, what was harder than expected, what was dropped or added, and why)
      - Correctness gotchas discovered and how they were resolved, plus any measurement or methodology caveats that qualify the numbers
@@ -46,16 +47,14 @@ dangling reference.
      - (A) This list is not exhaustive. Include other outcome-worthy content even when it is not listed here.
      - (B) When you notice a recurring category worth capturing that is not yet listed, help grow this list, but do not edit `CLAUDE.md` unprompted. Confirm with the developer via the multiple-choice prompt that it is a meaningful addition first.
   5. **Update the theory log.** If the results doc confirms, refutes, or opens a new testable theory, add or update its entry in `Docs/theories.md` (status, origin plan, tested-in link, and a citation key in Notes if it draws on external research).
-  6. Suggest 2-3 **candidate commit messages** (message text only, not the full `git commit` command), then give a **top recommendation**
-     - Before suggesting, check `git status` to see what is actually uncommitted. If this change will be bundled with other uncommitted work from the session, write the message to cover **all** of those changes together, not just the latest one
-     - Use `Add` for files being committed for the first time, `Update` only if the file was already in a prior commit
+  6. **Commit the change.** First confirm `.\tools\run_tests.ps1 -Build` passes (or already passed this session against the current code) -- do not commit on a red or unverified suite; stop and flag it to the developer instead. Then check `git status` to see what is actually uncommitted; if this change will be bundled with other uncommitted work from the session, write the message to cover **all** of those changes together, not just the latest one. Use `Add` for files being committed for the first time, `Update` only if the file was already in a prior commit. Create the commit directly (no need to ask first or wait for approval) using the standard heredoc `git commit -m` form. Do not `git push` unless the developer explicitly asks in that session.
 - **Grow this file with lessons learned.** Beyond the routine factual updates in step 2 above, use each session as a moment to reflect on the project's purpose and how to best support the developer, then propose durable lessons, new workflow steps, or new instruction categories to record here so a fresh session starts better informed. This applies to every part of `CLAUDE.md`, not only the results-section list above. Do not add such discretionary changes unprompted. When you identify a meaningful addition, confirm it with the developer using the multiple-choice prompt before writing it.
 
 ---
 
 ## Project Overview
+
 **Breakthrough** is an 8x8 abstract board game implemented in C++ with a console UI and multiple AI difficulty levels. White pieces start on rows 0-1 (the bottom of the printed board) and advance toward row 7. Black pieces start on rows 6-7 and advance toward row 0. A player wins by advancing a piece to the opposite back row or capturing all opponent pieces.
-**Breakthrough** is an 8x8 abstract board game implemented in C++ with a console UI and multiple AI difficulty levels. White pieces start at rows 6-7 and move upward. Black pieces start at rows 0-1 and move downward. A player wins by advancing a piece to the opposite back row or capturing all opponent pieces.
 
 - **Language:** C++ (C++11)
 - **Compiler:** MSVC (`cl`), the primary build tool

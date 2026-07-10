@@ -18,6 +18,35 @@ This file is for claims still in motion. A theory that settles into general
 background knowledge graduates into `axioms.md`'s empirical tier, and comes
 back here if new evidence reopens it.
 
+## How this document is organized
+
+- **[Breakthrough Theories](#breakthrough-theories)** holds theories about
+  the game and its AI: strategy, eval design, training recipes, search
+  engineering. These are numbered `1, 2, 3, ...` in one continuous sequence
+  across the whole document, so a cross-reference like "see theory 6"
+  unambiguously means the same entry no matter which subsection it lives in.
+  They're grouped into topical subsections purely for scanability -- moving
+  an entry between subsections, or adding a new subsection, never changes its
+  number.
+- **[Other](#other)** holds theories that aren't about Breakthrough's
+  gameplay or AI substance -- the development process, tooling, community
+  design, or anything else this project touches. Each topic inside `Other`
+  gets its own subsection with its own short letter-prefixed numbering (for
+  example `L1, L2, ...` for LLM-development theories), so topics never
+  collide with each other or with the Breakthrough numbering above.
+
+**When a new theory doesn't fit an existing subsection:** if it's about
+Breakthrough's gameplay or AI, add a new subsection under Breakthrough
+Theories (or file it under the closest existing one if it's a one-off that
+doesn't obviously deserve its own group yet). If it's not about Breakthrough
+at all, add a new lettered subsection under `Other` -- that section exists
+specifically so off-topic theories have an immediate home instead of forcing
+a premature top-level section. If a subsection under `Other` grows into a
+real recurring research area (multiple entries, its own vocabulary, its own
+open questions), promote it to a full top-level section next to
+`Breakthrough Theories`, the same way this file promoted LLM-development
+theories out of a single stray entry into their own subsection.
+
 ## Status legend
 
 | Status | Meaning |
@@ -30,27 +59,35 @@ back here if new evidence reopens it.
 
 ## Index
 
-| # | Theory | Status | Origin | Tested in |
-|---|---|---|---|---|
-| 1 | Diverse-pool vulnerability | Refuted (not fully settled) | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
-| 2 | Champion-dilution ceiling | Reopened (opener artifact, see theory 6) | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md), [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
-| 3 | More data fixes champloss-only miscalibration | Disproven | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
-| 4 | Nonlinear model (MLP/NNUE) fixes champloss miscalibration | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
-| 5 | Color-specific evaluator weights compensate for Black's disadvantage | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
-| 6 | Symmetric random openers inflate vs-champion results | Partially confirmed | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
-| 7 | Curriculum bootstrap succeeds where one-shot bootstrap failed | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
-| 8 | Training-seed noise dominates hyperparameter effects | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
-| 9 | Teacher search depth doesn't matter for linear-PST label quality | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
-| 10 | Linear PST representation is the binding capacity ceiling | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
-| 11 | Dilution decay beats flat dilution | Promising / unproven | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
-| 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
-| 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
-| 14 | An offline refutation book could dethrone the champion with less live compute | Open / untested | [todo.md](../todo.md) | -- |
-| 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
+| # | Theory | Status | Section | Origin | Tested in |
+|---|---|---|---|---|---|
+| 1 | Diverse-pool vulnerability | Refuted (not fully settled) | Gameplay Performance & Dethroning the Champion | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
+| 2 | Champion-dilution ceiling | Reopened (opener artifact, see theory 6) | Gameplay Performance & Dethroning the Champion | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md), [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
+| 3 | More data fixes champloss-only miscalibration | Disproven | Training Data & Recipes | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
+| 4 | Nonlinear model (MLP/NNUE) fixes champloss miscalibration | Open / untested | Model & Evaluator Design | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
+| 5 | Color-specific evaluator weights compensate for Black's disadvantage | Open / untested | Model & Evaluator Design | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
+| 6 | Symmetric random openers inflate vs-champion results | Partially confirmed | Gameplay Performance & Dethroning the Champion | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
+| 7 | Curriculum bootstrap succeeds where one-shot bootstrap failed | Open / untested | Gameplay Performance & Dethroning the Champion | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
+| 8 | Training-seed noise dominates hyperparameter effects | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
+| 9 | Teacher search depth doesn't matter for linear-PST label quality | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
+| 10 | Linear PST representation is the binding capacity ceiling | Confirmed | Model & Evaluator Design | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
+| 11 | Dilution decay beats flat dilution | Promising / unproven | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
+| 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
+| 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | Search & Evaluation Engineering | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
+| 14 | An offline refutation book could dethrone the champion with less live compute | Open / untested | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | -- |
+| 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
+| 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
+| L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
-## Theories
+## Breakthrough Theories
 
-### 1. Diverse-pool vulnerability
+### Gameplay Performance & Dethroning the Champion
+
+Theories about win rate, strength, and the standing goal of beating the
+reigning champion agent -- including measurement artifacts (like opener
+bias) that affect how trustworthy a "beats the champion" result is.
+
+#### 1. Diverse-pool vulnerability
 
 **Claim:** A model trained only on champion data performs fine in aggregate,
 but loses disproportionately to structurally diverse opponents outside the
@@ -64,7 +101,7 @@ champion's style.
 
 **Notes:** Flagged as a standing longitudinal re-check (`todo.md`, `[Now]`): re-run `tools/train_vs_champion.ps1 -AnalysisOnly` after each future batch of diverse agents joins the pool, since today's "diverse" bucket may not stay diverse as the roster grows.
 
-### 2. Champion-dilution ceiling
+#### 2. Champion-dilution ceiling
 
 **Claim:** Training on a randomly-diluted version of the champion itself
 can't produce data strong enough to beat the champion -- oracle or
@@ -86,40 +123,7 @@ unsettled. A clean re-test would generate champdil data with an asymmetric opene
 and re-measure, or use no-opener paired evaluation with real opening diversity
 from a different source.
 
-### 3. More data fixes champloss-only's miscalibration
-
-**Claim:** The champion-loss-only dataset produces a weak model because it
-doesn't have enough data; more data would fix it.
-
-**Status:** Disproven.
-
-**Origin / Tested in:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- addendum.
-
-**Notes:** 4x the data only moved the d4 screening Elo from 501 to 547, and real head-to-head play against the champion stayed 0-200. Reframed as a systematic label-distribution problem (one-sided data teaches a degenerate value function), not underfitting.
-
-### 4. Nonlinear model fixes champloss miscalibration
-
-**Claim:** A higher-capacity nonlinear model (MLP/NNUE) could succeed on the
-champloss-only dataset where the linear model failed.
-
-**Status:** Open / untested.
-
-**Origin:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- Future Work.
-
-**Notes:** Blocked on an MLP/NNUE value head existing (`src/ml_model.cpp`'s `g_modelTypes[]` currently only implements `linear`).
-
-### 5. Color-specific evaluator weights compensate for Black's disadvantage
-
-**Claim:** Giving White and Black separate evaluator weights could compensate
-for Black's structural disadvantage in Breakthrough.
-
-**Status:** Open / untested.
-
-**Origin:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- "Ideas This Inspired."
-
-**Notes:** Motivated by matching a White/Black asymmetry seen in both the champion's historical record and the champdil model's results.
-
-### 6. Symmetric random openers inflate vs-champion results
+#### 6. Symmetric random openers inflate vs-champion results
 
 **Claim:** Evaluating with symmetric random openers (`--open-plies 6` applied
 to both sides) inflates every "beats the champion" result in the
@@ -151,7 +155,7 @@ as further confirmation; Layer 1's fixed-model evaluation remains the clean test
 it says the oracle's real strength holds up. Directly affects the confidence of
 theories 1 and 2.
 
-### 7. Curriculum bootstrap succeeds where one-shot bootstrap failed
+#### 7. Curriculum bootstrap succeeds where one-shot bootstrap failed
 
 **Claim:** An iterative-depth ("curriculum") bootstrap could succeed at
 self-improvement where a one-shot bootstrap failed.
@@ -162,90 +166,7 @@ self-improvement where a one-shot bootstrap failed.
 
 **Notes:** Motivated by the one-shot bootstrap arm's failure (630 Elo vs. its parent's 825).
 
-### 8. Training-seed noise dominates hyperparameter effects
-
-**Claim:** Random training-seed variance is large enough to dominate most
-hyperparameter comparisons in the sweep.
-
-**Status:** Confirmed.
-
-**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
-
-**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 1.
-
-**Notes:** Seed replicas showed a 50-150 Elo spread, an order of magnitude above rating error -- any sweep conclusion needs multiple seeds to be trustworthy.
-
-### 9. Teacher search depth doesn't matter for linear-PST label quality
-
-**Claim:** The self-play teacher's search depth (d2 vs d4 vs d6) doesn't
-meaningfully affect the quality of labels used to train a linear
-piece-square-table value model.
-
-**Status:** Confirmed.
-
-**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
-
-**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 3.
-
-**Notes:** d2, d4, and d6 teachers all landed around 510-525 Elo -- a cheap d2 teacher is not leaving quality on the table for this model class.
-
-### 10. Linear PST representation is the binding capacity ceiling
-
-**Claim:** The linear piece-square-table representation itself, not the
-training recipe, is what caps model strength.
-
-**Status:** Confirmed.
-
-**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
-
-**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 8.
-
-**Notes:** Implies the next real strength lever is model capacity (MLP/NNUE), which is itself untested -- see theory 4.
-
-### 11. Dilution decay beats flat dilution
-
-**Claim:** Decaying the training-generator's random-move probability over
-the course of a game produces better training data than a flat dilution
-probability.
-
-**Status:** Promising / unproven.
-
-**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
-
-**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 4.
-
-**Notes:** Directionally favored decay as the default, but the effect is within the seed-noise band established by theory 8.
-
-### 12. Replay-extraction beats bespoke single-teacher self-play
-
-**Claim:** Extracting labeled training data from games already played by the
-rated agent pool (`rank.exe extract`) produces better or equal training data
-than generating a fresh bespoke self-play run with a single teacher, at zero
-extra generation cost.
-
-**Status:** Confirmed.
-
-**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
-
-**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 5.
-
-**Notes:** This result is what motivated `tools/train_scaling.ps1`'s replay-data arm, which went on to produce the d6 Elo 920 model promoted to `models/pst_value.txt`.
-
-### 13. Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly
-
-**Claim:** An incremental delta for the wall/column structure eval has to
-reproduce `evalPosFull`'s exact edge-exclusion convention (top-row-wall and
-rightmost-column pairs), or it will silently diverge from a full rescan.
-
-**Status:** Confirmed (as a correctness lesson).
-
-**Origin:** [incremental-wall-column-eval-plan-1-golden-forest.md](../plans/incremental-wall-column-eval-plan-1-golden-forest.md).
-
-**Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- caught by the `test_eval.cpp` equivalence test on the first implementation attempt, before the fix.
-
-**Notes:** This is the reason `evalPosLocal`'s `neighborStruct` explicitly documents `structOwner`'s single-ownership convention -- see `src/ai_eval.cpp` in `CLAUDE.md`'s file table.
-
-### 14. An offline refutation book could dethrone the champion with less live compute
+#### 14. An offline refutation book could dethrone the champion with less live compute
 
 **Claim:** Because the champion agent is deterministic, its preferred lines
 can be mined from `games.tsv`; running deep budgeted searches (d8-d10,
@@ -259,7 +180,7 @@ live computation than search alone.
 
 **Tested in:** --
 
-### 15. Champdil recovers from an identical bad/random position better than the champion, independent of color
+#### 15. Champdil recovers from an identical bad/random position better than the champion, independent of color
 
 **Claim:** From the same random-opener starting position, champdil (the model
 trained on champion-vs-diluted-champion self-play) wins more often than the
@@ -290,6 +211,203 @@ general per-agent opener-Elo gap) could isolate. Within the isolated agent-effec
 bucket the result is one-sided in every sample so far, which is suggestive, but
 n=20 is still small -- see Future Work in the results doc for a larger-sample
 follow-up before treating this as settled.
+
+### Training Data & Recipes
+
+Theories about what data a training run should use and how, independent of
+any specific opponent -- data sourcing, dilution schedules, and how much
+seed-to-seed noise a comparison needs to survive before it means anything.
+
+#### 3. More data fixes champloss-only's miscalibration
+
+**Claim:** The champion-loss-only dataset produces a weak model because it
+doesn't have enough data; more data would fix it.
+
+**Status:** Disproven.
+
+**Origin / Tested in:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- addendum.
+
+**Notes:** 4x the data only moved the d4 screening Elo from 501 to 547, and real head-to-head play against the champion stayed 0-200. Reframed as a systematic label-distribution problem (one-sided data teaches a degenerate value function), not underfitting.
+
+#### 8. Training-seed noise dominates hyperparameter effects
+
+**Claim:** Random training-seed variance is large enough to dominate most
+hyperparameter comparisons in the sweep.
+
+**Status:** Confirmed.
+
+**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
+
+**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 1.
+
+**Notes:** Seed replicas showed a 50-150 Elo spread, an order of magnitude above rating error -- any sweep conclusion needs multiple seeds to be trustworthy.
+
+#### 9. Teacher search depth doesn't matter for linear-PST label quality
+
+**Claim:** The self-play teacher's search depth (d2 vs d4 vs d6) doesn't
+meaningfully affect the quality of labels used to train a linear
+piece-square-table value model.
+
+**Status:** Confirmed.
+
+**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
+
+**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 3.
+
+**Notes:** d2, d4, and d6 teachers all landed around 510-525 Elo -- a cheap d2 teacher is not leaving quality on the table for this model class.
+
+#### 11. Dilution decay beats flat dilution
+
+**Claim:** Decaying the training-generator's random-move probability over
+the course of a game produces better training data than a flat dilution
+probability.
+
+**Status:** Promising / unproven.
+
+**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
+
+**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 4.
+
+**Notes:** Directionally favored decay as the default, but the effect is within the seed-noise band established by theory 8.
+
+#### 12. Replay-extraction beats bespoke single-teacher self-play
+
+**Claim:** Extracting labeled training data from games already played by the
+rated agent pool (`rank.exe extract`) produces better or equal training data
+than generating a fresh bespoke self-play run with a single teacher, at zero
+extra generation cost.
+
+**Status:** Confirmed.
+
+**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
+
+**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 5.
+
+**Notes:** This result is what motivated `tools/train_scaling.ps1`'s replay-data arm, which went on to produce the d6 Elo 920 model promoted to `models/pst_value.txt`.
+
+### Model & Evaluator Design
+
+Theories about what an evaluator or value model should represent or weight
+-- representation capacity, color asymmetry, and what a model class can or
+can't learn.
+
+#### 4. Nonlinear model fixes champloss miscalibration
+
+**Claim:** A higher-capacity nonlinear model (MLP/NNUE) could succeed on the
+champloss-only dataset where the linear model failed.
+
+**Status:** Open / untested.
+
+**Origin:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- Future Work.
+
+**Notes:** Blocked on an MLP/NNUE value head existing (`src/ml_model.cpp`'s `g_modelTypes[]` currently only implements `linear`).
+
+#### 5. Color-specific evaluator weights compensate for Black's disadvantage
+
+**Claim:** Giving White and Black separate evaluator weights could compensate
+for Black's structural disadvantage in Breakthrough.
+
+**Status:** Open / untested.
+
+**Origin:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- "Ideas This Inspired."
+
+**Notes:** Motivated by matching a White/Black asymmetry seen in both the champion's historical record and the champdil model's results.
+
+#### 10. Linear PST representation is the binding capacity ceiling
+
+**Claim:** The linear piece-square-table representation itself, not the
+training recipe, is what caps model strength.
+
+**Status:** Confirmed.
+
+**Origin:** [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md).
+
+**Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 8.
+
+**Notes:** Implies the next real strength lever is model capacity (MLP/NNUE), which is itself untested -- see theory 4.
+
+### Search & Evaluation Engineering
+
+Theories about how the search and evaluator are *implemented* -- correctness
+and performance of the engine itself, as opposed to what it should compute.
+A change here should leave game outcomes and Elo unchanged; the theories are
+about cpu/node, not strength.
+
+#### 13. Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly
+
+**Claim:** An incremental delta for the wall/column structure eval has to
+reproduce `evalPosFull`'s exact edge-exclusion convention (top-row-wall and
+rightmost-column pairs), or it will silently diverge from a full rescan.
+
+**Status:** Confirmed (as a correctness lesson).
+
+**Origin:** [incremental-wall-column-eval-plan-1-golden-forest.md](../plans/incremental-wall-column-eval-plan-1-golden-forest.md).
+
+**Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- caught by the `test_eval.cpp` equivalence test on the first implementation attempt, before the fix.
+
+**Notes:** This is the reason `evalPosLocal`'s `neighborStruct` explicitly documents `structOwner`'s single-ownership convention -- see `src/ai_eval.cpp` in `CLAUDE.md`'s file table.
+
+#### 16. Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes
+
+**Claim:** A board evaluator's terms can be computed incrementally -- updating
+only the contribution of the (at most 2) squares a move actually changes,
+instead of rescanning the whole board from scratch -- while still producing
+results byte-identical to a full recompute. This composes with alpha-beta
+search to lower per-node cpu cost with no change in search outcome (move
+choice) or measured Elo, since make/unmake already visits exactly the two
+changed squares as part of applying/reversing the move. The pattern is not
+specific to one heuristic: it has been applied to chip count, and to the
+Classic/Experimental wall and column structure terms, and generalizes to
+other evaluator heuristics.
+
+**Status:** Confirmed.
+
+**Origin:** [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) "Optimize minimax search with incremental counters and capture-first ordering" (2026-06-04) -- the first instance of this pattern, replacing a full-board `chipDiff()` rescan with the `g_chipDiff`/`g_whiteCount`/`g_blackCount` counters maintained incrementally inside the move-apply/unapply code; predates this project's dedicated "incremental eval" plans and its scientific-methodology conventions (no companion plan/results doc, just a terse commit message from when this was still an unstructured hobby project). [incremental-wall-column-eval-plan-1-golden-forest.md](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) -- second heuristic (wall/column structure) migrated to the same pattern, this time with a formal plan/results doc; generality across heuristics further confirmed by [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md), which applies the same pattern to a different evaluator (the learned piece-square value model).
+
+**Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- `test_eval.cpp`'s equivalence test walks the move tree asserting the incremental accumulator (`g_evalPos`) always equals a full `evalPosFull` recompute, and measured a **33-39% cpu/node reduction** (`ab(d4).classic(t2,c10,w3,l2)` -39.3%, two Experimental presets -37.9%/-33.4%) with byte-identical eval values, so game outcomes and Elo were unchanged by construction. [incremental-ml-eval-results-1-luminous-snail.md](../plans/incremental-ml-eval-results-1-luminous-snail.md) -- same incremental-accumulator pattern (`g_mlAcc`/`mlLeafScore`) applied to the learned value model, the pattern's second extension beyond chip count. The original chip-count commit (`3af970d`) predates this project's equivalence-test/results-doc discipline, so its correctness rests on the counters' logic (increment/decrement mirrored exactly on capture, in both `simulateMove` and `unsimulateMove`) rather than an automated equivalence check -- no regression has surfaced since, but it wasn't verified the same rigorous way as the two later heuristics.
+
+**Notes:** The Forward weight rides along with wall/column in the same `g_evalPos` accumulator (see `ai_eval.cpp`), so Classic/Experimental have no remaining non-incremental term. `evalBeginSearch`/`evalEndSearch` seed and tear down the `g_evalPos` accumulator per search, which is why the wall/column and ML results stay exact rather than becoming an approximation; chip count's `g_chipDiff` is simpler still, just a running delta with no begin/end seeding needed. The next candidate for the same treatment is a future nonlinear (MLP/NNUE) value head (see theory 4) -- incrementality is harder there because hidden-layer activations don't decompose per-square the way a linear dot product does, so this pattern's applicability to that case is not yet established.
+
+## Other
+
+Theories that aren't about Breakthrough's gameplay or AI substance. Grouped
+into subsections by topic, each with its own letter-prefixed numbering so
+topics never collide.
+
+### LLM-Assisted Development
+
+Theories about the LLM-assisted development process used to build this
+project: whether and how giving an LLM project-specific context changes the
+quality of the theories, code, or plans it produces. Numbered `L#`.
+
+#### L1. Context/fine-tuning grounding improves LLM theory generation and code quality
+
+**Claim:** An LLM given data about Breakthrough fundamentals and this
+project's recurring patterns (agent composition, eval structure, the
+dilution/opener/ranking vocabulary in [terminology.md](terminology.md), the
+shape of past theories above) -- whether supplied in-context or via
+fine-tuning -- will be more directed, better-aligned, and generate stronger
+theories and code than one working from a generic prompt alone.
+
+**Status:** Open / untested.
+
+**Origin:** raised in conversation, prompted by building out this theory log
+and the terminology glossary -- the developer noted this is a theory about
+LLM behavior, not about Breakthrough, and asked for it to be tracked
+separately.
+
+**Tested in:** --
+
+**Notes:** Distinct from the Breakthrough theories above in kind, not just
+topic: the "system under test" is the LLM's behavior across sessions, not a
+game agent's win rate. A test would need its own methodology -- e.g. holding
+the underlying model fixed and comparing theory/code quality with vs.
+without this project's accumulated context (this file, `terminology.md`,
+`CLAUDE.md`, past `plans/` docs) in-context, or comparing a base model
+against one fine-tuned on this project's plans/results/code. "Better" would
+need an operational definition (fewer refuted theories per session, less
+rework, fewer correctness gotchas caught late, faster convergence to a
+working plan) before this is testable rather than just plausible.
 
 ## References
 

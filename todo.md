@@ -66,7 +66,7 @@ against the same seams.
 
 - Add variety in openers and moves `[Now]`
   - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
-  - Random move chooser out of top candidates (especially ties), or add random noise to the board state evaluator that's usually dominated by the actual evaluation so the whole tree is sorted randomly (jitter the eval to weaken without full randomness)
+  - Random move chooser out of top candidates (especially ties); the board-state-evaluator noise variant of this idea moved to the Heuristic Evaluator Feature Ideas section below
   - Elo-rate the existing SCRIPTED openers (Offensive/Defensive) as ID modules: an optional `op(o|d)@1` ID segment (absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences). ~~A sibling idea for RANDOM (not scripted) openers shipped~~: a pluggable opener registry `g_openers[]` (`src/ai_random.h`) + `AgentSpec::openerKind`/`openerArg` + a `.opener(<kind>[,<arg>])@1` ID segment lets ANY agent be rostered/gauntletted both with and without an opener, so the Elo gap is a general, per-agent opener-sensitivity score (currently one kind, `rand`: e.g. champion 1140 clean vs 923 with `.opener(rand,6)@1`, champdil 1153 vs 962). The registry is exactly the extension point for the SCRIPTED (`off`/`def`) and opening-book openers above -- adding one is a table row + fn, and the same ID slot names it. See `Docs/agents.md` and `Docs/terminology.md`'s "Opener (identity-level)" entry `[done]`
   - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]`
   - ~~Color-swap recovery test: play the same random-opener snapshot to conclusion twice with colors swapped, to separate "the position favors a color" from "this agent recovers better."~~ Shipped as `rank.exe opener-swap`. Champdil vs the champion at n=20 (theory 15, `Docs/theories.md`): 65% of outcomes were a color effect (White won both 55%, Black won both 10% -- consistent with the champion's own White/Black split), but in the remaining 35% agent-effect bucket champdil won every time (7/7), the champion never (0/7) -- promising but small-sample signal that champdil recovers from bad positions better than the champion, independent of color. Follow-up (larger sample, try with oracle too) filed in `plans/opener-bias-results-1-synchronous-stearns.md`'s Future Work `[Next]`
@@ -177,6 +177,39 @@ against the same seams.
 - ~~LearnedValue: wraps a value model **(P1)**~~
 - Ensemble / blended evaluator (average or weighted mix of several evaluators/models) `[Later]`
 
+## Heuristic Evaluator Feature Ideas (Classic / Experimental)
+New candidate terms for the hand-crafted evaluators, alongside the existing chip/wall/column/
+forward mix. Each is a single-place edit in `g_evaluators` (`src/ai_eval.cpp`) plus wiring the
+term into the incremental `evalPosLocal` delta the same way wall/column/forward already are.
+- Tiny per-position random noise term, keyed by a seed rather than a hand-tuned weight (or
+  optionally both: a seed for which positions get a nudge, plus a small weight to control how
+  much). Dominated by the real evaluation so tactics still win, but breaks ties and re-sorts
+  move ordering within near-equal branches, producing a distribution of "random-ish" board
+  states distinct from picking uniformly among random legal moves `[Now]`
+- Reward more advanced mid-column pieces relative to outer-column pieces at the same row
+  (a center piece is harder to wall off since it has two escape diagonals instead of one) `[Next]`
+- Penalize holes in the back rank: an empty back-rank square the opponent can walk a piece into
+  for the win, distinct from the existing wall/column terms which only look at same-color
+  adjacency, not the vulnerability of the square itself `[Next]`
+- Reward defended pieces: a diagonal-adjacency analog of the existing wall (orthogonal) and
+  column (same-file) structure terms, since a diagonal neighbor is what actually recaptures
+  after a capture in this game `[Next]`
+- Mobility: count of legal (or unblocked) forward/diagonal moves available, as a tempo/
+  flexibility proxy, incrementally maintainable since a move only changes mobility near the two
+  touched squares `[Later]`
+- Diagonal phalanx / triangle formation: reward two pieces diagonally adjacent on the same
+  forward-facing diagonal, a mutual-support pattern distinct from the orthogonal wall and
+  same-file column terms `[Later]`
+- Breakthrough-square control: reward occupying or defending the squares 1-2 rows from the
+  opponent's back rank, the actual contested win squares, rather than generic "forward" `[Later]`
+- Column-emptiness asymmetry: penalize a file that's empty on your side but populated on the
+  opponent's, since it's a clear lane for their advance `[Later]`
+- Race-distance differential: (opponent's closest piece to your back rank) minus (your closest
+  piece to theirs), a cheap proxy for who wins a pure race, ignoring tactics `[Dream]`
+- Overextension penalty: an advanced piece with no defender and no retreat option, distinct
+  from the plain "forward" reward, which doesn't discriminate a supported advance from a bare
+  one `[Dream]`
+
 ## Move Choosers / Policies (direct, no search)
 - ~~Human, UniformRandom, TieredRandom, SmartRandom (done)~~
 - ~~LearnedPolicy: argmax of the move-rater **(P1)**~~
@@ -260,7 +293,11 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Always normalize/anchor one weight (e.g. chip) so the others are measured relative to it.~~
   (shipped in `hill_climb.ps1`: turn pinned at 20, chip/wall/column/forward renormalized to
   sum 80, so the search moves on a fixed-magnitude simplex and scalar duplicates dedupe.)
-- Test signed weights (negative forward, etc.) and structure x forward interaction explicitly `[Now]`
+- Test signed weights (negative forward, etc.) and structure x forward interaction explicitly.
+  Specifically try negative wall/column weights with the hill climber: walls or columns might be
+  slightly bad relative to diagonal defense structures (see the defended-pieces term in Heuristic
+  Evaluator Feature Ideas above), if tying two pieces together side-by-side costs more in
+  mobility than it returns in safety `[Now]`
 - Report a response surface, not a single recommended value `[Next]`
 
 ## Strength Dilution (to spread an Elo ladder)
