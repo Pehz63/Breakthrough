@@ -178,9 +178,14 @@ double rankDilutedProb(double start, double floorProb, int decayPlies, int ply);
 // aggregate a_wins/b_wins tally; B's per-color record is the complement).
 // Per-game seeds derive from the IDs + ordinal + runSeed, so runs and shard
 // splits reproduce identical games.
-// openPlies: both sides play uniform-random moves for the first N half-moves
-// (position spread for deterministic pairs). filterWinner: 0 = keep every
-// game, 1 = keep only games agent A won, 2 = only agent B (draws dropped when
+// openPlies: play uniform-random moves for the first N half-moves (position
+// spread for deterministic pairs). openSide masks WHICH side plays those random
+// openers, mapped A/B -> color per game exactly like dil.apply: 1 = agent A,
+// 2 = agent B, 3 = both (the default, back-compat symmetric opener), 0 = off.
+// The unmasked side consults its own brain even inside the opener window, so an
+// asymmetric opener handicaps only one agent (used to test whether the symmetric
+// opener inflates head-to-head results). filterWinner: 0 = keep every game,
+// 1 = keep only games agent A won, 2 = only agent B (draws dropped when
 // filtering). branchTries: after each kept game agent A won, make N attempts
 // to rewind to a random ply where A was to move, substitute a different legal
 // move, play out clean, and keep the tail positions only if A wins again
@@ -188,4 +193,36 @@ double rankDilutedProb(double start, double floorProb, int decayPlies, int ply);
 int rankPairGen(const std::string& idA, const std::string& idB, int games,
                 const std::string& outFile, const std::string& board, int featVer,
                 unsigned runSeed, const RankDilOverride& dil, int openPlies,
-                int filterWinner, int branchTries, int shard, int ofK);
+                int filterWinner, int branchTries, int shard, int ofK,
+                int openSide = 3);
+
+// Mechanism measurement for the opener-bias study: for `games` seeded games
+// between agent A (the deterministic champion) and agent B, replay the first
+// openPlies half-moves and, at each ply where A is to move, compare the position
+// A reaches under a forced random opener move against the position A reaches
+// under its OWN chosen move. Both resulting positions are scored with the
+// opponent to move (so the turn term cancels) by the JUDGE agent's search
+// (judgeId, empty = A itself). delta = judge-value(own) - judge-value(random),
+// A-relative; a positive delta means the random opener left A objectively worse
+// off than it would have chosen. A judge with real positional weights (e.g. a
+// learned PST) discriminates opener positions that A's own coarse eval cannot.
+// Tabulates mean delta and the fraction of A-plies/games past a materiality
+// threshold, split by A's color. Read-only (writes no data files).
+int rankOpenerBias(const std::string& idA, const std::string& idB, int games,
+                   const std::string& board, int openPlies, unsigned runSeed,
+                   const std::string& judgeId = "");
+
+// Color-swap recovery test: for `games` seeded random-opener snapshots (both
+// sides play openPlies uniform-random half-moves from the start board, neither
+// agent's brain involved yet), play the SAME snapshot out to conclusion TWICE --
+// once with A as White / B as Black, once with the assignment swapped -- and
+// classify the pair of outcomes into one of four buckets: White won both
+// (the position favors whoever is White, a color/position effect, not agent
+// skill), Black won both (same, favoring Black), A won both (A recovers from
+// this exact position better than B, regardless of color), or B won both. A
+// draw in either continuation makes that snapshot inconclusive (tallied
+// separately, not classified). This isolates "does one agent recover from a
+// bad position better" from "does this random position simply favor a color,"
+// which a single-continuation measurement (rankOpenerBias) cannot distinguish.
+int rankOpenerSwap(const std::string& idA, const std::string& idB, int games,
+                   const std::string& board, int openPlies, unsigned runSeed);

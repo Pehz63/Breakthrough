@@ -43,6 +43,9 @@ static void usage() {
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
     cout << "  pairgen    play FRESH games between two named agents, capturing labeled training data\n";
+    cout << "  opener-bias  measure whether the symmetric random opener handicaps a deterministic champion\n";
+    cout << "  opener-swap  color-swap recovery test: same random-opener snapshot played out twice with\n";
+    cout << "               colors swapped, to separate 'position favors a color' from 'agent recovers better'\n";
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
     cout << "  --in ranking/matches.jsonl    the append-only match store\n";
@@ -56,10 +59,19 @@ static void usage() {
     cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
     cout << "pairgen:  --a <id> --b <id> --games 100 --out data/pairgen.jsonl, --feature-version 2,\n";
     cout << "          --dil-apply a|b|both|none (dilute that agent: --dil-start 0.3 --dil-floor 0.05\n";
-    cout << "          --dil-decay-plies 30), --open-plies K (random first K half-moves, both sides),\n";
+    cout << "          --dil-decay-plies 30), --open-plies K (random first K half-moves),\n";
+    cout << "          --open-side a|b|both (which side plays the random opener; both = default,\n";
+    cout << "          a or b = only that agent, the other plays its own policy inside the window),\n";
     cout << "          --filter winner=a|b|any (emit only that agent's wins), --branch-tries T (rewind\n";
     cout << "          kept A-wins to a random A ply, try a different move, keep the tail if A wins\n";
     cout << "          again), --shard i --of k (vary --out per shard, then concatenate)\n";
+    cout << "opener-bias:  --a <champion id> --b <id> --open-plies 6 --games N, --judge <id>\n";
+    cout << "          (position scorer; default = --a. Use a learned agent to judge positions\n";
+    cout << "          the champion's own coarse eval cannot). No data files written.\n";
+    cout << "opener-swap:  --a <id> --b <id> --open-plies 6 --games N (snapshots). Plays each\n";
+    cout << "          random-opener snapshot to conclusion twice with colors swapped; reports\n";
+    cout << "          White-won-both / Black-won-both (color effect) vs a-won-both / b-won-both\n";
+    cout << "          (agent effect). No data files written.\n";
     cout << "\nExamples:\n";
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
@@ -114,13 +126,27 @@ int main(int argc, char** argv) {
         if (filt.rfind("winner=", 0) == 0) filt = filt.substr(7);
         int fw = (filt == "a") ? 1 : (filt == "b") ? 2 : (filt == "any") ? 0 : -1;
         if (fw < 0) { cout << "ERROR: --filter must be winner=a, winner=b, or any\n"; return 1; }
+        string openSideStr = getOpt(argc, argv, "--open-side", "both");
+        int openSide = (openSideStr == "a") ? 1 : (openSideStr == "b") ? 2
+                     : (openSideStr == "both") ? 3 : (openSideStr == "none") ? 0 : -1;
+        if (openSide < 0) { cout << "ERROR: --open-side must be a, b, both, or none\n"; return 1; }
         rc = rankPairGen(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
                          getInt(argc, argv, "--games", 100),
                          getOpt(argc, argv, "--out", "data/pairgen.jsonl"), board,
                          getInt(argc, argv, "--feature-version", 2), seed, dil,
                          getInt(argc, argv, "--open-plies", 0), fw,
                          getInt(argc, argv, "--branch-tries", 0),
-                         getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1));
+                         getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
+                         openSide);
+    } else if (cmd == "opener-bias") {
+        rc = rankOpenerBias(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
+                            getInt(argc, argv, "--games", 40), board,
+                            getInt(argc, argv, "--open-plies", 6), seed,
+                            getOpt(argc, argv, "--judge", ""));
+    } else if (cmd == "opener-swap") {
+        rc = rankOpenerSwap(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
+                            getInt(argc, argv, "--games", 40), board,
+                            getInt(argc, argv, "--open-plies", 6), seed);
     } else {
         cout << "Unknown command: " << cmd << "\n\n";
         usage();

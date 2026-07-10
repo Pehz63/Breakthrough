@@ -677,3 +677,30 @@ bool playOpenerBlack(int openerCode) { //If opponent hasn't advanced too far, pl
     }
     return false;
 }
+
+// ============================================================
+// OPENER REGISTRY -- g_openers
+// ============================================================
+// The "rand" opener: play a uniform-random legal move for the agent's own first
+// `arg` plies, then defer to the brain.
+static bool openerRandom(int side, int ownPly, int arg, int& victor) {
+    if (ownPly >= arg) return false;
+    victor = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+    return true;
+}
+
+const OpenerDef g_openers[] = {
+    { "Random", "rand", "uniform-random move for the agent's first <arg> plies, then hand off", true, openerRandom },
+};
+const int g_openerCount = (int)(sizeof(g_openers) / sizeof(g_openers[0]));
+
+int openerIndexByIdName(const char* idName) {
+    if (!idName) return -1;
+    for (int i = 0; i < g_openerCount; i++) {
+        const char* a = g_openers[i].idName;
+        const char* b = idName;
+        while (*a && *a == *b) { a++; b++; }
+        if (*a == '\0' && *b == '\0') return i;
+    }
+    return -1;
+}

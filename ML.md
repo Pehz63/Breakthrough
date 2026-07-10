@@ -153,11 +153,18 @@ label for training:
   turns the whole rated pool into a training data source.
 - `rank.exe pairgen` plays FRESH games between any two canonical IDs into the same
   training-data format, with a per-side dilution override (vary a deterministic
-  agent's games without changing its identity), random opening plies, a winner
-  filter, and branch-from-win mining (rewind a kept win, substitute a different
-  move, keep the tail if the winner wins again). Each dataset gets a `.meta.json`
-  sidecar recording the full recipe and outcome tallies. The vs-champion study
-  (`tools/train_vs_champion.ps1`) is built on it.
+  agent's games without changing its identity), random opening plies (`--open-plies`,
+  with `--open-side a|b|both` masking which agent plays them so an asymmetric opener
+  handicaps only one side), a winner filter, and branch-from-win mining (rewind a
+  kept win, substitute a different move, keep the tail if the winner wins again).
+  Each dataset gets a `.meta.json` sidecar recording the full recipe and outcome
+  tallies. The vs-champion study (`tools/train_vs_champion.ps1`) and the opener-bias
+  study (`tools/opener_bias_study.ps1` + `tools/opener_bias_retrain.ps1`, Theory 6 in
+  `Docs/theories.md`) are built on it.
+- `rank.exe opener-bias` measures whether a symmetric random opener handicaps a
+  deterministic champion: it replays the opener and, at each champion ply, scores the
+  position after the forced-random move against the position after the champion's own
+  move using a `--judge` agent's search, tabulating the delta split by color.
 
 Learned agents embed a model-file content hash in their ID, so a retrain is a new
 identity and old match rows stay truthful. Use the tournament for parameter sweeps

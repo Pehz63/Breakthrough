@@ -27,11 +27,11 @@ formally planned out.
 | # | Theory | Status | Origin | Tested in |
 |---|---|---|---|---|
 | 1 | Diverse-pool vulnerability | Refuted (not fully settled) | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
-| 2 | Champion-dilution ceiling | Refuted on strength (caveated) | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
+| 2 | Champion-dilution ceiling | Reopened (opener artifact, see theory 6) | [vs-champion-training-plan-1](../plans/vs-champion-training-plan-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md), [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 3 | More data fixes champloss-only miscalibration | Disproven | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) |
 | 4 | Nonlinear model (MLP/NNUE) fixes champloss miscalibration | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
 | 5 | Color-specific evaluator weights compensate for Black's disadvantage | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
-| 6 | Symmetric random openers inflate vs-champion results | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
+| 6 | Symmetric random openers inflate vs-champion results | Partially confirmed | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 7 | Curriculum bootstrap succeeds where one-shot bootstrap failed | Open / untested | [vs-champion-training-results-1](../plans/vs-champion-training-results-1-cozy-forest.md) | -- |
 | 8 | Training-seed noise dominates hyperparameter effects | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 9 | Teacher search depth doesn't matter for linear-PST label quality | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
@@ -40,6 +40,7 @@ formally planned out.
 | 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
 | 14 | An offline refutation book could dethrone the champion with less live compute | Open / untested | [todo.md](../todo.md) | -- |
+| 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 
 ## Theories
 
@@ -63,13 +64,21 @@ champion's style.
 can't produce data strong enough to beat the champion -- oracle or
 branch-mined data is required instead.
 
-**Status:** Refuted on strength; head-to-head result caveated.
+**Status:** Reopened. The head-to-head win that refuted it was an opener
+artifact (theory 6).
 
 **Origin:** [vs-champion-training-plan-1-cozy-forest.md](../plans/vs-champion-training-plan-1-cozy-forest.md) -- "Theory 2."
 
-**Tested in:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- the diluted-champion (champdil) model went 50-30 (62.5%) against the champion at d6, a genuine head-to-head win.
+**Tested in:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- the diluted-champion (champdil) model went 50-30 (62.5%) against the champion at d6, a genuine head-to-head win. [opener-bias-results-1-synchronous-stearns.md](../plans/opener-bias-results-1-synchronous-stearns.md) -- that win required the symmetric random opener.
 
-**Notes:** Sample is small (n=8 pairs contributing to the head-to-head), and symmetric random-opener evaluation may inflate the result -- see theory 6.
+**Notes:** The theory-6 study reran this head-to-head with the champion playing
+its own opening (config C) instead of forced-random moves: champdil dropped from
+65% to 40% (80 games each), i.e. it does NOT beat a champion that plays its own
+game. The original refutation stands only under symmetric random openers, so the
+"you can't beat the champion with a random dilution of itself" claim is back to
+unsettled. A clean re-test would generate champdil data with an asymmetric opener
+and re-measure, or use no-opener paired evaluation with real opening diversity
+from a different source.
 
 ### 3. More data fixes champloss-only's miscalibration
 
@@ -110,11 +119,31 @@ for Black's structural disadvantage in Breakthrough.
 to both sides) inflates every "beats the champion" result in the
 vs-champion-training study.
 
-**Status:** Open / untested.
+**Status:** Partially confirmed -- it inflated the dilution result (Theory 2's
+basis) but not the oracle headline result.
 
-**Origin / Tested in:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- Future Work.
+**Origin:** [vs-champion-training-results-1-cozy-forest.md](../plans/vs-champion-training-results-1-cozy-forest.md) -- Future Work #1.
 
-**Notes:** Two follow-up tests were proposed (asymmetric-opener evaluation, direct bias quantification) but not yet run. Directly affects the confidence of theories 1 and 2 above.
+**Tested in:** [opener-bias-results-1-synchronous-stearns.md](../plans/opener-bias-results-1-synchronous-stearns.md) -- all three layers (asymmetric-opener head-to-head sweep, mechanism tabulation, asymmetric-opener retrain).
+
+**Notes:** Mechanism confirmed: a positionally-aware judge finds the random
+opener leaves the champion objectively worse off on ~64% of its opener plies
+(mean delta +54, 60/60 games hurt at n=60). Consequence is agent-dependent. The
+champdil (dilution) model's symmetric 65% head-to-head win COLLAPSES to 40% once
+the champion plays its own opening (config C, champion true policy), so Theory 2's
+"dilution data beats the champion" was largely an opener artifact -- see the
+caveat added to theory 2. The oracle model's win SURVIVES (58.8% symmetric ->
+66.2% with the champion playing true policy) and is opener-insensitive (its
+champion-random and challenger-random configs both sit near 65%), so the headline
+tie is not an artifact. Read as: the symmetric opener does handicap the champion,
+but only a marginal challenger's win depends on that handicap. Layer 3 (retraining
+the oracle on asymmetric-opener data) showed a large d6 drop (1137 -> 832), but this
+is confounded by training-label skew (the asymmetric recipe's win:loss ratio is
+4.46:1 vs the symmetric recipe's 2.55:1, a known degradation mode for this
+project's linear value models -- see the champloss addendum) and should not be read
+as further confirmation; Layer 1's fixed-model evaluation remains the clean test and
+it says the oracle's real strength holds up. Directly affects the confidence of
+theories 1 and 2.
 
 ### 7. Curriculum bootstrap succeeds where one-shot bootstrap failed
 
@@ -223,6 +252,38 @@ live computation than search alone.
 **Origin:** `todo.md`, "The most promising follow-up for the standing dethrone goal" (`[Next]`).
 
 **Tested in:** --
+
+### 15. Champdil recovers from an identical bad/random position better than the champion, independent of color
+
+**Claim:** From the same random-opener starting position, champdil (the model
+trained on champion-vs-diluted-champion self-play) wins more often than the
+champion does, once the position's own color bias is factored out -- i.e. it
+isn't just that champdil got lucky with color, it genuinely continues badly-
+started games better.
+
+**Status:** Promising / unproven -- n=20 snapshots, real signal, small sample.
+
+**Origin:** raised in conversation while discussing why champdil's original
+symmetric-opener head-to-head (Theory 6) looked strong; the developer proposed
+a color-swap control: play the SAME random-opener snapshot to conclusion twice,
+once with each color assignment, and classify by who wins both.
+
+**Tested in:** `rank.exe opener-swap` (new subcommand, `rankOpenerSwap` in
+`src/ranking.cpp`), champdil (s96) vs the champion, 20 snapshots, 6-ply opener,
+seed 42. Of 20 snapshots: White won both continuations 11 times (55%, a color
+effect -- consistent with Breakthrough's known White advantage, e.g. the
+champion's own historical record is White 96.5% vs Black 87.9%), Black won both
+2 times (10%, also a color effect), and in the remaining 7 (35%, the "agent
+effect" bucket) **champdil won both continuations every time -- the champion
+never won both, 0/20**.
+
+**Notes:** This cleanly separates "does the position favor a color" (65% of
+outcomes here) from "does one agent recover better regardless of color" (35%),
+which no earlier measurement in this investigation (Layers 1/2/3, or the
+general per-agent opener-Elo gap) could isolate. Within the isolated agent-effect
+bucket the result is one-sided in every sample so far, which is suggestive, but
+n=20 is still small -- see Future Work in the results doc for a larger-sample
+follow-up before treating this as settled.
 
 ## References
 

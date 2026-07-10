@@ -44,6 +44,22 @@ struct AgentSpec {
     bool   useMoveOrder;                // killer/history/TT move ordering
     bool   keepPartial;                 // keep a budget-cut iteration's best move
     int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
+
+    // Identity-level opener (openerKind < 0 = off): during the opening phase this
+    // agent plays via the selected opener (an index into g_openers, see
+    // src/ai_random.h) instead of its brain, with an opener-specific integer
+    // parameter openerArg (for the "rand" opener, openerArg = how many of THIS
+    // agent's own plies to randomize -- N of its own moves, regardless of color
+    // or opponent, not N half-moves of the shared game clock). Only honored by
+    // the ranking pool's own game-runners (src/ranking.cpp's playOneGame and
+    // playoutCapture), which is where it round-trips through the canonical ID's
+    // `.opener(<idName>[,<arg>])@N` segment; it is inert everywhere else
+    // (console, GUI, train.exe tournaments) since only those two loops track a
+    // per-agent ply count. Lets the same agent be rated both with and without an
+    // opener as two distinct roster entries, so the Elo gap between them is a
+    // general opener-sensitivity measure for any agent.
+    int    openerKind;   // index into g_openers, or < 0 for no opener
+    int    openerArg;    // opener-specific parameter (rand: ply count)
 };
 
 // Construct common agents (evalParams seeded from the evaluator's registry defaults).

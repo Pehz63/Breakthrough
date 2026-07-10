@@ -1,2 +1,42 @@
 #pragma once
 #include "globals.h"
+
+// ============================================================
+// Opener registry (opening-phase move sources)
+// ============================================================
+// An opener overrides an agent's normal move choice for the opening phase of a
+// game, then hands off to the agent's brain. It is a pluggable axis like the
+// explorers/choosers/evaluators: an agent selects one by index (AgentSpec's
+// openerKind, with an opener-specific integer openerArg), and its canonical ID
+// carries it as `.opener(<idName>[,<arg>])@N`.
+//
+// Openers are consulted only by the game runners that track each agent's own
+// ply count (src/ranking.cpp's playOneGame and pairgen's playoutCapture); they
+// are inert in the console/GUI/train.exe tournament, which don't. This is why an
+// opener's fn takes ownPly (how many moves THIS agent has already made) rather
+// than reading global state: only those loops can supply it.
+//
+// To add an opener: append an OpenerDef to g_openers[] and write its fn. Set
+// hasArg=false for a parameterless opener (its ID is just `.opener(<idName>)@N`).
+//
+// Currently registered: "rand" (a uniform-random opener for the agent's first
+// `arg` plies). Future kinds (an opening-book follower, the scripted
+// offensive/defensive openers, etc.) slot in as additional rows.
+
+struct OpenerDef {
+    const char* name;     // display/registry name, e.g. "Random"
+    const char* idName;   // canonical-ID token, e.g. "rand"
+    const char* desc;
+    bool        hasArg;   // true = takes one integer arg (openerArg); false = none
+    // side: White/Black. ownPly: count of THIS agent's own prior moves (0-based).
+    // arg: the agent's openerArg (meaning is opener-specific). If this opener
+    // wants to play the move this ply, it plays it on the live board, sets
+    // victor to the resulting victor code, and returns true; otherwise it
+    // returns false and the caller falls back to the agent's brain.
+    bool (*fn)(int side, int ownPly, int arg, int& victor);
+};
+
+extern const OpenerDef g_openers[];
+extern const int       g_openerCount;
+// Registry lookup by canonical-ID token (e.g. "rand"); -1 if unknown.
+int openerIndexByIdName(const char* idName);

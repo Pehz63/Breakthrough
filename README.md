@@ -377,11 +377,12 @@ labeled value-model training data in the same format `extract` writes and
 generation recipe. Knobs: `--dil-apply a|b|both|none` overrides one side's
 random-move dilution (`--dil-start`/`--dil-floor`/`--dil-decay-plies`) so a
 deterministic agent's games vary without changing its identity, `--open-plies K`
-plays a uniform-random opening for both sides, `--filter winner=a|b` keeps only
-one agent's wins, and `--branch-tries T` rewinds each kept win to a random ply,
-substitutes a different legal move, and keeps the tail if the winner wins again
-(mined alternative winning lines). `--shard`/`--of` split generation across
-processes. First use: the vs-champion training study
+plays a uniform-random opening (`--open-side a|b|both` chooses which agent plays
+it, so an asymmetric opener handicaps only one side; default `both`),
+`--filter winner=a|b` keeps only one agent's wins, and `--branch-tries T` rewinds
+each kept win to a random ply, substitutes a different legal move, and keeps the
+tail if the winner wins again (mined alternative winning lines). `--shard`/`--of`
+split generation across processes. First use: the vs-champion training study
 (`tools/train_vs_champion.ps1`), which trains value models on champion-sourced
 data (learner vs champion, diluted champion vs itself, a deeper oracle vs
 champion, champion-loss cherry-picks, branch-mined wins) and compares them
@@ -390,6 +391,15 @@ against the replay and self-play baselines.
 ```
 .\rank.exe pairgen --a "ab(d2)@1.classic(t1,c4,w0,l0)@2" --b "ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2" --games 200 --dil-apply a --out data/pg.jsonl
 ```
+
+**Opener-bias study (Theory 6).** The vs-champion head-to-heads used a symmetric
+random opener (`--open-plies 6` on both sides), which forces the deterministic
+champion to play random opening moves it would never choose. `--open-side` and the
+`rank.exe opener-bias` subcommand test whether that inflated the "beats the
+champion" results. `tools/opener_bias_study.ps1` replays the head-to-heads under
+symmetric vs asymmetric openers, and `tools/opener_bias_retrain.ps1` retrains the
+oracle arm on asymmetric-opener data. See
+`plans/opener-bias-results-1-synchronous-stearns.md`.
 
 **Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Experimental
 evaluator's weight mix for the highest Elo at a fixed search depth, using

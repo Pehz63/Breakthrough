@@ -49,6 +49,8 @@ AgentSpec agentMakeSearch(const char* name, int explorer, int evaluator, int dep
     a.randomMoveProb = 0.0;
     a.depthCap = 0;
     a.dilDepth = 0;
+    a.openerKind = -1;
+    a.openerArg = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, evaluator);
     return a;
@@ -66,6 +68,8 @@ AgentSpec agentMakePolicy(const char* name, int chooser, int chooserParam, int m
     a.randomMoveProb = 0.0;
     a.depthCap = 0;
     a.dilDepth = 0;
+    a.openerKind = -1;
+    a.openerArg = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, 0);
     return a;
@@ -137,6 +141,10 @@ string agentDescribe(const AgentSpec& a) {
     if (usesModel) s += " slot=" + std::to_string(a.modelSlot);
     if (a.randomMoveProb > 0.0) s += " rnd=" + std::to_string(a.randomMoveProb);
     if (a.dilDepth > 0)         s += " dil-d" + std::to_string(a.dilDepth);
+    if (a.openerKind >= 0 && a.openerKind < g_openerCount) {
+        s += string(" opener=") + g_openers[a.openerKind].idName;
+        if (g_openers[a.openerKind].hasArg) s += "(" + std::to_string(a.openerArg) + ")";
+    }
     if (a.depthCap > 0)         s += " cap=" + std::to_string(a.depthCap);
     if (a.brain == BRAIN_SEARCH) {
         if (a.nodeBudget)         s += " nb=" + std::to_string(a.nodeBudget);

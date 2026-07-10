@@ -94,6 +94,18 @@ a shallower depth-N search.
 *"The roster's `dil(r0.3,d2)` ladder plays 30% of its moves as a depth-2
 search instead of the full depth-6 search."*
 
+**Opener (identity-level)** -- an `AgentSpec` property (openerKind + openerArg),
+distinct from the scripted `OffensiveOpener`/`DefensiveOpener` above: an opener
+from the pluggable registry `g_openers[]` overrides the agent's brain during the
+opening phase, then hands off. Carried in the canonical ID as
+`.opener(<idName>[,<arg>])@N`. One opener is registered so far, `rand`
+(`.opener(rand,N)@1`: a uniform-random move for the agent's first N plies); the
+registry is where an opening-book or scripted-opener kind would be added. Lets
+the same agent be rated both with and without an opener as two roster entries,
+so the Elo gap is a general opener-sensitivity measure for any agent.
+*"`champion...classic(...)@2.opener(rand,6)@1` scores ~217 Elo below the clean
+champion in the ranking pool, purely from 6 random opening plies."*
+
 ## Search mechanics
 
 **Depth** -- how many plies ahead a Search explorer looks before calling the
