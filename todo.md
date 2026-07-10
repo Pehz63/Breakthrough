@@ -83,6 +83,30 @@ against the same seams.
   - Is attacking the center or attacking the edge the best? `[Dream]`
   - Is advancing through the center or the edge the best? `[Dream]`
   - Is keeping the hind pieces in place the best? `[Dream]`
+- ~~Make a list of truths about Breakthrough (new doc, `Docs/axioms.md`, alongside the existing
+  `Docs/theories.md` / `Docs/terminology.md`), in three tiers:~~
+  1. ~~**Direct axioms** taken straight from the rules (e.g. a piece captures diagonally, moves
+     straight forward onto an empty square).~~
+  2. ~~**Optional axioms**: rule choices this project made that aren't inherent to "Breakthrough"
+     as a family of games (e.g. board is 8x8, 2 starting rows per side) -- kept separate from
+     tier 1 so a future variant (different board size, different starting depth) knows exactly
+     what to swap.~~
+  3. ~~**Derived truths**: logically proven from tiers 1-2 (e.g. no draws are possible).~~
+  ~~Then a fourth, softer tier: **empirical truths**, general strategic claims that are NOT proven,
+  only observed (e.g. "more material is good," inferred from evaluators that weight chip
+  advantage heavily winning consistently). Mark each with a confidence level from the developer
+  and from Claude separately (default the developer's confidence to N/A until filled in), plus
+  the evidence/session it came from, so a claim can be revisited if later evidence contradicts
+  it~~ Shipped as `Docs/axioms.md`: 13 direct axioms, 4 optional axioms each with a
+  "what breaks if swapped" note, 14 derived truths proven from three lemmas (no-stalemate via
+  the most-advanced-piece diagonal argument, strict progress via remaining advancement
+  capacity, capture geometry -- giving termination, a 208-ply bound, no draws, no repeated
+  positions, color-swap symmetry, Zermelo determinacy, winner-moves-last + game-length parity,
+  passed-runner unstoppability, race arithmetic, back-rank outposts, irreversible
+  material/phase, exactly 22 opening moves, earliest capture ply 5, 11-ply minimum game),
+  7 empirical truths with dev (N/A) + Claude confidence columns and evidence pointers, plus a
+  conventions section ("White = first mover" as a symmetry-fixing definition, not an axiom).
+  Developer confidence cells and Lemma B/C + D1-D14 proof review still open `[done]`
 
 ## Models (value head: board -> scalar)
 - ~~Linear value model **(P1)**~~

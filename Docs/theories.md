@@ -12,6 +12,12 @@ after-every-functional-change workflow). Not every theory needs a `plans/`
 doc to exist yet -- `todo.md` is a valid origin for an idea that hasn't been
 formally planned out.
 
+Settled and definitional facts live in [axioms.md](axioms.md) (the rules,
+this project's rule choices, proofs from them, and stable empirical truths).
+This file is for claims still in motion. A theory that settles into general
+background knowledge graduates into `axioms.md`'s empirical tier, and comes
+back here if new evidence reopens it.
+
 ## Status legend
 
 | Status | Meaning |

@@ -54,7 +54,7 @@ dangling reference.
 ---
 
 ## Project Overview
-
+**Breakthrough** is an 8x8 abstract board game implemented in C++ with a console UI and multiple AI difficulty levels. White pieces start on rows 0-1 (the bottom of the printed board) and advance toward row 7. Black pieces start on rows 6-7 and advance toward row 0. A player wins by advancing a piece to the opposite back row or capturing all opponent pieces.
 **Breakthrough** is an 8x8 abstract board game implemented in C++ with a console UI and multiple AI difficulty levels. White pieces start at rows 6-7 and move upward. Black pieces start at rows 0-1 and move downward. A player wins by advancing a piece to the opposite back row or capturing all opponent pieces.
 
 - **Language:** C++ (C++11)
@@ -219,6 +219,7 @@ first, `#undef`s `WHITE`/`BLACK`, then includes `globals.h` and draws with expli
 | `CLAUDE.md` | Claude reference and workflow instructions (this file) |
 | `Docs/theories.md` | Running log of testable theories from AI-development sessions (dilution recipes, data sources, model capacity, etc.), each with a status (confirmed/refuted/open), the plan that raised it, and the plan/results doc that tested it. Updated per the "After every functional change" workflow above. |
 | `Docs/terminology.md` | Glossary of project-specific and domain terms (agent, ply, evaluator, explorer, etc.) with a one-sentence definition and an example sentence for each. |
+| `Docs/axioms.md` | Breakthrough truths in four tiers: direct axioms (the rules, 13 entries), optional axioms (this project's swappable choices, each with a "what breaks if swapped" note), derived truths (3 lemmas + 14 proofs: no draws, termination, 208-ply bound, no repeated positions, color-swap symmetry, Zermelo determinacy, winner-moves-last parity, passed runners, race arithmetic, back-rank outposts, 22 opening moves, 11-ply minimum game), and empirical truths (observed strategic claims with dev + Claude confidence marks and evidence pointers). Settled facts live here. Claims under investigation stay in `Docs/theories.md`. |
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
 | `minimax_params.txt` | Saved MiniMax weights, loaded automatically when MiniMax player is selected |
 | `.gitignore` | Excludes `.exe`, `.obj`, `build/`, `third_party/`, and ML generated artifacts (`data/*.jsonl`, `models/*_ckpt*.txt`) |
