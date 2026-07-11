@@ -2,13 +2,32 @@
 
 Build/run scripts, the trainer and ranker CLIs, study scripts, and the
 artifact directories they write. Loaded when working on files in `tools/`.
-The always-loaded overview and the bare command lines live in the root
+The always-loaded overview and the most common command lines live in the root
 `CLAUDE.md`. Engine/ML/ranking internals live in `src/CLAUDE.md`.
+
+## Common commands
+
+Copy-paste forms beyond the root's short list:
+
+```powershell
+.\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6 --feature-version 2 --out models/pst_value
+.\tools\run_train.ps1 tournament --games 10                # single-process, default depth ladder
+.\tools\run_train.ps1 docs                                 # regenerate ML.md AUTODOC region + registries
+.\rank.exe history --agent "ab(d4"                         # per-opponent record for one agent
+.\rank.exe run --games 8                                   # serial play (live progress) then rate
+.\rank.exe pairgen --a "<challenger>" --b "<champion>" --games 80 --open-plies 6 --open-side a --out data/pg.jsonl   # asymmetric opener: only agent a plays random
+.\rank.exe opener-bias --a "<champion>" --b "<id>" --judge "<learned id>" --games 60   # how much the random opener degrades agent a's position
+.\rank.exe opener-swap --a "<id>" --b "<champion>" --games 20 --open-plies 6   # same opener snapshot, colors swapped: position bias vs agent skill
+.\tools\train_vs_champion.ps1               # 10-arm vs-champion training study (resumable; -AnalysisOnly reprints the bucket tables)
+.\tools\opener_bias_study.ps1               # Theory 6: opener-inflation sensitivity sweep + mechanism measure (Layers 1+2)
+.\tools\opener_bias_retrain.ps1             # Theory 6: retrain the oracle arm on asymmetric-opener data (Layer 3; -DryRun for a tiny check)
+.\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2    # climb, then promote winners to the roster
+```
 
 ## Trainer (`train.exe`)
 
 The modular ML toolchain is a separate binary (does not touch `breakthrough.exe`).
-Common invocations are in the root `CLAUDE.md`. Notes:
+Notes:
 
 - The linear value model overfits past ~6-8 epochs on outcome labels (loss climbs
   back toward 0.69); keep `--epochs` small (~6).
@@ -19,11 +38,9 @@ Common invocations are in the root `CLAUDE.md`. Notes:
 - Raw build: `.\build_train.bat` (mirrors `build_tests.bat`). See `ML.md` for the
   full system and the "how to add more" workflow.
 
-**Parallel depth-laddered tournament** (process-sharded across all CPUs, then rated):
-```
-.\tools\run_tournament.ps1 -Workers 12 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 200000
-```
-Under the hood that runs `train.exe tournament-play --shard i --of K ...` (each shard writes
+**Parallel depth-laddered tournament** (the `run_tournament.ps1` command in the
+root `CLAUDE.md`, process-sharded across all CPUs, then rated). Under the hood
+it runs `train.exe tournament-play --shard i --of K ...` (each shard writes
 `data/tourney.jsonl.<i>`) then `train.exe tournament-rate ...` (merges, fits Elo, prints the
 `Elo | ms/move | max ms | games | agent` table, writes `agents/champion*.txt`). Threads are
 not used because the engine's board/eval state is global; processes each get their own copy.

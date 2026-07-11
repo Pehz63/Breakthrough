@@ -137,22 +137,143 @@ own goal (A4), so to land on the victim's square it must start one row on
 the victim's goal side of it, one column over. Corollary: a piece can never
 be captured from behind, from its own row, or from its own column.
 
-| # | Truth | Needs | Proof |
-|---|---|---|---|
-| D1 | The game always terminates. | tier 1 | Remaining capacity strictly decreases each ply (Lemma B) and is bounded below by 0, so play cannot continue forever. A win must occur first: capacity 0 would mean every surviving piece stands on its goal row, and the first such arrival already ended the game (A8). |
-| D2 | From the standard start, a game lasts at most 208 plies. | O1, O3 | Initial remaining capacity is 8 pieces at distance 7 plus 8 at distance 6 per side, 104 each, 208 total. Each ply consumes at least 1 (Lemma B). Not a tight bound. The general formula for any start is the initial remaining capacity. |
-| D3 | No draws are possible. | tier 1 | The side to move always has a move (Lemma A), so no stalemate. Every way a game ends names a winner (A8, A9). Play cannot go on forever (D1). Nothing is left for a draw to be. |
-| D4 | No position ever repeats within a game. | tier 1 | Remaining capacity is a function of the board alone and strictly decreases every ply (Lemma B), so no board can occur twice. Consequences: repetition rules would be vacuous (consistent with A13), the game graph is a DAG, and with A12 a transposition-table entry can never be invalidated by a cycle. |
-| D5 | Color-swap symmetry. | tier 1 | The map (x, y) -> (x, SIZE-1-y) combined with swapping piece colors and the side to move sends legal positions to legal positions and legal moves to legal moves, because every rule in tier 1 is stated symmetrically in the two colors and the flip reverses the forward direction. Outcomes map to outcomes with colors swapped. This is what licenses the "White = first mover" naming convention above. |
-| D6 | A side reduced to zero pieces has already lost. | tier 1 | The only way to lose one's last piece is the opponent's capture, which ended the game at that instant (A9). So no position with a side to move and zero pieces of either color is ever reached in play. |
-| D7 | Every position has a determined winner under optimal play. | tier 1 | Breakthrough is a finite (D1, D4: finitely many positions, none repeating), two-player, zero-sum, perfect-information game with no chance (A11) and no draws (D3). Zermelo's theorem then gives every position a definite value, and with draws impossible that value is a forced win for exactly one side. Which side wins the standard 8x8 start is unknown (computationally open, believed White, see E1). Small Breakthrough boards have been solved by search, 8x8 has not. |
-| D8 | The winner always makes the last move. | tier 1 | Both win conditions trigger on the mover's own move: reaching the goal row (A8) and capturing the last enemy piece (A9) are things the mover did, and there is no other way to end (A13, Lemma A). So it is impossible to lose on your own move. Corollary, from any White-to-move start: a game of n plies was won by White exactly when n is odd. A cheap integrity check for every stored game in `ranking/matches.jsonl` and the `data/*.jsonl` streams. |
-| D9 | A passed runner is uncapturable and unstoppable. | tier 1 | Call White's most-advanced piece P (row y) a passed runner if no Black piece stands on any row above y. Black rows only ever decrease and P's row only increases (A4), so no Black piece can ever again be strictly ahead of P, and by Lemma C, P can never be captured. Moreover the square straight ahead of P is always empty (no White piece is above P by most-advancedness, no Black piece is above P by passedness), so P can simply advance every White move and reach the goal row in exactly as many further White moves as its remaining row distance. White wins then, or even sooner, unless Black forces its own win during the intervening Black moves. The game reduces to a pure race decided by tempo. |
-| D10 | An empty back-rank neighborhood is a winning outpost. | tier 1 | A White piece on row 6 in column x can be captured only from Black's back-rank squares (x-1, 7) and (x+1, 7) (Lemma C). If both are empty or off the board, the piece is uncapturable, and on White's next move a move onto row 7 always exists: the diagonals (x-1, 7)/(x+1, 7) are empty (at least one on-board), and A6 allows stepping there. So the piece wins on White's very next move unless Black wins on the single ply in between. This is the rigorous basis for the "penalize holes in the back rank" evaluator idea in [todo.md](../todo.md), and it is exactly the 1-step threat that `canWinWhite/Black` (`src/board_analysis.cpp`) and `nearWinCheck` detect. |
-| D11 | Material and game phase are irreversible. | tier 1 | Piece counts never increase (A7, A2: no promotion or creation), so each side's count, the total, and any "phase" defined from piece count move in one direction only over a game. A tapered or phase-split evaluator indexed by piece count is therefore indexing a monotone clock, it can never see the game move back into an earlier phase. |
-| D12 | Branching is at most 3 per piece, and the standard start has exactly 22 legal first moves. | O1, O3 for the constants | A piece has at most 3 destinations (A4), so a side with n pieces has at most 3n legal moves, at most 48 with 16 pieces. In the standard start the back row has zero moves (all three destinations hold friendly pieces), and the front row has 3 each except the two edge pieces with 2, so 6*3 + 2*2 = 22. |
-| D13 | No capture can occur before ply 5, and no game can end before ply 11. | O1, O3 | Let g = (lowest Black row) - (highest White row), which starts at 6 - 1 = 5, and only decreases by at most 1 per ply (a side's move advances its extreme row by at most 1, and captures can only raise g). A capture needs attacker and victim on adjacent rows (Lemma C), so g <= 1, which takes at least 4 plies, making ply 5 the earliest capture (a White move), and ply 6 the earliest Black capture. For the game to end: a White front-row piece needs 6 moves to reach row 7 (every move gains exactly one row, A4), and White's 6th move is ply 11. A capture-all win needs 16 capturing moves by the winner, and captures start at ply 5 at the earliest, so White's 16 captures are its moves 3 through 18 at plies 5 through 35: no capture-all can end before ply 35. So 11 plies is the true minimum game length, witnessed by the runner a1-a2, a2-a3, a3-a4, a4-a5, a5xb6, b6xa7 (six White moves, plies 1 through 11) while Black shuffles h-side pieces, never capturing (captures are optional, A10). |
-| D14 | Race arithmetic: a passed runner needing d moves, with the move, wins outright if no enemy piece is within d-1 rows of its own goal and the runner's side has at least d pieces. | tier 1 | Written for White: White advances the runner every move (always possible and safe, D9) and wins on its d-th move, ply 2d-1. Black can preempt that only by winning on or before ply 2d-2, within d-1 Black moves. A Black breakthrough within d-1 moves needs a Black piece within d-1 rows of row 0, excluded by hypothesis. A Black capture-all needs one capturing move per White piece (A9, one capture per move by A4/A6), at least d moves, also too slow. Note Black's proximity is measured over ALL its pieces, not just passed ones, because a defender that turns to chase the White runner cannot catch it (Lemma C, D9), so every Black piece is effectively a free runner once White commits to the race. This is the rigorous core of the "race-distance differential" evaluator idea in [todo.md](../todo.md). |
+### D1. The game always terminates
+
+*Needs: tier 1.* Remaining capacity strictly decreases each ply (Lemma B)
+and is bounded below by 0, so play cannot continue forever. A win must occur
+first: capacity 0 would mean every surviving piece stands on its goal row,
+and the first such arrival already ended the game (A8).
+
+### D2. From the standard start, a game lasts at most 208 plies
+
+*Needs: O1, O3.* Initial remaining capacity is 8 pieces at distance 7 plus
+8 at distance 6 per side, 104 each, 208 total. Each ply consumes at least 1
+(Lemma B). Not a tight bound. The general formula for any start is the
+initial remaining capacity.
+
+### D3. No draws are possible
+
+*Needs: tier 1.* The side to move always has a move (Lemma A), so no
+stalemate. Every way a game ends names a winner (A8, A9). Play cannot go on
+forever (D1). Nothing is left for a draw to be.
+
+### D4. No position ever repeats within a game
+
+*Needs: tier 1.* Remaining capacity is a function of the board alone and
+strictly decreases every ply (Lemma B), so no board can occur twice.
+Consequences: repetition rules would be vacuous (consistent with A13), the
+game graph is a DAG, and with A12 a transposition-table entry can never be
+invalidated by a cycle.
+
+### D5. Color-swap symmetry
+
+*Needs: tier 1.* The map (x, y) -> (x, SIZE-1-y) combined with swapping
+piece colors and the side to move sends legal positions to legal positions
+and legal moves to legal moves, because every rule in tier 1 is stated
+symmetrically in the two colors and the flip reverses the forward
+direction. Outcomes map to outcomes with colors swapped. This is what
+licenses the "White = first mover" naming convention above.
+
+### D6. A side reduced to zero pieces has already lost
+
+*Needs: tier 1.* The only way to lose one's last piece is the opponent's
+capture, which ended the game at that instant (A9). So no position with a
+side to move and zero pieces of either color is ever reached in play.
+
+### D7. Every position has a determined winner under optimal play
+
+*Needs: tier 1.* Breakthrough is a finite (D1, D4: finitely many positions,
+none repeating), two-player, zero-sum, perfect-information game with no
+chance (A11) and no draws (D3). Zermelo's theorem then gives every position
+a definite value, and with draws impossible that value is a forced win for
+exactly one side. Which side wins the standard 8x8 start is unknown
+(computationally open, believed White, see E1). Small Breakthrough boards
+have been solved by search, 8x8 has not.
+
+### D8. The winner always makes the last move
+
+*Needs: tier 1.* Both win conditions trigger on the mover's own move:
+reaching the goal row (A8) and capturing the last enemy piece (A9) are
+things the mover did, and there is no other way to end (A13, Lemma A). So
+it is impossible to lose on your own move. Corollary, from any
+White-to-move start: a game of n plies was won by White exactly when n is
+odd. A cheap integrity check for every stored game in
+`ranking/matches.jsonl` and the `data/*.jsonl` streams.
+
+### D9. A passed runner is uncapturable and unstoppable
+
+*Needs: tier 1.* Call White's most-advanced piece P (row y) a passed runner
+if no Black piece stands on any row above y. Black rows only ever decrease
+and P's row only increases (A4), so no Black piece can ever again be
+strictly ahead of P, and by Lemma C, P can never be captured. Moreover the
+square straight ahead of P is always empty (no White piece is above P by
+most-advancedness, no Black piece is above P by passedness), so P can
+simply advance every White move and reach the goal row in exactly as many
+further White moves as its remaining row distance. White wins then, or even
+sooner, unless Black forces its own win during the intervening Black moves.
+The game reduces to a pure race decided by tempo.
+
+### D10. An empty back-rank neighborhood is a winning outpost
+
+*Needs: tier 1.* A White piece on row 6 in column x can be captured only
+from Black's back-rank squares (x-1, 7) and (x+1, 7) (Lemma C). If both are
+empty or off the board, the piece is uncapturable, and on White's next move
+a move onto row 7 always exists: the diagonals (x-1, 7)/(x+1, 7) are empty
+(at least one on-board), and A6 allows stepping there. So the piece wins on
+White's very next move unless Black wins on the single ply in between. This
+is the rigorous basis for the "penalize holes in the back rank" evaluator
+idea in [todo.md](../todo.md), and it is exactly the 1-step threat that
+`canWinWhite/Black` (`src/board_analysis.cpp`) and `nearWinCheck` detect.
+
+### D11. Material and game phase are irreversible
+
+*Needs: tier 1.* Piece counts never increase (A7, A2: no promotion or
+creation), so each side's count, the total, and any "phase" defined from
+piece count move in one direction only over a game. A tapered or
+phase-split evaluator indexed by piece count is therefore indexing a
+monotone clock, it can never see the game move back into an earlier phase.
+
+### D12. Branching is at most 3 per piece, and the standard start has exactly 22 legal first moves
+
+*Needs: O1, O3 for the constants.* A piece has at most 3 destinations (A4),
+so a side with n pieces has at most 3n legal moves, at most 48 with 16
+pieces. In the standard start the back row has zero moves (all three
+destinations hold friendly pieces), and the front row has 3 each except the
+two edge pieces with 2, so 6*3 + 2*2 = 22.
+
+### D13. No capture can occur before ply 5, and no game can end before ply 11
+
+*Needs: O1, O3.* Let g = (lowest Black row) - (highest White row), which
+starts at 6 - 1 = 5, and only decreases by at most 1 per ply (a side's move
+advances its extreme row by at most 1, and captures can only raise g). A
+capture needs attacker and victim on adjacent rows (Lemma C), so g <= 1,
+which takes at least 4 plies, making ply 5 the earliest capture (a White
+move), and ply 6 the earliest Black capture. For the game to end: a White
+front-row piece needs 6 moves to reach row 7 (every move gains exactly one
+row, A4), and White's 6th move is ply 11. A capture-all win needs 16
+capturing moves by the winner, and captures start at ply 5 at the earliest,
+so White's 16 captures are its moves 3 through 18 at plies 5 through 35: no
+capture-all can end before ply 35. So 11 plies is the true minimum game
+length, witnessed by the runner a1-a2, a2-a3, a3-a4, a4-a5, a5xb6, b6xa7
+(six White moves, plies 1 through 11) while Black shuffles h-side pieces,
+never capturing (captures are optional, A10).
+
+### D14. Race arithmetic
+
+*Needs: tier 1.* A passed runner needing d moves, with the move, wins
+outright if no enemy piece is within d-1 rows of its own goal and the
+runner's side has at least d pieces. Written for White: White advances the
+runner every move (always possible and safe, D9) and wins on its d-th move,
+ply 2d-1. Black can preempt that only by winning on or before ply 2d-2,
+within d-1 Black moves. A Black breakthrough within d-1 moves needs a Black
+piece within d-1 rows of row 0, excluded by hypothesis. A Black capture-all
+needs one capturing move per White piece (A9, one capture per move by
+A4/A6), at least d moves, also too slow. Note Black's proximity is measured
+over ALL its pieces, not just passed ones, because a defender that turns to
+chase the White runner cannot catch it (Lemma C, D9), so every Black piece
+is effectively a free runner once White commits to the race. This is the
+rigorous core of the "race-distance differential" evaluator idea in
+[todo.md](../todo.md).
 
 Developer confidence: Certain on Lemma A (their own argument), N/A on
 Lemmas B-C and D1-D14 until reviewed. Claude confidence: Certain on all.
