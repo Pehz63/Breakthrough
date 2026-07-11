@@ -1,0 +1,153 @@
+# Benchmarking guide: measuring engine speed
+
+How to measure the runtime cost of engine code (evaluators, search features,
+incremental accumulators) so the numbers are trustworthy, reproducible, and
+comparable across sessions. Written alongside the chip-count speedup study
+(`plans/chip-count-speedup-results-1-*.md`), the first worked application of
+this workflow. Use it whenever a change claims to be faster, or when comparing
+two implementations (for example the heuristic evaluator vs a learned one).
+
+## Pick the right metric first
+
+| Metric | What it answers | When to use |
+|---|---|---|
+| us/move | How long does one move selection take end to end? | Comparing agents as players (includes search shape differences) |
+| us/node (or cpu/node) | How expensive is one search node? | Comparing leaf/eval implementations where the search is held identical |
+| total CPU per game | What does a whole game cost? | Ranking-system efficiency stats (`eff` column, pareto table) |
+
+The key invariant for eval comparisons: **hold the search identical and verify
+it**. If two variants visit the same nodes and pick the same moves, any us/move
+difference is purely per-node cost, and us/move and us/node deltas agree. If
+node counts differ, you are comparing search shapes, not implementations, and a
+per-node claim is invalid. `speedBench`'s eval-level ladder enforces this with
+an equivalence self-check (same end board + same node count across variants)
+that prints PASS/FAIL before the numbers.
+
+## The harness contract
+
+Every timing comparison should satisfy all of these. `train.exe speed`'s
+eval-level ladder implements them and is the template to copy.
+
+1. **Fixed, seeded workload.** Build the position set once from a printed
+   `--seed`, so a run is reproducible bit for bit. Never time on freshly
+   random positions per variant.
+2. **Fixed repetition count, not a wall-clock budget.** A "run until N ms
+   elapsed" loop under-samples slow variants (fewer reps in the same budget)
+   and gives variants different amounts of work. Fixed reps x positions gives
+   every variant the identical workload.
+3. **Warmup passes, discarded.** The first pass through a workload pays cold
+   caches, page faults, and branch-predictor training. Run at least one full
+   untimed pass first.
+4. **Interleave variants.** Time variant A, B, C back to back on the same
+   position, not all-A then all-B. CPU frequency scaling and thermal drift
+   then hit all variants equally instead of penalizing whichever ran last.
+5. **Monotonic clock.** `std::chrono::steady_clock` (QueryPerformanceCounter
+   on MSVC, ~100 ns resolution). `high_resolution_clock` is not guaranteed
+   monotonic on every toolchain.
+6. **Report dispersion, not just a mean.** Keep per-rep samples and print
+   mean, median, and min. A mean alone hides outliers (a background process
+   stealing the core for one rep). Median is the robust central estimate; min
+   approximates the noise-free cost.
+7. **Functional equivalence check before trusting timings.** If the variants
+   are supposed to compute the same thing, assert it in the harness (same
+   chosen move, same node count) and refuse to compare on failure.
+8. **Same build for all variants.** Compare code paths selected at runtime
+   inside ONE binary wherever possible. Comparing across two builds adds
+   compiler-version, flag, and layout noise. If two builds are unavoidable,
+   record the exact compiler version and flags for both.
+
+## Confounds checklist
+
+Check each of these before believing a number:
+
+- **Weight short-circuits.** `evalPosFull` and `evalPosLocal` skip the whole
+  structure scan when wall and column weights are 0 (and the forward loop when
+  forward is 0). A comparison meant to exercise the structure path must use
+  nonzero weights, or it silently measures nothing. The same class of bug
+  applies to any code with early-outs: confirm the timed path actually runs.
+- **Different harnesses.** A number produced by harness X is not comparable to
+  a number from harness Y (different sampling, workload, and accounting). The
+  original wall/column incremental speedup (33-39% cpu/node) came from diffing
+  two builds over whole ranking games; the chip-count study re-measured it
+  inside `speedBench` specifically because cross-harness comparison is not
+  trustworthy. When you need to compare against an old number, re-measure the
+  old configuration in the current harness.
+- **Whole-game vs fixed-position sampling.** Whole games weight the opening
+  and endgame by how long the game lasts and let the variants diverge onto
+  different positions. Fixed mid-game positions are controlled but less
+  representative. Know which one your question needs.
+- **Paying for unused state.** A reconstructed "old version" must not maintain
+  accumulators it never reads (that overstates its cost), and must not skip
+  work the old version really did. In `speedBench`'s ladder, levels 1-2 leave
+  `g_evalIncremental` false so make/unmake does not maintain `g_evalPos`.
+- **Global engine state.** The engine's board/eval state is global, so never
+  time variants on multiple threads in one process. Processes are the sharding
+  unit (see `run_tournament.ps1` / `run_rank.ps1`).
+- **Parallel contention.** Wall time lies when other processes share the CPU.
+  For long parallel runs use process-CPU accounting (`GetProcessTimes` deltas,
+  already implemented in `ranking.cpp` per side per game) instead of wall
+  clock, or run serially.
+
+## Tools in this repo
+
+- **`train.exe speed`** (`speedBench`, `src/ml_train.cpp`): the standing
+  harness. Fixed seeded mid-game positions, per-move timing of whole
+  `agentChooseMove` calls, us/move + nodes/move. Two sections:
+  - the historical ms-budget table (learned model vs heuristic AB variants,
+    including the zero-weight vs nonzero-weight presets), and
+  - the eval-level ladder (`--reps`, `--warmup`): the rigorous fixed-rep,
+    interleaved, self-checked comparison across `g_evalLevel` 1/2/3.
+- **`g_evalLevel`** (`globals.h`): benchmark-only selector reconstructing the
+  heuristic leaf's generations (1 = full chip rescan + full structure scan,
+  2 = incremental chip + full structure scan, 3 = shipping incremental).
+  Default 3; only `speedBench` changes it.
+- **Ranking telemetry** (`rank.exe`): per-game per-side wall ms, process-CPU
+  ms, node totals in `ranking/matches.jsonl`; `report.md` derives cpu/move and
+  `eff`. Right tool for "is agent X cheaper per Elo", wrong tool for isolating
+  a single code path.
+- **Tournament telemetry** (`train.exe tournament-*`): streaming eff-depth /
+  nodes / branching stats per agent.
+
+## External libraries, if finer measurement is ever needed
+
+The harness above times whole move selections (thousands of node visits per
+sample), which averages out per-call noise and is the right granularity for
+engine questions. If you ever need to time a single function in isolation
+(nanosecond scale), use a microbenchmark library rather than a hand loop:
+
+- **Google Benchmark**: auto-chooses rep counts, computes quantiles, and
+  provides `benchmark::DoNotOptimize` / `ClobberMemory` to stop the optimizer
+  deleting the measured code. Heavier dependency (CMake library).
+- **nanobench** (martinus/nanobench): single header, vendorable next to
+  `tests/catch.hpp`, same optimizer barriers, good default statistics.
+
+Caveat: a microbenchmark times the function on a hot cache with perfect branch
+prediction, which is NOT the cost inside a real search tree. Use them to
+compare two implementations of the same small function, not to predict engine
+throughput. For engine-level claims, `speedBench`'s realistic-search timing is
+the more honest instrument.
+
+## How to add a new comparison (worked example)
+
+To compare the heuristic evaluator against a learned evaluator at equal depth:
+
+1. Both are already expressible as `AgentSpec`s. In `speedBench`, add one
+   `Bench` row per side, e.g. `agentMakeSearch("h", abIdx, classic, d, 0)` with
+   nonzero weights vs `agentMakeSearch("lv", abIdx, learnedValueIndex(), d, 2)`
+   (slot 2 = `models/pst_value.txt`).
+2. Decide whether the searches are supposed to be identical. Different
+   evaluators pick different moves, so the equivalence check does NOT apply;
+   you are comparing us/move at matched depth, and should report nodes/move
+   alongside so a node-count difference is visible in the result.
+3. Follow the harness contract: fixed reps, warmup, interleave the two agents
+   per position, report mean/median/min.
+4. Record the run line (seed, reps, positions, depths), the build command, and
+   the numbers in a results doc per the standard workflow.
+
+## Reporting results
+
+State in the results doc: the exact command line (with seed), the machine
+context if unusual, the metric (us/move vs us/node), the dispersion, whether
+the equivalence check applied and passed, and every confound from the
+checklist you ruled out or accepted. A speedup percentage without its harness
+description is the thing this guide exists to prevent.

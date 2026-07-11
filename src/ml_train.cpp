@@ -1317,8 +1317,11 @@ static void restoreState(const GState& s) {
     g_whiteCount=s.wc; g_blackCount=s.bc; g_chipDiff=s.cd; g_whiteAtEnd=s.we; g_blackAtEnd=s.be;
 }
 
-int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth) {
+int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth,
+               int levelReps, int levelWarmup) {
     if (maxDepth < 1) maxDepth = 6;
+    if (levelReps < 1) levelReps = 1;
+    if (levelWarmup < 0) levelWarmup = 0;
     PRNT = 0; srand(seed);
     bool hasVal = mlLoadSlot(0, "models/lin_value.txt");
     bool hasPol = mlLoadSlot(1, "models/lin_policy.txt");
@@ -1339,8 +1342,8 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
         GState s; snapState(s); pos.push_back(s);
     }
     if (pos.empty()) { cout << "speed: no positions.\n"; return 1; }
-    cout << "Speed benchmark over " << pos.size() << " mid-game positions, ~"
-         << msPerAgent << " ms/agent (us/move, lower = faster):\n\n";
+    cout << "Speed benchmark over " << pos.size() << " mid-game positions (seed "
+         << seed << "), ~" << msPerAgent << " ms/agent (us/move, lower = faster):\n\n";
 
     int abIdx = explorerIndexByName("AlphaBeta"), grIdx = explorerIndexByName("Greedy");
     int classic = evaluatorIndexByName("Classic"), exper = evaluatorIndexByName("Experimental");
@@ -1378,7 +1381,7 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
             bs.push_back({ string("learned-v2-incr  d") + std::to_string(d),
                 agentMakeSearch("lv2", abIdx, learnedValueIndex(), d, 2), true });
 
-    typedef std::chrono::high_resolution_clock hclock;
+    typedef std::chrono::steady_clock hclock;   // monotonic (QPC on MSVC)
     char buf[160];
     snprintf(buf, sizeof(buf), "  %-26s %12s %14s", "agent", "us/move", "nodes/move");
     cout << buf << "\n  " << string(54, '-') << "\n";
@@ -1401,6 +1404,113 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
         else            snprintf(buf, sizeof(buf), "  %-26s %12.3f %14s",
                                  bch.name.c_str(), us, "-");
         cout << buf << "\n";
+    }
+
+    // ---- Heuristic eval-level ladder: v1 / v2 / v3 (g_evalLevel) ----
+    // Reconstructs prior generations of the heuristic leaf:
+    //   v1 = full-board chipDiff() rescan + full evalPosFull scan per leaf
+    //   v2 = incremental g_chipDiff + full evalPosFull scan per leaf
+    //   v3 = incremental g_chipDiff + cached g_evalPos (the shipping engine)
+    // Nonzero wall/column weights so evalPosFull does real work (wall/col = 0
+    // short-circuits the structure scan and would hide the cost being compared).
+    // Fixed reps + warmup, levels interleaved per position so drift hits all
+    // levels equally; per-rep samples kept so dispersion is visible.
+    {
+        struct LVar { const char* tag; int ev; int p[5]; };
+        LVar lvars[] = {
+            // Champion weights (w0,l0): the structure scan short-circuits, so the
+            // leaf is nearly all chip term -- v1->v2 here is the historically
+            // relevant chip-count speedup, and v2->v3 should be ~0 (sanity row).
+            { "classic(t1,c4,w0,l0)",   classic, { 1, 4, 0, 0, 0 } },
+            { "classic(t1,c4,w2,l2)",   classic, { 1, 4, 2, 2, 0 } },
+            { "exp(t1,c4,w2,l2,f2)",    exper,   { 1, 4, 2, 2, 2 } },
+        };
+        static const char* lvlName[3] = { "v1 fullchip+fullpos",
+                                          "v2 chipincr+fullpos",
+                                          "v3 fully-incr      " };
+        cout << "\nEval-level ladder (" << levelReps << " reps x " << pos.size()
+             << " positions per level, " << levelWarmup
+             << " warmup pass(es), levels interleaved):\n";
+
+        // Equivalence self-check: every level must produce the same end board and
+        // the same node count on every position (same search, only leaf cost
+        // differs). Runs as the warmup pass so the timed reps start warm.
+        bool checkOk = true;
+        int warmPasses = (levelWarmup < 1) ? 1 : levelWarmup;   // >= 1: the check must run
+        for (int w = 0; w < warmPasses; w++) {
+            for (LVar& v : lvars) {
+                for (int d = 1; d <= maxDepth; d++) {
+                    AgentSpec a = agentMakeSearch("lvl", abIdx, v.ev, d, 0);
+                    for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+                    for (GState& s : pos) {
+                        GState ref; unsigned long long refNodes = 0;
+                        for (int lvl = 1; lvl <= 3; lvl++) {
+                            restoreState(s);
+                            g_evalLevel = lvl; g_lastNodes = 0;
+                            agentChooseMove(a, White);
+                            if (lvl == 1) { snapState(ref); refNodes = g_lastNodes; }
+                            else {
+                                GState now; snapState(now);
+                                bool same = (g_lastNodes == refNodes);
+                                for (int y = 0; y < SIZE && same; y++)
+                                    for (int x = 0; x < SIZE; x++)
+                                        if (now.b[x][y] != ref.b[x][y]) { same = false; break; }
+                                if (!same) checkOk = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        g_evalLevel = 3;
+        cout << "  equivalence self-check (same end board + node count across levels): "
+             << (checkOk ? "PASS" : "FAIL") << "\n";
+        if (!checkOk) {
+            cout << "  FAIL: a reconstructed level diverged; timings below are NOT comparable.\n";
+        }
+
+        snprintf(buf, sizeof(buf), "  %-22s %-20s %10s %10s %10s %12s",
+                 "agent", "level", "mean us", "median us", "min us", "nodes/move");
+        cout << buf << "\n  " << string(90, '-') << "\n";
+        for (LVar& v : lvars) {
+            for (int d = 1; d <= maxDepth; d++) {
+                AgentSpec a = agentMakeSearch("lvl", abIdx, v.ev, d, 0);
+                for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+                std::vector<double> samp[3];
+                unsigned long long nodes[3] = { 0, 0, 0 };
+                for (int r = 0; r < levelReps; r++)
+                    for (GState& s : pos)
+                        for (int lvl = 1; lvl <= 3; lvl++) {
+                            restoreState(s);
+                            g_evalLevel = lvl; g_lastNodes = 0;
+                            auto t0 = hclock::now();
+                            agentChooseMove(a, White);
+                            double us = std::chrono::duration<double, std::micro>(hclock::now() - t0).count();
+                            samp[lvl-1].push_back(us);
+                            nodes[lvl-1] += g_lastNodes;
+                        }
+                g_evalLevel = 3;
+                double mean[3];
+                for (int L = 0; L < 3; L++) {
+                    std::vector<double>& sp = samp[L];
+                    std::sort(sp.begin(), sp.end());
+                    double sum = 0; for (double x : sp) sum += x;
+                    mean[L] = sum / sp.size();
+                    double med = sp[sp.size()/2], mn = sp.front();
+                    string aname = string(v.tag) + " d" + std::to_string(d);
+                    snprintf(buf, sizeof(buf), "  %-22s %-20s %10.2f %10.2f %10.2f %12.0f",
+                             (L == 0) ? aname.c_str() : "",
+                             lvlName[L], mean[L], med, mn,
+                             (double)nodes[L] / sp.size());
+                    cout << buf << "\n";
+                }
+                snprintf(buf, sizeof(buf),
+                         "  %-22s v1->v2 %+.1f%% (chip)   v2->v3 %+.1f%% (structure)",
+                         "", (mean[1] - mean[0]) / mean[0] * 100.0,
+                         (mean[2] - mean[1]) / mean[1] * 100.0);
+                cout << buf << "\n";
+            }
+        }
     }
     return 0;
 }

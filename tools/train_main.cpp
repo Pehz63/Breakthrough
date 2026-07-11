@@ -135,7 +135,9 @@ static void usage() {
     cout << "  --ablate           add a feature-ablation family (AB/TT/ordering/aspiration toggles), both evaluators\n";
     cout << "  --forward-study    add a forward-weight study family (Experimental, forward in 0/1/2/4/8)\n";
     cout << "  train.exe turn-swing --games 60 --chip 4 --wall 2 --col 2 --forward 2   (calibrate a turn weight)\n";
-    cout << "  train.exe speed --positions 24 --ms 150   (per-move us of learned model vs AB variants/depths)\n";
+    cout << "  train.exe speed --positions 24 --ms 150   (per-move us of learned model vs AB variants/depths;\n";
+    cout << "                  --reps 8 --warmup 1 also run the heuristic eval-level ladder v1/v2/v3\n";
+    cout << "                  (full chip rescan / incremental chip / fully incremental) with a self-check)\n";
 }
 
 int main(int argc, char** argv) {
@@ -197,7 +199,9 @@ int main(int argc, char** argv) {
     } else if (cmd == "speed") {
         rc = speedBench(board, getInt(argc, argv, "--positions", 24),
                         getDbl(argc, argv, "--ms", 150.0), seed,
-                        getInt(argc, argv, "--maxdepth", 6));
+                        getInt(argc, argv, "--maxdepth", 6),
+                        getInt(argc, argv, "--reps", 8),
+                        getInt(argc, argv, "--warmup", 1));
     } else if (cmd == "turn-swing") {
         rc = turnSwing(board, getInt(argc, argv, "--games", 60),
                        getInt(argc, argv, "--depth", 4), seed,

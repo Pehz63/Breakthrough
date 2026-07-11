@@ -148,7 +148,10 @@ static int evalLearnedValue(int turnColor, const int* p);
 
 void evalBeginSearch(int evaluator, const int* params) {
     if (evaluator < 0 || evaluator >= g_evalCount) evaluator = 0;
-    g_evalIncremental  = g_evaluators[evaluator].incremental;
+    // g_evalLevel < 3 (benchmark-only) forces the non-incremental leaf so the
+    // g_evalPos accumulator is neither seeded nor maintained in make/unmake:
+    // a reconstructed older level must not pay to maintain state it ignores.
+    g_evalIncremental  = g_evaluators[evaluator].incremental && g_evalLevel >= 3;
     g_activeParams     = params;
     g_activeParamCount = g_evaluators[evaluator].paramCount;
     if (g_evalIncremental) g_evalPos = evalPosFull(params, g_activeParamCount);
@@ -173,7 +176,21 @@ void evalEndSearch() {
 // heuristic evaluators promise the standard layout: p[0]=turn, p[1]=chip.
 int evalLeaf(int turnColor, int evaluator, const int* p) {
     if (g_mlIncremental) return mlLeafScore(turnColor);
-    if (!g_evalIncremental) return evaluateBoard(turnColor, evaluator, p);
+    if (!g_evalIncremental) {
+        // Level 1 (benchmark-only reconstruction of the pre-incremental leaf):
+        // full-board chipDiff() rescan instead of the g_chipDiff counter, plus
+        // the same nearWinCheck / turn / evalPosFull terms as the evaluator fn,
+        // so levels differ ONLY in how the chip term is obtained. Heuristic
+        // evaluators only (the standard p[0]=turn, p[1]=chip layout).
+        if (g_evalLevel == 1 && g_evaluators[evaluator].incremental) {
+            int nw = nearWinCheck(turnColor);
+            if (nw) return nw;
+            int turnTerm = (turnColor == White) ? p[0] : -p[0];
+            return chipDiff() * p[1] + turnTerm
+                 + evalPosFull(p, g_evaluators[evaluator].paramCount);
+        }
+        return evaluateBoard(turnColor, evaluator, p);
+    }
     int nw = nearWinCheck(turnColor);
     if (nw) return nw;
     int turnTerm = (turnColor == White) ? p[0] : -p[0];

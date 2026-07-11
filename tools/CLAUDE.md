@@ -34,7 +34,12 @@ Notes:
 - `selfplay-supervised` takes `--feature-version 2` to train on the sparse
   piece-square layout (the incremental-search substrate, e.g. `--out models/pst_value`).
 - `train.exe speed` benchmarks the v1 full-scan learned leaf against the v2
-  incremental one side by side.
+  incremental one side by side. It also runs the heuristic eval-level ladder
+  (`g_evalLevel` 1/2/3: full chip rescan / incremental chip + full structure
+  scan / fully incremental) at nonzero structure weights, with `--reps` fixed
+  timed reps, `--warmup` discarded passes, interleaved levels, mean/median/min
+  us/move, and an equivalence self-check (same end board + node count across
+  levels). Measurement methodology: `Docs/benchmarking.md`.
 - Raw build: `.\build_train.bat` (mirrors `build_tests.bat`). See `ML.md` for the
   full system and the "how to add more" workflow.
 

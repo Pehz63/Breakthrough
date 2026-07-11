@@ -92,7 +92,14 @@ int turnSwing(const string& boardFile, int games, int depth, unsigned seed,
 
 // Precise per-move speed of the learned model vs AlphaBeta evaluator variants
 // (chip / chip+forward / chip+structures / chip+struct+forward) across a depth ladder.
-int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth = 6);
+// Also runs the heuristic eval-level ladder (g_evalLevel 1/2/3: full chip rescan /
+// incremental chip + full structure scan / fully incremental) at nonzero structure
+// weights, with fixed levelReps timed reps per position (levelWarmup discarded warmup
+// passes), interleaved per position so drift hits all levels equally, and an
+// equivalence self-check (same end board + node count across levels) that must PASS
+// before the ladder numbers are trustworthy.
+int speedBench(const string& boardFile, int positions, double msPerAgent, unsigned seed, int maxDepth = 6,
+               int levelReps = 8, int levelWarmup = 1);
 
 // ---- Depth-laddered, process-shardable tournament ----
 // Build the deterministic roster (heuristics + SmartRandom variants + LearnedPolicy,

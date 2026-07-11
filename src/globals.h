@@ -52,6 +52,15 @@ extern bool g_evalIncremental;
 extern const int* g_activeParams;
 extern int g_activeParamCount;
 
+// Benchmark-only eval-level selector (default 3 = current shipping behavior).
+// Reconstructs prior generations of the heuristic leaf for speed measurement:
+//   1 = full-board chip rescan (chipDiff()) + full evalPosFull scan per leaf
+//   2 = incremental g_chipDiff + full evalPosFull scan per leaf
+//   3 = incremental g_chipDiff + cached g_evalPos (the normal engine path)
+// Set only by train.exe's speed benchmark and restored to 3 afterward; inert
+// in the console, GUI, tests, and tournaments.
+extern int g_evalLevel;
+
 // Incremental ML value state (maintained during a minimax search when the
 // LearnedValue evaluator holds a sparse piece-square model, feature version 2):
 //   g_mlAcc          running dot product of the board's piece-square inputs with

@@ -21,6 +21,7 @@ int g_evalPos = 0;
 bool g_evalIncremental = false;
 const int* g_activeParams = nullptr;
 int g_activeParamCount = 0;
+int g_evalLevel = 3;   // benchmark-only leaf-generation selector (see globals.h)
 double g_mlAcc = 0.0;
 bool g_mlIncremental = false;
 const float* g_mlWeights = nullptr;
