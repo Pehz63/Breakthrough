@@ -26,16 +26,33 @@ and only when it is still recoverable (from `todo.md`, git, the ranking and
 be recovered, so the durable win is the category rule, and the trigger is the
 dangling reference.
 
+# How these instructions are organized
+
+This root file is force-loaded into every session, so it holds only what every
+session needs: rules, commands, and a map. Deep per-area reference lives in
+per-directory CLAUDE.md files that Claude Code auto-loads only when working on
+files in that area:
+
+- `src/CLAUDE.md` - engine, evaluators, search, ML system, ranking internals,
+  global-state table, architecture notes.
+- `tools/CLAUDE.md` - trainer/ranker workflows, study scripts, CLI subcommands,
+  artifact directories (`ranking/`, `runs/`, `data/`, `models/`, `agents/`).
+- `gui/CLAUDE.md` - GUI internals, raygui/MSVC gotchas, smoke-test workflow.
+- `tests/CLAUDE.md` - test file table.
+
 ## Standing Instructions
 
 - **Commit at natural checkpoints, without waiting to be asked.** After finishing a task or functional change (normally as the last step of the "After every functional change" workflow below, once the results doc and other updates are in place), create the commit yourself. Review `git status`/`git diff` first and never stage or commit anything that looks like a secret. **Never run `git push`** without explicit developer instruction given in that session; a prior commit approval does not carry forward to pushing.
+- **Doc changes ride along with the next commit.** Uncommitted edits to CLAUDE.md files, `todo.md`, `Docs/`, or `plans/` are never worth ceremony: include them wholesale in whatever substantive commit happens next, do not cherry-pick hunks to exclude them, do not create a dedicated commit just for them, and do not bother describing them in the commit message (documents are self-evident). When the developer asks for a dedicated commit, that means the deliverable gets its own commit, not that entangled doc hunks must be surgically excluded.
 - **Tests must pass before committing.** Run `.\tools\run_tests.ps1 -Build` (or confirm it already passed against the current code this session) before every commit. If any assertion fails, fix it or, if that isn't possible in scope, stop and tell the developer instead of committing. The one exception is a commit that touches no `src/`/`tests/`/build-affecting file (e.g. docs-only or `plans/`-only changes), where the test suite is a no-op anyway.
+- **Explain in chat first, then ask.** When asking the developer a non-trivial question, use two separate operations. First send the full explanation as a normal chat message and end the turn, with no question folded into it (not even a prose "Question: ..." at the end). Then, in the following turn, ask with the AskUserQuestion multiple-choice tool. Never combine them into one turn (assistant text emitted alongside the question widget is not visible to the developer in their client), never replace the widget with a prose question, and never move the explanation into the widget's option descriptions.
 - **Todo list:** Project tasks are tracked in `todo.md`. When a task is completed, cross it out using Markdown strikethrough (`~~like this~~`) rather than deleting it.
 - **Writing style:** Avoid semicolons and em dashes. Use a comma or period instead, restructuring the sentence if needed. Avoid special Unicode characters like arrows or comparison signs. Use standard keyboard equivalents instead, such as `->` for a right-pointing arrow and `>=` for a greater-than-or-equal sign.
   - **Voice:** Write documentation as a factual guide to what things do, not as marketing. Avoid persuasive or self-congratulatory adjectives (for example "powerful", "seamless", "robust", "just faster"), do not restate the same point twice, and break long run-on sentences into shorter ones. State what a feature does and how to use it, and let the facts speak.
+- **Memory mirroring + bootstrap.** The auto-memory store is per-machine and does not travel with the repo. When saving an auto-memory entry about this project, also mirror a short copy into `Docs/Memories/` (git-tracked), so it survives machine switches. On a machine whose local auto-memory store is empty or missing entries that `Docs/Memories/` has, rebuild the local store from `Docs/Memories/` before starting work. Always-on rules do not go in memories at all, they belong in this file's Standing Instructions.
 - **After every functional change:**
   1. Update `README.md` for any section affected by the change (build command, game rules, AI descriptions, etc.)
-  2. Update this file (`CLAUDE.md`) to reflect new files, renamed functions, or changed behavior
+  2. Update this file, or the relevant per-directory `CLAUDE.md`, to reflect new files, renamed functions, or changed behavior
   3. Tell the developer **how to test** the change and **what new behavior to expect**
   4. **Archive the plan, and write a companion results document.** If the work was driven by a plan (for example a session plan under `~/.claude/plans/`), copy that plan into the repo `plans/` folder under a cleaner, descriptive name matching the existing style (`<topic>-plan-<N>-<suffix>.md`, keeping the original trailing random-word suffix). Then create a **separate companion results document** next to it named `<topic>-results-<N>-<suffix>.md` (the same name with `plan` replaced by `results`). Keep the two files separate: the plan captures intent, the results doc captures outcome. The results doc is a permanent record of the same substance you would give in the end-of-session rundown, not just a chat log. Here is a **non-exhaustive** list of what to include in this document:
      - The end-of-session rundown: a summary of all the changes made, how to test them, and the commit message(s) used
@@ -68,241 +85,121 @@ dangling reference.
 **`cl` is not on the default PATH.** Every `cl` build must first load the MSVC
 environment via `vcvars64.bat`. From PowerShell, wrap the build in
 `cmd /c '"<vcvars64.bat>" && cl ...'` as shown below (path matches README; adjust
-the Visual Studio edition/version if yours differs). The bare `cl ...` lines that
-follow are the compile command itself, after the environment is loaded.
+the Visual Studio edition/version if yours differs).
 
-### Build
+### Console engine (`breakthrough.exe`)
 ```
 cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
-The `ml_features.cpp` / `ml_model.cpp` / `ml_eval.cpp` trio is required by the engine
-(ai_eval.cpp's `LearnedValue` evaluator calls `mlValueScore`), so every build target
-(`breakthrough.exe`, GUI, web, tests) links them. As of the search-budget work,
-`ai_minimax.cpp`'s opt-in transposition-table path also pulls in `src\datastore.cpp`
-(for `positionKey`) and `src\transposition.cpp`, so every target links those two as well
-(they are inert unless an agent sets `useTT`).
+The `ml_*`, `datastore`, and `transposition` files are required by every build
+target (see `src/CLAUDE.md`, "Engine link set"). Run with `.\breakthrough.exe`
+and enter e.g. `boards\board1.txt` at the board prompt.
 
-### Trainer (`train.exe`)
-The modular ML toolchain is a separate binary (does not touch `breakthrough.exe`):
-```
-.\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6
-.\tools\run_train.ps1 imitate --out models/lin_policy.txt --games 150
-.\tools\run_train.ps1 tournament --games 10        # single-process, default depth ladder
-.\tools\run_train.ps1 docs
-```
-**Note:** the linear value model overfits past ~6-8 epochs on outcome labels (loss climbs
-back toward 0.69); keep `--epochs` small (~6). `selfplay-supervised` also takes
-`--feature-version 2` to train on the sparse piece-square layout (the incremental-search
-substrate, e.g. `--out models/pst_value`); `train.exe speed` benchmarks the v1 full-scan
-learned leaf against the v2 incremental one side by side. **Parallel depth-laddered tournament**
-(process-sharded across all CPUs, then rated):
-```
-.\tools\run_tournament.ps1 -Workers 12 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 200000
-```
-Under the hood that runs `train.exe tournament-play --shard i --of K ...` (each shard writes
-`data/tourney.jsonl.<i>`) then `train.exe tournament-rate ...` (merges, fits Elo, prints the
-`Elo | ms/move | max ms | games | agent` table, writes `agents/champion*.txt`). Threads are
-not used because the engine's board/eval state is global; processes each get their own copy.
-Add `-Only "name1,name2,..."` to restrict the roster to those agent names (include their
-depths in `-Depths` so the names exist); a subset run leaves `agents/library.txt` +
-`champion*.txt` untouched. Every run is archived under `runs/<id>/` (`config.json`,
-`elo.tsv`, `notes.md`, `results.jsonl`), logged in `runs/index.jsonl`, and folded into the
-agent registry (`agents/registry.{jsonl,md}`, a union with a `spec_hash` that flags retrains
-/ changes); `-Note "..."` records a pre-run note and `train.exe run-note --run <id> --note
-"..."` attaches one later. Raw build: `.\build_train.bat` (mirrors `build_tests.bat`). See
-`ML.md` for the full system and the "how to add more" workflow.
-
-### Ranker (`rank.exe`)
-The persistent agent Elo-ranking system is a third binary, independent of both
-`breakthrough.exe` and `train.exe` (it links the engine sources plus `src\ranking.cpp`,
-NOT `src\ml_train.cpp` or `src\settings.cpp`):
-```
-.\tools\run_rank.ps1 -Build check           # validate ranking/roster.txt, print model hashes
-.\tools\run_rank.ps1 run --games 8          # serial play (live per-game progress) then rate
-.\tools\run_rank.ps1 -Workers 8 --games 8   # process-sharded play, merge, rate
-.\rank.exe history --agent "ab(d4"          # per-opponent record for one agent
-.\rank.exe gauntlet --id "<id>" --games 4   # rate one candidate vs the frozen pool, O(N) games
-.\rank.exe pairgen --a "<id>" --b "<id>" --games 200 --dil-apply a --out data/pg.jsonl   # fresh labeled training games between two agents
-.\rank.exe pairgen --a "<challenger>" --b "<champion>" --games 80 --open-plies 6 --open-side a --out data/pg.jsonl   # asymmetric opener: only agent a plays the random opener (Theory 6)
-.\rank.exe opener-bias --a "<champion>" --b "<id>" --judge "<learned id>" --games 60   # measure how much the random opener degrades the champion's position
-.\rank.exe opener-swap --a "<id>" --b "<champion>" --games 20 --open-plies 6   # same random-opener snapshot, colors swapped: separates position bias from agent skill
-.\tools\hill_climb.ps1 -Iters 40 -Games 4   # hill-climb Experimental eval weights for Elo
-.\tools\train_vs_champion.ps1               # 10-arm vs-champion training study (resumable; -AnalysisOnly reprints the bucket tables)
-.\tools\opener_bias_study.ps1               # Theory 6: opener-inflation sensitivity sweep + mechanism measure (Layers 1+2)
-.\tools\opener_bias_retrain.ps1             # Theory 6: retrain the oracle arm on asymmetric-opener data (Layer 3; -DryRun for a tiny check)
-```
-The **hill climber** (`tools/hill_climb.ps1`) optimizes the Experimental weight mix at a
-fixed depth using `gauntlet` as fitness: turn pinned at 20, chip/wall/column/forward
-renormalized to sum 80 (so the mix, not the scale, is searched and candidates dedupe),
-greedy-from-best with `{1,3,5}`-unit simplex steps + drastic chip resets, id-keyed cache.
-It plays the small stochastic pool `ranking/climb_roster.txt` by default; `-Promote`
-appends the top finds to `ranking/roster.txt` and does a full refit. The roster also
-carries a dense diluted-d6 ladder (random-move `dil(rP)` + stochastic-depth `dil(rP,dN)`)
-so the top of the table is well-resolved and the climber has non-deterministic opponents.
-Agents are identified by a canonical ID string, e.g.
-`ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1` (grammar in `src\ranking.h`), which is
-the permanent key of the append-only match store `ranking/matches.jsonl` (committed,
-never regenerated). Every module segment carries its code version as `@N`, a constant in
-the codec tables in `src\ranking.cpp`: bump one constant when that module's code changes
-behavior and only the agents using it get new identities (a stale `@N` in the roster
-fails the canonical check and prints the fix). The roster `ranking/roster.txt` is
-hand-edited (`anchor|on|off <id>` lines, exactly one anchor). The scheduler plays only
-each active pair's missing games (color-balanced, per-game srand seeds derived from the
-pair + game ordinal, so shard splits and re-runs reproduce identical games), which makes
-adding one agent O(N) games. Each game records per-side wall ms, process-CPU ms
-(GetProcessTimes deltas, honest under parallel contention), node totals, effective
-depth, plies, and end piece counts. Ratings are an anchored Bradley-Terry MM refit
-(anchor = Elo 0, 0.5 virtual games prior per played pair, Fisher standard errors);
-`rate` writes `ranking/ratings.tsv` + `ranking/games.tsv` (per-game export) +
-`ranking/report.md` (W-L split by color, avg plies, end-piece margin, cpu/move,
-`eff` = Elo / log2(1 + cpu_us/move), and an Elo-vs-CPU pareto-frontier table). Learned
-agents embed an 8-hex model-file content hash in the ID and roster load hard-errors on
-a mismatch (a retrain is a new identity). Raw build: `.\build_rank.bat`.
+**Scripting the console:** pipe answers through the **Bash tool**, not
+PowerShell (its pipe encoding/BOM corrupts the first `cin` read and the program
+loops on the board-file prompt). Example and details: the "Driving the console
+non-interactively" section of [TESTING.md](TESTING.md).
 
 ### Tests
-
-Preferred one-liner (handles VS environment automatically, mirrors `build_gui.bat`):
 ```powershell
-.\tools\run_tests.ps1 -Build
+.\tools\run_tests.ps1 -Build     # build via build_tests.bat + run (use the /run-tests skill)
 ```
-This rebuilds `tests.exe` via `build_tests.bat` (using `vswhere` to locate VS), then
-runs it and reports pass/fail. Omit `-Build` to re-run the last build without recompiling.
+Omit `-Build` to re-run the last build. The raw `cl` command compiles
+`tests\test_*.cpp` plus all engine sources including `ml_train.cpp` and
+`ranking.cpp` with `/I src /I tests /Fe:tests.exe` (same vcvars wrapper as above).
 
-Raw build command (equivalent, for reference):
+### Trainer, ranker, tournaments
+```powershell
+.\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6
+.\tools\run_train.ps1 imitate --out models/lin_policy.txt --games 150
+.\tools\run_tournament.ps1 -Workers 12 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 200000
+.\tools\run_rank.ps1 -Build check           # validate ranking/roster.txt
+.\tools\run_rank.ps1 -Workers 8 --games 8   # process-sharded play, merge, rate
+.\rank.exe gauntlet --id "<id>" --games 4   # one candidate vs the frozen pool
+.\rank.exe pairgen --a "<id>" --b "<id>" --games 200 --dil-apply a --out data/pg.jsonl
+.\tools\hill_climb.ps1 -Iters 40 -Games 4   # hill-climb Experimental eval weights
 ```
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl tests\test_main.cpp tests\test_move_validation.cpp tests\test_win_detection.cpp tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp tests\test_ml.cpp tests\test_ranking.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp src\transposition.cpp src\ml_train.cpp src\ranking.cpp /I src /I tests /EHsc /Fo"build\\" /Fe:tests.exe'
-```
+`train.exe` and `rank.exe` are separate binaries from `breakthrough.exe`. All
+workflows, study scripts, subcommand flags, and artifact directories:
+`tools/CLAUDE.md`. System design: `ML.md`.
 
-### Run
+### GUI
 ```
-.\breakthrough.exe
+.\build_gui.bat          # native (needs third_party/ raylib, see INSTALL.md)
+.\build_web.bat          # web via emsdk -> docs/;  "dev" arg for a debug build
 ```
-When prompted for a board file, enter e.g. `boards\board1.txt`.
-
-**Scripting the console for tests:** pipe answers through the **Bash tool**, not
-PowerShell. PowerShell's pipe encoding/BOM corrupts the first `cin` read, which
-sends the program into the `getBoard()` filename loop and an infinite "Invalid
-file..." spew. The right way (answer `1` to use the default board):
-```
-printf '1\n2\n0\n4\n0\n3\n0\n0\n1\n0\n0\n0\n1\n0\n1\n1\n' | ./breakthrough.exe 2>&1 | grep -E "eval:|has won"
-```
-See the "Driving the console non-interactively" section of [TESTING.md](TESTING.md).
-
-### GUI (raylib + raygui)
-The graphical front end is an additive layer over the same engine (no `src/` files
-change). Native build requires prebuilt raylib in `third_party/` (see `INSTALL.md`):
-```
-.\build_gui.bat
-.\breakthrough_gui.exe
-```
-Web build requires emsdk + a raylib-for-web `libraylib.a` (see `INSTALL.md`), output
-to `docs/`:
-```
-.\build_web.bat          # release;  .\build_web.bat dev for a debug build
-```
-Notes for working on the GUI: it is built with `/MD` because the prebuilt raylib
-links the dynamic CRT. `raylib.h` defines `WHITE`/`BLACK` as `Color` macros that
-collide with `globals.h`'s board macros, so `main_gui.cpp` includes raylib/raygui
-first, `#undef`s `WHITE`/`BLACK`, then includes `globals.h` and draws with explicit
-`Color` literals. The GUI sets `PRNT=0` and never calls `getSettings()`,
-`playerMove()`, or `printBoard()`.
+Build gotchas (`/MD`, `WHITE`/`BLACK` macro collision) and internals:
+`gui/CLAUDE.md`.
 
 ---
 
-## File Structure
+## File Map
+
+One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 
 ### Root
 | File | Purpose |
 |---|---|
 | `README.md` | User-facing docs: build, run, game rules, move notation |
-| `CLAUDE.md` | Claude reference and workflow instructions (this file) |
-| `Docs/theories.md` | Running log of testable theories from AI-development sessions (dilution recipes, data sources, model capacity, etc.), each with a status (confirmed/refuted/open), the plan that raised it, and the plan/results doc that tested it. Updated per the "After every functional change" workflow above. |
-| `Docs/terminology.md` | Glossary of project-specific and domain terms (agent, ply, evaluator, explorer, etc.) with a one-sentence definition and an example sentence for each. |
-| `Docs/axioms.md` | Breakthrough truths in four tiers: direct axioms (the rules, 13 entries), optional axioms (this project's swappable choices, each with a "what breaks if swapped" note), derived truths (3 lemmas + 14 proofs: no draws, termination, 208-ply bound, no repeated positions, color-swap symmetry, Zermelo determinacy, winner-moves-last parity, passed runners, race arithmetic, back-rank outposts, 22 opening moves, 11-ply minimum game), and empirical truths (observed strategic claims with dev + Claude confidence marks and evidence pointers). Settled facts live here. Claims under investigation stay in `Docs/theories.md`. |
+| `CLAUDE.md` | This file: rules, commands, map (per-directory CLAUDE.mds hold the detail) |
+| `Docs/theories.md` | Running log of testable theories, each with status, origin, and tested-in links |
+| `Docs/terminology.md` | Glossary of project and domain terms with definitions and example sentences |
+| `Docs/axioms.md` | Breakthrough truths in four tiers: rules, project choices, proofs, empirical claims |
+| `Docs/Memories/` | Git-tracked mirror of project auto-memories (see the memory Standing Instruction) |
+| `TESTING.md` | Verification playbook: console driving, GUI smoke test, visual-inspection lessons |
+| `INSTALL.md` | Setup: VS C++ workload, raylib download, emsdk for the web build |
+| `ML.md` | ML system overview + "how to add more" (registry tables auto-generated by `train.exe docs`) |
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
-| `minimax_params.txt` | Saved MiniMax weights, loaded automatically when MiniMax player is selected |
-| `.gitignore` | Excludes `.exe`, `.obj`, `build/`, `third_party/`, and ML generated artifacts (`data/*.jsonl`, `models/*_ckpt*.txt`) |
-| `INSTALL.md` | Setup notes: VS C++ workload, raylib download, emsdk for the web build |
-| `build_gui.bat` | Native GUI build (MSVC + raylib, `/MD`) -> `breakthrough_gui.exe` |
-| `build_web.bat` | Emscripten/WASM GUI build -> `docs/index.html` (release or `dev`) |
-| `tools/smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root) |
-| `tools/run_tests.ps1` | Build and run the Catch2 test suite in one step: `.\tools\run_tests.ps1 -Build`. Use the `/run-tests` skill to invoke this correctly from Claude sessions. |
-| `build_tests.bat` | MSVC batch build for `tests.exe` (called by `run_tests.ps1`). Uses `vswhere` to locate VS automatically. |
-| `build_train.bat` | MSVC batch build for the ML trainer `train.exe` (mirrors `build_tests.bat`). |
-| `tools/run_train.ps1` | Build (`-Build`) and run `train.exe`, passing args through. |
-| `tools/run_tournament.ps1` | Mint a UTC `RunId`, write `runs/<id>/` config via `run-config`, launch K `tournament-play` shards in parallel (one process each, own output file), then merge + `tournament-rate --run <id>`. Params include `-Only`, `-Note`, `-RunId`. |
-| `build_rank.bat` | MSVC batch build for the persistent Elo ranker `rank.exe` (engine sources + `src\ranking.cpp`, excludes `ml_train.cpp`/`settings.cpp`). |
-| `tools/run_rank.ps1` | Build (`-Build`) and run `rank.exe`, passing args through. `-Workers K` shards `play` across K processes (per-shard `<store>.<s>` files appended to the store only after every worker exits cleanly), then rates once. Uses `PositionalBinding=$false` so `--key value` passthrough args are not captured by named params. |
-| `tools/sweep_pst.ps1` | Small training sweep for v2 PST models: train a teacher-depth x games grid, then rate each candidate serially via `rank.exe gauntlet` (one shared `models/pst_value.txt` slot). Superseded for large studies by `sweep_pst_v2.ps1`. |
-| `tools/sweep_pst_v2.ps1` | Large training-hyperparameter sweep (5 groups: teacher grid, dilution decay, self-play bootstrap chains, replay extraction, L2), training each candidate straight into its own ranking slot file (`models/sweep/slot<N>.txt`), appending all of them to the roster (idempotent), rating everyone in ONE `rank.exe run` (sharded via `-Workers`), and writing `models/sweep/report_v2.csv`. `-Only N` dry-runs the first N candidates. After a study, trim the sweep lines back out of the roster (their games stay in `matches.jsonl` as retired history). Findings from the first run: `plans/training-sweep-results-1-luminous-snail.md`. |
-| `tools/train_scaling.ps1` | Resumable data-scaling study for v2 value models: pins the sweep-validated recipe (d2 teacher, dilution decay), doubles the self-play game count until the mean screening Elo gain over its seed replicas drops below `-ConvergeElo`, then runs a replay-data arm (`rank.exe extract` at 4k/8k games) and an epoch probe, and d6-confirms the best cell. Appends to `models/sweep/scaling.csv` and skips cells already recorded there, so an interrupted run resumes. First run's result: replay training beat single-teacher self-play by ~250 Elo (best model d6 Elo 920, promoted to `models/pst_value.txt`). |
-| `tools/train_vs_champion.ps1` | Vs-champion training-data study: generates `rank.exe pairgen` datasets from games involving the reigning champion (learner-vs-champ, diluted-champ-vs-champ, d8 oracle-vs-champ, champion-loss cherry-picks, branch-mined winning lines), trains linear v2 PST cells per dataset (seed replicas), gauntlet-screens at the d4 wrapper into `models/sweep/vs_champ.csv` (resumable), gates a bootstrap arm, promotes each family's best to reserved slots 94..99, d6-confirms, appends the d6 IDs + the oracle to the roster, re-rates the pool, and prints the opponent-bucket residual analysis (champion / classic-like / diverse) that answers the two recorded theories. `-DryRun` for a tiny pipeline check, `-AnalysisOnly` to recompute the bucket tables later (the standing longitudinal theory re-check). First run's result (`plans/vs-champion-training-results-1-cozy-forest.md`): diluted-champion-vs-champion and oracle-vs-champion data beat the replay recipe, the best model ties the champion at d6 (1137 vs 1140 on the shared fit), one-sided cherry-picked datasets fail from degenerate labels. |
-| `tools/opener_bias_study.ps1` | Theory 6 test (`Docs/theories.md`), Layers 1+2: for each promoted challenger (champdil s96, oracle s98) vs the champion, plays the d6 head-to-head under three opener configs -- S (`--open-side both`, the symmetric baseline), C (`--open-side a`, challenger random / champion true policy), P (`--open-side b`, champion random) -- and reads the win tally from each pairgen `.meta.json`, then runs `rank.exe opener-bias` with a learned judge for the mechanism measure. Writes `data/opener_bias/` (gitignored) + `sensitivity_sweep.csv`. First run: champdil 65% (S) -> 40% (C), oracle 58.8% (S) -> 66.2% (C). Results: `plans/opener-bias-results-1-synchronous-stearns.md`. |
-| `tools/opener_bias_retrain.ps1` | Theory 6 test, Layer 3: regenerates the oracle training set with `--open-side a` (only the oracle plays the random opener; the champion plays its own opening) into `data/pg_oracle_champ_asym.jsonl`, retrains the 3-seed oracle cell (`--from-data`), gauntlet-screens at the d4 wrapper, d6-confirms the best, and compares to the symmetric baseline (screen mean 785 / d6 1137). Resumable via `models/sweep/opener_bias_retrain.csv`; archives models to `models/sweep/vsc_oracle-asym_<seed>.txt` (does NOT overwrite the symmetric `vsc_oracle-vs-champ_*.txt` or touch the roster). `-DryRun` for a tiny pipeline check. |
-| `tools/hill_climb.ps1` | Stochastic hill climber over the Experimental eval weight mix, optimizing Elo at a fixed depth via `rank.exe gauntlet` as the fitness function. Turn pinned at `-Turn` (20), chip/wall/column/forward renormalized to sum `-Sum`-`-Turn` (80) so the search varies the mix not the scale and candidates dedupe. Greedy-from-best with `{1,3,5}`-unit simplex steps + occasional drastic chip reset; id-keyed cache. `-Roster` defaults to `ranking/climb_roster.txt`; `-Promote` appends the top finds to `ranking/roster.txt` and runs a full refit. Logs every candidate to `ranking/climb_exp_d<depth>_<stamp>.tsv` (gitignored). |
-| `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), `matches.jsonl` (append-only ID-keyed match history, committed, the never-recomputed asset), and generated `ratings.tsv` + `games.tsv` + `report.md`. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored. |
-| `ML.md` | Machine-learning system overview + "how to add more" workflow; the registry tables at the bottom are auto-generated by `train.exe docs`. |
-| `requirements.txt` | Optional Python deps (duckdb/pandas; torch/wandb optional) for `analysis/` + `train_py/`. |
-| `analysis/analyze.py`, `analysis/README.md` | DuckDB queries over `data/*.jsonl` (top agents, fairest positions, average eval per position). |
-| `train_py/export_format.py` | Writes a model in the C++ `type=` format (Python -> engine weight export contract). |
-| `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |
-| `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
-| `TESTING.md` | Verification playbook: console/engine test steps, the GUI smoke-test workflow, visual-inspection lessons, matchup-gated UI capture, and MSVC/raygui gotchas |
-| `tools/gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`) |
-| `.claude/skills/run-tests.md` | Claude skill: instructs future sessions to use `run_tests.ps1 -Build` and never to call `cl` directly without loading `vcvars64.bat` first |
+| `minimax_params.txt` | Saved MiniMax weights, auto-loaded when a MiniMax player is selected |
+| `.gitignore` | Excludes exes, `build/`, `third_party/`, and generated ML artifacts |
+| `build_gui.bat` / `build_web.bat` | GUI builds: native raylib exe / Emscripten WASM to `docs/` |
+| `build_tests.bat` / `build_train.bat` / `build_rank.bat` | MSVC batch builds for `tests.exe` / `train.exe` / `rank.exe` |
+| `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
+| `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md` |
+| `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract |
+| `plans/` | Archived session plans + companion results docs |
+| `.claude/skills/run-tests.md` | Skill: always run tests via `run_tests.ps1 -Build`, never bare `cl` |
 
-### `src/`
+### `src/` (details: `src/CLAUDE.md`)
 | File | Purpose |
 |---|---|
-| `globals.h` | Master header: macros (`EMPTY='.'`, `WHITE='W'`, `BLACK='B'`, `SIZE=8`), enums, `extern` globals, and all function prototypes. Included by every `.cpp`. |
-| `globals.cpp` | Definitions of all global variables (`board`, `g_whiteCount`, `PRNT`, etc.). Separated from `main.cpp` so the test executable can link them without pulling in `main()`. |
-| `main.cpp` | Top-level game loop: seeds RNG, loads board, calls `getSettings()`, dispatches turns, tracks per-player time, and accumulates scores over multi-game sets. Holds per-side `wEval`/`bEval` (evaluator index) and `wParams`/`bParams` (`int[MAX_EVAL_PARAMS]`). It also hosts parameter test-sweep mode (`testingParam` 1 = depth, 2..1+paramCount = the tested side's evaluator weights). When `SHOW_EVAL` is set, after each move it prints that side's eval via `printEvalLine()` (`now=` immediate static eval, plus `pred=` predicted best-line eval for MiniMax sides); `formatEval()` renders forced wins as `+WIN`/`-WIN`. |
-| `board_io.cpp` / `board_io.h` | Board file I/O and display: `getBoard()`, `reloadBoard()`, `printBoard()`, `loadMinimaxParams()` (reads `<side>_eval`, `<side>_depth`, `<side>_opener`, and each evaluator param via `<side>_<key>`, falling back to legacy `<side>_<key>_weight` names) |
-| `settings.cpp` / `settings.h` | Interactive CLI configuration. `getSettings()` prompts for player types and, for MiniMax, the evaluator and its weights (looped from the registry by name via `getEvaluatorSettings()`); also game count, verbosity, and `SHOW_EVAL` (the "Show board evaluations?" prompt). `printVictor()` displays winner and timing. |
-| `moves.cpp` / `moves.h` | All move logic: dispatch (`moveWhite`/`moveBlack`), human input parsing, full validation (`tryMoveWhite/Black`), fast AI validation (`tryMoveQuickWhite/Black`), execution (`playMoveWhite/Black`), reversible simulation (`simulateMove`/`unsimulateMove`). `simulateMove`/`unsimulateMove` also maintain the incremental positional accumulator `g_evalPos` (via `evalPosLocal`) when `g_evalIncremental` is set, and the incremental ML accumulator `g_mlAcc` (2-3 piece-square weight adds/subtracts via `mlSqW`/`mlSqB`) when `g_mlIncremental` is set. |
-| `board_analysis.cpp` / `board_analysis.h` | Chip counting, row-level chip difference, one-step win detection: `findWinWhite/Black()`, `canWinWhite/Black()` |
-| `ai_eval.cpp` / `ai_eval.h` | Pluggable board evaluators. A registry `g_evaluators[]` (with `g_evalCount`) lists each `EvalDef` (name, parameter list of `EvalParamDef{name,key,def,lo,hi}`, scoring `fn`). Two ship: `evalClassic` (original heuristic: near-end win detection at rows `SIZE-2`/`1`, turn bonus, wall/column structure bonuses, chip-diff base) and `evalExperimental` (Classic plus a "Forward" weight (rewards pieces further toward the goal), identical to Classic when that weight is 0). `evaluateBoard(turnColor, evaluator, params)` dispatches by index; a convenience overload `evaluateBoard(turnColor, turn, chip, wall, col)` calls Classic. `MAX_EVAL_PARAMS` is defined in `globals.h` so param-array callers need only that header. To add an evaluator: append one `EvalDef` and write its `fn` — both UIs pick it up automatically. End-row win detection is handled before calling this. **Incremental eval:** for the minimax hot path, the positional part (structure + forward) is cached in `g_evalPos` instead of rescanned per leaf. `evalBeginSearch`/`evalEndSearch` (RAII-guarded in minimax) seed/tear it down; `evalPosFull` does the full scan; `evalPosLocal` computes a move's true neighbor-local delta (via `neighborStruct`, the orthogonal same-color pairs touching the two changed squares under `structOwner`'s single-ownership convention, plus those squares' forward score) applied by `simulateMove`/`unsimulateMove`; `evalLeaf` combines `g_evalPos` with the already-incremental `g_chipDiff` and turn term. An `EvalDef.incremental` flag opts in (requires the standard `p[0]=turn,p[1]=chip,p[2]=wall,p[3]=column,p[4]=forward` layout); non-incremental evaluators fall back to a full `evaluateBoard` at the leaf. `nearWinCheck` is shared so the fast and full paths can't diverge. `immediateEvalForDisplay(isMiniMax, evaluator, params)` returns a white-centric static eval of the current board for the UIs (a MiniMax side uses its own evaluator/weights; others fall back to Classic registry defaults). A third evaluator `LearnedValue` (param `p[0]` = model slot) delegates to `mlValueScore` (see `ml_eval.cpp`); `nearWinCheck` is now declared in `ai_eval.h` so the learned evaluator and 1-ply explorers reuse it. **Incremental ML eval:** when the LearnedValue slot holds a sparse piece-square model (feature v2), `evalBeginSearch` also calls `mlIncrementalBegin` (recognizing LearnedValue by its own fn pointer, no agents.cpp dependency), `evalLeaf` short-circuits to `mlLeafScore` while `g_mlIncremental` is set, and `evalEndSearch` calls `mlIncrementalEnd`; LearnedValue's registry `incremental` flag stays false because that flag drives only the heuristic `g_evalPos` path. A v1 model in the slot leaves the ML path off and falls back to the full scan per leaf. |
-| `ai_random.cpp` / `ai_random.h` | Three random AI strategies (`pureRandomMove`, `tieredRandomMove`, `smartRandomMove`), the scripted opening-sequence logic (`playOpenerWhite/Black`), and the pluggable **opener registry** `g_openers[]` (`OpenerDef{name, idName, desc, hasArg, fn}`, `openerIndexByIdName`): opening-phase move sources an agent selects via `AgentSpec::openerKind`/`openerArg` and its `.opener(<idName>[,<arg>])@N` ID segment. One registered: `rand` (random for the agent's first `arg` plies). Consulted only by the ranking game-runners that track a per-agent ply count (`playOneGame`, `playoutCapture`), so an opener fn takes `ownPly` rather than reading global state. Add one = a table row + fn. |
-| `ai_minimax.cpp` / `ai_minimax.h` | Alpha-beta minimax: `miniMaxWhite/Black()` top-level search, `maxAlphaBeta`/`minAlphaBeta` recursive pruning, capture-first move ordering, win-decay for fastest wins. After the root move loop each side stores its best-line score (root `alpha`/`beta`) into `g_downEvalWhite`/`g_downEvalBlack` for the "predicted downstream" display (free: the value was already computed). **Budgets & telemetry:** with a per-move node budget (`g_nodeBudget`) or wall-clock budget (`g_timeBudgetMs`) set, the search runs iterative deepening (`searchRootWhite/Black` per depth) sharing one pool; `budgetTripped()` flags a cut leaf. Each search records `g_lastEffDepth` (fractional: completed depth + fraction of the cut iteration's root moves), `g_lastBudgetKind` (node/time/depth) and `g_lastNodes`/`g_lastLeafs`. A cut iteration is discarded unless `g_keepPartial`. **Opt-in, ablatable efficiency features** (default off, so console/GUI/tests are unchanged): `g_useAlphaBeta` (off = full minimax baseline), `g_aspirationWindow` (root window seeded from the prior iteration), and `g_useTT`/`g_useMoveOrder`, which route to `maxAlphaBetaOrdered`/`minAlphaBetaOrdered` (transposition probe/store keyed by `positionKey` + best-move/killer/history ordering). `test_ai_integration.cpp` asserts these features preserve the exact search value. |
+| `globals.h` / `globals.cpp` | Master header (macros, enums, externs, prototypes) and global definitions |
+| `main.cpp` | Console game loop, per-side evaluator/params, test-sweep mode, eval display |
+| `board_io.cpp/.h` | Board file I/O, `printBoard()`, `loadMinimaxParams()` |
+| `settings.cpp/.h` | Interactive CLI configuration (`getSettings()`), winner display |
+| `moves.cpp/.h` | Move dispatch, validation (full + fast), execution, simulate/unsimulate with incremental accumulators |
+| `board_analysis.cpp/.h` | Chip counting and one-step win detection (`canWin*`, `findWin*`) |
+| `ai_eval.cpp/.h` | Evaluator registry (Classic, Experimental, LearnedValue) + incremental leaf eval |
+| `ai_random.cpp/.h` | Random-move choosers, scripted openers, pluggable opener registry `g_openers[]` |
+| `ai_minimax.cpp/.h` | Alpha-beta search, iterative-deepening budgets, telemetry, opt-in TT/ordering/aspiration |
+| `ml_features.cpp/.h` | Move generation + ML feature extractors (v1 dense, v2 sparse piece-square) |
+| `ml_model.cpp/.h` | Model base + LinearModel, save/load factory, model-type registry |
+| `ml_eval.cpp/.h` | 128 model slots, `mlValueScore`, incremental v2 path, move rating |
+| `explorers.cpp/.h` / `choosers.cpp/.h` | Explorer registry (Greedy, AlphaBeta) and direct-chooser registry |
+| `agents.cpp/.h` | `AgentSpec` composition (brain + dilution + budgets + toggles), `agentChooseMove` |
+| `datastore.cpp/.h` | Append-only JSONL + canonical `positionKey` (also keys the TT) |
+| `transposition.cpp/.h` | Opt-in transposition table (inert unless `useTT`) |
+| `ml_train.cpp/.h` | Trainer: self-play, supervised value + imitation policy, tournament play/rate, run archive |
+| `ranking.cpp/.h` | Persistent Elo ranking: ID codec, roster, match store, scheduler, BT fit, subcommands |
 
-#### Modular ML system (linked into every target; see `ML.md`)
-The ML system is four pluggable axes plus an agent composition. An **Agent** is a **Move Chooser** that is either a **Search** (**Explorer** + **Evaluator**) or a **Policy** (a direct chooser, heuristic or a learned move-rater). Each axis is a registry of `*Def` structs (name + metadata + fn pointer), so adding one is a single table entry + a function body, and the console/GUI/tournaments/docs all pick it up.
-
+### `tools/` C++ CLIs (details: `tools/CLAUDE.md`)
 | File | Purpose |
 |---|---|
-| `ml_features.cpp` / `ml_features.h` | Board reading for ML. `generateMoves(side, Move*)` (capture-first, shared by explorers/policies/trainer). Value features v1 (`mlExtractValueFeatures`, `MLV_FEATURES=30`, white-centric dense aggregates) and v2 (`mlExtractValueFeaturesV2`, `MLV2_FEATURES=129`, sparse piece-square: one binary input per color+square via `mlSqW`/`mlSqB`, plus `MLV2_STM=128` side to move; a move changes 2-3 inputs, the locality the incremental `g_mlAcc` accumulator exploits). Move features (`mlExtractMoveFeatures`, `MLM_FEATURES=9`, side-relative) for policy models. Names tables (incl. `mlValueFeatureNameV2`) drive the auto-doc. |
-| `ml_model.cpp` / `ml_model.h` | `Model` base (`forward`, `outputScale`, `save`, `typeName`, `head`/`featureVersion`/`featureCount`, plus a `teacher` provenance string written to the file as `teacher=` and read back by `loadModel`) + `LinearModel` (value or policy head, `sgdLogisticStep`). `makeModel`/`loadModel` factory dispatch on a file's `type=` line. `g_modelTypes[]` registry (linear implemented; mlp/nnue/transformer stubbed). |
-| `ml_eval.cpp` / `ml_eval.h` | Model **slots** `g_mlModels[ML_SLOTS=128]` (White/Black, or many sweep candidates, can each use a different model in one process; slots 0/1/2 have fixed file conventions, 3+ are generic `models/sweep/slot<N>.txt` sweep slots, the last two are trainer scratch). `mlValueScore(turnColor, slot)` (shared `nearWinCheck` shortcut, then `tanh*out_scale` clamped inside the `+/-WIN` sentinels; dispatches the extractor on the model's `featureVersion()`) backs the `LearnedValue` evaluator. **Incremental v2 path:** `mlIncrementalBegin(slot)` (for a linear value model with feature v2: latch `g_mlWeights`, seed `g_mlAcc` = bias + occupied piece-square weights), `mlLeafScore(turnColor)` (leaf read: `nearWinCheck`, then tanh of `g_mlAcc` + side-to-move term, same squash/clamp helper as `mlValueScore`), `mlIncrementalEnd()`. `mlRateMoves(side, slot, ...)` scores moves for the `LearnedPolicy` chooser. |
-| `explorers.cpp` / `explorers.h` | Move-tree explorer registry `g_explorers[]`: `Greedy` (1-ply argmax over an evaluator) and `AlphaBeta` (wraps `miniMax*`). `ExplorerDef{name, desc, fn(side, evaluator, params, budget)}` returns the victor code. |
-| `choosers.cpp` / `choosers.h` | Direct move-chooser registry `g_choosers[]`: wraps the random family + `LearnedPolicy` (argmax of `mlRateMoves`). `ChooserDef{name, desc, fn(side, modelSlot, param)}`. |
-| `agents.cpp` / `agents.h` | `AgentSpec` (brain = Search or Policy; explorer/evaluator/chooser indices, modelSlot, evalParams, depth, dilution `randomMoveProb`/`depthCap`/`dilDepth` (the diluted move is a fully random move when `dilDepth<=0`, else a shallower depth-`dilDepth` search); per-agent `nodeBudget`/`timeBudgetMs` and feature toggles `useAlphaBeta`/`useTT`/`useMoveOrder`/`keepPartial`/`aspirationWindow`, defaulted by `seedAgentDefaults` to the historical search). `agentChooseMove(spec, side)` composes the axes, save/restores the budget+feature globals around the call (so one tournament can mix settings), and is reused by tournaments/data-gen. `agentDescribe` appends the budgets + enabled flags. `agentMakeSearch`/`agentMakePolicy`/`learnedValueIndex`. |
-| `datastore.cpp` / `datastore.h` | Append-only JSONL (`dsAppendLine`) + canonical position key `positionKey(sideToMove, mirrorFold)` (packed encoding + 64-bit FNV-1a, optional left-right mirror fold) used as the join key across the `data/*.jsonl` streams. Its hash also keys the transposition table. |
-| `transposition.cpp` / `transposition.h` | Opt-in transposition table (gated by `g_useTT`): fixed-size always-replace array keyed by `positionKey(...).hash`. `ttProbe` (cutoff on a deep-enough EXACT/LOWER/UPPER entry, plus the stored best move for ordering), `ttStore` (skips near-win sentinels and budget-cut scores), `ttNewSearch` (per-move generation bump), `ttBytes` (analytic per-feature memory). Linked into every target but inert unless `useTT`. |
-| `ml_train.cpp` / `ml_train.h` | Trainer (used by `train.exe` and `test_ml.cpp`): self-play game runner with position capture, `trainSupervisedValue` (outcome-labeled linear value model; `--feature-version 2` trains on the sparse piece-square layout for the incremental search path; `--l2` weight decay; `--gen-random-floor`/`--gen-random-decay-plies` linearly decay the teacher's dilution over the game; `--gen-model`/`--gen-model-explorer` make a previously-trained model the self-play generator; `--from-data` skips generation and fits on a `rank.exe extract` replay file) and `trainImitationPolicy` (behavioral cloning of the move-rater), both with a SELECTABLE teacher/generator (`--gen-eval`/`--teacher-eval` = Classic or Experimental, optional `--gen-params`/`--teacher-params` weights) whose spec is recorded as the model's provenance (the self-play `teacher=` string now also appends the dilution recipe as `dil(start->floor/Np)`, so differently-diversified trainings never carry identical provenance), `writeManifest` (models/manifest.{json,md}), `exportDocs` (regenerates the `<!-- AUTODOC -->` region of `ML.md` + `models/registries.json`), and the `g_regimes[]` registry. Emits positions/labels/evaluations to `data/*.jsonl`. **Tournament:** `buildTournamentRoster(depths,hasValue,hasPolicy)` (deterministic: heuristics + SmartRandom-N variants + LearnedPolicy, plus Greedy and AlphaBeta over a table of evaluator presets x depths); `tournamentPlay(...,shard,ofK,nodeBudget,out,only,timeBudgetMs,budgets,ablate)` plays its `gameIndex%ofK==shard` slice with per-move `std::chrono` timing, appending `{a,b,sa}` + `{timing,...}` rows (the timing rows now also carry streaming search-telemetry accumulators: count/sum/sumsq/min/max of eff-depth, nodes, branching, plus node/time/depth budget-kind counts) and a process-level `{resource,peak_ws_mb,cpu_s}` row (`emitResourceLine`, psapi); `tournamentRate(depths,in,only,runId,note,budgets,ablate)` fits Elo (`fitElo`), prints `Elo|ms/move|max ms|games|agent`, then a search-telemetry table (eff-depth mean+-std [min..max], nodes/move, branching, budget-kind %) and a resource summary, and (full run only, `only` empty) writes `agents/champion.txt` + `agents/champion_params.txt` (a `minimax_params.txt` block). Opt-in `--budgets "a,b,c"` adds an unbounded-depth budget ladder (Classic `bal` + Experimental `ebal` per budget); `--ablate` adds a feature-toggle family for both evaluators (`AblC-*`/`AblE-*`); `--forward-study` adds Experimental agents differing only in the forward weight (`Fwd0/1/2/4/8`, `Fwd0` = Classic-equivalent control) to rank forward by Elo. The default AB ladder crosses every preset (Classic chip/wall/col/bal/chip2/chip5 + Experimental fwd/bal/push) x depths. All three opt-in flags must be passed to BOTH play and rate so rosters match. `turnSwing(board,games,depth,seed,chipW,wallW,colW,advW)` calibrates the turn-advantage weight (1-ply white-centric eval swing between sides, turn term zeroed). Uses the Experimental evaluator (== Classic when forward is 0) so `--chip/--wall/--col/--forward` all vary; the tempo value scales with the structure and (most cleanly) the forward weight, with a floor of `2*fwdW`. `runTournament` is the single-process convenience wrapper. **Allowlist:** `filterRosterByName(roster, only)` reduces the roster to named agents (empty = full; warns on unresolved names), applied identically in play and rate. **Run archive:** `makeRunId` (UTC stamp), `writeRunConfig` (`runs/<id>/config.json` + `notes.md` header), `runNote` (append a later note), `agentSpecHash` (structural fields + learned model content), plus internal `writeRunElo`/`appendRegistry`/`writeRegistryRollup`/`appendRunIndex` that build `runs/<id>/{elo.tsv,results.jsonl}`, `runs/index.jsonl`, and `agents/registry.{jsonl,md}`. |
-| `tools/train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `imitate`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |
-| `ranking.cpp` / `ranking.h` | Persistent agent Elo ranking (`rank.exe`), independent of `ml_train.cpp`. **ID codec:** `rankAgentId`/`rankAgentFromId` round-trip an `AgentSpec` to/from a canonical ID string (grammar documented in `ranking.h`; head = `rand`/`tiered`/`smart(N)`/`policy`/`greedy`/`ab(dK,flags)`, then `classic`/`exp` with letter-keyed weights or `learned`/`linpol` with a model-content hash, optional `dil(rP)` or `dil(rP,dN)` for stochastic depth dilution, and optional `opener(<idName>[,<arg>])` for an identity-level opener from the pluggable opener registry `g_openers[]` (`src/ai_random.h`/`ai_random.cpp`) -- `AgentSpec::openerKind` (index into `g_openers`) + `openerArg`. Currently one opener is registered, `rand` (`.opener(rand,N)@1`: play a uniform-random move for the agent's own first N plies -- N of ITS OWN moves, not N half-moves of the shared game clock -- then hand off to the brain); to add another (an opening-book follower, the scripted offensive/defensive openers, etc.) append one `OpenerDef` row + its fn, and set `hasArg=false` for a parameterless opener (ID `.opener(<idName>)@1`). Openers are honored only by `playOneGame` (so `rank.exe run`/`play`/`gauntlet`) and pairgen's `playoutCapture` (composes via OR with `--open-plies`/`--open-side`), inert in the console/GUI/`train.exe` tournament since only those loops track a per-agent ply count. Lets the SAME agent be rostered/gauntleted both with and without an opener as two distinct canonical IDs, so the Elo gap is a general, reusable opener-sensitivity measure for any agent (e.g. the champion `...classic(t1,c4,w0,l0)@2` sits at ranking-pool Elo 1140 clean vs 923 gauntletted with `.opener(rand,6)@1`, a ~217 Elo hit; champdil similarly drops ~191, from 1153 to 962). Each module segment carries an `@N` code version sourced from the codec tables (`g_rkChoosers`/`g_rkExplorers`/`g_rkEvals`/`RK_DIL_VERSION`/`RK_OPENER_VERSION`); bumping a constant re-identifies only that module's agents, and a stale `@N` fails the canonical check with the fix printed. `linpol` alone carries no `@N` (its hash is its identity). The eval-letter table `g_rkEvals` must gain a row when an evaluator is added (a test enforces this). **Roster:** `rankLoadRoster` parses `anchor|on|off <id>` lines (exactly one anchor, no dupes, canonical IDs only). **Store:** `rankFormatMatchRow`/`rankParseMatchRow` for `ranking/matches.jsonl` rows (`{t,w,b,r,plies,wms,bms,wcpu,bcpu,wmv,bmv,wnod,bnod,wpc,bpc,wed,bed,wsn,bsn,seed,board,par,ts,run}`; cpu = per-side GetProcessTimes deltas, pc = end piece counts, ed/sn = effective-depth sums/counts; fields absent in old rows parse as -1 sentinels). **Scheduler:** `rankSchedule` computes color-balanced pending games per pair minus stored games, per-game seeds from FNV over `whiteId|blackId|pairOrdinal|runSeed`. **Fit:** `rankFitBT` (Bradley-Terry MM, anchor pinned at Elo 0, 0.5 virtual-game prior per played pair, union-find marks components disconnected from the anchor provisional, Fisher SE) and `rankFitSingle` (gauntlet 1-D MLE by bisection). **Subcommands:** `rankCheck`, `rankPlay` (live per-game progress lines), `rankRate` (writes `ranking/ratings.tsv`, `ranking/games.tsv`, and `report.md` with color-split W-L, avg plies, end-piece margin, cpu/move, `eff` = Elo/log2(1+cpu_us/move), an Elo-vs-CPU pareto table, head-to-head matrix, and per-agent history), `rankHistory`, `rankGauntlet` (candidate vs frozen pool, scratch `ranking/gauntlet.jsonl` unless `--keep`), `rankExtract` (replay a deterministic sample of stored matches, re-deriving each game from its stored seed and agent IDs, into labeled value-training data for `train.exe --from-data`; skips games whose replayed result mismatches the stored result), `rankPairGen` (play FRESH games between two canonical IDs into the same training-data format plus a `<out>.meta.json` recipe/tally sidecar -- including a color-stratified record for agent A, `a_white_games`/`a_white_wins`/`a_white_draws` and the `_black_` equivalents, over ALL played games regardless of the winner filter, so a per-color asymmetry never hides inside the aggregate `a_wins`/`b_wins` count; `RankDilOverride` + `rankDilutedProb` replace one side's `randomMoveProb` with a linear start->floor decay without touching its identity or the other side, `--open-plies` random openings spread deterministic pairs (needed for pairgen to double as an EVALUATION tool too -- a deterministic pair with no dilution/opening replays only 2 distinct games no matter how many are requested), `--open-side a|b|both` masks WHICH agent plays the random opener (default `both` = the historical symmetric opener; `a`/`b` = only that agent plays random while the other plays its own policy inside the opener window, mapped A/B->color per game like `--dil-apply`, so an asymmetric opener handicaps only one side -- the Theory 6 test), `--filter winner=a|b` keeps one agent's wins, and `--branch-tries` mines alternative winning lines by rewinding a kept win to a random winner ply via board snapshots (`restoreBoardSnapshot`), substituting a different legal move, and keeping the tail only if the winner wins again), and `rankOpenerBias` (the `opener-bias` subcommand: replays the both-random opener for two agents and, at each ply where agent A -- the champion -- was to move, uses a JUDGE agent's search (`--judge`, default A) to score the position after A's forced-random move against the position after A's own move, tabulating the champion-relative delta split by color; a positionally-aware learned judge is needed because the champion's own coarse Classic eval cannot distinguish opener positions), and `rankOpenerSwap` (the `opener-swap` subcommand: builds a shared symmetric random-opener snapshot, then plays it to conclusion TWICE via `playToConclusion` -- once A=White/B=Black, once swapped -- classifying by who wins both continuations into "White won both" / "Black won both" (a color/position effect) vs "A won both" / "B won both" (a genuine agent-skill effect, isolated from color); see theory 15 in `Docs/theories.md`). Slot file conventions live in `slotFile()`: 0 = lin_value, 1 = lin_policy, 2 = pst_value, 3+ = `models/sweep/slot<N>.txt` (the sweep owns 3..80, the vs-champion study owns 81..99: 81..92 cycle, 93 bootstrap/confirm scratch, 94..99 promoted family models; the opener-bias retrain reuses the 81..92 cycle + slot 93 confirm scratch and archives its models to `models/sweep/vsc_oracle-asym_<seed>.txt`; the scaling study owns 100..125). |
-| `tools/rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `history`, `gauntlet`, `extract`, `pairgen`, `opener-bias`, `opener-swap`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, extract's `--feature-version`/`--sample`, pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`). |
+| `train_main.cpp` | `train.exe` CLI subcommand dispatch |
+| `rank_main.cpp` | `rank.exe` CLI subcommand dispatch |
 
-### `gui/`
+### `gui/` (details: `gui/CLAUDE.md`)
 | File | Purpose |
 |---|---|
-| `main_gui.cpp` | raylib + raygui front end. Resizable window; `ComputeLayout()` recomputes board geometry (`g_cell`/`g_boardX`/`g_boardY`/`g_boardPx`) each frame, reserving the panel width (`PANEL_W`, narrow) on the left while shown so the board sits **beside** it (not under it) and a `BADGE_STRIP` on the right for the piece-count badges; hiding the panel (`g_showPanel`) lets the board grow. Per-frame state machine (`Settings`/`WaitingForHuman`/`WaitingBeforeAI`/`ComputingAI`/`GameOver`), board rendering from the `board` global, mouse->grid click-to-move (via `tryMove*`/`playMove*`, ignored over the panel), AI turns via `moveWhite`/`moveBlack`, robust win detection by scanning goal rows + piece counts. **Auto-start:** `main()` calls `StartGame()` before entering the main loop, so the game is immediately live on open (no "Start Game" click needed). **Settings-changed notice:** `TakeSnapshot()` captures all gameplay settings into `g_snap` (`SettingsSnapshot` struct) at each `StartGame()` call; `SnapMatches()` compares `g_snap` to the current `g_white`/`g_black`/`g_boardFile` every draw call, and `DrawPanel()` shows a "Settings changed." label above the "New Game" button whenever they diverge during a live game. `DrawPieceCounts`/`DrawCountBadge` draw emblematic count badges in the right strip (Black top, White bottom) so they stay visible with the panel hidden. Under each badge, `DrawEvalReadout` (gated by `g_showEval`) shows that side's board evaluation: `now` (immediate static eval, captured before each move in `ApplyAIMove`/`HandleHumanClick`) and, for MiniMax sides, `pred` (the `g_downEval*` best-line value); `FormatEval` renders forced wins as `+WIN`/`-WIN`. Toggle the readouts with the panel "Show evaluations" checkbox or the **E** key. Player type, opener, and (for MiniMax) the evaluator are deferred `GuiDropdownBox`es (drawn last, open one on top, single-open; up to 6 specs, the two eval dropdowns added only for MiniMax sides). `PlayerConfig` carries `evaluator` + `evalParams[MAX_EVAL_PARAMS]`; `SeedEvalParams()` loads the registry defaults whenever the selected evaluator changes, and `DrawPlayerConfig` renders one `StepperRow` per parameter of the chosen evaluator (names/ranges from `g_evaluators`). The engine's `w1` arg (depth/furthest) is built by `SearchArg()`. Numeric params use a modular `StepperRow()` with a `StepStyle` enum of distinct bar+number designs (`STEP_BAR_NUM`, `STEP_SEGMENTS`, `STEP_NUMBAR`, `STEP_HANDLE`, `STEP_RULER`), all stepping with a stacked "+" (up) above "-" (down) via `DrawStackedPM` and click/drag-to-set via `ScrubBar` (`DrawFillBar` draws track+fill). Each row uses a distinct design, and the `g_stepStyle` "Sliders" `GuiComboBox` switcher forces one design on all rows. Depth uses the typeable `STEP_NUMBAR` so it can exceed the bar's 25 cap. Pacing controls are matchup-driven (`ClassifyMatchup`): AI vs AI gets slow-motion `|>` / fast-forward `>>` speed buttons (custom `DrawSpeedGlyph`, stepping `g_speedIndex` through `SPEED_NAME`/`SPEED_DELAY`) plus play/pause (`#131#`/`#132#`), step (`#134#`), and restart (`#211#`) raygui icon buttons; human vs a fast AI gets a `g_delay2s` "Min 2s per AI move" checkbox; human vs a slow (depth>5) AI or human vs human shows none. Toggle the panel with the Options/Hide button or Tab. Native/web main-loop shim at the bottom. |
-| `raygui.h` | Vendored single-header raygui v4 widget library (`RAYGUI_IMPLEMENTATION` defined in `main_gui.cpp`). |
-| `shell.html` | Emscripten HTML shell page for the web build. |
+| `main_gui.cpp` | raylib + raygui front end: layout, state machine, widgets, pacing controls |
+| `raygui.h` | Vendored single-header raygui v4 |
+| `shell.html` | Emscripten HTML shell for the web build |
 
-### `tests/`
+### `tests/` (details: `tests/CLAUDE.md`)
 | File | Purpose |
 |---|---|
-| `catch.hpp` | Catch2 v2 single-header test framework (no external dependency) |
-| `helpers.h` | `setupBoard()`, `clearBoard()`, `runGame()` -- shared test utilities |
-| `test_main.cpp` | Catch2 entry point (defines `CATCH_CONFIG_MAIN`) |
-| `test_move_validation.cpp` | Unit tests for `tryMoveWhite/Black` and `tryMoveQuickWhite/Black` |
-| `test_win_detection.cpp` | Unit tests for `canWinWhite/Black` and `findWinWhite/Black` |
-| `test_eval.cpp` | Unit tests for `evaluateBoard`, the Classic/Experimental equivalence check, and the incremental-eval walk asserting `g_evalPos` matches `evalPosFull` over make/unmake |
-| `test_ai_integration.cpp` | MiniMax forced-win scenarios on hand-crafted positions |
-| `test_game_outcomes.cpp` | Full-game outcome tests using puzzle boards (Black/White MiniMax vs TieredRandom) |
-| `test_ml.cpp` | ML unit tests: feature determinism, `LinearModel` forward/save/load + SGD loss drop, `mlValueScore` bounds, Greedy winning move, LearnedPolicy legal move, Elo monotonicity |
-| `test_ranking.cpp` | Ranking unit tests: ID canonical round trips + rejection battery (incl. stale/missing `@N` module versions), learned-model hash checks, codec completeness vs `g_evaluators`, roster parsing, match-row round trip (new cpu/pc/ed fields + old-row sentinels) + board filter, scheduler color balance / incremental top-up / determinism, BT fit accuracy + anchoring + disconnected components, gauntlet 1-D fit, pairgen (dilution schedule values, byte-identical determinism, zero-override equivalence, winner-filter tally honesty, open-plies divergence, asymmetric open-side divergence + default byte-identical back-compat + meta field, branch-mode determinism), opener-bias runs deterministically, identity-level `.opener(rand,N)@1` randomizes independent of pairgen's own opener flags + rejects unknown/argless opener kinds, opener-swap classifies deterministically |
+| `catch.hpp`, `helpers.h`, `test_main.cpp` | Catch2 framework, shared utilities, entry point |
+| `test_*.cpp` | Move validation, win detection, eval (+ incremental equivalence), AI integration, game outcomes, ML, ranking |
 
 ### `boards/`
 | Files | Purpose |
@@ -312,97 +209,15 @@ The ML system is four pluggable axes plus an agent composition. An **Agent** is 
 
 ---
 
-## Key Global State
-
-All globals are declared `extern` in `globals.h` and defined in `globals.cpp`.
-
-| Variable | Type | Meaning |
-|---|---|---|
-| `board[SIZE][SIZE]` | `char[8][8]` | Board grid indexed `[col][row]`. Values are `'W'`, `'B'`, `'.'`. |
-| `g_whiteCount` | `int` | Live white piece count, updated on every capture |
-| `g_blackCount` | `int` | Live black piece count, updated on every capture |
-| `g_chipDiff` | `int` | `g_whiteCount - g_blackCount`, used directly in `evaluateBoard()` |
-| `g_whiteAtEnd` | `int` | Count of White pieces currently on row `SIZE-1`. Updated by `simulateMove`/`unsimulateMove`. |
-| `g_blackAtEnd` | `int` | Count of Black pieces currently on row `0`. Updated by `simulateMove`/`unsimulateMove`. |
-| `nodesWhite` / `nodesBlack` | `int` | Minimax nodes visited this turn, printed for perf analysis |
-| `g_evalPos` | `int` | Running positional eval (structure + forward) of the board, maintained incrementally by `simulateMove`/`unsimulateMove` during a search |
-| `g_evalIncremental` | `bool` | True while an incremental minimax search is active (gates the `g_evalPos` updates in make/unmake) |
-| `g_mlAcc` | `double` | Running dot product of the board's sparse piece-square inputs with the active v2 value model's weights (bias included), maintained by `simulateMove`/`unsimulateMove`; read at the leaf by `mlLeafScore` |
-| `g_mlIncremental` | `bool` | True while an incremental ML search is active (LearnedValue + feature-v2 model; gates the `g_mlAcc` updates in make/unmake) |
-| `g_mlWeights` | `const float*` | The active v2 model's weight array (indexed by `mlSqW`/`mlSqB`), latched by `mlIncrementalBegin` |
-| `g_activeParams` / `g_activeParamCount` | `const int*` / `int` | The active evaluator's weight array and its length, used by `evalPosLocal` |
-| `g_downEvalWhite` / `g_downEvalBlack` | `int` | Last MiniMax best-line ("predicted downstream") eval per side, white-centric. Set from the root `alpha`/`beta`; read by the UIs for the `pred` readout. |
-| `SHOW_EVAL` | `int` | Console toggle for the per-move eval print: `1`=show, `0`=hide (set by the "Show board evaluations?" prompt). |
-| `g_nodeBudget` / `g_timeBudgetMs` | `unsigned long long` / `double` | Per-move search budgets (0 = off). Node and wall-clock caps; whichever trips first ends the search via iterative deepening. |
-| `g_useAlphaBeta` / `g_useTT` / `g_useMoveOrder` / `g_keepPartial` / `g_aspirationWindow` | `bool` / `int` | Per-search feature toggles, set (saved/restored) by `agentChooseMove` from the `AgentSpec` fields. Defaults reproduce the historical search. |
-| `g_lastEffDepth` / `g_lastBudgetKind` / `g_lastNodes` / `g_lastLeafs` | `double` / `int` / `ull` | Per-move search telemetry. `g_lastEffDepth` is fractional (completed depth + cut-iteration fraction); `g_lastBudgetKind` is `BUDGET_NONE/DEPTH/NODE/TIME`. Read by the tournament for its distribution stats. |
-| `g_nodeBudget` | `unsigned long long` | Per-move search node cap (0 = unlimited, the default; console/GUI/tests unchanged). Set by the tournament so depths up to 10 stay bounded. |
-| `g_nodeDeadline` | `unsigned long long` | Per-search cutoff = `nodes + g_nodeBudget`, seeded in `miniMax*`; `max/minAlphaBeta` treat a node as a leaf once `nodes >= g_nodeDeadline`. |
-| `PRNT` | `int` | Verbosity: `0`=silent, `1`=moves only, `2`=full board states |
-
----
-
-## AI Player Types (`PlayerEnum`)
-
-| Value | Name | Description |
-|---|---|---|
-| 0 | Human | Console input. Move format `c1d` (source col, source row, dest col). |
-| 1 | UniformRandom | All legal moves equally likely |
-| 2 | TieredRandom | Prioritizes winning moves first, then captures, then normal moves |
-| 3 | SmartRandom | Like TieredRandom but restricts candidates to the furthest N pieces (`p1` parameter) |
-| 4 | MiniMax | Alpha-beta search with configurable depth, a selectable evaluator and its weights, and an opener |
-
-### Opening Strategies (`OpenerEnum`)
-| Value | Name | Description |
-|---|---|---|
-| 0 | StandardOpener | No opening sequence, plays normal moves immediately |
-| 1 | OffensiveOpener | Edge pieces attack diagonally, center pieces push forward |
-| 2 | DefensiveOpener | Corner-focused, protects corner pieces first |
-
-Openers are disabled automatically once the opponent advances into the player's half of the board.
-
----
-
-## Architecture Notes
-
-- **Simulate/unsimulate pattern:** `simulateMoveWhite/Black` and `unsimulateMoveWhite/Black` apply and reverse moves in-place so minimax avoids copying the board. They also maintain incremental state across make/unmake: piece counts, `g_chipDiff`, `g_whiteAtEnd`/`g_blackAtEnd`, and (during an incremental search) the positional accumulator `g_evalPos`.
-- **Incremental evaluation:** a move only changes 2 squares, so instead of rescanning all 64 at each leaf, the positional score (structure + forward) is kept in `g_evalPos` and updated by each make/unmake via a true neighbor-local delta (`evalPosLocal`). Like the `g_chipDiff` counter, it touches only what the move changed: `neighborStruct` sums the orthogonal same-color pairs of the two changed squares (under `structOwner`'s single-ownership convention, so it matches `evalPosFull` exactly and excludes the same top-row-wall / rightmost-column pairs), and the forward term is just those two squares' per-square score. No region is rescanned. The leaf (`evalLeaf`) then just adds the already-incremental `g_chipDiff` and the turn term. Seeded/torn down per search by `evalBeginSearch`/`evalEndSearch`. Guarded by an equivalence test (`test_eval.cpp`) that walks the move tree and asserts `g_evalPos` always equals a full `evalPosFull` recompute.
-- **Two validation tiers:** `tryMoveWhite/Black` gives full validation with user-readable error messages for human input. `tryMoveQuickWhite/Black` skips bounds checks for AI inner loop performance.
-- **Capture-first move ordering:** In minimax, moves for each piece are tried in strict priority order: actual captures (diagonal to an enemy piece), then empty diagonal advances, then the forward move. This ordering maximizes alpha-beta cutoffs. End-row win detection (`canWinWhite`/`canWinBlack`) uses `g_whiteAtEnd`/`g_blackAtEnd` for O(1) checks instead of scanning a row.
-- **Win decay:** When minimax finds a forced win, the score decreases by 1 per level, incentivizing the fastest possible victory path.
-- **Evaluator registry / parameter threading:** Instead of fixed positional weights, the chosen evaluator (`int evaluator`) and its parameter array (`const int* evalParams`) are threaded together through `moveWhite/Black` -> `miniMaxWhite/Black` -> `maxAlphaBeta`/`minAlphaBeta` -> `evaluateBoard`. Adding/renaming a parameter or evaluator is a one-place edit in `g_evaluators` (`src/ai_eval.cpp`); both the console (`getEvaluatorSettings`) and GUI (`DrawPlayerConfig`) generate their controls from that table.
-- **`minimax_params.txt`:** Key-value config file (`key=value`, `#` comments) for persisting preferred AI settings between sessions. Per side: `<side>_eval`, `<side>_depth`, `<side>_opener`, and one key per evaluator weight (`<side>_<key>`, with legacy `<side>_<key>_weight` still honored).
-- **Section banners:** The longer source files (`moves.cpp`, `ai_random.cpp`, `settings.cpp`, `gui/main_gui.cpp`) carry `// === LABEL ===` banner comments before each logical section, so `grep "// ==="` over a file returns its outline and `grep "// === FAST VALIDATION"` jumps to a region. Labels mirror the per-file descriptions in this document. `main_gui.cpp` also lists the sections in its header comment. Keep banners in sync when adding or moving a section. Vendored headers (`tests/catch.hpp`, `gui/raygui.h`, `third_party/...`) are excluded.
-
----
-
 ## Verification Checklist
 
-See [TESTING.md](TESTING.md) for the full verification playbook (visual-inspection
-lessons, the `tools/gui_capture.ps1` screenshot helper, matchup-gated UI capture,
-and MSVC/raygui gotchas). The condensed checklist:
-
-Use this after any change to confirm nothing is broken:
+See [TESTING.md](TESTING.md) for the full playbook. The condensed checklist
+after any change:
 
 1. Build succeeds with the `cl` command above (no errors or warnings introduced)
-2. `.\tools\run_tests.ps1 -Build` passes all 501 assertions (use the `/run-tests` skill)
-3. `.\breakthrough.exe` launches and shows the settings prompts
-4. Enter `boards\board1.txt` when asked for a board file. Confirm the board displays correctly.
-5. Run a quick Human vs. UniformRandom game (a few moves) to confirm basic flow
-6. **For AI changes:** run MiniMax (depth 3) vs. MiniMax (depth 3) with `PRNT=1`. Confirm `nodesWhite`/`nodesBlack` stats print and the game completes.
-7. **For eval/weight changes:** compare win rates over a 10-game batch before and after
-
-### For GUI changes (`gui/`)
-
-Always run the standard smoke test after any GUI change, the same way each time:
-
-```powershell
-.\tools\smoke_test_gui.ps1 -Build
-```
-
-This rebuilds `breakthrough_gui.exe`, launches it, waits for it to render, saves a
-screenshot to `build\gui_smoke.png`, and closes it. Exit code `0` means it built
-and stayed alive; non-zero means the build failed or it crashed on startup. Open
-`build\gui_smoke.png` to confirm the board, pieces, and control panel render
-correctly. Add `-KeepOpen` to interact with the window manually (e.g. to test
-click-to-move or a new widget).
+2. `.\tools\run_tests.ps1 -Build` passes all assertions (use the `/run-tests` skill)
+3. `.\breakthrough.exe` launches, loads `boards\board1.txt`, and displays the board
+4. Run a quick Human vs. UniformRandom game (a few moves) to confirm basic flow
+5. **For AI changes:** run MiniMax (depth 3) vs. MiniMax (depth 3) with `PRNT=1`. Confirm `nodesWhite`/`nodesBlack` stats print and the game completes.
+6. **For eval/weight changes:** compare win rates over a 10-game batch before and after
+7. **For GUI changes:** `.\tools\smoke_test_gui.ps1 -Build` (details: `gui/CLAUDE.md`)
