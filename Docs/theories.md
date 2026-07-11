@@ -77,6 +77,8 @@ theories out of a single stray entry into their own subsection.
 | 14 | An offline refutation book could dethrone the champion with less live compute | Open / untested | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | -- |
 | 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
+| 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
+| 18 | Per-side capacity/distance difference is a meaningful predictor or evaluator signal | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -360,13 +362,88 @@ specific to one heuristic: it has been applied to chip count, and to the
 Classic/Experimental wall and column structure terms, and generalizes to
 other evaluator heuristics.
 
-**Status:** Confirmed.
+**Status:** Confirmed, with a scope qualifier from the chip-count study:
+incremental is faster only while the cached term is nonzero. When every weight
+an accumulator maintains is zero, the per-node maintenance calls are pure
+overhead and the incremental path is measurably SLOWER (+18 to +35% us/move at
+champion weights w0,l0) than the full-scan fallback, whose scan early-outs.
 
 **Origin:** [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) "Optimize minimax search with incremental counters and capture-first ordering" (2026-06-04) -- the first instance of this pattern, replacing a full-board `chipDiff()` rescan with the `g_chipDiff`/`g_whiteCount`/`g_blackCount` counters maintained incrementally inside the move-apply/unapply code; predates this project's dedicated "incremental eval" plans and its scientific-methodology conventions (no companion plan/results doc, just a terse commit message from when this was still an unstructured hobby project). [incremental-wall-column-eval-plan-1-golden-forest.md](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) -- second heuristic (wall/column structure) migrated to the same pattern, this time with a formal plan/results doc; generality across heuristics further confirmed by [incremental-ml-eval-plan-1-luminous-snail.md](../plans/incremental-ml-eval-plan-1-luminous-snail.md), which applies the same pattern to a different evaluator (the learned piece-square value model).
 
-**Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- `test_eval.cpp`'s equivalence test walks the move tree asserting the incremental accumulator (`g_evalPos`) always equals a full `evalPosFull` recompute, and measured a **33-39% cpu/node reduction** (`ab(d4).classic(t2,c10,w3,l2)` -39.3%, two Experimental presets -37.9%/-33.4%) with byte-identical eval values, so game outcomes and Elo were unchanged by construction. [incremental-ml-eval-results-1-luminous-snail.md](../plans/incremental-ml-eval-results-1-luminous-snail.md) -- same incremental-accumulator pattern (`g_mlAcc`/`mlLeafScore`) applied to the learned value model, the pattern's second extension beyond chip count. The original chip-count commit (`3af970d`) predates this project's equivalence-test/results-doc discipline, so its correctness rests on the counters' logic (increment/decrement mirrored exactly on capture, in both `simulateMove` and `unsimulateMove`) rather than an automated equivalence check -- no regression has surfaced since, but it wasn't verified the same rigorous way as the two later heuristics.
+**Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- `test_eval.cpp`'s equivalence test walks the move tree asserting the incremental accumulator (`g_evalPos`) always equals a full `evalPosFull` recompute, and measured a **33-39% cpu/node reduction** (`ab(d4).classic(t2,c10,w3,l2)` -39.3%, two Experimental presets -37.9%/-33.4%) with byte-identical eval values, so game outcomes and Elo were unchanged by construction. [incremental-ml-eval-results-1-luminous-snail.md](../plans/incremental-ml-eval-results-1-luminous-snail.md) -- same incremental-accumulator pattern (`g_mlAcc`/`mlLeafScore`) applied to the learned value model, the pattern's second extension beyond chip count. The original chip-count commit (`3af970d`) predates this project's equivalence-test/results-doc discipline, so its correctness rests on the counters' logic (increment/decrement mirrored exactly on capture, in both `simulateMove` and `unsimulateMove`) rather than an automated equivalence check -- no regression has surfaced since, but it wasn't verified the same rigorous way as the two later heuristics. [chip-count-speedup-results-1-iterative-raven.md](../plans/chip-count-speedup-results-1-iterative-raven.md) (2026-07-10) retroactively fills that gap: `train.exe speed`'s eval-level ladder (`g_evalLevel` 1/2/3) reconstructed the pre-`3af970d` leaf and measured, with an in-harness equivalence check (same end board + node count across levels, PASS) standing in for the missing test. Measured chip-count speedup (v1->v2): **-45 to -62% us/move at the champion's zero-structure weights** (w0,l0, the historically relevant configuration, roughly a 2x speedup) and **-14 to -16%** when a full structure scan shares the leaf (w2,l2, depth >= 3). The same run re-measured the structure step (v2->v3, full per-leaf scan -> cached `g_evalPos`) at **-62 to -66% us/move** -- larger than the 33-39% above because the baselines differ: the 33-39% measured only the pt.2 refinement (bounding-box delta -> neighbor-local delta) against an already-incremental baseline, while the ladder's v2 baseline is the older full-per-leaf scan; the numbers nest consistently (~-40% pt.1 x ~-39% pt.2 = ~-63% total). It also found the zero-weight overhead in the Status qualifier above (the incremental machinery costs +18 to +35% when it maintains an always-zero accumulator), suggesting a weight-gated `g_evalIncremental` as a follow-up engine win.
 
 **Notes:** The Forward weight rides along with wall/column in the same `g_evalPos` accumulator (see `ai_eval.cpp`), so Classic/Experimental have no remaining non-incremental term. `evalBeginSearch`/`evalEndSearch` seed and tear down the `g_evalPos` accumulator per search, which is why the wall/column and ML results stay exact rather than becoming an approximation; chip count's `g_chipDiff` is simpler still, just a running delta with no begin/end seeding needed. The next candidate for the same treatment is a future nonlinear (MLP/NNUE) value head (see theory 4) -- incrementality is harder there because hidden-layer activations don't decompose per-square the way a linear dot product does, so this pattern's applicability to that case is not yet established.
+
+### Game-Theoretic Structure & Optimal Play
+
+Theories about Breakthrough's own strategic structure and optimal play --
+proven-but-untested (or hard to prove) claims about the game itself, in the
+same spirit as `Docs/axioms.md`'s derived and empirical tiers but not yet
+settled enough to belong there. Distinct from Gameplay Performance above,
+which is about a specific agent's win rate, not the game's structure. The
+open-ended questions filed under `todo.md`'s "Interpret board analysis" (is
+attacking the center or the edge better, is advancing through the center or
+edge better, is keeping the hind pieces in place better, and so on) are
+natural future entries here once any of them gets formalized into a
+testable claim.
+
+#### 17. Capturing a piece one ply from winning is always optimal, except when it is the last piece
+
+**Claim:** When an opponent has a piece that would win next ply if left
+alone, capturing it is always at least as good as any other reply, with a
+stated exception "except when it's the last piece."
+
+**Status:** Open / untested.
+
+**Origin:** `todo.md`, while scoping a search tool to compute/bound
+"distance-to-win" as a rigorous companion to `Docs/axioms.md` Lemma B's
+capacity measure.
+
+**Tested in:** --
+
+**Notes:** The exception clause is ambiguous as stated and should be pinned
+down before testing. Reading A: "it" is the threatened piece, and the
+exception is that piece being the opponent's LAST one -- in which case
+capturing it doesn't just defuse a threat, it wins outright via A9/D6, a
+stronger and different claim than mere optimality. Reading B: "it" is the
+capturing piece, and the exception is that piece being the defender's OWN
+last piece, where diverting it to capture might be suboptimal for other
+reasons (e.g. needed to defend elsewhere). Testable once the distance-to-win
+search tool above exists, or via targeted hand-constructed counterexample
+positions checked against a deep search. Related to `Docs/axioms.md` D9
+(passed runners) and D10 (back-rank outposts), which already formalize when
+a piece IS one ply from winning.
+
+#### 18. Per-side capacity/distance difference is a meaningful predictor or evaluator signal
+
+**Claim:** The difference between the two sides' total remaining "capacity"
+(`Docs/axioms.md` Lemma B: each side's sum of its own pieces' row-distance to
+its own goal) is a meaningful predictor of who is winning, and/or a useful
+evaluator feature.
+
+**Status:** Open / untested.
+
+**Origin:** `todo.md`'s Heuristic Evaluator Feature Ideas (extending the
+existing Race-distance differential idea), the developer's own stated
+hypothesis: "I suspect no, because running out of pieces is a loss but can
+reduce your capacity. But I wouldn't be surprised either way. Maybe stronger
+bots inherently chase it down fast by trying to capture and gain material
+advantage."
+
+**Tested in:** --
+
+**Notes:** The developer's suspicion names a real confound: a side's own
+capacity drops both when it advances toward its goal (good) and when its
+pieces are captured off the board and stop counting toward its sum at all
+(bad -- and by `Docs/axioms.md` D6, hitting zero pieces is already a loss
+regardless of remaining capacity). So a raw capacity difference may conflate
+"closer to winning by advancing" with "closer to losing by attrition" unless
+normalized by piece count or decomposed into separate advancement and
+material terms. Worth a cheap empirical pass first: check whether the raw
+difference correlates with game outcome across stored games in
+`ranking/matches.jsonl` before building it into an evaluator. Related to
+theory 5 (color-specific weights) and `Docs/axioms.md` E1, since any per-side
+asymmetry here could interact with the known White/Black imbalance.
 
 ## Other
 

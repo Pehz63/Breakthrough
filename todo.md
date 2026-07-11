@@ -107,6 +107,32 @@ against the same seams.
   7 empirical truths with dev (N/A) + Claude confidence columns and evidence pointers, plus a
   conventions section ("White = first mover" as a symmetry-fixing definition, not an axiom).
   Developer confidence cells and Lemma B/C + D1-D14 proof review still open `[done]`
+- Build a search tool to bound/compute **distance-to-win**: the true, rules-respecting
+  number of plies to a forced win from a position, as opposed to `Docs/axioms.md` Lemma
+  B's naive "capacity" sum (which ignores blocking and whether a piece can actually reach
+  its goal). First validation target: the standard start, since axioms.md D13 already
+  hand-proves its minimum game length is exactly 11 plies (a witnessed tight bound) --
+  a computational search should reproduce that number before trusting it on anything
+  harder. The state space is too large to explore exhaustively, so the tool needs pruning:
+  - Depth-first search so it returns a usable answer sooner rather than needing to finish
+  - Explore non-capture moves before captures at each node (this cuts against the engine's
+    normal capture-first move ordering, which is tuned for alpha-beta pruning under a
+    different objective -- pin down and justify the reasoning for this tool specifically
+    before relying on it)
+  - A transposition table deduping by position so a position reached by multiple move
+    sequences is only explored once. Pin this down carefully, it is easy to get backwards:
+    depending on whether the goal is a short witness line or a proof of a lower bound, the
+    table may need to keep the position's BEST (fewest plies) or WORST (most plies)
+    arrival, not just whichever was seen last
+  - Prove each pruning optimization sound (it cannot cause the search to miss a valid
+    shorter game or invalidate a claimed bound) before relying on it, and prioritize
+    optimizations with the biggest expected computation savings first
+  - Embedded hypothesis to test once the tool exists: capturing an opponent piece that is
+    one ply from winning is always an optimal reply, except when it is the last piece.
+    (Ambiguous as stated -- clarify whether "it" is the threatened piece being the
+    opponent's LAST piece, in which case the capture wins outright via A9/D6 rather than
+    merely defusing a threat, or the capturing piece being the defender's OWN last piece
+    needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]`
 
 ## Models (value head: board -> scalar)
 - ~~Linear value model **(P1)**~~
@@ -205,7 +231,11 @@ term into the incremental `evalPosLocal` delta the same way wall/column/forward 
 - Column-emptiness asymmetry: penalize a file that's empty on your side but populated on the
   opponent's, since it's a clear lane for their advance `[Later]`
 - Race-distance differential: (opponent's closest piece to your back rank) minus (your closest
-  piece to theirs), a cheap proxy for who wins a pure race, ignoring tactics `[Dream]`
+  piece to theirs), a cheap proxy for who wins a pure race, ignoring tactics. Generalizes to the
+  difference between the two sides' total remaining "capacity" (`Docs/axioms.md` Lemma B: the
+  full-board sum of every piece's own row-distance to its own goal) as a candidate evaluator
+  term or a key to sort/label/prioritize positions. Whether that difference is actually
+  meaningful, rather than just re-tracking material, is theory 18 in `Docs/theories.md` `[Dream]`
 - Overextension penalty: an advanced piece with no defender and no retreat option, distinct
   from the plain "forward" reward, which doesn't discriminate a supported advance from a bare
   one `[Dream]`
@@ -377,3 +407,10 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   training on the grown 46k-game store beats single-teacher self-play by ~250 Elo:
   best model d6 Elo 920, promoted to `models/pst_value.txt`. Redo only after a capacity
   jump (MLP/NNUE).)
+- Gate the incremental heuristic path on nonzero weights: `evalBeginSearch` should
+  leave `g_evalIncremental` false when wall == column == forward == 0, because the
+  chip-count speed study found the accumulator maintenance is pure overhead there
+  (v3 ran +18 to +35% slower than the full-scan fallback at the champion weights
+  w0,l0). Eval values are identical by construction; the ladder in `train.exe speed`
+  verifies the fix (v2->v3 at w0,l0 should become ~0%). See
+  `plans/chip-count-speedup-results-1-iterative-raven.md`.
