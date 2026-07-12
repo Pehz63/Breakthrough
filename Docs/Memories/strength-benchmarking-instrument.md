@@ -15,3 +15,9 @@ How to apply: vary one thing between compared candidate IDs, run at least two
 `--seed` replicates, read differences against the replicate spread. Use
 pairgen byte-level comparison for near-identical agents, full refits for
 permanent ratings. Full text: `Docs/benchmarking.md`, "Measuring strength".
+
+Two different seeds: the gauntlet `--seed` varies opponents' games; an agent's
+own random seed (e.g. jitter NoiseSeed) is a separate axis where a single
+value can be an outlier. Sweep the agent seed before concluding on a
+stochastic agent -- the bounded-jitter "cost" vanished once its NoiseSeed was
+swept (2 of 6 seeds beat the no-jitter baseline).

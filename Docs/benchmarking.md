@@ -30,6 +30,12 @@ Rules of thumb:
   variants) by gauntlet is unreliable at the ~100 Elo level; use `rank.exe
   pairgen` byte-level game comparison for behavioral identity, and a full
   pool refit (`rank.exe run`) for permanent ratings.
+- Two different seeds: the gauntlet `--seed` varies the OPPONENTS' games. If
+  the agent itself carries a random seed (e.g. the Advanced jitter's
+  NoiseSeed), that is a SEPARATE axis, and a single value can be an outlier.
+  Sweep the agent's own seed before concluding on a stochastic agent -- a
+  bounded-jitter "cost" of -27/-79 Elo evaporated (mean within noise, 2 of 6
+  seeds above baseline) once the NoiseSeed was swept.
 - Full refits are the permanent record; gauntlets are the screening
   instrument.
 

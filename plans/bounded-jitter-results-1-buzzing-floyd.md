@@ -171,17 +171,100 @@ across heads.)
   tie all game, a compounding systematic error. This mechanism statement is
   consistent with all measurements but the tie-decision pathway itself was
   not isolated -- labeled a supported hypothesis, not a finding.
-- **Jitter form: tie-only as proven, cheap but not provably free.** Mean -27
-  (n-1) / -79 (n-3) against replicate spreads of 30-138, with one jitter
-  replicate beating both baseline runs. Bounds: somewhere between ~0 and ~80
-  Elo at this head, only ~10 of which is measured depth loss. Whether the
-  remainder is real (random tie choices worse than the plain agent's
-  deterministic first-found choices, filed as theory 22) or replicate noise
-  needs more seeds.
+- **Jitter form: tie-only as proven, and ~neutral once the noise seed is
+  varied.** These retest rows used noise seed s=1 only (the two gauntlet seeds
+  vary opponents, not the agent). s=1 gave -27 (n-1) / -79 (n-3), which looked
+  like a real cost -- but the follow-up noise-seed sweep (below) shows s=1 is a
+  low outlier: over noise seeds 1-6 the n-1 mean is 1113 vs baseline 1118, with
+  2 of 6 seeds beating baseline. So the jitter is Elo-neutral on average with
+  high seed variance; the retest's apparent cost was single-seed bad luck. The
+  measured depth loss (~10 Elo, below) is the only systematic component.
 - **As a diversity knob, the jitter does exactly what the todo idea wanted:**
   deterministic per seed, distinct across seeds, distinct from plain, provably
   sane at every non-tied decision, at a bounded and much smaller cost than the
   PST form.
+
+## Follow-up investigation (developer questions, 2026-07-12)
+
+The developer asked five sharp questions the first write-up had not answered.
+Honest accounting: essentially none were fully answered before, and theory 22
+had asserted the tie-default mechanism without reading the code -- the exact
+guess-as-finding failure mode just flagged. Answers, now verified:
+
+**Tie default = first-found (code fact, not guess).** `searchRootWhite`/root
+loops update the best move on strict `if (eval > alpha)`, so the FIRST move
+reaching the maximum wins ties; later equal moves never replace it
+(`src/ai_minimax.cpp`). The root enumeration is `y = SIZE-2 .. 0` (most
+advanced piece first), `x = 0 .. 7` (a-file first), and per piece
+capture-left, capture-right, diagonal-left, diagonal-right, straight. So the
+deterministic tie-break systematically prefers advancing the most-forward,
+then leftmost, piece, with a leftward-diagonal lean.
+
+**Good sorting vs directional artifact: it is the directional artifact.** The
+evaluator (chip + turn) and the standard start are both left-right mirror
+symmetric, so every move has an exact mirror with identical backed-up eval --
+every left/right choice is an exact tie. The fixed enumeration then picks the
+left member every time. Capture-first ordering (the "good sorting" part) helps
+pruning but does not cause the bias; the `x = 0..7` and left-diagonal-first
+order is arbitrary, and reversing it would produce an equally strong RIGHT
+bias. Any deterministic tie-break creates a directional pile-up; this one
+happens to point left.
+
+**Empirical confirmation (console, depth 5, Advanced t20,c80, mirror match).**
+First White move is **a2-b3**, exactly as the enumeration predicts. Over the
+whole game White played **17 of 17 moves into the left half (files a-d), zero
+to the right** -- an extreme queenside pile-up, forced by the symmetry
+argument above. This validates the developer's "weak left defense" hypothesis
+in its first half: the left bias is real and total. (Whether it is
+exploitable was not tested; the agent still won the mirror, and rates ~1133 vs
+the pool, so it is a predictability/counter-agent concern, not an obvious
+losing flaw -- connects to the adversarial counter-agent todo item.)
+
+**How many noise seeds tested for strength, and was no-noise universally
+best.** The first write-up tested exactly ONE noise seed (s=1) -- the two
+"seeds" there were gauntlet `--seed` replicates (opponent games), a reporting
+conflation. A proper noise-seed sweep (n-1 at noise seeds 1-6, main roster,
+gauntlet seed 7) answers it:
+
+| noise seed | jitter n-1 | jitter n-3 |
+|---|---|---|
+| baseline (no noise) | 1118 | 1118 |
+| s1 | 1037 | 1037 |
+| s2 | 1076 | 1103 |
+| s3 | 1148 | 1123 |
+| s4 | 1123 | -- |
+| s5 | 1181 | -- |
+| s6 | 1113 | -- |
+| mean | 1113 (s1-6) | 1088 (s1-3) |
+
+**No -- no-noise was not universally best. At n-1, seeds s5 (1181) and s3
+(1148) beat it, s4 (1123) ties it, and the six-seed mean (1113) is within
+noise of the baseline (1118); at n-3, s3 (1123) ties baseline (mean 1088, a
+small ~-30 average cost).** The original "-27/-79 cost" was an artifact of
+testing only s=1, which is the worst seed at both magnitudes (1037). Corrected
+reading: bounded jitter n-1 is Elo-neutral on average with large seed-to-seed
+variance (1037-1181, ~144 spread); n-3 carries a small average cost but its
+best seed still ties baseline. This refines theory 22: if random tie-breaking
+were strictly worse than first-found, no seed would beat baseline; two of six
+did, so first-found is NOT robustly better than a good random tie-break -- it
+is just the zero-variance default. Practical upshot: the jitter is a usable
+diversity knob, and one can seed-select (the sweep already found s5/s3 as
+strong noise seeds to roster).
+
+**Why the jitter sometimes leaves a game unchanged (diversity puzzle).** The
+jitter only reorders EXACT eval ties, so a game diverges from its no-jitter
+twin only if it contains at least one exact-tie decision before the game is
+decided. Confirmed: vs the weak `ab(d3)` opponent White wins in ~15 plies with
+no tie encountered, so jitter n-2 leaves the game byte-identical; vs the
+champion (a long balanced game) it diverges across seeds (the earlier
+diversity check). Separately, in the unbudgeted console search a small jitter
+(n-2) did not alter play while a large one (n-99) did, so the effective root
+tie-granularity of that search exceeds 2 -- a candidate mechanism is that
+alpha-beta searches later (mirror) moves against the incumbent's exact alpha
+and they fail low rather than reporting a jitter-boosted value, so small
+leaf jitter cannot dislodge the first-found incumbent. This is an
+OBSERVATION; the mechanism is not yet instrumented and is filed open, not
+stated as fact.
 
 ## Future Work
 

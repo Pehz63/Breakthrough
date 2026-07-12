@@ -82,7 +82,8 @@ theories out of a single stray entry into their own subsection.
 | 19 | Same-policy agents with different IDs score differently in gauntlets (identity artifact) | Confirmed (mechanisms not yet separated) | Gameplay Performance & Dethroning the Champion | this session's sanity check | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 20 | Seeded random eval noise is a cheap tie-breaker / diversity knob | Split by form: PST refuted at both scales; bounded tie-only jitter works at ~0-80 Elo cost | Model & Evaluator Design | `todo.md` noise idea | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) (corrected), [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
 | 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | 2026-07-11 session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
-| 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Open (weak signal in favor) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) (byproduct) |
+| 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Weakened toward refuted (2 of 6 noise seeds beat baseline) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
+| 23 | Deterministic tie-breaking creates a systematic directional (left-file) bias exploitable as a fingerprint | Confirmed (mechanism + empirical) | Game-Theoretic Structure & Optimal Play | developer question 2026-07-12 | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -366,8 +367,10 @@ strength cost.
 
 **Status:** Split by form after a corrected re-test. The per-piece (random
 PST) form is refuted at both tested scales. The bounded per-position jitter
-form (tie-only by construction) delivers the diversity at a cost measured
-between ~0 and ~80 Elo -- cheap, not provably free.
+form (tie-only by construction) delivers the diversity at ~zero average
+strength cost: a six-noise-seed sweep means 1113 vs baseline 1118, with 2 of 6
+seeds beating baseline (the initial "~0-80 cost" was a single low-seed
+artifact, see theory 22).
 
 **Origin:** `todo.md`'s Heuristic Evaluator Feature Ideas (`[Now]` noise
 idea). Implemented twice on the Advanced evaluator's Noise param, selected by
@@ -440,23 +443,29 @@ than a uniformly random choice among the tied moves -- i.e. tie-breaking
 policy carries real Elo, and "first-found" encodes useful bias (captures and
 stable piece order) rather than being arbitrary.
 
-**Status:** Open -- weak signal in favor, not separable from replicate noise
-at n=2.
+**Status:** Weakened toward refuted. A six-seed sweep showed random
+tie-breaking is NOT robustly worse than deterministic first-found: 2 of 6
+jitter seeds beat the no-jitter baseline outright and the mean was within
+noise.
 
-**Origin:** the bounded-jitter retest: a provably tie-only jitter still
-showed mean drops of -27 (n-1) / -79 (n-3) vs baseline with only ~10 Elo of
-measured depth loss, leaving tie-choice quality as the main candidate
-explanation.
+**Origin:** the bounded-jitter retest: at noise seed s=1 a provably tie-only
+jitter showed mean drops of -27 (n-1) / -79 (n-3) vs baseline, which looked
+like a tie-choice cost until the seed was varied.
 
-**Tested in:** [bounded-jitter-results-1-buzzing-floyd.md](../plans/bounded-jitter-results-1-buzzing-floyd.md)
-(as a byproduct; not yet directly).
+**Tested in:** [bounded-jitter-results-1-buzzing-floyd.md](../plans/bounded-jitter-results-1-buzzing-floyd.md) --
+noise-seed sweep (n-1 at seeds 1-6, main roster): baseline 1118 vs jitter
+1037/1076/1148/1123/1181/1113 (mean 1113). Seeds s5 (1181) and s3 (1148) beat
+baseline, s4 (1123) ties it.
 
-**Notes:** Direct test design (from the results doc's Future Work): more seed
-replicates to shrink the noise band, and/or a variant that at ties picks the
-same move the plain agent would while still jittering elsewhere, isolating
-the tie-choice pathway. Related: the PST form's much larger cost (~-240)
-suggests PERSISTENT random bias at ties is far worse than memoryless random
-choice, consistent with tie decisions mattering.
+**Notes:** The original single-seed signal was an artifact -- s=1 (1037) is
+the worst of the six. First-found tie-breaking is the zero-variance default,
+not a strength edge: some random tie-breaks are as good or better. The residual
+open question is only whether the LOW seeds (s1/s2) are genuinely worse or just
+the low tail of a neutral distribution; the clean test remains a variant that
+picks the plain agent's move at ties while jittering elsewhere. Contrast with
+the PST form's ~-240: PERSISTENT random bias at ties (same wrong preference all
+game) is far worse than MEMORYLESS random tie choice, which is consistent with
+tie decisions mattering only when they are correlated across a game.
 
 #### 10. Linear PST representation is the binding capacity ceiling
 
@@ -529,6 +538,41 @@ attacking the center or the edge better, is advancing through the center or
 edge better, is keeping the hind pieces in place better, and so on) are
 natural future entries here once any of them gets formalized into a
 testable claim.
+
+#### 23. Deterministic tie-breaking creates a systematic directional (left-file) bias
+
+**Claim:** Because the evaluator and standard start are left-right mirror
+symmetric, every left/right move choice is an exact eval tie, and the engine's
+fixed first-found tie-break (root enumeration `x = 0..7`, left-diagonal
+before right) resolves every one of them toward the left -- producing a
+systematic queenside pile-up that is a pure artifact of the enumeration order,
+not of position value. Any consistent tie-break creates such a directional
+bias; the direction is arbitrary (reverse the enumeration and it flips to the
+right), but the bias is inherent and could serve as an agent fingerprint or
+exploitation target.
+
+**Status:** Confirmed -- both the mechanism (from the code) and the effect
+(empirically).
+
+**Origin:** the developer's question of whether the no-jitter agent's tie
+behavior is "an artifact of good sorting, or an artifact that any consistent
+sort creates a directed search."
+
+**Tested in:** [bounded-jitter-results-1-buzzing-floyd.md](../plans/bounded-jitter-results-1-buzzing-floyd.md) --
+tie-default confirmed first-found in `src/ai_minimax.cpp` (strict `>`); a
+console depth-5 mirror match played first move a2-b3 and 17 of 17 White moves
+into files a-d, zero to the right.
+
+**Notes:** Distinct from "good sorting": capture-first ordering helps alpha-
+beta pruning and does NOT cause the bias; the left bias comes purely from the
+arbitrary `x = 0..7` / left-diagonal-first order. The bias is not obviously a
+losing flaw (the agent still wins the mirror and rates ~1133 vs the pool), but
+it is a predictability concern -- a counter-agent could exploit "this build
+always develops queenside" (see the adversarial counter-agent idea in
+`todo.md`). The bounded jitter is one mitigation (it breaks the symmetry ties),
+but its tie-breaking strength is search-config-dependent (theory 20 notes).
+Related to `Docs/axioms.md` O4/D5 (the start's mirror symmetry) and E1 (the
+White tempo advantage that still decides the mirror game).
 
 #### 17. Capturing a piece one ply from winning is always optimal, except when it is the last piece
 
