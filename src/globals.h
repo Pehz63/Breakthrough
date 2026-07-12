@@ -24,7 +24,7 @@ using std::map;
 
 // Maximum number of parameters any board evaluator can declare (see ai_eval.h).
 // Defined here so callers that thread evaluator parameter arrays only need globals.h.
-#define MAX_EVAL_PARAMS 8
+#define MAX_EVAL_PARAMS 20
 
 extern int PRNT;
 extern int p1Default;
@@ -51,6 +51,14 @@ extern int g_evalPos;
 extern bool g_evalIncremental;
 extern const int* g_activeParams;
 extern int g_activeParamCount;
+
+// Per-row piece counts, maintained by simulate/unsimulate only while
+// g_evalRowCounts is set (the Advanced evaluator's Race / RaceWin terms need the
+// board's row extremes at each leaf; a move touches at most 3 row counts).
+// Seeded per search by evalBeginSearch, inert everywhere else.
+extern int g_rowCountW[SIZE];
+extern int g_rowCountB[SIZE];
+extern bool g_evalRowCounts;
 
 // Benchmark-only eval-level selector (default 3 = current shipping behavior).
 // Reconstructs prior generations of the heuristic leaf for speed measurement:
@@ -130,6 +138,8 @@ int countChips(int);
 int countChips();
 int chipDiff(int);
 int chipDiff();
+int capacityWhite();
+int capacityBlack();
 int findWinWhite();
 int findWinBlack();
 bool canWinWhite();

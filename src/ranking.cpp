@@ -171,6 +171,9 @@ static const RankEvalCodec g_rkEvals[] = {
     { "Classic",      "classic", "tcwl",  2 },   // turn, chip, wall, column (@2: neighbor-local structure delta)
     { "Experimental", "exp",     "tcwlf", 2 },   // + forward (@2: neighbor-local structure delta)
     { "LearnedValue", "learned", "",      1 },   // special arg form: s<slot>,<hash8>
+    // Advanced: + support, center, mobility, hole, control(b), open, race,
+    // overext(x), noise, noiseseed(s), racewin(g). See src/ai_eval.cpp ADV_*.
+    { "Advanced",     "adv",     "tcwlfdemhborxnsg", 1 },
 };
 static const int g_rkEvalCount = sizeof(g_rkEvals) / sizeof(g_rkEvals[0]);
 // The dilution wrapper is a module too (agentChooseMove's random-move coin).

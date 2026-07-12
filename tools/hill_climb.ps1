@@ -1,16 +1,24 @@
-# hill_climb.ps1 - Stochastic hill climber over the Experimental evaluator's weight mix,
+# hill_climb.ps1 - Stochastic hill climber over the Advanced evaluator's weight mix,
 # optimizing agent Elo at a fixed search depth. Fitness is rank.exe's gauntlet: it rates
 # one candidate id against the frozen ranking/ratings.tsv pool and prints an anchored Elo.
 #
 #   .\tools\hill_climb.ps1 -Build -Iters 4 -Games 2 -Depth 2      # quick smoke
-#   .\tools\hill_climb.ps1 -Iters 40 -Games 4                     # real climb at d4
+#   .\tools\hill_climb.ps1 -Iters 60 -Games 4                     # real climb at d4
+#   .\tools\hill_climb.ps1 -Iters 60 -Games 4 -AllowNegative      # signed-weight climb
 #   .\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2       # then rank the winners
 #
-# Turn is pinned at -Turn (20) and chip+wall+column+forward are renormalized to sum to
-# -Sum minus -Turn (80). This pins the scale (the evaluator is scale-invariant for move
-# selection), so scalar-duplicate candidates collapse to one canonical simplex point that
-# dedupes the cache. The mutation shifts the relative mix, with an occasional drastic reset
-# of the chip weight. Greedy acceptance from the best-so-far; drastic jumps provide escape.
+# Climbed weights (13): chip, wall, column, forward, support, center, mobility, hole,
+# control, open, race, overext, noise. Turn is pinned at -Turn (20), the noise seed at
+# -NoiseSeed (1), and the RaceWin detector at -RaceWin (1; it is a proven-sound win
+# check, not a mix weight). The 13 weights are renormalized so their ABSOLUTE values
+# sum to -Sum minus -Turn (80). This pins the scale (the evaluator is scale-invariant
+# for move selection), so scalar-duplicate candidates collapse to one canonical simplex
+# point that dedupes the cache.
+#
+# -AllowNegative lets weights go negative (sign flips, signed drastic resets), which is
+# the only way the climber can reach e.g. the pure-capacity direction (forward positive,
+# chip negative in a 1:-7 ratio) or the negative wall/column hypothesis. Default off:
+# the historical non-negative search, for A/B comparison against the signed mode.
 #
 # gauntlet writes only scratch ranking/gauntlet.jsonl (truncated each call), so the climber
 # is serial and never touches the permanent store ranking/matches.jsonl. Opponent ratings
@@ -25,12 +33,16 @@ param(
     [string]$Head = "",                              # override the ab(...) head, e.g. "d6,tt,ord,nb200k"
     [string]$Roster = "ranking/climb_roster.txt",
     [int]$Games = 4,
-    [int]$Iters = 40,
+    [int]$Iters = 60,
     [int]$Seed = 1,
     [double]$Drastic = 0.3,
+    [double]$FlipProb = 0.15,                        # sign-flip mutation share (AllowNegative only)
     [int]$Sum = 100,
     [int]$Turn = 20,
-    [string]$Start = "c4,w0,l0,f1",
+    [int]$NoiseSeed = 1,
+    [int]$RaceWin = 1,
+    [string]$Start = "c80",
+    [switch]$AllowNegative,
     [switch]$Promote,
     [int]$PromoteTop = 3,
     [int]$PromoteGames = 8
@@ -56,18 +68,27 @@ if (-not (Test-Path $RatingsFile)) {
 $PosSum = $Sum - $Turn
 if ($PosSum -lt 4) { Write-Error "-Sum ($Sum) minus -Turn ($Turn) must leave at least 4 for the positional weights."; exit 1 }
 
-# ---- weight helpers (order: chip, wall, column, forward) ----
+# ---- weight vector: 13 climbed components, ID letters in adv(...) order ----
+$Letters = @('c', 'w', 'l', 'f', 'd', 'e', 'm', 'h', 'b', 'o', 'r', 'x', 'n')
+$NW = $Letters.Count
 
-# Scale a 4-vector to sum exactly $PosSum as integers (largest-remainder rounding).
+# Scale a 13-vector so the ABSOLUTE values sum exactly to $PosSum as integers
+# (largest-remainder rounding on the magnitudes, signs preserved).
 function Get-NormWeights([double[]]$v) {
     [double]$total = 0.0
-    for ($i = 0; $i -lt 4; $i++) { $total += $v[$i] }
-    if ($total -le 0) { return @([int]$PosSum, 0, 0, 0) }
-    $ints = New-Object 'int[]' 4
-    $rem = New-Object 'double[]' 4
+    for ($i = 0; $i -lt $NW; $i++) { $total += [math]::Abs($v[$i]) }
+    if ($total -le 0) {
+        $out = New-Object 'int[]' $NW
+        $out[0] = [int]$PosSum
+        return ,$out
+    }
+    $ints = New-Object 'int[]' $NW
+    $sign = New-Object 'int[]' $NW
+    $rem = New-Object 'double[]' $NW
     [int]$used = 0
-    for ($i = 0; $i -lt 4; $i++) {
-        [double]$scaled = $v[$i] * $PosSum / $total
+    for ($i = 0; $i -lt $NW; $i++) {
+        if ($v[$i] -lt 0) { $sign[$i] = -1 } else { $sign[$i] = 1 }
+        [double]$scaled = [math]::Abs($v[$i]) * $PosSum / $total
         [int]$fl = [math]::Floor($scaled)
         $ints[$i] = $fl
         $rem[$i] = $scaled - $fl
@@ -77,34 +98,42 @@ function Get-NormWeights([double[]]$v) {
     # hand the leftover units to the components with the largest fractional remainder
     for ($k = 0; $k -lt $deficit; $k++) {
         [int]$bi = 0
-        for ($i = 1; $i -lt 4; $i++) { if ($rem[$i] -gt $rem[$bi]) { $bi = $i } }
+        for ($i = 1; $i -lt $NW; $i++) { if ($rem[$i] -gt $rem[$bi]) { $bi = $i } }
         $ints[$bi] += 1
         $rem[$bi] = -1.0
     }
-    return @([int]$ints[0], [int]$ints[1], [int]$ints[2], [int]$ints[3])
+    $out = New-Object 'int[]' $NW
+    for ($i = 0; $i -lt $NW; $i++) { $out[$i] = $ints[$i] * $sign[$i] }
+    return ,$out
 }
 
 function Get-StartWeights([string]$s) {
-    $map = @{ c = 0.0; w = 0.0; l = 0.0; f = 0.0 }
+    $v = New-Object 'double[]' $NW
     foreach ($tok in $s.Split(",")) {
         $t = $tok.Trim()
         if ($t.Length -lt 2) { continue }
         $letter = $t.Substring(0, 1)
         $num = [double]$t.Substring(1)
-        if ($map.ContainsKey($letter)) { $map[$letter] = $num }
+        [int]$idx = [array]::IndexOf($Letters, $letter)
+        if ($idx -ge 0) { $v[$idx] = $num }
     }
-    return @($map.c, $map.w, $map.l, $map.f)
+    return ,$v
 }
 
-function Get-CandidateId([int[]]$wts) {
+function Get-CandidateId([int[]]$w) {
     if ($Head -ne "") { $h = $Head } else { $h = "d$Depth" }
-    return "ab($h)@1.exp(t$Turn,c$($wts[0]),w$($wts[1]),l$($wts[2]),f$($wts[3]))@1"
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add("t$Turn") | Out-Null
+    for ($i = 0; $i -lt $NW; $i++) { $parts.Add("$($Letters[$i])$($w[$i])") | Out-Null }
+    $parts.Add("s$NoiseSeed") | Out-Null
+    $parts.Add("g$RaceWin") | Out-Null
+    return "ab($h)@1.adv(" + ($parts -join ",") + ")@1"
 }
 
 # ---- fitness: one gauntlet, parse the anchored Elo ----
 $cache = @{}
-function Get-Elo([int[]]$wts) {
-    $id = Get-CandidateId $wts
+function Get-Elo([int[]]$w) {
+    $id = Get-CandidateId $w
     if ($cache.ContainsKey($id)) { return $cache[$id] }
     $out = & $Exe gauntlet --id $id --games $Games --roster $Roster --seed $Seed 2>&1
     $elo = $null; $se = $null
@@ -116,56 +145,83 @@ function Get-Elo([int[]]$wts) {
         Write-Error "Could not parse an Elo for id: $id"
         exit 1
     }
-    $r = [pscustomobject]@{ id = $id; elo = $elo; se = $se; wts = $wts }
+    $r = [pscustomobject]@{ id = $id; elo = $elo; se = $se; wts = $w }
     $cache[$id] = $r
     return $r
 }
 
-# ---- mutation on the sum-$PosSum simplex ----
+# ---- mutation on the |sum| = $PosSum simplex ----
 function Mutate([int[]]$b) {
-    if ((Get-Random -Minimum 0.0 -Maximum 1.0) -lt $Drastic) {
-        # drastic: reseed the chip weight, spread the remainder over wall/column/forward
+    [double]$roll = Get-Random -Minimum 0.0 -Maximum 1.0
+    if ($roll -lt $Drastic) {
+        # drastic: reseed the chip weight, spread the remainder over the other 12.
+        # In signed mode chip and each spread component get a random sign.
         [int]$chip = Get-Random -Minimum 0 -Maximum ($PosSum + 1)
         [double]$rem = $PosSum - $chip
-        [double]$r0 = Get-Random -Minimum 0.0 -Maximum 1.0
-        [double]$r1 = Get-Random -Minimum 0.0 -Maximum 1.0
-        [double]$r2 = Get-Random -Minimum 0.0 -Maximum 1.0
-        [double]$rs = $r0 + $r1 + $r2
-        if ($rs -le 0) { $r0 = 1.0; $r1 = 1.0; $r2 = 1.0; $rs = 3.0 }
-        $v = New-Object 'double[]' 4
+        $r = New-Object 'double[]' ($NW - 1)
+        [double]$rs = 0.0
+        for ($i = 0; $i -lt $NW - 1; $i++) { $r[$i] = Get-Random -Minimum 0.0 -Maximum 1.0; $rs += $r[$i] }
+        if ($rs -le 0) { for ($i = 0; $i -lt $NW - 1; $i++) { $r[$i] = 1.0 }; $rs = [double]($NW - 1) }
+        $v = New-Object 'double[]' $NW
         $v[0] = [double]$chip
-        $v[1] = $rem * $r0 / $rs
-        $v[2] = $rem * $r1 / $rs
-        $v[3] = $rem * $r2 / $rs
+        if ($AllowNegative) {
+            if ((Get-Random -Minimum 0.0 -Maximum 1.0) -lt 0.25) { $v[0] = -$v[0] }
+        }
+        for ($i = 1; $i -lt $NW; $i++) {
+            $v[$i] = $rem * $r[$i - 1] / $rs
+            if ($AllowNegative) {
+                if ((Get-Random -Minimum 0.0 -Maximum 1.0) -lt 0.3) { $v[$i] = -$v[$i] }
+            }
+        }
         return Get-NormWeights $v
     }
-    # small step: move a delta of {1,3,5} units from one component to another. Pick the
-    # source among components that actually have weight, so the step always moves something.
+    $nonzero = @(0..($NW - 1) | Where-Object { $b[$_] -ne 0 })
+    if ($AllowNegative -and $roll -lt ($Drastic + $FlipProb) -and $nonzero.Count -gt 0) {
+        # sign flip: negate one nonzero component (|sum| unchanged)
+        [int]$fi = $nonzero[(Get-Random -Minimum 0 -Maximum $nonzero.Count)]
+        $n = New-Object 'int[]' $NW
+        for ($i = 0; $i -lt $NW; $i++) { $n[$i] = [int]$b[$i] }
+        $n[$fi] = -$n[$fi]
+        return ,$n
+    }
+    # small step: move a delta of {1,3,5} magnitude units from one component to another.
+    # The source shrinks toward 0; the destination grows away from 0 in its own sign
+    # direction (a zero destination grows positive, or randomly signed in signed mode).
     $deltas = @(1, 3, 5)
     [int]$delta = $deltas[(Get-Random -Minimum 0 -Maximum $deltas.Count)]
-    $nonzero = @(0..3 | Where-Object { $b[$_] -gt 0 })
     [int]$src = $nonzero[(Get-Random -Minimum 0 -Maximum $nonzero.Count)]
-    [int]$dst = Get-Random -Minimum 0 -Maximum 4
-    while ($dst -eq $src) { $dst = Get-Random -Minimum 0 -Maximum 4 }
-    $n = New-Object 'int[]' 4
-    for ($i = 0; $i -lt 4; $i++) { $n[$i] = [int]$b[$i] }
-    [int]$moved = [math]::Min($delta, $n[$src])
-    $n[$src] -= $moved
-    $n[$dst] += $moved
-    return @([int]$n[0], [int]$n[1], [int]$n[2], [int]$n[3])
+    [int]$dst = Get-Random -Minimum 0 -Maximum $NW
+    while ($dst -eq $src) { $dst = Get-Random -Minimum 0 -Maximum $NW }
+    $n = New-Object 'int[]' $NW
+    for ($i = 0; $i -lt $NW; $i++) { $n[$i] = [int]$b[$i] }
+    [int]$moved = [math]::Min($delta, [math]::Abs($n[$src]))
+    if ($n[$src] -lt 0) { $n[$src] += $moved } else { $n[$src] -= $moved }
+    [int]$dstSign = 1
+    if ($n[$dst] -lt 0) { $dstSign = -1 }
+    elseif ($n[$dst] -eq 0 -and $AllowNegative) {
+        if ((Get-Random -Minimum 0.0 -Maximum 1.0) -lt 0.3) { $dstSign = -1 }
+    }
+    $n[$dst] += $moved * $dstSign
+    return ,$n
 }
 
 # ---- run ----
+$mode = "nonneg"
+if ($AllowNegative) { $mode = "signed" }
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
-$log = "ranking/climb_exp_d${Depth}_$stamp.tsv"
-"iter`taccepted`telo`tse`tturn`tchip`twall`tcolumn`tforward`tid" | Out-File -FilePath $log -Encoding Ascii
+$log = "ranking/climb_adv_${mode}_d${Depth}_$stamp.tsv"
+$hdrW = ($Letters | ForEach-Object { $_ }) -join "`t"
+"iter`taccepted`telo`tse`tturn`t$hdrW`tid" | Out-File -FilePath $log -Encoding Ascii
 function Write-LogRow([int]$iter, [int]$accepted, $r) {
-    "$iter`t$accepted`t$($r.elo)`t$($r.se)`t$Turn`t$($r.wts[0])`t$($r.wts[1])`t$($r.wts[2])`t$($r.wts[3])`t$($r.id)" |
+    $wcols = ($r.wts | ForEach-Object { $_ }) -join "`t"
+    "$iter`t$accepted`t$($r.elo)`t$($r.se)`t$Turn`t$wcols`t$($r.id)" |
         Add-Content -Path $log -Encoding Ascii
 }
 
-Write-Host "Hill climb: exp weights at head 'ab($(if ($Head -ne '') { $Head } else { "d$Depth" }))', turn=$Turn, positional sum=$PosSum"
-Write-Host "  roster=$Roster games=$Games iters=$Iters seed=$Seed drastic=$Drastic  log=$log`n"
+$headTxt = "d$Depth"
+if ($Head -ne "") { $headTxt = $Head }
+Write-Host "Hill climb: adv weights at head 'ab($headTxt)', mode=$mode, turn=$Turn, |positional| sum=$PosSum"
+Write-Host "  roster=$Roster games=$Games iters=$Iters seed=$Seed drastic=$Drastic noiseseed=$NoiseSeed racewin=$RaceWin  log=$log`n"
 
 $best = Get-Elo (Get-NormWeights (Get-StartWeights $Start))
 Write-LogRow 0 1 $best
@@ -177,10 +233,13 @@ for ($i = 1; $i -le $Iters; $i++) {
     $accept = $r.elo -gt $best.elo
     if ($accept) { $best = $r }
     Write-LogRow $i ([int][bool]$accept) $r
-    $tag = if ($accept) { "BEST" } else { "" }
-    Write-Host ("[{0,3}] {1,-7} Elo {2,5} +/-{3,3}  (c{4} w{5} l{6} f{7})  {8}" -f `
-        $i, $(if ($accept) { "accept" } else { "reject" }), $r.elo, $r.se, `
-        $r.wts[0], $r.wts[1], $r.wts[2], $r.wts[3], $tag)
+    $tag = ""
+    if ($accept) { $tag = "BEST" }
+    $verb = "reject"
+    if ($accept) { $verb = "accept" }
+    $wtxt = ""
+    for ($k = 0; $k -lt $NW; $k++) { $wtxt += "$($Letters[$k])$($r.wts[$k]) " }
+    Write-Host ("[{0,3}] {1,-7} Elo {2,5} +/-{3,3}  ({4}) {5}" -f $i, $verb, $r.elo, $r.se, $wtxt.TrimEnd(), $tag)
 }
 
 Write-Host "`nBest: $($best.id)  Elo $($best.elo) +/- $($best.se)"

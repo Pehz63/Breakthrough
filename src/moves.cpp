@@ -287,6 +287,10 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
     if (moveY+1 == SIZE-1) g_whiteAtEnd++;
 
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
+    if (g_evalRowCounts) {
+        g_rowCountW[moveY]--; g_rowCountW[moveY+1]++;
+        if (isCapture) g_rowCountB[moveY+1]--;
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY+1)] - g_mlWeights[mlSqW(moveX1, moveY)];
         if (isCapture) g_mlAcc -= g_mlWeights[mlSqB(moveX2, moveY+1)];
@@ -310,6 +314,10 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
     if (moveY-1 == 0) g_blackAtEnd++;
 
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
+    if (g_evalRowCounts) {
+        g_rowCountB[moveY]--; g_rowCountB[moveY-1]++;
+        if (isCapture) g_rowCountW[moveY-1]--;
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY-1)] - g_mlWeights[mlSqB(moveX1, moveY)];
         if (isCapture) g_mlAcc -= g_mlWeights[mlSqW(moveX2, moveY-1)];
@@ -329,6 +337,10 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
     } else
         board[moveX2][moveY+1] = EMPTY;
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY+1) - posBefore;
+    if (g_evalRowCounts) {
+        g_rowCountW[moveY]++; g_rowCountW[moveY+1]--;
+        if (isCapture) g_rowCountB[moveY+1]++;
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqW(moveX1, moveY)] - g_mlWeights[mlSqW(moveX2, moveY+1)];
         if (isCapture) g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY+1)];
@@ -349,6 +361,10 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
     } else
         board[moveX2][moveY-1] = EMPTY;
     if (g_evalIncremental) g_evalPos += evalPosLocal(moveX1, moveY, moveX2, moveY-1) - posBefore;
+    if (g_evalRowCounts) {
+        g_rowCountB[moveY]++; g_rowCountB[moveY-1]--;
+        if (isCapture) g_rowCountW[moveY-1]++;
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqB(moveX1, moveY)] - g_mlWeights[mlSqB(moveX2, moveY-1)];
         if (isCapture) g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY-1)];

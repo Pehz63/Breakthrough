@@ -39,6 +39,29 @@ int chipDiff() {  //Count the chip difference on the board
     }
     return count;
 }
+// Remaining capacity (Docs/axioms.md Lemma B): the sum over a side's pieces of
+// each piece's row distance to its own goal row. Strictly decreases every ply.
+// Not an evaluator weight: the white-centric capacity advantage is linearly
+// dependent on existing terms (capacityBlack - capacityWhite == forwardSum -
+// (SIZE-1)*chipDiff, code-verified in tests/test_eval.cpp), so these helpers
+// exist for analysis tools (distance-to-win search, theory 18's outcome
+// correlation), not for the eval registry.
+int capacityWhite() {  //Sum of (SIZE-1 - y) over all white pieces
+    int cap = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++)
+            if (board[x][y] == WHITE)
+                cap += SIZE-1 - y;
+    return cap;
+}
+int capacityBlack() {  //Sum of y over all black pieces
+    int cap = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++)
+            if (board[x][y] == BLACK)
+                cap += y;
+    return cap;
+}
 int findWinWhite() {  //Returns -1 if no win or column number if white can win
     int y = SIZE-2;
     int moveList[SIZE*3];

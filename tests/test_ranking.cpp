@@ -88,6 +88,16 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.timeBudgetMs == Approx(250.0));
     REQUIRE(a.spec.depthCap == 2);
 
+    // Advanced evaluator: all 16 weights, including a negative one (signed
+    // weights are legal in IDs) and the noise seed / racewin toggle slots.
+    a = parseOk("ab(d4)@1.adv(t20,c50,w-3,l0,f10,d5,e2,m3,h4,b2,o2,r3,x2,n1,s7,g1)@1");
+    REQUIRE(a.spec.evaluator == rkEvalIdx("Advanced"));
+    REQUIRE(a.spec.evalParams[0] == 20);
+    REQUIRE(a.spec.evalParams[2] == -3);
+    REQUIRE(a.spec.evalParams[13] == 1);
+    REQUIRE(a.spec.evalParams[14] == 7);
+    REQUIRE(a.spec.evalParams[15] == 1);
+
     a = parseOk("smart(4)@1.dil(r2.5)@1");
     REQUIRE(a.spec.randomMoveProb == Approx(0.025));
     REQUIRE(a.spec.dilDepth == 0);   // plain dilution = fully random move

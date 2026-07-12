@@ -86,14 +86,19 @@ a mismatch (a retrain is a new identity). Full internals (ID codec, store row fo
 scheduler, BT fit, every subcommand, slot conventions): `src/CLAUDE.md`'s
 `ranking.cpp` entry.
 
-The **hill climber** (`tools/hill_climb.ps1`) optimizes the Experimental weight mix at a
-fixed depth using `gauntlet` as fitness: turn pinned at 20, chip/wall/column/forward
-renormalized to sum 80 (so the mix, not the scale, is searched and candidates dedupe),
-greedy-from-best with `{1,3,5}`-unit simplex steps + drastic chip resets, id-keyed cache.
-It plays the small stochastic pool `ranking/climb_roster.txt` by default; `-Promote`
-appends the top finds to `ranking/roster.txt` and does a full refit. The roster also
-carries a dense diluted-d6 ladder (random-move `dil(rP)` + stochastic-depth `dil(rP,dN)`)
-so the top of the table is well-resolved and the climber has non-deterministic opponents.
+The **hill climber** (`tools/hill_climb.ps1`) optimizes the Advanced weight mix at a
+fixed depth using `gauntlet` as fitness: 13 climbed weights (chip, wall, column,
+forward, support, center, mobility, hole, control, open, race, overext, noise), turn
+pinned at `-Turn` (20), noise seed and RaceWin pinned (`-NoiseSeed` 1 / `-RaceWin` 1),
+absolute values renormalized to sum 80 (so the mix, not the scale, is searched and
+candidates dedupe), greedy-from-best with `{1,3,5}`-unit simplex steps + drastic chip
+resets, id-keyed cache. `-AllowNegative` adds sign-flip mutations and signed drastic
+resets (weights may go negative; the only way to reach e.g. the capacity direction of
+positive forward + negative chip). It plays the small stochastic pool
+`ranking/climb_roster.txt` by default; `-Promote` appends the top finds to
+`ranking/roster.txt` and does a full refit. The roster also carries a dense diluted-d6
+ladder (random-move `dil(rP)` + stochastic-depth `dil(rP,dN)`) so the top of the table
+is well-resolved and the climber has non-deterministic opponents.
 
 ## Script details
 
@@ -109,7 +114,7 @@ so the top of the table is well-resolved and the climber has non-deterministic o
 | `train_vs_champion.ps1` | Vs-champion training-data study: generates `rank.exe pairgen` datasets from games involving the reigning champion (learner-vs-champ, diluted-champ-vs-champ, d8 oracle-vs-champ, champion-loss cherry-picks, branch-mined winning lines), trains linear v2 PST cells per dataset (seed replicas), gauntlet-screens at the d4 wrapper into `models/sweep/vs_champ.csv` (resumable), gates a bootstrap arm, promotes each family's best to reserved slots 94..99, d6-confirms, appends the d6 IDs + the oracle to the roster, re-rates the pool, and prints the opponent-bucket residual analysis (champion / classic-like / diverse) that answers the two recorded theories. `-DryRun` for a tiny pipeline check, `-AnalysisOnly` to recompute the bucket tables later (the standing longitudinal theory re-check). First run's result (`plans/vs-champion-training-results-1-cozy-forest.md`): diluted-champion-vs-champion and oracle-vs-champion data beat the replay recipe, the best model ties the champion at d6 (1137 vs 1140 on the shared fit), one-sided cherry-picked datasets fail from degenerate labels. |
 | `opener_bias_study.ps1` | Theory 6 test (`Docs/theories.md`), Layers 1+2: for each promoted challenger (champdil s96, oracle s98) vs the champion, plays the d6 head-to-head under three opener configs -- S (`--open-side both`, the symmetric baseline), C (`--open-side a`, challenger random / champion true policy), P (`--open-side b`, champion random) -- and reads the win tally from each pairgen `.meta.json`, then runs `rank.exe opener-bias` with a learned judge for the mechanism measure. Writes `data/opener_bias/` (gitignored) + `sensitivity_sweep.csv`. First run: champdil 65% (S) -> 40% (C), oracle 58.8% (S) -> 66.2% (C). Results: `plans/opener-bias-results-1-synchronous-stearns.md`. |
 | `opener_bias_retrain.ps1` | Theory 6 test, Layer 3: regenerates the oracle training set with `--open-side a` (only the oracle plays the random opener; the champion plays its own opening) into `data/pg_oracle_champ_asym.jsonl`, retrains the 3-seed oracle cell (`--from-data`), gauntlet-screens at the d4 wrapper, d6-confirms the best, and compares to the symmetric baseline (screen mean 785 / d6 1137). Resumable via `models/sweep/opener_bias_retrain.csv`; archives models to `models/sweep/vsc_oracle-asym_<seed>.txt` (does NOT overwrite the symmetric `vsc_oracle-vs-champ_*.txt` or touch the roster). `-DryRun` for a tiny pipeline check. |
-| `hill_climb.ps1` | Stochastic hill climber over the Experimental eval weight mix, optimizing Elo at a fixed depth via `rank.exe gauntlet` as the fitness function. Turn pinned at `-Turn` (20), chip/wall/column/forward renormalized to sum `-Sum`-`-Turn` (80) so the search varies the mix not the scale and candidates dedupe. Greedy-from-best with `{1,3,5}`-unit simplex steps + occasional drastic chip reset; id-keyed cache. `-Roster` defaults to `ranking/climb_roster.txt`; `-Promote` appends the top finds to `ranking/roster.txt` and runs a full refit. Logs every candidate to `ranking/climb_exp_d<depth>_<stamp>.tsv` (gitignored). |
+| `hill_climb.ps1` | Stochastic hill climber over the Advanced eval weight mix (13 weights: c,w,l,f,d,e,m,h,b,o,r,x,n), optimizing Elo at a fixed depth via `rank.exe gauntlet` as the fitness function. Turn pinned at `-Turn` (20), `-NoiseSeed`/`-RaceWin` pinned (1/1), absolute weight values renormalized to sum `-Sum`-`-Turn` (80) so the search varies the mix not the scale and candidates dedupe. Greedy-from-best with `{1,3,5}`-unit simplex steps + occasional drastic chip reset; `-AllowNegative` adds sign-flip mutations and signed resets; id-keyed cache. `-Roster` defaults to `ranking/climb_roster.txt`; `-Promote` appends the top finds to `ranking/roster.txt` and runs a full refit. Logs every candidate to `ranking/climb_adv_<mode>_d<depth>_<stamp>.tsv` (gitignored). |
 | `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root). See `gui/CLAUDE.md`. |
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
 | `train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `imitate`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |

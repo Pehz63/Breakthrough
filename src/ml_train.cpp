@@ -1347,6 +1347,7 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
 
     int abIdx = explorerIndexByName("AlphaBeta"), grIdx = explorerIndexByName("Greedy");
     int classic = evaluatorIndexByName("Classic"), exper = evaluatorIndexByName("Experimental");
+    int advanced = evaluatorIndexByName("Advanced");
 
     struct Bench { string name; AgentSpec a; bool search; };
     std::vector<Bench> bs;
@@ -1355,17 +1356,21 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
     if (hasVal) { AgentSpec g = agentMakeSearch("lv", grIdx, learnedValueIndex(), 1, 0);
         bs.push_back({ "Greedy+LearnedValue (1-ply)", g, false }); }
 
-    struct Var { const char* tag; int ev; int p[5]; };
+    // Advanced weight layout: t,c,w,l,f, d,e,m,h,b, o,r,x,n,s, g.
+    struct Var { const char* tag; int ev; int p[MAX_EVAL_PARAMS]; };
     Var vars[] = {
-        { "chip            ", classic, { 0, 4, 0, 0, 0 } },
-        { "chip+forward    ", exper,   { 0, 4, 0, 0, 2 } },
-        { "chip+structures ", classic, { 0, 4, 2, 2, 0 } },
-        { "chip+struct+fwd ", exper,   { 0, 4, 2, 2, 2 } },
+        { "chip            ", classic,  { 0, 4, 0, 0, 0 } },
+        { "chip+forward    ", exper,    { 0, 4, 0, 0, 2 } },
+        { "chip+structures ", classic,  { 0, 4, 2, 2, 0 } },
+        { "chip+struct+fwd ", exper,    { 0, 4, 2, 2, 2 } },
+        { "adv-chip g0     ", advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0 } },
+        { "adv-chip+racewin", advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 1 } },
+        { "adv-all-on      ", advanced, { 1, 4, 2, 2, 2,  2, 1, 1, 3, 2,  2, 2, 2, 2, 7, 1 } },
     };
     for (Var& v : vars)
         for (int d = 1; d <= maxDepth; d++) {
             AgentSpec a = agentMakeSearch("ab", abIdx, v.ev, d, 0);
-            for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+            for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = v.p[k];
             bs.push_back({ string(v.tag) + "d" + std::to_string(d), a, true });
         }
     // Learned-value AB ladders: v1 (dense aggregates, full feature scan + two
@@ -1416,14 +1421,22 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
     // Fixed reps + warmup, levels interleaved per position so drift hits all
     // levels equally; per-rep samples kept so dispersion is visible.
     {
-        struct LVar { const char* tag; int ev; int p[5]; };
+        struct LVar { const char* tag; int ev; int p[MAX_EVAL_PARAMS]; };
         LVar lvars[] = {
             // Champion weights (w0,l0): the structure scan short-circuits, so the
             // leaf is nearly all chip term -- v1->v2 here is the historically
-            // relevant chip-count speedup, and v2->v3 should be ~0 (sanity row).
-            { "classic(t1,c4,w0,l0)",   classic, { 1, 4, 0, 0, 0 } },
-            { "classic(t1,c4,w2,l2)",   classic, { 1, 4, 2, 2, 0 } },
-            { "exp(t1,c4,w2,l2,f2)",    exper,   { 1, 4, 2, 2, 2 } },
+            // relevant chip-count speedup, and v2->v3 should be ~0 (sanity row;
+            // with the zero-weight gating fix v3 skips the accumulator entirely).
+            { "classic(t1,c4,w0,l0)",   classic,  { 1, 4, 0, 0, 0 } },
+            { "classic(t1,c4,w2,l2)",   classic,  { 1, 4, 2, 2, 0 } },
+            { "exp(t1,c4,w2,l2,f2)",    exper,    { 1, 4, 2, 2, 2 } },
+            // Advanced rows: v2->v3 prices each term's incremental payoff (full
+            // per-leaf scan vs local delta). One-feature rows isolate the three
+            // widest-delta terms; the all-on row is the worst-case mix.
+            { "adv(all-on)",            advanced, { 1, 4, 2, 2, 2,  2, 1, 1, 3, 2,  2, 2, 2, 2, 7, 1 } },
+            { "adv(c4,m2 mobility)",    advanced, { 1, 4, 0, 0, 0,  0, 0, 2, 0, 0,  0, 0, 0, 0, 0, 0 } },
+            { "adv(c4,h3 hole)",        advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 3, 0,  0, 0, 0, 0, 0, 0 } },
+            { "adv(c4,o2 open)",        advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  2, 0, 0, 0, 0, 0 } },
         };
         static const char* lvlName[3] = { "v1 fullchip+fullpos",
                                           "v2 chipincr+fullpos",
@@ -1441,7 +1454,7 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
             for (LVar& v : lvars) {
                 for (int d = 1; d <= maxDepth; d++) {
                     AgentSpec a = agentMakeSearch("lvl", abIdx, v.ev, d, 0);
-                    for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+                    for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = v.p[k];
                     for (GState& s : pos) {
                         GState ref; unsigned long long refNodes = 0;
                         for (int lvl = 1; lvl <= 3; lvl++) {
@@ -1475,7 +1488,7 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
         for (LVar& v : lvars) {
             for (int d = 1; d <= maxDepth; d++) {
                 AgentSpec a = agentMakeSearch("lvl", abIdx, v.ev, d, 0);
-                for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = (k < 5) ? v.p[k] : 0;
+                for (int k = 0; k < MAX_EVAL_PARAMS; k++) a.evalParams[k] = v.p[k];
                 std::vector<double> samp[3];
                 unsigned long long nodes[3] = { 0, 0, 0 };
                 for (int r = 0; r < levelReps; r++)

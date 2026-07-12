@@ -1,5 +1,5 @@
 {
-  "evaluators": ["Classic", "Experimental", "LearnedValue"],
+  "evaluators": ["Classic", "Experimental", "LearnedValue", "Advanced"],
   "explorers": ["Greedy", "AlphaBeta"],
   "choosers": ["UniformRandom", "TieredRandom", "SmartRandom", "LearnedPolicy"],
   "model_types": ["linear", "mlp", "nnue", "transformer"],

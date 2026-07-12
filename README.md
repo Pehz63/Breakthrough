@@ -216,10 +216,38 @@ function body. The new evaluator and its parameters then appear automatically in
 both the console prompts and the GUI's Eval dropdown / sliders, and can be saved per
 side in `minimax_params.txt` via `<side>_eval` plus each weight's `<side>_<key>`.
 
+Four evaluators ship:
+
+- **Classic**: turn, chip (material), wall, and column weights. The original
+  heuristic and the reigning ranked champion's evaluator.
+- **Experimental**: Classic plus a forward weight (rewarding advancement).
+  Identical to Classic when forward is 0.
+- **Advanced**: Experimental plus eleven more terms. Weights may be negative.
+  - *Support*: diagonal same-color pairs (the diagonal-behind piece is what
+    recaptures in this game).
+  - *Center*: advancement scaled by file centrality (a center piece keeps two
+    escape diagonals).
+  - *Mobility*: legal-move count per piece.
+  - *Hole*: back-rank columns whose two guard squares are empty, admitting an
+    unstoppable enemy outpost.
+  - *Control*: occupancy of the two rows nearest the opponent's home row.
+  - *Open*: files with no own piece on the own half while the enemy occupies
+    the file.
+  - *Race*: closest-piece distance differential (who wins a pure race).
+  - *Overext*: advanced pieces with no diagonal-behind defender.
+  - *Noise*: a seeded random piece-square nudge in [-n, +n] that breaks ties
+    between near-equal branches while staying deterministic per seed
+    (parameters Noise = magnitude, NoiseSeed = seed).
+  - *RaceWin* (0/1): an exact decided-race detector. When a side has a passed
+    runner that provably wins the race under the game's rules, the leaf returns
+    a win score immediately, deciding races many plies before search could.
+- **LearnedValue**: delegates to a trained value model (see the ML section).
+
 MiniMax evaluates the board incrementally: a move changes only two squares, so each
-score term (material, wall, column, advance) updates just those squares and their
-neighbors instead of rescanning all 64 at every leaf. It returns the same score as a
-full recompute, so it affects speed only, not the moves played.
+score term (material, wall, column, advance, and the Advanced terms) updates just
+those squares and their neighbors instead of rescanning all 64 at every leaf. Terms
+with zero weight are skipped entirely. It returns the same score as a full
+recompute, so it affects speed only, not the moves played.
 
 ### Machine learning system
 
@@ -401,21 +429,27 @@ symmetric vs asymmetric openers, and `tools/opener_bias_retrain.ps1` retrains th
 oracle arm on asymmetric-opener data. See
 `plans/opener-bias-results-1-synchronous-stearns.md`.
 
-**Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Experimental
+**Hill-climbing eval weights.** `tools/hill_climb.ps1` searches the Advanced
 evaluator's weight mix for the highest Elo at a fixed search depth, using
-`gauntlet` as its fitness function. Turn is pinned at 20 and chip/wall/column/forward
-are renormalized to sum to 80 (total 100), so the search varies the relative mix
-rather than the scale (the evaluator is scale-invariant for move selection) and
-scalar-duplicate candidates dedupe. Each step mutates the best-so-far, with an
-occasional drastic reset of the chip weight, and accepts on an Elo gain. It plays
-against a fast, mostly-stochastic pool (`ranking/climb_roster.txt`), so a candidate
-earns a smooth win rate instead of replaying one deterministic line against a
-deterministic opponent. `-Promote` appends the top finds to `ranking/roster.txt`
-and runs a full refit so they are rated on the shared scale.
+`gauntlet` as its fitness function. It climbs the 13 strength weights (chip, wall,
+column, forward, support, center, mobility, hole, control, open, race, overext,
+noise). Turn is pinned at 20, the noise seed and the RaceWin detector are pinned
+(they are not mix weights), and the 13 weights are renormalized so their absolute
+values sum to 80 (total 100), so the search varies the relative mix rather than the
+scale (the evaluator is scale-invariant for move selection) and scalar-duplicate
+candidates dedupe. Each step mutates the best-so-far, with an occasional drastic
+reset of the chip weight, and accepts on an Elo gain. `-AllowNegative` lets weights
+go negative (sign-flip mutations, signed resets), which is the only way to reach
+mixes like a negative chip weight. It plays against a fast, mostly-stochastic pool
+(`ranking/climb_roster.txt`), so a candidate earns a smooth win rate instead of
+replaying one deterministic line against a deterministic opponent. `-Promote`
+appends the top finds to `ranking/roster.txt` and runs a full refit so they are
+rated on the shared scale.
 
 ```powershell
 .\tools\hill_climb.ps1 -Build -Iters 4 -Games 2 -Depth 2   # quick smoke
-.\tools\hill_climb.ps1 -Iters 40 -Games 4                  # real climb at d4
+.\tools\hill_climb.ps1 -Iters 60 -Games 4                  # real climb at d4
+.\tools\hill_climb.ps1 -Iters 60 -Games 4 -AllowNegative   # signed-weight climb
 .\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2    # then rank the winners
 ```
 
