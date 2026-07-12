@@ -67,6 +67,18 @@ extern int g_rowCountW[SIZE];
 extern int g_rowCountB[SIZE];
 extern bool g_evalRowCounts;
 
+// Bounded per-position jitter state (Advanced evaluator, Noise < 0): the
+// running sum of every occupied square's noiseHashRaw value, maintained by
+// simulate/unsimulate while g_noiseIncremental is set (2-3 adds per move, the
+// g_mlAcc pattern) and read at the leaf as (g_noiseAcc mod (2*mag+1)) - mag.
+// Unsigned wrap-around in the intermediate adds is well-defined and cancels
+// exactly on unmake. g_noiseSeed is latched per search by evalBeginSearch.
+extern unsigned long long g_noiseAcc;
+extern bool g_noiseIncremental;
+extern int g_noiseSeed;
+unsigned noiseHashRaw(int, char, int, int);
+unsigned long long noiseRawScan(int);
+
 // Benchmark-only eval-level selector (default 3 = current shipping behavior).
 // Reconstructs prior generations of the heuristic leaf for speed measurement:
 //   1 = full-board chip rescan (chipDiff()) + full evalPosFull scan per leaf

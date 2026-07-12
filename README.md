@@ -235,9 +235,17 @@ Four evaluators ship:
     the file.
   - *Race*: closest-piece distance differential (who wins a pure race).
   - *Overext*: advanced pieces with no diagonal-behind defender.
-  - *Noise*: a seeded random piece-square nudge in [-n, +n] that breaks ties
-    between near-equal branches while staying deterministic per seed
-    (parameters Noise = magnitude, NoiseSeed = seed).
+  - *Noise*: the sign selects one of two seeded-random forms (NoiseSeed = the
+    seed, both deterministic per seed). Noise > 0 is a random piece-square
+    table: each (color, square) gets a fixed value in [-n, +n], so the board
+    total scales with piece count and acts as a persistent square bias -- a
+    strength weight, and a bad one at material scale. Noise < 0 is a bounded
+    per-position jitter of magnitude -n: the leaf score becomes
+    realEval * 256 + jitter, so the jitter can never reverse a strict
+    preference between two positions -- it only reorders exact evaluation
+    ties, re-rolling pseudo-randomly every move. Use the jitter form for
+    deterministic play diversity; note a jittered agent's displayed
+    evaluations are 256x the native scale.
   - *RaceWin* (0/1): an exact decided-race detector. When a side has a passed
     runner that provably wins the race under the game's rules, the leaf returns
     a win score immediately, deciding races many plies before search could.

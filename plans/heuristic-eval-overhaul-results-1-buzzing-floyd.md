@@ -162,15 +162,23 @@ by weight pattern).
   move win rates on this pool, while costing ~8% us/move. Keep it available and
   ablatable; do not assume it is a free win. Theory 21. Untested regime worth a
   pass: shallow (d2-d4) and budget-cut searches, where added horizon matters.
-- **Per-piece noise is refuted as a tie-breaker at d6, at both scales.** At the
-  champion's chip=4, per-piece noise in [-1,+1] across ~32 pieces has a typical
-  magnitude around one chip: n1 costs ~520 Elo and n3 ~800 (dose-dependent). At
-  the climber's chip=80, where the typical noise sum is only ~0.06 chips, n1
-  still costs ~270 and n3 ~310 vs the same-scale baseline -- re-sorting
-  near-equal branches at d6 measurably loses games even when "dominated by the
-  real evaluation". Theory 20. The surviving variant is a strictly bounded
-  per-position nudge (a maintained raw-hash accumulator read modulo 2n+1 at the
-  leaf), which decouples the bound from piece count; untested.
+- **Per-piece noise measured badly at both scales, but the two scales say
+  different things.** [CORRECTED 2026-07-12 -- the original bullet claimed a
+  refutation "even when dominated by the real evaluation", which over-reached;
+  see `plans/bounded-jitter-results-1-buzzing-floyd.md` for the audit and the
+  proper retest.] At chip=4, per-piece noise in [-1,+1] across ~32 pieces has
+  a typical magnitude around one chip, so n1 (-522) and n3 (-800) refute noise
+  at MATERIAL scale only -- nothing about that config was a tie-breaker (the
+  in-code dominance walk later pinned this: the n3/c4 config demonstrably
+  reverses real material preferences). At chip=80 the config's only real terms
+  were chip and turn, so equal-material same-ply leaves were exact real ties
+  and the noise (max +/-32 < 80) could not flip a material preference -- i.e.
+  that config approximated tie-only behavior and still measured -271/-309, BUT
+  on the climb pool where the theory-19 identity artifact reached ~200 Elo, so
+  it was weak evidence, and the original "re-sorts near-equal branches"
+  mechanism sentence was a hypothesis written as a finding. The tie-break
+  question was re-tested properly (main roster, two seeds, both forms plus a
+  provably tie-only jitter) in the bounded-jitter follow-up.
 - The two same-policy baselines (t1,c4 = 1362 vs t20,c80 = 1158, identical play
   by scale invariance) differ by ~200 on this small pool -- the theory-19
   identity artifact again. All comparisons above are against the SAME-scale

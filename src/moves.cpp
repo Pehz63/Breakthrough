@@ -291,6 +291,13 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
         g_rowCountW[moveY]--; g_rowCountW[moveY+1]++;
         if (isCapture) g_rowCountB[moveY+1]--;
     }
+    if (g_noiseIncremental) {
+        // Separate += and -= so each 32-bit hash widens to 64 bits BEFORE the
+        // arithmetic: a combined (a - b) would wrap at 32 bits when b > a.
+        g_noiseAcc += noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY+1);
+        g_noiseAcc -= noiseHashRaw(g_noiseSeed, WHITE, moveX1, moveY);
+        if (isCapture) g_noiseAcc -= noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY+1);
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY+1)] - g_mlWeights[mlSqW(moveX1, moveY)];
         if (isCapture) g_mlAcc -= g_mlWeights[mlSqB(moveX2, moveY+1)];
@@ -318,6 +325,11 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
         g_rowCountB[moveY]--; g_rowCountB[moveY-1]++;
         if (isCapture) g_rowCountW[moveY-1]--;
     }
+    if (g_noiseIncremental) {
+        g_noiseAcc += noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY-1);
+        g_noiseAcc -= noiseHashRaw(g_noiseSeed, BLACK, moveX1, moveY);
+        if (isCapture) g_noiseAcc -= noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY-1);
+    }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY-1)] - g_mlWeights[mlSqB(moveX1, moveY)];
         if (isCapture) g_mlAcc -= g_mlWeights[mlSqW(moveX2, moveY-1)];
@@ -340,6 +352,11 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
     if (g_evalRowCounts) {
         g_rowCountW[moveY]++; g_rowCountW[moveY+1]--;
         if (isCapture) g_rowCountB[moveY+1]++;
+    }
+    if (g_noiseIncremental) {
+        g_noiseAcc += noiseHashRaw(g_noiseSeed, WHITE, moveX1, moveY);
+        g_noiseAcc -= noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY+1);
+        if (isCapture) g_noiseAcc += noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY+1);
     }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqW(moveX1, moveY)] - g_mlWeights[mlSqW(moveX2, moveY+1)];
@@ -364,6 +381,11 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
     if (g_evalRowCounts) {
         g_rowCountB[moveY]++; g_rowCountB[moveY-1]--;
         if (isCapture) g_rowCountW[moveY-1]++;
+    }
+    if (g_noiseIncremental) {
+        g_noiseAcc += noiseHashRaw(g_noiseSeed, BLACK, moveX1, moveY);
+        g_noiseAcc -= noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY-1);
+        if (isCapture) g_noiseAcc += noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY-1);
     }
     if (g_mlIncremental) {
         g_mlAcc += g_mlWeights[mlSqB(moveX1, moveY)] - g_mlWeights[mlSqB(moveX2, moveY-1)];

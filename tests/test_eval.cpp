@@ -1,6 +1,8 @@
 #include "catch.hpp"
 #include "helpers.h"
 #include "ai_eval.h"   // g_evaluators / g_evalCount for per-evaluator param counts
+#include <vector>
+#include <utility>     // std::pair for the dominance walk
 
 // Recursively explore every legal move to `depth`, applying it with the engine's
 // own simulate/unsimulate (the minimax make/unmake path) and counting any time the
@@ -449,6 +451,7 @@ static void walkAssertAdv(int color, int depth, const int* params, int ai) {
         }
     for (int y = 0; y < SIZE; y++)
         if (g_rowCountW[y] != cw[y] || g_rowCountB[y] != cb[y]) { g_walkMismatch++; break; }
+    if (g_noiseIncremental && g_noiseAcc != noiseRawScan(g_noiseSeed)) g_walkMismatch++;
     if (evalLeaf(White, ai, params) != evaluateBoard(White, ai, params)) g_walkMismatch++;
     if (evalLeaf(Black, ai, params) != evaluateBoard(Black, ai, params)) g_walkMismatch++;
     if (depth <= 0) return;
@@ -495,16 +498,24 @@ TEST_CASE("Advanced incremental evaluation matches full recompute (all terms on)
         layout[0][5] = BLACK; layout[1][5] = BLACK; layout[2][5] = BLACK;
         layout[6][5] = BLACK; layout[7][5] = BLACK; layout[2][4] = BLACK;
 
-        setupBoard(layout);
-        evalBeginSearch(ai, p);
-        REQUIRE(g_evalPos == evalPosFull(p, g_evaluators[ai].paramCount));
-        REQUIRE(evalLeaf(White, ai, p) == evaluateBoard(White, ai, p));
-        REQUIRE(evalLeaf(Black, ai, p) == evaluateBoard(Black, ai, p));
-        g_walkMismatch = 0;
-        walkAssertAdv(White, 3, p, ai);
-        walkAssertAdv(Black, 3, p, ai);
-        evalEndSearch();
-        REQUIRE(g_walkMismatch == 0);
+        // Two configs: all-on with PST noise (n=+2) and all-on with the bounded
+        // jitter (n=-2), so the g_evalPos, row-count, AND g_noiseAcc
+        // accumulators are all walked.
+        for (int cfg = 0; cfg <= 1; cfg++) {
+            if (cfg == 1) p[13] = -2;   // jitter form, same seed s=7
+            setupBoard(layout);
+            evalBeginSearch(ai, p);
+            REQUIRE(g_evalPos == evalPosFull(p, g_evaluators[ai].paramCount));
+            REQUIRE(g_noiseIncremental == (cfg == 1));
+            REQUIRE(evalLeaf(White, ai, p) == evaluateBoard(White, ai, p));
+            REQUIRE(evalLeaf(Black, ai, p) == evaluateBoard(Black, ai, p));
+            g_walkMismatch = 0;
+            walkAssertAdv(White, 3, p, ai);
+            walkAssertAdv(Black, 3, p, ai);
+            evalEndSearch();
+            REQUIRE(g_walkMismatch == 0);
+        }
+        p[13] = 2;
     }
 
     SECTION("dense standard position") {
@@ -524,6 +535,7 @@ TEST_CASE("Advanced incremental evaluation matches full recompute (all terms on)
         evalBeginSearch(ai, champ);
         REQUIRE_FALSE(g_evalIncremental);   // nothing for the accumulator to maintain
         REQUIRE_FALSE(g_evalRowCounts);     // race/racewin off too
+        REQUIRE_FALSE(g_noiseIncremental);  // jitter off too
         REQUIRE(evalLeaf(White, ai, champ) == evaluateBoard(White, ai, champ));
         evalEndSearch();
         // Classic at the champion's w0,l0 weights gets the same gating fix.
@@ -532,5 +544,163 @@ TEST_CASE("Advanced incremental evaluation matches full recompute (all terms on)
         REQUIRE_FALSE(g_evalIncremental);
         REQUIRE(evalLeaf(White, 0, cl) == evaluateBoard(White, 0, cl));
         evalEndSearch();
+    }
+}
+
+// ============================================================
+// Bounded per-position jitter (Noise < 0)
+// ============================================================
+TEST_CASE("Advanced jitter (Noise < 0): bounded, deterministic, seed-dependent") {
+    int ai = advIdx();
+    REQUIRE(ai >= 0);
+    int p[MAX_EVAL_PARAMS];
+    clearBoard();
+    board[2][2] = WHITE; board[3][3] = WHITE; board[5][5] = BLACK; board[6][4] = BLACK;
+    g_whiteCount = 2; g_blackCount = 2; g_chipDiff = 0;
+
+    // All strength weights 0, so the real eval is exactly 0 and the returned
+    // score IS the jitter value (0 * 256 + v): a direct boundedness probe.
+    advParams(p, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0);
+    REQUIRE(evaluateBoard(White, ai, p) == 0);      // n=0: no jitter at all
+    p[13] = -5; p[14] = 1;
+    int v1 = evaluateBoard(White, ai, p);
+    REQUIRE(evaluateBoard(White, ai, p) == v1);     // deterministic per seed+position
+    REQUIRE(v1 >= -5);
+    REQUIRE(v1 <= 5);
+    bool anySeedDiff = false;
+    for (int s = 2; s <= 8 && !anySeedDiff; s++) {
+        p[14] = s;
+        int v = evaluateBoard(White, ai, p);
+        REQUIRE(v >= -5);
+        REQUIRE(v <= 5);
+        if (v != v1) anySeedDiff = true;
+    }
+    REQUIRE(anySeedDiff);                           // the seed actually matters
+    // A move re-rolls the value: change one piece's square and expect a
+    // different jitter for at least one seed (memoryless per position).
+    p[14] = 1;
+    board[3][3] = EMPTY; board[3][4] = WHITE;
+    bool anyMoveDiff = (evaluateBoard(White, ai, p) != v1);
+    for (int s = 2; s <= 8 && !anyMoveDiff; s++) {
+        p[14] = s;
+        int before = 0;
+        { board[3][4] = EMPTY; board[3][3] = WHITE; before = evaluateBoard(White, ai, p);
+          board[3][3] = EMPTY; board[3][4] = WHITE; }
+        if (evaluateBoard(White, ai, p) != before) anyMoveDiff = true;
+    }
+    REQUIRE(anyMoveDiff);
+}
+
+// The dominance (order-preservation) walk, the developer's test design: walk a
+// bounded game tree and at every node evaluate ALL sibling children -- the
+// exact comparisons alpha-beta makes -- under a plain config and a noisy
+// config, counting REVERSALS (plain says A > B strictly, noisy says A < B).
+// For the jitter form reversals must be 0 (provable: |jitter diff| < 256 while
+// scaled real diffs are multiples of 256). For the PST form at chip=4 they are
+// nonzero (the recorded evidence that that form is NOT dominated), and at
+// chip=80 they are 0 among siblings (real diffs are multiples of 80 > the
+// max sibling noise diff of ~6), which is why that ablation config was
+// accidentally tie-like.
+static long long g_domReversals, g_domTies, g_domTieBreaks;
+static void walkDominance(int color, int depth, int ai, const int* plainP, const int* noisyP) {
+    std::vector<std::pair<int,int> > vals;
+    int childColor = (color == White) ? Black : White;
+    if (color == White) {
+        for (int y = 0; y < SIZE-1; y++)
+            for (int x = 0; x < SIZE; x++) {
+                if (board[x][y] != WHITE) continue;
+                for (int z = x-1; z <= x+1; z++) {
+                    if (z < 0 || z >= SIZE || !tryMoveQuickWhite(x, y, z)) continue;
+                    bool cap = simulateMoveWhite(x, y, z);
+                    vals.push_back(std::make_pair(evaluateBoard(childColor, ai, plainP),
+                                                  evaluateBoard(childColor, ai, noisyP)));
+                    if (depth > 1) walkDominance(childColor, depth-1, ai, plainP, noisyP);
+                    unsimulateMoveWhite(x, y, z, cap);
+                }
+            }
+    } else {
+        for (int y = 1; y < SIZE; y++)
+            for (int x = 0; x < SIZE; x++) {
+                if (board[x][y] != BLACK) continue;
+                for (int z = x-1; z <= x+1; z++) {
+                    if (z < 0 || z >= SIZE || !tryMoveQuickBlack(x, y, z)) continue;
+                    bool cap = simulateMoveBlack(x, y, z);
+                    vals.push_back(std::make_pair(evaluateBoard(childColor, ai, plainP),
+                                                  evaluateBoard(childColor, ai, noisyP)));
+                    if (depth > 1) walkDominance(childColor, depth-1, ai, plainP, noisyP);
+                    unsimulateMoveBlack(x, y, z, cap);
+                }
+            }
+    }
+    for (size_t i = 0; i < vals.size(); i++)
+        for (size_t j = i+1; j < vals.size(); j++) {
+            int pi = vals[i].first, pj = vals[j].first;
+            int ni = vals[i].second, nj = vals[j].second;
+            if ((pi > pj && ni < nj) || (pi < pj && ni > nj)) g_domReversals++;
+            if (pi == pj) { g_domTies++; if (ni != nj) g_domTieBreaks++; }
+        }
+}
+
+TEST_CASE("dominance walk: jitter never reverses a strict preference; PST noise does") {
+    int ai = advIdx();
+    REQUIRE(ai >= 0);
+    char layout[SIZE][SIZE];
+    for (int x = 0; x < SIZE; x++)
+        for (int y = 0; y < SIZE; y++) layout[x][y] = EMPTY;
+    layout[0][4] = WHITE; layout[1][4] = WHITE; layout[0][3] = WHITE;
+    layout[6][4] = WHITE; layout[7][4] = WHITE; layout[7][3] = WHITE;
+    layout[0][5] = BLACK; layout[1][5] = BLACK; layout[2][5] = BLACK;
+    layout[6][5] = BLACK; layout[7][5] = BLACK; layout[2][4] = BLACK;
+
+    int plainP[MAX_EVAL_PARAMS], noisyP[MAX_EVAL_PARAMS];
+
+    SECTION("jitter (n<0): zero reversals for every tried magnitude and seed, ties do break") {
+        // A mixed real config so sibling evals include both ties and non-ties.
+        advParams(plainP, 1, 4, 2, 3, 1,  2, 1, 1, 3, 2,  2, 2, 2, 0, 0, 0);
+        long long tieBreaksTotal = 0;
+        int mags[2] = { -2, -9 };
+        for (int m = 0; m < 2; m++)
+            for (int s = 1; s <= 3; s++) {
+                advParams(noisyP, 1, 4, 2, 3, 1,  2, 1, 1, 3, 2,  2, 2, 2, mags[m], s, 0);
+                setupBoard(layout);
+                g_domReversals = g_domTies = g_domTieBreaks = 0;
+                walkDominance(White, 2, ai, plainP, noisyP);
+                REQUIRE(g_domReversals == 0);   // tie-only, by the x256 construction
+                tieBreaksTotal += g_domTieBreaks;
+            }
+        REQUIRE(tieBreaksTotal > 0);            // and it actually breaks ties
+    }
+
+    SECTION("PST noise at chip=4 (yesterday's -800 ablation config): NOT dominated") {
+        // n=3, the exact configuration that measured -800 Elo. (At n=1 a sibling
+        // reversal needs five specific squares at exact extreme hash values,
+        // ~1/243 per eligible pair, so a bounded-seed test of n=1 is flaky; the
+        // non-dominance claim is about the form and holds a fortiori at n=3.)
+        advParams(plainP, 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0);
+        long long reversalsTotal = 0;
+        for (int s = 1; s <= 20 && reversalsTotal == 0; s++) {
+            advParams(noisyP, 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 3, s, 0);
+            setupBoard(layout);
+            g_domReversals = g_domTies = g_domTieBreaks = 0;
+            walkDominance(White, 2, ai, plainP, noisyP);
+            reversalsTotal += g_domReversals;
+        }
+        REQUIRE(reversalsTotal > 0);   // n3 noise overturns real material preferences
+    }
+
+    SECTION("PST noise at chip=80: sibling reversals impossible (accidentally tie-like)") {
+        advParams(plainP, 20, 80, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0);
+        int mags[2] = { 1, 3 };
+        for (int m = 0; m < 2; m++)
+            for (int s = 1; s <= 3; s++) {
+                advParams(noisyP, 20, 80, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, mags[m], s, 0);
+                setupBoard(layout);
+                g_domReversals = g_domTies = g_domTieBreaks = 0;
+                walkDominance(White, 2, ai, plainP, noisyP);
+                // Sibling real diffs are multiples of 80; sibling PST noise
+                // diffs span at most ~5 differing piece-squares x n <= 15, so
+                // no reversal can occur among same-parent comparisons.
+                REQUIRE(g_domReversals == 0);
+            }
     }
 }

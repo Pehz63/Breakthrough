@@ -80,8 +80,9 @@ theories out of a single stray entry into their own subsection.
 | 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
 | 18 | Per-side capacity/distance difference is a meaningful predictor or evaluator signal | Partially resolved (analytic: redundant as a linear eval feature; predictor half open) | Game-Theoretic Structure & Optimal Play | `todo.md` | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 19 | Same-policy agents with different IDs score differently in gauntlets (identity artifact) | Confirmed (mechanisms not yet separated) | Gameplay Performance & Dethroning the Champion | this session's sanity check | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
-| 20 | Seeded per-piece eval noise is a cheap tie-breaker / diversity knob | Refuted (in the PST form, at d6) | Model & Evaluator Design | `todo.md` noise idea | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
-| 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | this session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 20 | Seeded random eval noise is a cheap tie-breaker / diversity knob | Split by form: PST refuted at both scales; bounded tie-only jitter works at ~0-80 Elo cost | Model & Evaluator Design | `todo.md` noise idea | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) (corrected), [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
+| 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | 2026-07-11 session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Open (weak signal in favor) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) (byproduct) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -217,7 +218,11 @@ fitness as noisy at the +/-50-100 level beyond its printed SE; and when
 comparing two configs, keep every OTHER ID segment identical so the artifact
 is shared. Follow-up in the results doc's Future Work: a `--reset-state`
 flag to clear search state between games would separate mechanism (b) from
-(a).
+(a). Standard mitigation practice (adopted 2026-07-12, recorded in
+`Docs/benchmarking.md`'s "Measuring strength" section): strength comparisons
+run on the full main roster with at least two `--seed` replicates per config,
+and differences are read against the replicate spread rather than the printed
+single-gauntlet SE.
 
 #### 15. Champdil recovers from an identical bad/random position better than the champion, independent of color
 
@@ -352,34 +357,52 @@ for Black's structural disadvantage in Breakthrough.
 
 **Notes:** Motivated by matching a White/Black asymmetry seen in both the champion's historical record and the champdil model's results.
 
-#### 20. Seeded per-piece eval noise is a cheap tie-breaker / diversity knob
+#### 20. Seeded random eval noise is a cheap tie-breaker / diversity knob
 
 **Claim:** A tiny seeded random eval term ("dominated by the real evaluation
 so tactics still win, but breaks ties and re-sorts move ordering within
 near-equal branches") produces useful behavioral diversity at negligible
 strength cost.
 
-**Status:** Refuted in the implemented per-piece (random-PST) form at d6.
+**Status:** Split by form after a corrected re-test. The per-piece (random
+PST) form is refuted at both tested scales. The bounded per-position jitter
+form (tie-only by construction) delivers the diversity at a cost measured
+between ~0 and ~80 Elo -- cheap, not provably free.
 
 **Origin:** `todo.md`'s Heuristic Evaluator Feature Ideas (`[Now]` noise
-idea); implemented as the Advanced evaluator's Noise/NoiseSeed params
-(per-(color,square) hashed values in [-n, +n]).
+idea). Implemented twice on the Advanced evaluator's Noise param, selected by
+sign: n > 0 = random PST (per-(color,square) values in [-n, +n]); n < 0 =
+bounded jitter (leaf returns realEval * 256 + (rawHashSum mod 2n+1) - n, the
+developer's tie-only-by-construction design).
 
-**Tested in:** [heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) --
-climb-pool gauntlets at the champion head (12 games/opponent): at chip=4,
-n1 = 840 vs baseline 1362 and n3 = 562 (dose-dependent collapse); rescaled to
-the climber's chip=80, n1 = 887 and n3 = 849 vs the same-scale baseline 1158,
-still a ~270-310 drop.
+**Tested in:** first (climb-pool) pass in
+[heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md)
+(corrected 2026-07-12: its "refuted even when dominated" framing over-reached
+-- the chip=4 numbers were not a dominated config at all, and the mechanism
+sentence was a guess); proper re-test in
+[bounded-jitter-results-1-buzzing-floyd.md](../plans/bounded-jitter-results-1-buzzing-floyd.md)
+on the main-roster instrument, 5 configs x 2 seed replicates at the champion
+head, plus the in-code dominance (order-preservation) walk and an
+effective-depth probe.
 
-**Notes:** Two failure layers. First, scale: per-piece noise sums over ~32
-pieces, so its effective magnitude is ~sqrt(pieces)*n, which at chip=4 is a
-full chip -- a randomizer, not a nudge. Second, even at chip=80 where the
-typical sum is ~0.06 chips, re-sorting near-equal branches at d6 measurably
-loses games: "near-equal" leaf values apparently carry real information at
-this depth. The idea survives in a stricter form: a BOUNDED per-position
-nudge (maintain the raw hash sum incrementally, read it modulo 2n+1 at the
-leaf) whose magnitude is exactly +/-n independent of piece count -- untested.
-The climber can also still zero the noise weight on its own.
+**Notes:** Evidence, split cleanly. (1) PST at chip=4 (n1 -522, n3 -800,
+climb pool) refutes noise at MATERIAL scale; the dominance walk pins in code
+that this config reverses real material preferences, so it never tested
+tie-breaking. (2) PST at chip=80 on the main roster: 887/869 (n1) and 898/913
+(n3) vs baseline 1118/1148 -- ~-240 in all four runs. The dominance walk
+proves sibling material flips are impossible at this scale, and the
+effective-depth probe caps the budget-consumption pathway at ~0.09 ply
+(~10-15 Elo), so the damage flows through its tie DECISIONS; the supported
+hypothesis (labeled as such) is the persistent per-square bias, which repeats
+the same arbitrary preference at every tie all game. (3) Bounded jitter:
+provably tie-only (dominance walk asserts zero reversals; any future reversal
+is an implementation bug), deterministic-per-seed diversity confirmed by
+byte-level pairgen checks, and main-roster means of -27 (n-1) / -79 (n-3)
+against replicate spreads of 30-138 with only ~10 Elo of measured depth loss
+-- whether the remainder is real tie-choice quality or replicate noise is
+theory 22. Search-shape caveat: breaking ties cost +64% nodes/move at a bare
+d4 head but washed out at the d6/ord/nb200k head; such numbers do not
+transfer across heads.
 
 #### 21. Exact decided-race detection (D14) adds playing strength at fixed depth
 
@@ -408,6 +431,32 @@ or budget-cut searches, where the detector genuinely adds horizon. Note the
 soundness is unconditional (rules-proven), so enabling it can change play
 only toward truth; any Elo loss beyond timing noise would indicate an
 implementation bug, and none was seen.
+
+#### 22. Deterministic first-found tie-breaking outperforms random tie-breaking
+
+**Claim:** At exact evaluation ties, the plain search's deterministic choice
+(the first maximal move under capture-first ordering) is genuinely better
+than a uniformly random choice among the tied moves -- i.e. tie-breaking
+policy carries real Elo, and "first-found" encodes useful bias (captures and
+stable piece order) rather than being arbitrary.
+
+**Status:** Open -- weak signal in favor, not separable from replicate noise
+at n=2.
+
+**Origin:** the bounded-jitter retest: a provably tie-only jitter still
+showed mean drops of -27 (n-1) / -79 (n-3) vs baseline with only ~10 Elo of
+measured depth loss, leaving tie-choice quality as the main candidate
+explanation.
+
+**Tested in:** [bounded-jitter-results-1-buzzing-floyd.md](../plans/bounded-jitter-results-1-buzzing-floyd.md)
+(as a byproduct; not yet directly).
+
+**Notes:** Direct test design (from the results doc's Future Work): more seed
+replicates to shrink the noise band, and/or a variant that at ties picks the
+same move the plain agent would while still jittering elsewhere, isolating
+the tie-choice pathway. Related: the PST form's much larger cost (~-240)
+suggests PERSISTENT random bias at ties is far worse than memoryless random
+choice, consistent with tie decisions mattering.
 
 #### 10. Linear PST representation is the binding capacity ceiling
 

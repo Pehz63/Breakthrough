@@ -216,11 +216,16 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   optionally both: a seed for which positions get a nudge, plus a small weight to control how
   much). Dominated by the real evaluation so tactics still win, but breaks ties and re-sorts
   move ordering within near-equal branches, producing a distribution of "random-ish" board
-  states distinct from picking uniformly among random legal moves~~ Shipped as the Advanced
-  Noise/NoiseSeed params (a seeded random PST, deterministic per seed). Ablation result: in
-  this per-piece form it is NOT a free tie-breaker at d6 -- n1 costs ~270-520 Elo depending on
-  the chip scale (theory 20). A strictly bounded per-position variant (raw-hash accumulator
-  read mod 2n+1 at the leaf) stays open `[Later]`
+  states distinct from picking uniformly among random legal moves~~ Shipped twice, selected by
+  the Noise param's sign (NoiseSeed = seed, both deterministic). n > 0 = seeded random PST:
+  refuted as a tie-breaker on the main-roster instrument (not dominated at material scale by
+  the dominance walk; ~-240 Elo even at chip=80 where sibling material flips are impossible).
+  n < 0 = the bounded per-position jitter with the tie-only-by-construction scaling
+  (realEval*256 + jitter): provably never reverses a strict preference (dominance walk asserts
+  0 reversals), works as a deterministic diversity knob (per-seed distinct play, byte-identical
+  replays), and costs 0 to ~80 Elo at d6/nb200k, at least partly because breaking ties reduces
+  alpha-beta cutoffs (+64% nodes/move) and node-budgeted heads convert that to lost depth.
+  Theory 20 has the full split. See `plans/bounded-jitter-results-1-buzzing-floyd.md` `[done]`
 - ~~Reward more advanced mid-column pieces relative to outer-column pieces at the same row
   (a center piece is harder to wall off since it has two escape diagonals instead of one)~~
   Shipped (Center, `e`)

@@ -1,4 +1,4 @@
-# Benchmarking guide: measuring engine speed
+# Benchmarking guide: measuring engine speed and strength
 
 How to measure the runtime cost of engine code (evaluators, search features,
 incremental accumulators) so the numbers are trustworthy, reproducible, and
@@ -6,6 +6,32 @@ comparable across sessions. Written alongside the chip-count speedup study
 (`plans/chip-count-speedup-results-1-*.md`), the first worked application of
 this workflow. Use it whenever a change claims to be faster, or when comparing
 two implementations (for example the heuristic evaluator vs a learned one).
+
+## Measuring strength (developer-set convention, 2026-07-12)
+
+Agent strength comparisons run on the FULL main roster: `rank.exe gauntlet
+--id <candidate>` with the default `ranking/roster.txt` (all active rated
+agents, anchored scale, pool ratings held frozen). The point is diversity:
+candidate variants never play each other, but they are compared through the
+same broad frozen opponent set, so "does variant A still beat the same
+opponents variant B beats" is answered on one scale. Do NOT draw strength
+conclusions from the small `ranking/climb_roster.txt` pool -- it exists only
+as the hill climber's cheap fitness function (few opponents, one family,
+large SEs; the theory-19 identity artifact reached ~200 Elo there vs ~95 on
+the main pool).
+
+Rules of thumb:
+
+- Vary ONE thing between compared candidate IDs (same head, same scale, same
+  seed set) so the theory-19 identity artifact is shared as far as possible.
+- Run at least two `--seed` replicates per config and read differences
+  against the replicate spread, not the printed single-gauntlet SE.
+- Comparing near-identical agents (re-labeled equivalents, tie-break-only
+  variants) by gauntlet is unreliable at the ~100 Elo level; use `rank.exe
+  pairgen` byte-level game comparison for behavioral identity, and a full
+  pool refit (`rank.exe run`) for permanent ratings.
+- Full refits are the permanent record; gauntlets are the screening
+  instrument.
 
 ## Pick the right metric first
 

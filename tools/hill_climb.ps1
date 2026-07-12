@@ -20,6 +20,12 @@
 # chip negative in a 1:-7 ratio) or the negative wall/column hypothesis. Default off:
 # the historical non-negative search, for A/B comparison against the signed mode.
 #
+# The noise weight's sign selects the noise FORM (see src/ai_eval.cpp): n > 0 is the
+# PST noise (a strength weight like any other), n < 0 is the bounded tie-only jitter
+# (provably unable to change any non-tied preference, so ~strength-neutral by
+# construction; only reachable in -AllowNegative mode, and mostly a diversity knob
+# rather than a fitness lever).
+#
 # gauntlet writes only scratch ranking/gauntlet.jsonl (truncated each call), so the climber
 # is serial and never touches the permanent store ranking/matches.jsonl. Opponent ratings
 # come from ranking/ratings.tsv, so run a full `.\tools\run_rank.ps1 run` first if the

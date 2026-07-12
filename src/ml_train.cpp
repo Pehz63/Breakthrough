@@ -1365,6 +1365,7 @@ int speedBench(const string& boardFile, int positions, double msPerAgent, unsign
         { "chip+struct+fwd ", exper,    { 0, 4, 2, 2, 2 } },
         { "adv-chip g0     ", advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0 } },
         { "adv-chip+racewin", advanced, { 1, 4, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 1 } },
+        { "adv-chip+jitter ", advanced, { 20, 80, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, -2, 1, 0 } },
         { "adv-all-on      ", advanced, { 1, 4, 2, 2, 2,  2, 1, 1, 3, 2,  2, 2, 2, 2, 7, 1 } },
     };
     for (Var& v : vars)

@@ -142,11 +142,14 @@ static inline int controlContrib(int x, int y, int conW) {
     return 0;
 }
 
-// Noise: a seeded random piece-square table. Each (color, square) gets a fixed
-// pseudo-random value in [-noiseW, +noiseW] derived from the seed param, so
-// the term is deterministic per seed and position (an agent using it stays
-// deterministic), incremental like any per-square term, and small enough to
-// only break ties between near-equal branches (todo.md's tie-breaker idea).
+// Noise, form 1 (Noise > 0): a seeded random piece-square table. Each (color,
+// square) gets a fixed pseudo-random value in [-noiseW, +noiseW] derived from
+// the seed param, so the term is deterministic per seed and position (an agent
+// using it stays deterministic) and incremental like any per-square term.
+// CAUTION (theory 20): this form's board total scales with piece count
+// (~sqrt(pieces)*noiseW typical) and its per-square values persist all game (a
+// systematic square bias, not a tie-break); at material-scale weights it
+// measured catastrophically bad. The bounded jitter below is the tie-only form.
 static inline int noiseContrib(int x, int y, int noiseW, int seed) {
     char c = board[x][y];
     if (c == EMPTY) return 0;
@@ -157,6 +160,42 @@ static inline int noiseContrib(int x, int y, int noiseW, int seed) {
     h ^= h >> 13; h *= 2654435761u; h ^= h >> 16;
     int v = (int)(h % (unsigned)(2*noiseW + 1)) - noiseW;
     return (c == WHITE) ? v : -v;
+}
+
+// Noise, form 2 (Noise < 0): bounded per-position jitter, tie-only by
+// construction. raw = the sum over occupied squares of noiseHashRaw (a
+// different salt than noiseContrib so the streams decorrelate); the jitter is
+// (raw mod (2*mag+1)) - mag, bounded in [-mag, +mag] EXACTLY regardless of
+// piece count, deterministic per (seed, position), and re-rolled pseudo-
+// randomly by every move (any make changes 2-3 raw terms, and the mod
+// decorrelates the result). The leaf then returns
+//     realEval * ADV_JITTER_SCALE + jitter
+// (the developer's design): |jitter| <= 99 so two jitters differ by < 256,
+// while two positions whose real evals differ by even 1 unit differ by >= 256
+// after scaling -- the jitter can NEVER reverse a strict real preference, it
+// reorders exact ties only. Win sentinels bypass the scaling (early return),
+// and the worst-case scaled eval (~60k * 256 ~ 15M) stays far below them.
+// raw lives in its own accumulator (g_noiseAcc, the g_mlAcc pattern), NOT in
+// g_evalPos: the leaf applies a mod, so it cannot ride the shared linear sum.
+#define ADV_JITTER_SCALE 256
+unsigned noiseHashRaw(int seed, char c, int x, int y) {
+    unsigned h = 2166136261u;
+    h = (h ^ (unsigned)seed) * 16777619u;
+    h = (h ^ (unsigned)(x*SIZE + y)) * 16777619u;
+    h = (h ^ (unsigned)((c == WHITE) ? 3 : 4)) * 16777619u;   // salts 3/4 (PST form uses 1/2)
+    h ^= h >> 13; h *= 2654435761u; h ^= h >> 16;
+    return h;
+}
+unsigned long long noiseRawScan(int seed) {
+    unsigned long long raw = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++)
+            if (board[x][y] != EMPTY)
+                raw += noiseHashRaw(seed, board[x][y], x, y);
+    return raw;
+}
+static inline int jitterValue(unsigned long long raw, int mag) {
+    return (int)(raw % (unsigned long long)(2*mag + 1)) - mag;
 }
 
 // Mobility: a piece's count of legal moves (straight needs an empty square,
@@ -364,12 +403,12 @@ int evalPosFull(const int* p, int paramCount) {
         for (y = 0; y < SIZE-1; y++)
             for (x = 0; x < SIZE; x++)
                 s += diagOwner(x, y, supW);
-    if (ctrW != 0 || conW != 0 || noiW != 0)
+    if (ctrW != 0 || conW != 0 || noiW > 0)
         for (y = 0; y < SIZE; y++)
             for (x = 0; x < SIZE; x++) {
                 if (ctrW != 0) s += centerContrib(x, y, ctrW);
                 if (conW != 0) s += controlContrib(x, y, conW);
-                if (noiW != 0) s += noiseContrib(x, y, noiW, seed);
+                if (noiW > 0) s += noiseContrib(x, y, noiW, seed);   // PST form only; noiW < 0 = jitter, a leaf term
             }
     if (mobW != 0 || oxW != 0)
         for (y = 0; y < SIZE; y++)
@@ -447,7 +486,7 @@ int evalPosLocal(int sx, int sy, int dx, int dy) {
             s += centerContrib(sx, sy, ctrW) + centerContrib(dx, dy, ctrW);
         if (conW != 0)
             s += controlContrib(sx, sy, conW) + controlContrib(dx, dy, conW);
-        if (noiW != 0)
+        if (noiW > 0)   // PST form only; noiW < 0 = jitter, tracked by g_noiseAcc instead
             s += noiseContrib(sx, sy, noiW, seed) + noiseContrib(dx, dy, noiW, seed);
         if (mobW != 0 || oxW != 0)
             s += boxTermsContrib(sx, sy, dx, dy, mobW, oxW);
@@ -476,7 +515,7 @@ static bool posWeightsActive(const int* p, int paramCount) {
     if (paramCount >= ADV_PARAMS)
         return p[ADV_SUPPORT] != 0 || p[ADV_CENTER] != 0 || p[ADV_MOBILITY] != 0
             || p[ADV_HOLE] != 0 || p[ADV_CONTROL] != 0 || p[ADV_OPEN] != 0
-            || p[ADV_OVEREXT] != 0 || p[ADV_NOISE] != 0;
+            || p[ADV_OVEREXT] != 0 || p[ADV_NOISE] > 0;   // jitter (< 0) is not a g_evalPos term
     return false;
 }
 
@@ -505,6 +544,14 @@ void evalBeginSearch(int evaluator, const int* params) {
                 else if (board[x][y] == BLACK) g_rowCountB[y]++;
             }
     }
+    // The bounded jitter (Noise < 0) reads the raw hash sum at every leaf;
+    // maintain it across make/unmake instead of rescanning (same level rule).
+    g_noiseIncremental = (g_evaluators[evaluator].fn == evalAdvanced) && g_evalLevel >= 3
+                       && params[ADV_NOISE] < 0;
+    if (g_noiseIncremental) {
+        g_noiseSeed = params[ADV_NOISESEED];
+        g_noiseAcc = noiseRawScan(g_noiseSeed);
+    }
     // LearnedValue with a sparse piece-square model (feature v2) gets its own
     // accumulator, maintained by the same make/unmake hooks as g_evalPos. Any
     // other model leaves g_mlIncremental false and the leaf falls back to the
@@ -516,6 +563,7 @@ void evalBeginSearch(int evaluator, const int* params) {
 void evalEndSearch() {
     g_evalIncremental = false;
     g_evalRowCounts = false;
+    g_noiseIncremental = false;
     g_activeParams = nullptr;
     g_activeParamCount = 0;
     mlIncrementalEnd();
@@ -529,7 +577,7 @@ void evalEndSearch() {
 int evalLeaf(int turnColor, int evaluator, const int* p) {
     if (g_mlIncremental) return mlLeafScore(turnColor);
     bool adv = (g_evaluators[evaluator].fn == evalAdvanced);
-    if (!g_evalIncremental && !(adv && g_evalRowCounts)) {
+    if (!g_evalIncremental && !(adv && (g_evalRowCounts || g_noiseIncremental))) {
         // Level 1 (benchmark-only reconstruction of the pre-incremental leaf):
         // full-board chipDiff() rescan instead of the g_chipDiff counter, plus
         // the same nearWinCheck / turn / evalPosFull terms as the evaluator fn,
@@ -549,8 +597,12 @@ int evalLeaf(int turnColor, int evaluator, const int* p) {
                 race = raceTermContrib(p[ADV_RACE], maxW, minB);
             }
             int turnTerm = (turnColor == White) ? p[0] : -p[0];
-            return chipDiff() * p[1] + turnTerm
-                 + evalPosFull(p, g_evaluators[evaluator].paramCount) + race;
+            int s = chipDiff() * p[1] + turnTerm
+                  + evalPosFull(p, g_evaluators[evaluator].paramCount) + race;
+            if (adv && p[ADV_NOISE] < 0)
+                return s * ADV_JITTER_SCALE
+                     + jitterValue(noiseRawScan(p[ADV_NOISESEED]), -p[ADV_NOISE]);
+            return s;
         }
         return evaluateBoard(turnColor, evaluator, p);
     }
@@ -569,7 +621,13 @@ int evalLeaf(int turnColor, int evaluator, const int* p) {
     int turnTerm = (turnColor == White) ? p[0] : -p[0];
     int pos = g_evalIncremental ? g_evalPos
             : evalPosFull(p, g_evaluators[evaluator].paramCount);
-    return g_chipDiff * p[1] + turnTerm + pos + race;
+    int s = g_chipDiff * p[1] + turnTerm + pos + race;
+    if (adv && p[ADV_NOISE] < 0) {
+        unsigned long long raw = g_noiseIncremental ? g_noiseAcc
+                                                    : noiseRawScan(p[ADV_NOISESEED]);
+        return s * ADV_JITTER_SCALE + jitterValue(raw, -p[ADV_NOISE]);
+    }
+    return s;
 }
 
 // ============================================================
@@ -614,7 +672,13 @@ static int evalAdvanced(int turnColor, const int* p) {
         race = raceTermContrib(p[ADV_RACE], maxW, minB);
     }
     int turnTerm = (turnColor == White) ? p[0] : -p[0];
-    return g_chipDiff * p[1] + turnTerm + evalPosFull(p, ADV_PARAMS) + race;
+    int s = g_chipDiff * p[1] + turnTerm + evalPosFull(p, ADV_PARAMS) + race;
+    // Noise < 0: bounded per-position jitter, tie-only via the x256 scaling
+    // (see the jitter block in the Advanced-evaluator terms section).
+    if (p[ADV_NOISE] < 0)
+        return s * ADV_JITTER_SCALE
+             + jitterValue(noiseRawScan(p[ADV_NOISESEED]), -p[ADV_NOISE]);
+    return s;
 }
 
 // "LearnedValue": delegates to a machine-learned value model. p[0] = model slot
@@ -668,7 +732,7 @@ const EvalDef g_evaluators[] = {
         { "Open",      "open",      0, -99, 99 },
         { "Race",      "race",      0, -99, 99 },
         { "Overext",   "overext",   0, -99, 99 },
-        { "Noise",     "noise",     0,   0, 99 },
+        { "Noise",     "noise",     0, -99, 99 },   // >0 PST noise, <0 bounded tie-only jitter of magnitude -n
         { "NoiseSeed", "noiseseed", 0,   0, 9999 },
         { "RaceWin",   "racewin",   1,   0, 1 },
       }, evalAdvanced, true },
