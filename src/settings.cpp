@@ -15,8 +15,10 @@ static void defaultEvalParams(int& eval, int* params) {
 }
 
 // Prompt for a MiniMax side's evaluator and its parameters. Anything already set
-// (eval >= 0, or a param >= its minimum) is left untouched, so values loaded from
-// minimax_params.txt are not re-asked.
+// (eval >= 0, or a param inside its [lo, hi] range) is left untouched, so values
+// loaded from minimax_params.txt are not re-asked. Unset params must be seeded
+// with EVAL_PARAM_UNSET (below every registry minimum), NOT -1: evaluators with
+// negative minimums make -1 a valid value that would skip its prompt.
 static void getEvaluatorSettings(const char* color, const char* who, int& eval, int* params) {
     if (eval < 0) {
         cout << "\nEvaluators:";

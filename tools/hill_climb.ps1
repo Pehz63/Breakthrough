@@ -68,6 +68,11 @@ if (-not (Test-Path $RatingsFile)) {
 $PosSum = $Sum - $Turn
 if ($PosSum -lt 4) { Write-Error "-Sum ($Sum) minus -Turn ($Turn) must leave at least 4 for the positional weights."; exit 1 }
 
+# Seed PowerShell's RNG so the mutation stream is reproducible per -Seed (the
+# gauntlet games are already seeded; this makes the climb itself replayable and
+# lets two modes at the same seed draw comparable mutation sequences).
+$null = Get-Random -SetSeed $Seed
+
 # ---- weight vector: 13 climbed components, ID letters in adv(...) order ----
 $Letters = @('c', 'w', 'l', 'f', 'd', 'e', 'm', 'h', 'b', 'o', 'r', 'x', 'n')
 $NW = $Letters.Count

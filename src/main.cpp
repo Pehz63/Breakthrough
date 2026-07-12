@@ -41,7 +41,7 @@ int main () {  //Play one game of Breakthrough
     int blackPlayer = NullPlayer, bOpener = NullOpener; //black enumerated player-type code
     int b1 = -1, bEval = -1;                 //black depth/furthest + evaluator index
     int bParams[MAX_EVAL_PARAMS];            //black evaluator weights
-    for (int i = 0; i < MAX_EVAL_PARAMS; i++) { wParams[i] = -1; bParams[i] = -1; } //sentinels: prompt unless loaded
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) { wParams[i] = EVAL_PARAM_UNSET; bParams[i] = EVAL_PARAM_UNSET; } //sentinels: prompt unless loaded
     int gameCount = -1;
     int testing = -2; //The color whose parameter will be changed
     int testingParam = 0; //The parameter that will be changed

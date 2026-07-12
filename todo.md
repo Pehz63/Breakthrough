@@ -49,9 +49,12 @@ is a registry, so adding one is a single table entry + a function body, and ever
 
 **Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
 depth, then at lower compute (deeper-for-cheaper). Yardstick in the current fit
-(post vs-champion study, 2026-07): champion classic d6 = Elo 1140, best learned
-PST at d6 = 1137 (`learned(s98)`, oracle-vs-champ data), a statistical tie at
-+/- 22 SE and roughly equal cpu/move. The d8/nb2m oracle tops the table at 1267
+(post heuristic-eval overhaul, 2026-07-12): champion classic d6 = Elo 1135, now
+statistically tied by THREE challengers: the best learned PST (`learned(s98)`,
+1124), and the two hand-crafted Advanced climb winners `adv(t20,c77,d-2,b1,g1)`
+(1124, went 4-4 with the champion AND 4-4 with the d8 oracle) and
+`adv(t20,c75,h3,r2,g1)` (1114, 4-4 with the champion) -- though the adv pair pays
+2-3x the champion's cpu/move. The d8/nb2m oracle tops the table at 1254
 (reference, not the target). Next Elo probably comes from more games at the top
 (the tie is under-sampled at 8 games/pair), the refutation opening book, or a
 capacity jump (MLP/NNUE) on the proven champdil + oracle data recipe.
@@ -205,40 +208,56 @@ against the same seams.
 
 ## Heuristic Evaluator Feature Ideas (Classic / Experimental)
 New candidate terms for the hand-crafted evaluators, alongside the existing chip/wall/column/
-forward mix. Each is a single-place edit in `g_evaluators` (`src/ai_eval.cpp`) plus wiring the
-term into the incremental `evalPosLocal` delta the same way wall/column/forward already are.
-- Tiny per-position random noise term, keyed by a seed rather than a hand-tuned weight (or
+forward mix. ~~Each is a single-place edit in `g_evaluators` (`src/ai_eval.cpp`) plus wiring the
+term into the incremental `evalPosLocal` delta the same way wall/column/forward already are.~~
+Batch 1 shipped 2026-07-11 as the **Advanced** evaluator (`adv`, 16 params, all terms below
+plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md`).
+- ~~Tiny per-position random noise term, keyed by a seed rather than a hand-tuned weight (or
   optionally both: a seed for which positions get a nudge, plus a small weight to control how
   much). Dominated by the real evaluation so tactics still win, but breaks ties and re-sorts
   move ordering within near-equal branches, producing a distribution of "random-ish" board
-  states distinct from picking uniformly among random legal moves `[Now]`
-- Reward more advanced mid-column pieces relative to outer-column pieces at the same row
-  (a center piece is harder to wall off since it has two escape diagonals instead of one) `[Next]`
-- Penalize holes in the back rank: an empty back-rank square the opponent can walk a piece into
+  states distinct from picking uniformly among random legal moves~~ Shipped as the Advanced
+  Noise/NoiseSeed params (a seeded random PST, deterministic per seed). Ablation result: in
+  this per-piece form it is NOT a free tie-breaker at d6 -- n1 costs ~270-520 Elo depending on
+  the chip scale (theory 20). A strictly bounded per-position variant (raw-hash accumulator
+  read mod 2n+1 at the leaf) stays open `[Later]`
+- ~~Reward more advanced mid-column pieces relative to outer-column pieces at the same row
+  (a center piece is harder to wall off since it has two escape diagonals instead of one)~~
+  Shipped (Center, `e`)
+- ~~Penalize holes in the back rank: an empty back-rank square the opponent can walk a piece into
   for the win, distinct from the existing wall/column terms which only look at same-color
-  adjacency, not the vulnerability of the square itself `[Next]`
-- Reward defended pieces: a diagonal-adjacency analog of the existing wall (orthogonal) and
+  adjacency, not the vulnerability of the square itself~~ Shipped (Hole, `h`, the D10 form)
+- ~~Reward defended pieces: a diagonal-adjacency analog of the existing wall (orthogonal) and
   column (same-file) structure terms, since a diagonal neighbor is what actually recaptures
-  after a capture in this game `[Next]`
-- Mobility: count of legal (or unblocked) forward/diagonal moves available, as a tempo/
+  after a capture in this game~~ Shipped (Support, `d`), merged with the phalanx idea below --
+  both describe the same diagonal-pair geometry; a saturating per-piece variant stays open
+- ~~Mobility: count of legal (or unblocked) forward/diagonal moves available, as a tempo/
   flexibility proxy, incrementally maintainable since a move only changes mobility near the two
-  touched squares `[Later]`
-- Diagonal phalanx / triangle formation: reward two pieces diagonally adjacent on the same
+  touched squares~~ Shipped (Mobility, `m`). Caveat from the speed ladder: its local delta is
+  SLOWER than a per-leaf full scan when it is the only enabled term (+31 to +68%), because the
+  bounding-box delta is paid at every make/unmake; incrementality pays off in multi-term mixes
+- ~~Diagonal phalanx / triangle formation: reward two pieces diagonally adjacent on the same
   forward-facing diagonal, a mutual-support pattern distinct from the orthogonal wall and
-  same-file column terms `[Later]`
-- Breakthrough-square control: reward occupying or defending the squares 1-2 rows from the
-  opponent's back rank, the actual contested win squares, rather than generic "forward" `[Later]`
-- Column-emptiness asymmetry: penalize a file that's empty on your side but populated on the
-  opponent's, since it's a clear lane for their advance `[Later]`
-- Race-distance differential: (opponent's closest piece to your back rank) minus (your closest
-  piece to theirs), a cheap proxy for who wins a pure race, ignoring tactics. Generalizes to the
-  difference between the two sides' total remaining "capacity" (`Docs/axioms.md` Lemma B: the
-  full-board sum of every piece's own row-distance to its own goal) as a candidate evaluator
-  term or a key to sort/label/prioritize positions. Whether that difference is actually
-  meaningful, rather than just re-tracking material, is theory 18 in `Docs/theories.md` `[Dream]`
-- Overextension penalty: an advanced piece with no defender and no retreat option, distinct
+  same-file column terms~~ Merged into Support (`d`) above, same pair geometry
+- ~~Breakthrough-square control: reward occupying or defending the squares 1-2 rows from the
+  opponent's back rank, the actual contested win squares, rather than generic "forward"~~
+  Shipped (Control, `b`, occupancy form; "defending those squares" is not implemented)
+- ~~Column-emptiness asymmetry: penalize a file that's empty on your side but populated on the
+  opponent's, since it's a clear lane for their advance~~ Shipped (Open, `o`)
+- ~~Race-distance differential: (opponent's closest piece to your back rank) minus (your closest
+  piece to theirs), a cheap proxy for who wins a pure race, ignoring tactics.~~ Shipped (Race,
+  `r`, from incrementally maintained per-row piece counts), plus a stronger sibling: RaceWin
+  (`g`), the exact D9/D14 decided-race sentinel detector (proven sound, ~8% us/move, no
+  measurable Elo at d6 -- theory 21). The capacity generalization is settled analytically:
+  capacity advantage == forwardSum - 7*chipDiff exactly (code-verified identity), so it is
+  linearly dependent on existing terms and was NOT added as a weight; theory 18's
+  outcome-correlation half stays open, `capacityWhite/Black()` are the helpers for it
+- ~~Overextension penalty: an advanced piece with no defender and no retreat option, distinct
   from the plain "forward" reward, which doesn't discriminate a supported advance from a bare
-  one `[Dream]`
+  one~~ Shipped (Overext, `x`)
+- Per-term incremental routing: let each Advanced term declare whether it is maintained in
+  `g_evalPos` or recomputed at the leaf based on which weights are enabled, so sparse mixes
+  (e.g. chip+mobility) stop paying delta overhead (from the ladder pricing above) `[Next]`
 
 ## Move Choosers / Policies (direct, no search)
 - ~~Human, UniformRandom, TieredRandom, SmartRandom (done)~~
@@ -323,11 +342,17 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Always normalize/anchor one weight (e.g. chip) so the others are measured relative to it.~~
   (shipped in `hill_climb.ps1`: turn pinned at 20, chip/wall/column/forward renormalized to
   sum 80, so the search moves on a fixed-magnitude simplex and scalar duplicates dedupe.)
-- Test signed weights (negative forward, etc.) and structure x forward interaction explicitly.
+- ~~Test signed weights (negative forward, etc.) and structure x forward interaction explicitly.
   Specifically try negative wall/column weights with the hill climber: walls or columns might be
   slightly bad relative to diagonal defense structures (see the defended-pieces term in Heuristic
   Evaluator Feature Ideas above), if tying two pieces together side-by-side costs more in
-  mobility than it returns in safety `[Now]`
+  mobility than it returns in safety~~ Shipped as `hill_climb.ps1 -AllowNegative` (sign-flip
+  mutations + signed drastic resets over all 13 Advanced weights). First A/B run (60 iters each,
+  d4): the signed best kept a small negative Support (d-2) but within fitness noise; negative
+  wall/column never survived acceptance; negative-chip (the capacity direction) was proposed 15
+  times and decisively rejected (300-750 Elo below chip-positive mixes). The structure x forward
+  interaction surface was not explicitly mapped (response-surface reporting still open below).
+  See `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md` `[done]`
 - Report a response surface, not a single recommended value `[Next]`
 
 ## Strength Dilution (to spread an Elo ladder)
@@ -407,10 +432,13 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   training on the grown 46k-game store beats single-teacher self-play by ~250 Elo:
   best model d6 Elo 920, promoted to `models/pst_value.txt`. Redo only after a capacity
   jump (MLP/NNUE).)
-- Gate the incremental heuristic path on nonzero weights: `evalBeginSearch` should
+- ~~Gate the incremental heuristic path on nonzero weights: `evalBeginSearch` should
   leave `g_evalIncremental` false when wall == column == forward == 0, because the
   chip-count speed study found the accumulator maintenance is pure overhead there
   (v3 ran +18 to +35% slower than the full-scan fallback at the champion weights
   w0,l0). Eval values are identical by construction; the ladder in `train.exe speed`
   verifies the fix (v2->v3 at w0,l0 should become ~0%). See
-  `plans/chip-count-speedup-results-1-iterative-raven.md`.
+  `plans/chip-count-speedup-results-1-iterative-raven.md`.~~ Shipped with the Advanced
+  evaluator overhaul (`posWeightsActive` in `evalBeginSearch`, covering all sum-local
+  weights): ladder v2->v3 at w0,l0 measured -0.5 to -3.6% (was +18 to +35%). See
+  `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md`.

@@ -26,6 +26,13 @@ using std::map;
 // Defined here so callers that thread evaluator parameter arrays only need globals.h.
 #define MAX_EVAL_PARAMS 20
 
+// "Not set yet" sentinel for evaluator parameter arrays awaiting user input.
+// Must lie below every parameter's registry minimum: getEvaluatorSettings
+// prompts only for params outside their [lo, hi] range, and evaluators with
+// negative minimums (Advanced allows -99) made the old -1 sentinel a valid
+// value, silently skipping those prompts.
+#define EVAL_PARAM_UNSET INT_MIN
+
 extern int PRNT;
 extern int p1Default;
 extern int p2Default;

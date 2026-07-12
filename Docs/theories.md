@@ -78,7 +78,10 @@ theories out of a single stray entry into their own subsection.
 | 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
 | 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
-| 18 | Per-side capacity/distance difference is a meaningful predictor or evaluator signal | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
+| 18 | Per-side capacity/distance difference is a meaningful predictor or evaluator signal | Partially resolved (analytic: redundant as a linear eval feature; predictor half open) | Game-Theoretic Structure & Optimal Play | `todo.md` | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 19 | Same-policy agents with different IDs score differently in gauntlets (identity artifact) | Confirmed (mechanisms not yet separated) | Gameplay Performance & Dethroning the Champion | this session's sanity check | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 20 | Seeded per-piece eval noise is a cheap tie-breaker / diversity knob | Refuted (in the PST form, at d6) | Model & Evaluator Design | `todo.md` noise idea | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | this session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -181,6 +184,40 @@ live computation than search alone.
 **Origin:** `todo.md`, "The most promising follow-up for the standing dethrone goal" (`[Next]`).
 
 **Tested in:** --
+
+#### 19. Same-policy agents with different IDs score differently in gauntlets (identity artifact)
+
+**Claim:** Two agents with provably identical policies but different canonical
+ID strings can score meaningfully differently (up to ~100-200 Elo on small
+pools) in `rank.exe gauntlet`, because (a) per-game srand seeds are derived
+from the ID strings, so stochastic opponents play different games against
+each, and (b) search side-state (TT, killer/history tables) persists across
+games within a gauntlet process, so even deterministic opponents diverge
+between replays and depend on the preceding game sequence.
+
+**Status:** Confirmed as an artifact (the two mechanisms are not yet
+separated or sized individually).
+
+**Origin:** this session's sanity check that a champion-equivalent Advanced
+agent "ties the champion."
+
+**Tested in:** [heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) --
+`pairgen` produced byte-identical games for the adv-equivalent vs the
+champion (policy identity proven), yet main-pool gauntlets at two seeds gave
+the champion ID 1162/1193 vs the adv-equivalent 1064/1102, and a THIRD
+equivalent (`exp(...,f0)@2`, pre-existing code) scored 1078, agreeing with
+the adv-equivalent. Per-opponent records against deterministic learned agents
+differed between gauntlets, implicating cross-game state. On the small climb
+pool the same-policy gap reached ~200 (t1,c4 baseline 1362 vs t20,c80
+baseline 1158 at n=108 games).
+
+**Notes:** Practical rules: use pairgen (byte-level) or full pool refits to
+compare near-identical agents, never single gauntlets; treat hill-climb
+fitness as noisy at the +/-50-100 level beyond its printed SE; and when
+comparing two configs, keep every OTHER ID segment identical so the artifact
+is shared. Follow-up in the results doc's Future Work: a `--reset-state`
+flag to clear search state between games would separate mechanism (b) from
+(a).
 
 #### 15. Champdil recovers from an identical bad/random position better than the champion, independent of color
 
@@ -315,6 +352,63 @@ for Black's structural disadvantage in Breakthrough.
 
 **Notes:** Motivated by matching a White/Black asymmetry seen in both the champion's historical record and the champdil model's results.
 
+#### 20. Seeded per-piece eval noise is a cheap tie-breaker / diversity knob
+
+**Claim:** A tiny seeded random eval term ("dominated by the real evaluation
+so tactics still win, but breaks ties and re-sorts move ordering within
+near-equal branches") produces useful behavioral diversity at negligible
+strength cost.
+
+**Status:** Refuted in the implemented per-piece (random-PST) form at d6.
+
+**Origin:** `todo.md`'s Heuristic Evaluator Feature Ideas (`[Now]` noise
+idea); implemented as the Advanced evaluator's Noise/NoiseSeed params
+(per-(color,square) hashed values in [-n, +n]).
+
+**Tested in:** [heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) --
+climb-pool gauntlets at the champion head (12 games/opponent): at chip=4,
+n1 = 840 vs baseline 1362 and n3 = 562 (dose-dependent collapse); rescaled to
+the climber's chip=80, n1 = 887 and n3 = 849 vs the same-scale baseline 1158,
+still a ~270-310 drop.
+
+**Notes:** Two failure layers. First, scale: per-piece noise sums over ~32
+pieces, so its effective magnitude is ~sqrt(pieces)*n, which at chip=4 is a
+full chip -- a randomizer, not a nudge. Second, even at chip=80 where the
+typical sum is ~0.06 chips, re-sorting near-equal branches at d6 measurably
+loses games: "near-equal" leaf values apparently carry real information at
+this depth. The idea survives in a stricter form: a BOUNDED per-position
+nudge (maintain the raw hash sum incrementally, read it modulo 2n+1 at the
+leaf) whose magnitude is exactly +/-n independent of piece count -- untested.
+The climber can also still zero the noise weight on its own.
+
+#### 21. Exact decided-race detection (D14) adds playing strength at fixed depth
+
+**Claim:** A leaf detector that returns a win sentinel for provably decided
+races (axioms.md D9/D14: passed runner + distance margins + piece-count
+margin) effectively sees race outcomes many plies beyond the nominal depth,
+and should add Elo at a fixed search depth.
+
+**Status:** Refuted at d6 against the current pool (no measurable effect);
+shallow depths and budgeted searches untested.
+
+**Origin:** this session, derived directly from `Docs/axioms.md` D9/D14
+while implementing the Advanced evaluator (the RaceWin `g` param, 0/1,
+`raceWinCheck` in `src/ai_eval.cpp` -- proven sound, with a one-tempo
+tightened margin for the non-mover side, unit-tested with witness and
+near-miss positions).
+
+**Tested in:** [heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) --
+climb-pool gauntlet at the champion head: g1 = 1292 +/- 72 vs g0 = 1362 +/-
+85 (a -70 +/- 111 difference, within noise), while costing ~8% us/move.
+
+**Notes:** The likely reason: by d6 the search already resolves most races
+that D14's conservative margins certify, so the detector rarely changes a
+leaf value that mattered. The interesting untested regime is shallow (d2-d4)
+or budget-cut searches, where the detector genuinely adds horizon. Note the
+soundness is unconditional (rules-proven), so enabling it can change play
+only toward truth; any Elo loss beyond timing noise would indicate an
+implementation bug, and none was seen.
+
 #### 10. Linear PST representation is the binding capacity ceiling
 
 **Claim:** The linear piece-square-table representation itself, not the
@@ -372,7 +466,7 @@ champion weights w0,l0) than the full-scan fallback, whose scan early-outs.
 
 **Tested in:** [incremental-wall-column-eval-results-1-golden-forest.md](../plans/incremental-wall-column-eval-results-1-golden-forest.md) -- `test_eval.cpp`'s equivalence test walks the move tree asserting the incremental accumulator (`g_evalPos`) always equals a full `evalPosFull` recompute, and measured a **33-39% cpu/node reduction** (`ab(d4).classic(t2,c10,w3,l2)` -39.3%, two Experimental presets -37.9%/-33.4%) with byte-identical eval values, so game outcomes and Elo were unchanged by construction. [incremental-ml-eval-results-1-luminous-snail.md](../plans/incremental-ml-eval-results-1-luminous-snail.md) -- same incremental-accumulator pattern (`g_mlAcc`/`mlLeafScore`) applied to the learned value model, the pattern's second extension beyond chip count. The original chip-count commit (`3af970d`) predates this project's equivalence-test/results-doc discipline, so its correctness rests on the counters' logic (increment/decrement mirrored exactly on capture, in both `simulateMove` and `unsimulateMove`) rather than an automated equivalence check -- no regression has surfaced since, but it wasn't verified the same rigorous way as the two later heuristics. [chip-count-speedup-results-1-iterative-raven.md](../plans/chip-count-speedup-results-1-iterative-raven.md) (2026-07-10) retroactively fills that gap: `train.exe speed`'s eval-level ladder (`g_evalLevel` 1/2/3) reconstructed the pre-`3af970d` leaf and measured, with an in-harness equivalence check (same end board + node count across levels, PASS) standing in for the missing test. Measured chip-count speedup (v1->v2): **-45 to -62% us/move at the champion's zero-structure weights** (w0,l0, the historically relevant configuration, roughly a 2x speedup) and **-14 to -16%** when a full structure scan shares the leaf (w2,l2, depth >= 3). The same run re-measured the structure step (v2->v3, full per-leaf scan -> cached `g_evalPos`) at **-62 to -66% us/move** -- larger than the 33-39% above because the baselines differ: the 33-39% measured only the pt.2 refinement (bounding-box delta -> neighbor-local delta) against an already-incremental baseline, while the ladder's v2 baseline is the older full-per-leaf scan; the numbers nest consistently (~-40% pt.1 x ~-39% pt.2 = ~-63% total). It also found the zero-weight overhead in the Status qualifier above (the incremental machinery costs +18 to +35% when it maintains an always-zero accumulator), suggesting a weight-gated `g_evalIncremental` as a follow-up engine win.
 
-**Notes:** The Forward weight rides along with wall/column in the same `g_evalPos` accumulator (see `ai_eval.cpp`), so Classic/Experimental have no remaining non-incremental term. `evalBeginSearch`/`evalEndSearch` seed and tear down the `g_evalPos` accumulator per search, which is why the wall/column and ML results stay exact rather than becoming an approximation; chip count's `g_chipDiff` is simpler still, just a running delta with no begin/end seeding needed. The next candidate for the same treatment is a future nonlinear (MLP/NNUE) value head (see theory 4) -- incrementality is harder there because hidden-layer activations don't decompose per-square the way a linear dot product does, so this pattern's applicability to that case is not yet established.
+**Notes:** The Forward weight rides along with wall/column in the same `g_evalPos` accumulator (see `ai_eval.cpp`), so Classic/Experimental have no remaining non-incremental term. `evalBeginSearch`/`evalEndSearch` seed and tear down the `g_evalPos` accumulator per search, which is why the wall/column and ML results stay exact rather than becoming an approximation; chip count's `g_chipDiff` is simpler still, just a running delta with no begin/end seeding needed. The next candidate for the same treatment is a future nonlinear (MLP/NNUE) value head (see theory 4) -- incrementality is harder there because hidden-layer activations don't decompose per-square the way a linear dot product does, so this pattern's applicability to that case is not yet established. **Second scope qualifier (Advanced-evaluator overhaul, [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md)):** the zero-weight lesson generalizes to nonzero weights. A term whose full-board scan is cheap (hole: 16 column checks; open: 64 reads) or whose local delta touches a wide affected set (mobility: a bounding-box sum paid at every make AND unmake, interior nodes included) measured SLOWER incrementally than as a per-leaf full scan when it is the only enabled term (+17 to +68% us/move on the ladder), while the all-terms-on mix still wins big incrementally (-41 to -52%). Incremental is not a per-term free win; it pays off when several terms share the per-move delta. The zero-weight half is now fixed in code (`posWeightsActive` gating, ladder-verified v2->v3 ~0% at w0,l0); per-term routing for sparse mixes is filed in `todo.md`.
 
 ### Game-Theoretic Structure & Optimal Play
 
@@ -421,7 +515,9 @@ a piece IS one ply from winning.
 its own goal) is a meaningful predictor of who is winning, and/or a useful
 evaluator feature.
 
-**Status:** Open / untested.
+**Status:** Partially resolved. The evaluator-feature half is settled
+analytically: redundant for any linear evaluator that already has chip and
+forward terms. The predictor-correlation half stays open.
 
 **Origin:** `todo.md`'s Heuristic Evaluator Feature Ideas (extending the
 existing Race-distance differential idea), the developer's own stated
@@ -430,19 +526,25 @@ reduce your capacity. But I wouldn't be surprised either way. Maybe stronger
 bots inherently chase it down fast by trying to capture and gain material
 advantage."
 
-**Tested in:** --
+**Tested in:** [heuristic-eval-overhaul-results-1-buzzing-floyd.md](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) --
+the identity `capacityBlack - capacityWhite == forwardSum - 7*chipDiff` is
+exact (derivable in two lines from Lemma B's definitions) and code-verified
+by a unit test in `tests/test_eval.cpp` using the new
+`capacityWhite/Black()` helpers (`src/board_analysis.cpp`).
 
-**Notes:** The developer's suspicion names a real confound: a side's own
-capacity drops both when it advances toward its goal (good) and when its
-pieces are captured off the board and stop counting toward its sum at all
-(bad -- and by `Docs/axioms.md` D6, hitting zero pieces is already a loss
-regardless of remaining capacity). So a raw capacity difference may conflate
-"closer to winning by advancing" with "closer to losing by attrition" unless
-normalized by piece count or decomposed into separate advancement and
-material terms. Worth a cheap empirical pass first: check whether the raw
-difference correlates with game outcome across stored games in
-`ranking/matches.jsonl` before building it into an evaluator. Related to
-theory 5 (color-specific weights) and `Docs/axioms.md` E1, since any per-side
+**Notes:** The identity gives the developer's suspicion a precise form: the
+capacity difference IS advancement minus 7x material, so it conflates the
+two exactly as suspected, and adding it as a linear eval weight spans
+nothing new (a capacity weight k is identical to forward += k, chip -= 7k).
+Two consequences. (1) The pure-capacity play direction requires a NEGATIVE
+chip weight, reachable only by the hill climber's `-AllowNegative` mode --
+and the first signed climb ran that test: negative-chip candidates were
+proposed 15 times (pure anti-material `c-80` six times) and every one scored
+300-750 Elo below the chip-positive band, none accepted. Capacity-direction
+play is decisively weaker at d4, matching the developer's suspicion. (2) The
+open predictor half (does the raw difference correlate with game outcomes
+across `ranking/matches.jsonl`) now has its helpers ready. Related to theory
+5 (color-specific weights) and `Docs/axioms.md` E1, since any per-side
 asymmetry here could interact with the known White/Black imbalance.
 
 ## Other

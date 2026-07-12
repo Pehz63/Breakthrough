@@ -105,3 +105,5 @@ on ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s99,59815079)@1
 on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1
