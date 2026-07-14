@@ -84,6 +84,8 @@ theories out of a single stray entry into their own subsection.
 | 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | 2026-07-11 session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Weakened toward refuted (2 of 6 noise seeds beat baseline) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
 | 23 | Deterministic tie-breaking creates a systematic directional (left-file) bias exploitable as a fingerprint | Confirmed (mechanism + empirical) | Game-Theoretic Structure & Optimal Play | developer question 2026-07-12 | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
+| 24 | A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting | Partially confirmed (linear: yes + stabilizes; MLP: wash) | Model & Evaluator Design | this session's conversation | [residual-mlp-results-1](../plans/residual-mlp-results-1-tingly-chipmunk.md) |
+| 25 | Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts) | Open / untested | Model & Evaluator Design | this session's conversation | -- |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -479,6 +481,95 @@ training recipe, is what caps model strength.
 **Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 8.
 
 **Notes:** Implies the next real strength lever is model capacity (MLP/NNUE), which is itself untested -- see theory 4.
+
+#### 24. A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting
+
+**Claim:** Because the strongest agents in the current pool are plain chip
+counters or evaluators statistically tied with one (see `todo.md`'s Agent
+Track goal: "the best agents so far are just chip counts"), a learned value
+head that has to discover material counting from scratch may be spending
+capacity re-deriving something already known. Architecturally fixing (or
+strongly regularizing toward) a chip-count term as an additive skip
+connection into the head's output -- so the head computes `chipCount +
+learned(board)` instead of `learned(board)` alone -- would free the learned
+part to specialize on the residual: distinguishing and tie-breaking among
+positions with equal or near-equal material, which a pure material count
+cannot do at all.
+
+**Status:** Partially confirmed. The HARD (frozen) skip was built (`ResidualModel`
+= `skipW*matDiff` + inner) with both a linear and an MLP inner and measured by a
+stratified logistic loss over `|matDiff|` buckets. Split by inner capacity: for a
+LINEAR inner the skip works as predicted, for an MLP inner it does not.
+
+**Origin:** developer's hypothesis in conversation, motivated directly by the
+Agent Track's current standing and posed as a way to make a future capacity
+jump (MLP/NNUE, theory 4) target the right thing rather than just adding raw
+capacity.
+
+**Tested in:** [residual-mlp-results-1-tingly-chipmunk.md](../plans/residual-mlp-results-1-tingly-chipmunk.md) --
+`sweep_pst_v2.ps1` groups F (linear) and G (MLP) at seeds 1001/2002 on an
+8000-game replay extract, reading each model's equal-material (`==0`) logistic loss.
+
+**Notes:** Result, split by inner capacity. (1) LINEAR inner: the frozen chip
+skip lowers mean equal-material loss ~0.10 (0.644 vs 0.742) AND cuts the
+seed-to-seed spread ~18x (0.010 vs 0.179) -- it removes a fragile bad seed and
+improves the other buckets too. Confirmed as predicted: a linear head does spend
+capacity/robustness re-deriving material, and fixing it helps. (2) MLP inner: the
+skip is a wash -- |plain - residual| on `==0` is <= 0.008 at hidden 16 and 32,
+inside the seed spread and pointing both ways. A high-capacity model already fits
+material, so freezing it frees nothing useful; an earlier single-seed run that
+looked like the MLP skip HURT did not survive replication. The larger calibration
+lever is capacity itself (every MLP ~0.53 on `==0` beats every linear 0.64-0.74,
+skip or not), consistent with theory 10. So the theory's motivating premise ("a
+learned head re-derives material from scratch") is real for the linear class but
+dissolves once the model is expressive enough -- tempering the original idea that
+the skip is what a future MLP/NNUE capacity jump needs. Decisions taken this
+session: HARD frozen skip (not the soft/regularized alternative) and the literal
+chip differential (not a broader hand-crafted baseline); both alternatives remain
+open, as does whether the linear calibration win moves Elo at all (measured by
+loss only -- the `-NoRate` sweep skipped rating; theory 22 predicts little).
+Related to theory 4 (nonlinear capacity jump), theory 10 (linear PST ceiling), and
+the Training Regimes "Tapered / phase-split PST" and "Weight symmetrization" ideas
+in `todo.md`, since all inject known structure rather than trusting a general
+learner to discover it.
+
+#### 25. Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts)
+
+**Claim:** Breakthrough passes through qualitatively distinct phases
+(opening/full-material, midgame, endgame/low-material) where different
+strategies are optimal, rather than one continuum that varies smoothly. A
+mixture-of-experts architecture -- a router conditioned on game phase
+(startable as a simple total-material/piece-count classifier: high piece
+count routes to an opener expert, low piece count to an endgame expert, with
+a graded band in between) dispatching to separate phase-specialized learned
+models -- would outperform one model trained to cover the whole game.
+
+**Status:** Open / untested.
+
+**Origin:** developer's hypothesis in conversation, framed directly as a
+mixture-of-experts design with a material-count router.
+
+**Tested in:** --
+
+**Notes:** Relates to the Tapered/phase-split PST idea (`todo.md`, Training
+Regimes), which addresses the same phase intuition via smooth weight
+interpolation inside ONE linear model rather than hard routing between
+separate models -- the two are complementary architectural bets on the same
+underlying claim (phases matter) and could be compared directly (interpolated
+single model vs. routed multi-model) once both exist. Also related to the
+existing "separate opener model" idea (`todo.md`, Agent Track opener
+section) and the "Ensemble / blended evaluator" idea (`todo.md`,
+Board-State Evaluators), of which this is a phase-conditioned specialization:
+routing instead of blending uniformly. Open design questions: (1) where the
+phase boundaries actually are empirically -- is there a sharp regime change
+or a smooth gradient? This is itself the crux of the phases-are-distinct
+claim and could be tested independently of building the router, e.g. by
+checking whether an evaluator's optimal weights genuinely diverge across
+piece-count bins rather than sliding continuously; (2) whether the router
+should be hard or soft/blended near boundaries; (3) how each expert should
+be trained -- the same recipe with phase-filtered data, or a different
+recipe per phase; (4) whether phase should be measured by piece count alone
+or a richer signal (e.g. total remaining capacity, `Docs/axioms.md` Lemma B).
 
 ### Search & Evaluation Engineering
 

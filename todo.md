@@ -139,9 +139,31 @@ against the same seams.
 
 ## Models (value head: board -> scalar)
 - ~~Linear value model **(P1)**~~
-- MLP value model (1-2 hidden layers, hand-written forward pass) `[Next]`
+- ~~MLP value model (1-2 hidden layers, hand-written forward pass)~~ Shipped as `MLPModel`
+  (`src/ml_model.cpp`): fully-connected, ReLU hidden + linear output logit, hand-written forward
+  AND backprop, fan-in-scaled `initRandom`. Trained via `selfplay-supervised --model-type mlp
+  --mlp-hidden "32"|"32,16"`. Full-scan leaf (not incremental -- NNUE below is the incremental
+  step). See `plans/residual-mlp-results-1-tingly-chipmunk.md` `[done]`
 - Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]`
 - NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`) `[Later]`
+- ~~Residual/skip-connection value head: fix (or strongly regularize toward) a chip-count term as
+  an additive skip connection into the head's output, i.e. output `chipCount + learned(board)`
+  instead of `learned(board)` alone. Motivated directly by the Agent Track's current standing
+  above ("the best agents so far are just chip counts"): if a learned head has to re-derive
+  material counting from scratch, it may be spending capacity on something already known instead
+  of on the harder residual, distinguishing and tie-breaking among positions with equal or
+  near-equal material, which a pure material count cannot do at all. Natural target for the
+  MLP/NNUE capacity jump above (the residual/nonlinear part could BE the MLP arm riding on a
+  fixed linear chip skip), and kin to the Training Regimes "Tapered / phase-split PST" and
+  "Weight symmetrization" ideas below, since all three inject known structure into the model
+  rather than trusting a general learner to discover it. See theory 24, `Docs/theories.md`~~
+  Shipped 2026-07-13 (HARD/frozen skip variant): `ResidualModel` wrapper = a frozen chip-count
+  skip (`skipW*matDiff`, auto-calibrated from a material-only logistic pre-fit) + an inner
+  `LinearModel` OR `MLPModel` that learns only the residual (the skip enters training as a frozen
+  GLM offset). `selfplay-supervised --residual-skip -1` (0 off / >0 fixed / <0 auto). Linear inner
+  stays fully incremental (`skipW*g_chipDiff` added at the leaf); MLP inner is full-scan. Measured
+  by a stratified loss over `|matDiff|` buckets (theory 24). Soft/regularized skip and a broader
+  hand-crafted baseline stay open. See `plans/residual-mlp-results-1-tingly-chipmunk.md` `[done]`
 - Transformer value model (squares as tokens) -- teacher / label generator only, not in-search `[Dream]`
 - Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
   instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
@@ -205,6 +227,19 @@ against the same seams.
 - ~~Experimental (done)~~
 - ~~LearnedValue: wraps a value model **(P1)**~~
 - Ensemble / blended evaluator (average or weighted mix of several evaluators/models) `[Later]`
+- Phase-conditioned mixture of experts: a lightweight router (start with a hand-fixed classifier
+  on total material/piece count: high piece count = opener, low piece count = endgame, graded
+  band in between) that dispatches evaluation to a phase-specialized model (separate opener/
+  midgame/endgame value or policy models) instead of one model covering the whole game. Distinct
+  from the Tapered/phase-split PST idea in Training Regimes below, which smoothly interpolates
+  ONE linear model's weights by piece count: this is hard routing between genuinely separate
+  models (potentially different architectures per phase), a phase-conditioned specialization of
+  the Ensemble/blended evaluator idea above (routing instead of uniform blending) and akin to the
+  "separate opener model" idea in the Agent Track above. Router could start as the fixed
+  material-band classifier and later become learned/soft (e.g. blending adjacent-phase experts
+  near the boundary instead of a hard cutoff). Motivated by the developer's hypothesis that
+  Breakthrough has genuinely distinct phases with different best strategies, not just a smoothly
+  varying one. See theory 25, `Docs/theories.md` `[Now]`
 
 ## Heuristic Evaluator Feature Ideas (Classic / Experimental)
 New candidate terms for the hand-crafted evaluators, alongside the existing chip/wall/column/

@@ -87,17 +87,27 @@ int mlValueScore(int turnColor, int slot) {
 // applied at read time so unmake never has to know whose turn it was.
 static float g_mlStmW = 0.0f;       // weight of the side-to-move input
 static float g_mlOutScale = 1.0f;   // active model's output scale
+static float g_mlSkipW = 0.0f;      // frozen chip-count skip weight (ResidualModel); 0 = none
 
 bool mlIncrementalBegin(int slot) {
     mlIncrementalEnd();
     Model* m = mlGetModel(slot);
     if (!m || m->head() != HEAD_VALUE || m->featureVersion() != 2) return false;
-    LinearModel* lm = dynamic_cast<LinearModel*>(m);
+
+    // Unwrap a residual chip-skip wrapper: its inner model is what the accumulator
+    // tracks, and the skip rides along as skipW * g_chipDiff added at the leaf
+    // (g_chipDiff is already maintained by make/unmake). An MLP inner has no linear
+    // accumulator, so we fall through to false and the full-scan leaf path.
+    Model* core = m;
+    float skip = 0.0f;
+    if (ResidualModel* rm = dynamic_cast<ResidualModel*>(m)) { skip = rm->skipW; core = rm->inner; }
+    LinearModel* lm = dynamic_cast<LinearModel*>(core);
     if (!lm || lm->n != MLV2_FEATURES) return false;
 
     g_mlWeights  = lm->w.data();
     g_mlStmW     = lm->w[MLV2_STM];
     g_mlOutScale = lm->outScale;
+    g_mlSkipW    = skip;
 
     double acc = lm->bias;
     for (int y = 0; y < SIZE; y++)
@@ -116,12 +126,15 @@ void mlIncrementalEnd() {
     g_mlWeights = nullptr;
     g_mlStmW = 0.0f;
     g_mlOutScale = 1.0f;
+    g_mlSkipW = 0.0f;
 }
 
 int mlLeafScore(int turnColor) {
     int nw = nearWinCheck(turnColor);
     if (nw) return nw;
-    double out = g_mlAcc + g_mlStmW * ((turnColor == White) ? 1.0 : -1.0);
+    // acc = inner linear logit; add the frozen chip skip (skipW * white-minus-black
+    // count, already maintained in g_chipDiff) and the side-to-move term.
+    double out = g_mlAcc + (double)g_mlSkipW * g_chipDiff + g_mlStmW * ((turnColor == White) ? 1.0 : -1.0);
     return mlSquashToEval(out, g_mlOutScale);
 }
 

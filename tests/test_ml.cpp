@@ -10,6 +10,7 @@
 #include "ai_eval.h"
 #include "ranking.h"
 #include <cmath>
+#include <cstdlib>
 
 // Find a registry entry by name (small helper for the tests).
 static int explorerIdx(const char* n) { for (int i=0;i<g_explorerCount;i++) if (string(g_explorers[i].name)==n) return i; return 0; }
@@ -330,5 +331,262 @@ TEST_CASE("incremental ML path stays off when it does not apply") {
                 == evaluateBoard(White, evalIdx("Classic"), classic));
         evalEndSearch();
         mlClearSlots();
+    }
+}
+
+// ============================================================
+// MLP model + residual (chip-count skip) value head
+// ============================================================
+
+TEST_CASE("MLP forward matches a hand-computed 2-2-1 net") {
+    std::vector<int> hidden; hidden.push_back(2);
+    MLPModel m(HEAD_VALUE, 1, 2, 900.0f, hidden);   // sizes = [2,2,1]
+    // layer 0 (2->2), output-major idx = j*in + i
+    m.W[0][0] = 1.0f; m.W[0][1] = 0.0f;   // h0_pre = x0
+    m.W[0][2] = 0.0f; m.W[0][3] = 1.0f;   // h1_pre = x1
+    m.B[0][0] = 0.0f; m.B[0][1] = 0.0f;
+    // layer 1 (2->1)
+    m.W[1][0] = 2.0f; m.W[1][1] = 3.0f; m.B[1][0] = 0.5f;
+    float x[2] = { 1.0f, -1.0f };          // h_pre = [1,-1] -> ReLU [1,0]
+    REQUIRE(m.forward(x, 2) == Approx(0.5f + 2.0f * 1.0f + 3.0f * 0.0f));  // 2.5
+}
+
+// Gold-standard safety net for the hand-written backprop: one trainStep applies the
+// analytic gradient (delta = -lr*grad at l2=0), which must match a central finite
+// difference of the loss for every weight and bias.
+TEST_CASE("MLP backprop gradient matches finite differences") {
+    srand(123);
+    std::vector<int> hidden; hidden.push_back(4);
+    MLPModel m(HEAD_VALUE, 1, 3, 1.0f, hidden);     // sizes = [3,4,1]
+    m.initRandom();
+    float x[3] = { 0.5f, -0.3f, 0.8f };
+    float target = 1.0f;
+    const float lr = 1.0f;
+
+    std::vector<std::vector<float> > Wsnap = m.W, Bsnap = m.B;
+    m.trainStep(x, 3, target, lr, 0.0f, 0.0f);       // computes grads at the snapshot, updates in place
+    std::vector<std::vector<float> > Wafter = m.W, Bafter = m.B;
+
+    auto lossNow = [&]() {
+        double z = m.forward(x, 3);
+        double p = 1.0 / (1.0 + std::exp(-z));
+        return -(target * std::log(p + 1e-7) + (1.0 - target) * std::log(1.0 - p + 1e-7));
+    };
+    const float eps = 1e-3f;
+    int mism = 0;
+    for (size_t k = 0; k < m.W.size(); k++) {
+        for (size_t t = 0; t < m.W[k].size(); t++) {
+            double analytic = (Wsnap[k][t] - Wafter[k][t]) / lr;
+            m.W = Wsnap; m.B = Bsnap;
+            m.W[k][t] = Wsnap[k][t] + eps; double lp = lossNow();
+            m.W[k][t] = Wsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+        for (size_t t = 0; t < m.B[k].size(); t++) {
+            double analytic = (Bsnap[k][t] - Bafter[k][t]) / lr;
+            m.W = Wsnap; m.B = Bsnap;
+            m.B[k][t] = Bsnap[k][t] + eps; double lp = lossNow();
+            m.B[k][t] = Bsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+    }
+    m.W = Wsnap; m.B = Bsnap;
+    REQUIRE(mism == 0);
+}
+
+TEST_CASE("MLP backprop reduces loss on a fixed example") {
+    srand(7);
+    std::vector<int> hidden; hidden.push_back(6);
+    MLPModel m(HEAD_VALUE, 1, 3, 1.0f, hidden);
+    m.initRandom();
+    float x[3] = { 0.4f, -0.2f, 0.6f };
+    float first = m.trainStep(x, 3, 1.0f, 0.3f, 0.0f, 0.0f);
+    float last = first;
+    for (int i = 0; i < 300; i++) last = m.trainStep(x, 3, 1.0f, 0.3f, 0.0f, 0.0f);
+    REQUIRE(last < first);
+}
+
+TEST_CASE("MLP save/load round trip") {
+    srand(99);
+    std::vector<int> hidden; hidden.push_back(5);
+    MLPModel* m = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+    m->initRandom();
+    REQUIRE(m->save("build\\test_mlp.tmp"));
+    Model* loaded = loadModel("build\\test_mlp.tmp");
+    REQUIRE(loaded != nullptr);
+    REQUIRE(string(loaded->typeName()) == "mlp");
+    REQUIRE(loaded->featureVersion() == 2);
+    REQUIRE(loaded->featureCount() == MLV2_FEATURES);
+
+    float f[MLV2_FEATURES];
+    clearBoard();
+    board[1][1] = WHITE; board[4][4] = WHITE; board[6][6] = BLACK; board[3][2] = BLACK;
+    mlExtractValueFeaturesV2(White, f);
+    REQUIRE(loaded->forward(f, MLV2_FEATURES) == Approx(m->forward(f, MLV2_FEATURES)).margin(1e-3));
+    delete loaded;
+    delete m;
+}
+
+TEST_CASE("ResidualModel forward = skip*matDiff + inner (linear and mlp inner)") {
+    clearBoard();
+    board[0][0] = WHITE; board[3][4] = WHITE; board[5][5] = WHITE; board[7][7] = BLACK;  // matDiff = 3-1 = 2
+    float f[MLV2_FEATURES];
+    mlExtractValueFeaturesV2(White, f);
+    REQUIRE(matDiffFromFeatures(f, 2) == Approx(2.0f));
+
+    SECTION("linear inner") {
+        LinearModel* inner = makeV2Model();
+        float base = inner->forward(f, MLV2_FEATURES);
+        ResidualModel res(0.4f, 2, inner);
+        REQUIRE(res.forward(f, MLV2_FEATURES) == Approx(0.4f * 2.0f + base));
+        // ResidualModel owns inner; do not double free (stack object frees on scope exit)
+    }
+    SECTION("mlp inner") {
+        srand(3);
+        std::vector<int> hidden; hidden.push_back(4);
+        MLPModel* inner = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+        inner->initRandom();
+        float base = inner->forward(f, MLV2_FEATURES);
+        ResidualModel res(0.4f, 2, inner);
+        REQUIRE(res.forward(f, MLV2_FEATURES) == Approx(0.4f * 2.0f + base));
+    }
+}
+
+// A hard chip skip over a LINEAR inner is representationally a plain linear model
+// with the skip folded into the piece-square weights (+skip on white squares,
+// -skip on black). The two must produce identical evals -- validates the skip
+// inference against the existing linear machinery.
+TEST_CASE("Residual+linear equals the fold into a plain linear model") {
+    const float skipW = 0.35f;
+    LinearModel* inner = makeV2Model();
+    // Folded plain linear: w_white += skip, w_black -= skip, STM + bias unchanged.
+    LinearModel* folded = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    folded->bias = inner->bias;
+    for (int i = 0; i < MLV2_FEATURES; i++) folded->w[i] = inner->w[i];
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            folded->w[mlSqW(x, y)] += skipW;
+            folded->w[mlSqB(x, y)] -= skipW;
+        }
+    ResidualModel* res = new ResidualModel(skipW, 2, inner);
+
+    mlSetModel(0, res);      // slot owns res (and its inner)
+    mlSetModel(1, folded);   // slot owns folded
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    for (int t = 0; t < 2; t++) {
+        int turn = (t == 0) ? White : Black;
+        REQUIRE(std::abs(mlValueScore(turn, 0) - mlValueScore(turn, 1)) <= 1);
+    }
+    clearBoard();
+    board[2][2] = WHITE; board[4][3] = WHITE; board[5][6] = BLACK;
+    for (int t = 0; t < 2; t++) {
+        int turn = (t == 0) ? White : Black;
+        REQUIRE(std::abs(mlValueScore(turn, 0) - mlValueScore(turn, 1)) <= 1);
+    }
+    mlClearSlots();
+}
+
+TEST_CASE("ResidualModel save/load round trip (linear and mlp inner)") {
+    SECTION("linear inner") {
+        LinearModel* inner = makeV2Model();
+        ResidualModel* res = new ResidualModel(0.42f, 2, inner);
+        REQUIRE(res->save("build\\test_res_lin.tmp"));
+        Model* loaded = loadModel("build\\test_res_lin.tmp");
+        REQUIRE(loaded != nullptr);
+        REQUIRE(string(loaded->typeName()) == "residual");
+        REQUIRE(loaded->featureVersion() == 2);
+        ResidualModel* rl = dynamic_cast<ResidualModel*>(loaded);
+        REQUIRE(rl != nullptr);
+        REQUIRE(rl->skipW == Approx(0.42f));
+        REQUIRE(string(rl->inner->typeName()) == "linear");
+        float f[MLV2_FEATURES];
+        clearBoard(); board[1][2] = WHITE; board[6][5] = BLACK;
+        mlExtractValueFeaturesV2(Black, f);
+        REQUIRE(loaded->forward(f, MLV2_FEATURES) == Approx(res->forward(f, MLV2_FEATURES)).margin(1e-3));
+        delete loaded; delete res;
+    }
+    SECTION("mlp inner") {
+        srand(5);
+        std::vector<int> hidden; hidden.push_back(6);
+        MLPModel* inner = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+        inner->initRandom();
+        ResidualModel* res = new ResidualModel(0.30f, 2, inner);
+        REQUIRE(res->save("build\\test_res_mlp.tmp"));
+        Model* loaded = loadModel("build\\test_res_mlp.tmp");
+        REQUIRE(loaded != nullptr);
+        REQUIRE(string(loaded->typeName()) == "residual");
+        ResidualModel* rl = dynamic_cast<ResidualModel*>(loaded);
+        REQUIRE(rl != nullptr);
+        REQUIRE(rl->skipW == Approx(0.30f));
+        REQUIRE(string(rl->inner->typeName()) == "mlp");
+        float f[MLV2_FEATURES];
+        clearBoard(); board[2][3] = WHITE; board[3][3] = WHITE; board[5][4] = BLACK;
+        mlExtractValueFeaturesV2(White, f);
+        REQUIRE(loaded->forward(f, MLV2_FEATURES) == Approx(res->forward(f, MLV2_FEATURES)).margin(1e-3));
+        delete loaded; delete res;
+    }
+}
+
+TEST_CASE("Residual+linear v2: incremental leaf matches full recompute over a walk") {
+    int lvIdx = evalIdx("LearnedValue");
+    int params[MAX_EVAL_PARAMS] = { 0 };
+    LinearModel* inner = makeV2Model();
+    ResidualModel* res = new ResidualModel(0.3f, 2, inner);
+    mlSetModel(0, res);   // slot owns res + inner; `inner` pointer stays valid for mlAccFull
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    evalBeginSearch(lvIdx, params);
+    REQUIRE(g_mlIncremental);                          // linear inner -> incremental on
+    REQUIRE(g_mlAcc == Approx(mlAccFull(inner)).margin(1e-6));   // accumulator tracks the INNER logit
+    g_mlWalkAccMismatch = 0; g_mlWalkLeafMismatch = 0;
+    mlWalk(inner, 0, params, White, 2);               // leaf compares evalLeaf (skip incl.) vs mlValueScore (skip incl.)
+    evalEndSearch();
+    REQUIRE(g_mlWalkAccMismatch == 0);
+    REQUIRE(g_mlWalkLeafMismatch == 0);
+    mlClearSlots();
+}
+
+TEST_CASE("Residual+MLP v2: incremental stays off, full-scan leaf is used") {
+    int lvIdx = evalIdx("LearnedValue");
+    int params[MAX_EVAL_PARAMS] = { 0 };
+    srand(11);
+    std::vector<int> hidden; hidden.push_back(8);
+    MLPModel* inner = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+    inner->initRandom();
+    ResidualModel* res = new ResidualModel(0.3f, 2, inner);
+    mlSetModel(0, res);
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    evalBeginSearch(lvIdx, params);
+    REQUIRE(g_mlIncremental == false);                 // MLP inner has no linear accumulator
+    REQUIRE(evalLeaf(White, lvIdx, params) == mlValueScore(White, 0));   // fallback == full scan
+    evalEndSearch();
+    int s = mlValueScore(White, 0);
+    REQUIRE(s < WhiteWin - 1024);
+    REQUIRE(s > BlackWin + 1024);
+    mlClearSlots();
+}
+
+TEST_CASE("trainStep with a frozen offset still reduces loss") {
+    SECTION("linear") {
+        LinearModel m(HEAD_VALUE, 1, 3, 900.0f);
+        float x[3] = { 0.5f, -0.2f, 0.3f };
+        float first = m.sgdLogisticStep(x, 3, 1.0f, 0.5f, 0.0f, 2.0f);   // offset = 2
+        float last = first;
+        for (int i = 0; i < 200; i++) last = m.sgdLogisticStep(x, 3, 1.0f, 0.5f, 0.0f, 2.0f);
+        REQUIRE(last < first);
+    }
+    SECTION("mlp") {
+        srand(21);
+        std::vector<int> hidden; hidden.push_back(5);
+        MLPModel m(HEAD_VALUE, 1, 3, 1.0f, hidden);
+        m.initRandom();
+        float x[3] = { 0.5f, -0.2f, 0.3f };
+        float first = m.trainStep(x, 3, 1.0f, 0.3f, 0.0f, -1.5f);
+        float last = first;
+        for (int i = 0; i < 300; i++) last = m.trainStep(x, 3, 1.0f, 0.3f, 0.0f, -1.5f);
+        REQUIRE(last < first);
     }
 }

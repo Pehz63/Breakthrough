@@ -218,17 +218,56 @@ static string teacherSpec(const AgentSpec& a) {
 // ============================================================
 // REGIME: SUPERVISED VALUE
 // ============================================================
+// Logistic sigmoid for offline loss reporting / skip calibration.
+static double sigmoidd(double z) {
+    if (z >= 0) { double e = exp(-z); return 1.0 / (1.0 + e); }
+    double e = exp(z); return e / (1.0 + e);
+}
+
+// Fit a 1-feature (material differential) logistic regression on the training data
+// and return its per-piece slope, used as the frozen chip-count skip weight when
+// residualSkip < 0 (auto-calibrate). Deterministic (no rand()), so it does not
+// perturb the weight-init RNG stream.
+static float calibrateMaterialSkip(const std::vector<std::vector<float> >& X,
+                                   const std::vector<float>& Y, int featVer) {
+    double w = 0.0, b = 0.0;
+    const double lr = 0.01;
+    for (int e = 0; e < 30; e++)
+        for (size_t i = 0; i < X.size(); i++) {
+            double md = matDiffFromFeatures(X[i].data(), featVer);
+            double p = sigmoidd(b + w * md);
+            double g = p - Y[i];
+            w -= lr * g * md;
+            b -= lr * g;
+        }
+    return (float)w;
+}
+
+// Give an inner model random starting weights (linear: the historical randWeight
+// per weight; mlp: fan-in-scaled symmetry-breaking init). Called at the same point
+// in the RNG stream as the historical linear path, so plain-linear runs reproduce.
+static void initInnerRandom(Model* inner) {
+    if (LinearModel* lm = dynamic_cast<LinearModel*>(inner)) {
+        for (int i = 0; i < lm->n; i++) lm->w[i] = randWeight();
+    } else if (MLPModel* mm = dynamic_cast<MLPModel*>(inner)) {
+        mm->initRandom();
+    }
+}
+
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
                          const string& genEval, const std::vector<int>& genParams,
                          int featVer, double l2, double genRandomFloor,
                          int genRandomDecayPlies, const string& genModelPath,
-                         const string& genModelExplorer, const string& fromDataFile) {
+                         const string& genModelExplorer, const string& fromDataFile,
+                         const string& modelType, const std::vector<int>& mlpHidden,
+                         double residualSkip) {
     srand(seed);
     PRNT = 0;
     if (featVer != 1 && featVer != 2) featVer = 1;
     const int featCount = (featVer == 2) ? MLV2_FEATURES : MLV_FEATURES;
+    const bool useMlp = (modelType == "mlp");
 
     std::vector<std::vector<float> > X;
     std::vector<float> Y;
@@ -298,9 +337,34 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
     }
     if (X.empty()) { cout << "No data.\n"; return 1; }
 
-    LinearModel model(HEAD_VALUE, featVer, featCount, 900.0f);
-    model.teacher = teach;                 // provenance, written into the model file
-    for (int i = 0; i < model.n; i++) model.w[i] = randWeight();
+    // Build the inner model (linear or mlp) and give it random starting weights at
+    // the historical point in the RNG stream (so plain-linear runs reproduce).
+    std::vector<int> hidden = mlpHidden;
+    if (useMlp && hidden.empty()) hidden.push_back(32);   // default one 32-wide hidden layer
+    Model* inner = useMlp ? (Model*)new MLPModel(HEAD_VALUE, featVer, featCount, 900.0f, hidden)
+                          : (Model*)new LinearModel(HEAD_VALUE, featVer, featCount, 900.0f);
+    initInnerRandom(inner);
+
+    // Optionally wrap in a frozen chip-count skip. residualSkip: 0 = off, > 0 =
+    // fixed weight, < 0 = auto-calibrate from a material-only logistic pre-fit.
+    Model* model = inner;
+    float skipW = 0.0f;
+    if (residualSkip != 0.0) {
+        skipW = (residualSkip > 0.0) ? (float)residualSkip : calibrateMaterialSkip(X, Y, featVer);
+        model = new ResidualModel(skipW, featVer, inner);
+    }
+
+    // Provenance: record architecture + skip so variants never share a teacher= line.
+    {
+        std::ostringstream arch;
+        if (useMlp) { arch << " mlp("; for (size_t i = 0; i < hidden.size(); i++) { if (i) arch << ","; arch << hidden[i]; } arch << ")"; }
+        if (residualSkip != 0.0) arch << " res(skip=" << skipW << ")";
+        teach += arch.str();
+    }
+    model->teacher = teach;                 // provenance, written into the model file
+    cout << "Model: type=" << model->typeName() << " featVer=" << featVer;
+    if (residualSkip != 0.0) cout << " skip=" << skipW << (residualSkip < 0.0 ? " (auto)" : "");
+    cout << "\n";
 
     std::vector<int> idx(X.size());
     for (size_t i = 0; i < idx.size(); i++) idx[i] = (int)i;
@@ -312,7 +376,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         shuffleVec(idx);
         double sum = 0.0;
         for (size_t i = 0; i < idx.size(); i++)
-            sum += model.sgdLogisticStep(X[idx[i]].data(), featCount, Y[idx[i]], lr, (float)l2);
+            sum += model->trainStep(X[idx[i]].data(), featCount, Y[idx[i]], lr, (float)l2);
         double avg = sum / X.size();
 
         bool ckpt = (e % ckptEvery == 0) || (e == epochs);
@@ -320,15 +384,16 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         if (!ckpt) continue;
 
         string path = outDir + "_ckpt" + std::to_string(e) + ".txt";
-        model.save(path);
+        model->save(path);
         double wr = quickScoreVsRandom(path, false, boardFile, ML_SLOTS - 1, 8);
         double elo = winrateToElo(wr);
 
         ModelRecord r;
         r.id = runId + "_e" + std::to_string(e);
-        r.type = "linear"; r.head = "value"; r.regime = "selfplay-supervised";
+        r.type = model->typeName(); r.head = "value"; r.regime = "selfplay-supervised";
         r.conditions = "genDepth=" + std::to_string(genDepth) + ",genRandom=" + std::to_string(genRandom)
                      + ",featVer=" + std::to_string(featVer) + ",l2=" + std::to_string(l2)
+                     + ",skip=" + std::to_string(skipW)
                      + ",teacher=" + teach;
         r.path = path; r.epoch = e; r.games = games; r.loss = avg; r.winrate = wr; r.elo = elo;
         records.push_back(r);
@@ -345,8 +410,31 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         cout << "          saved " << path << "  winrate_vs_random=" << wr << "  elo~" << (int)elo << "\n";
     }
 
-    model.save(outDir + ".txt");
+    model->save(outDir + ".txt");
     cout << "Final model -> " << outDir << ".txt\n";
+
+    // Stratified loss by |material differential| -- the direct theory-24 measure:
+    // whether the model is better calibrated on near-equal-material positions
+    // (where a pure chip count cannot discriminate at all). Printed for every model
+    // (plain and residual) so two runs on the same data are directly comparable.
+    {
+        double bLoss[3] = { 0, 0, 0 }; long bCnt[3] = { 0, 0, 0 };
+        const double eps = 1e-7;
+        for (size_t i = 0; i < X.size(); i++) {
+            double p = sigmoidd(model->forward(X[i].data(), featCount));
+            double l = -(Y[i] * log(p + eps) + (1.0 - Y[i]) * log(1.0 - p + eps));
+            int md = (int)lround(fabs((double)matDiffFromFeatures(X[i].data(), featVer)));
+            int b = (md == 0) ? 0 : (md == 1) ? 1 : 2;
+            bLoss[b] += l; bCnt[b]++;
+        }
+        cout << "Stratified loss by |matDiff|:";
+        const char* lbl[3] = { "==0", "==1", ">=2" };
+        for (int b = 0; b < 3; b++) {
+            cout << "  " << lbl[b] << " n=" << bCnt[b] << " loss="
+                 << (bCnt[b] ? bLoss[b] / bCnt[b] : 0.0);
+        }
+        cout << "\n";
+    }
 
     // Emit a sample of positions + outcome labels + this model's evaluations to the
     // datastore so the Python/DuckDB analysis layer has joinable data (positions <-
@@ -360,7 +448,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         int cap = (int)std::min((size_t)800, sample.size());
         for (int s = 0; s < cap; s++) {
             int i = sample[s];
-            int ev = (int)lround(tanh(model.forward(X[i].data(), featCount)) * model.outScale);
+            int ev = (int)lround(tanh(model->forward(X[i].data(), featCount)) * model->outputScale());
             string hh = std::to_string(H[i]);
             dsAppendLine("data/positions.jsonl",
                          "{\"hash\":" + hh + ",\"enc\":\"" + E[i] + "\",\"side\":\"" +
@@ -374,6 +462,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
     }
 
     writeManifest(records);
+    delete model;   // frees the inner too (ResidualModel owns it)
     return 0;
 }
 

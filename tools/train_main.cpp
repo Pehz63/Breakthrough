@@ -117,6 +117,11 @@ static void usage() {
     cout << "  train.exe selfplay-supervised --out models/pst_replay --feature-version 2 --from-data data/replay_v2.jsonl\n";
     cout << "      (fit on positions replayed from ranking/matches.jsonl by rank.exe extract, instead of fresh self-play)\n";
     cout << "  --l2 <f>                     weight decay in the SGD step (0 = off, the historical behavior)\n";
+    cout << "  --model-type linear|mlp      inner value-model architecture (default linear)\n";
+    cout << "  --mlp-hidden \"32\" or \"32,16\"  MLP hidden-layer widths (default 32 when --model-type mlp)\n";
+    cout << "  --residual-skip <f>          frozen chip-count skip: 0=off, >0 fixed weight, <0 auto-calibrate\n";
+    cout << "  train.exe selfplay-supervised --out models/res_mlp --feature-version 2 --from-data data/replay_v2.jsonl --model-type mlp --mlp-hidden 32 --residual-skip -1\n";
+    cout << "      (nonlinear residual value head: chipCount skip + an MLP learning the rest)\n";
     cout << "  --gen-random-floor <f> --gen-random-decay-plies <n>  linearly decay teacher dilution from\n";
     cout << "      --gen-random to --gen-random-floor over that many half-moves (0 plies = off, constant dilution)\n";
     cout << "  train.exe imitate --out models/lin_policy.txt --games 150 --epochs 15\n";
@@ -166,7 +171,10 @@ int main(int argc, char** argv) {
             getInt(argc, argv, "--gen-random-decay-plies", 0),
             getOpt(argc, argv, "--gen-model", ""),
             getOpt(argc, argv, "--gen-model-explorer", "alphabeta"),
-            getOpt(argc, argv, "--from-data", ""));
+            getOpt(argc, argv, "--from-data", ""),
+            getOpt(argc, argv, "--model-type", "linear"),
+            getIntList(argc, argv, "--mlp-hidden"),
+            getDbl(argc, argv, "--residual-skip", 0.0));
     } else if (cmd == "imitate") {
         rc = trainImitationPolicy(
             getOpt(argc, argv, "--out", "models/lin_policy.txt"),

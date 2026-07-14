@@ -2,7 +2,7 @@
   "evaluators": ["Classic", "Experimental", "LearnedValue", "Advanced"],
   "explorers": ["Greedy", "AlphaBeta"],
   "choosers": ["UniformRandom", "TieredRandom", "SmartRandom", "LearnedPolicy"],
-  "model_types": ["linear", "mlp", "nnue", "transformer"],
+  "model_types": ["linear", "mlp", "residual", "nnue", "transformer"],
   "regimes": ["selfplay-supervised", "imitate", "tdleaf", "population", "tournament", "docs"],
   "value_feature_version": 1,
   "move_feature_version": 1

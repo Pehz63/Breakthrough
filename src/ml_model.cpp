@@ -1,5 +1,28 @@
 #include "ml_model.h"
 #include <cmath>
+#include <ostream>
+#include <iomanip>
+
+static inline float sigmoidf(float z) {
+    if (z >= 0) { float e = expf(-z); return 1.0f / (1.0f + e); }
+    float e = expf(z); return e / (1.0f + e);
+}
+
+// ============================================================
+// FEATURE-VECTOR MATERIAL READOUT (chip-count skip term)
+// ============================================================
+float matDiffFromFeatures(const float* x, int featVer) {
+    if (featVer == 2) {
+        // v2 sparse piece-square: white squares 0..63, black squares 64..127.
+        float w = 0.0f, b = 0.0f;
+        int half = SIZE * SIZE;
+        for (int i = 0; i < half; i++)      w += x[i];
+        for (int i = half; i < 2*half; i++) b += x[i];
+        return w - b;
+    }
+    // v1 dense: feature 0 is (wTotal - bTotal) / 16.
+    return x[0] * 16.0f;
+}
 
 // ============================================================
 // LINEAR MODEL
@@ -16,14 +39,12 @@ float LinearModel::forward(const float* x, int m) const {
     return s;
 }
 
-static inline float sigmoidf(float z) {
-    if (z >= 0) { float e = expf(-z); return 1.0f / (1.0f + e); }
-    float e = expf(z); return e / (1.0f + e);
-}
-
-float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr, float l2) {
+float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr, float l2, float offset) {
     int lim = (m < n) ? m : n;
-    float z = forward(x, lim);
+    // Compute the logit inline (not via the virtual forward) so a subclass that
+    // overrides forward with an extra term is never double-counted here.
+    float z = offset + bias;
+    for (int i = 0; i < lim; i++) z += w[i] * x[i];
     float p = sigmoidf(z);
     float eps = 1e-7f;
     float loss = -(target * logf(p + eps) + (1.0f - target) * logf(1.0f - p + eps));
@@ -31,6 +52,11 @@ float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr
     for (int i = 0; i < lim; i++) w[i] -= lr * (g * x[i] + l2 * w[i]);
     bias -= lr * g;
     return loss;
+}
+
+void LinearModel::writeWeights(std::ostream& f) const {
+    f << "bias=" << bias << "\n";
+    for (int i = 0; i < n; i++) f << "w" << i << "=" << w[i] << "\n";
 }
 
 bool LinearModel::save(const string& path) const {
@@ -43,8 +69,143 @@ bool LinearModel::save(const string& path) const {
     f << "feature_version=" << featVer << "\n";
     f << "feature_count=" << n << "\n";
     f << "out_scale=" << outScale << "\n";
-    f << "bias=" << bias << "\n";
-    for (int i = 0; i < n; i++) f << "w" << i << "=" << w[i] << "\n";
+    writeWeights(f);
+    return true;
+}
+
+// ============================================================
+// MLP MODEL
+// ============================================================
+MLPModel::MLPModel(int head, int featVersion, int featCount, float scale, const std::vector<int>& hidden)
+    : headType(head), featVer(featVersion), n(featCount), outScale(scale) {
+    sizes.push_back(featCount);
+    for (size_t i = 0; i < hidden.size(); i++) if (hidden[i] > 0) sizes.push_back(hidden[i]);
+    sizes.push_back(1);
+    int L = (int)sizes.size() - 1;
+    W.resize(L); B.resize(L);
+    for (int k = 0; k < L; k++) {
+        W[k].assign((size_t)sizes[k] * sizes[k+1], 0.0f);
+        B[k].assign(sizes[k+1], 0.0f);
+    }
+    act.resize(L + 1); pre.resize(L + 1);
+    for (int k = 0; k <= L; k++) { act[k].assign(sizes[k], 0.0f); pre[k].assign(sizes[k], 0.0f); }
+}
+
+void MLPModel::initRandom() {
+    int L = (int)sizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        int in = sizes[k];
+        float scale = (in > 0) ? (float)sqrt(1.0 / (double)in) : 1.0f;   // fan-in scaling
+        for (size_t t = 0; t < W[k].size(); t++)
+            W[k][t] = (float)(((double)rand() / RAND_MAX) * 2.0 - 1.0) * scale;
+        for (size_t t = 0; t < B[k].size(); t++) B[k][t] = 0.0f;
+    }
+}
+
+float MLPModel::computeForward(const float* x, int m) const {
+    int L = (int)sizes.size() - 1;
+    int in0 = sizes[0];
+    int lim = (m < in0) ? m : in0;
+    for (int i = 0; i < in0; i++) act[0][i] = (i < lim) ? x[i] : 0.0f;
+    for (int k = 0; k < L; k++) {
+        int in = sizes[k], out = sizes[k+1];
+        const std::vector<float>& Wk = W[k];
+        const std::vector<float>& Bk = B[k];
+        const float* a = act[k].data();
+        bool hidden = (k + 1 < L);
+        for (int j = 0; j < out; j++) {
+            const float* wrow = &Wk[(size_t)j * in];
+            float z = Bk[j];
+            for (int i = 0; i < in; i++) z += wrow[i] * a[i];
+            pre[k+1][j] = z;
+            act[k+1][j] = hidden ? (z > 0.0f ? z : 0.0f) : z;   // ReLU hidden, linear output
+        }
+    }
+    return act[L][0];
+}
+
+float MLPModel::forward(const float* x, int m) const {
+    return computeForward(x, m);
+}
+
+float MLPModel::trainStep(const float* x, int m, float target, float lr, float l2, float offset) {
+    int L = (int)sizes.size() - 1;
+    float out = computeForward(x, m);       // fills act[]/pre[]
+    float z = out + offset;
+    float p = sigmoidf(z);
+    float eps = 1e-7f;
+    float loss = -(target * logf(p + eps) + (1.0f - target) * logf(1.0f - p + eps));
+
+    // g holds dL/d(pre) for the current layer's OUTPUT units; start at the scalar output.
+    std::vector<float> g(1, p - target);
+    for (int k = L - 1; k >= 0; k--) {
+        int in = sizes[k], out2 = sizes[k+1];
+        std::vector<float>& Wk = W[k];
+        std::vector<float>& Bk = B[k];
+        const float* a = act[k].data();
+        std::vector<float> gPrev;
+        if (k > 0) gPrev.assign(in, 0.0f);
+        for (int j = 0; j < out2; j++) {
+            float gj = g[j];
+            float* wrow = &Wk[(size_t)j * in];
+            for (int i = 0; i < in; i++) {
+                if (k > 0) gPrev[i] += gj * wrow[i];     // uses pre-update weight
+                wrow[i] -= lr * (gj * a[i] + l2 * wrow[i]);
+            }
+            Bk[j] -= lr * gj;                            // bias not decayed
+        }
+        if (k > 0) {
+            const float* pk = pre[k].data();
+            for (int i = 0; i < in; i++) gPrev[i] *= (pk[i] > 0.0f) ? 1.0f : 0.0f;   // ReLU'
+            g.swap(gPrev);
+        }
+    }
+    return loss;
+}
+
+void MLPModel::writeWeights(std::ostream& f) const {
+    f << std::setprecision(9);
+    f << "layers=";
+    for (size_t i = 0; i < sizes.size(); i++) { if (i) f << ","; f << sizes[i]; }
+    f << "\n";
+    int L = (int)sizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        for (size_t t = 0; t < W[k].size(); t++) f << "l" << k << "w" << t << "=" << W[k][t] << "\n";
+        for (size_t t = 0; t < B[k].size(); t++) f << "l" << k << "b" << t << "=" << B[k][t] << "\n";
+    }
+}
+
+bool MLPModel::save(const string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) return false;
+    f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
+    f << "type=mlp\n";
+    f << "head=" << (headType == HEAD_POLICY ? "policy" : "value") << "\n";
+    f << "feature_version=" << featVer << "\n";
+    f << "feature_count=" << n << "\n";
+    f << "out_scale=" << outScale << "\n";
+    writeWeights(f);
+    return true;
+}
+
+// ============================================================
+// RESIDUAL MODEL (frozen chip-count skip + inner model)
+// ============================================================
+bool ResidualModel::save(const string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) return false;
+    f << std::setprecision(9);
+    f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
+    f << "type=residual\n";
+    f << "inner_type=" << inner->typeName() << "\n";
+    f << "skip_weight=" << skipW << "\n";
+    f << "head=" << (inner->head() == HEAD_POLICY ? "policy" : "value") << "\n";
+    f << "feature_version=" << inner->featureVersion() << "\n";
+    f << "feature_count=" << inner->featureCount() << "\n";
+    f << "out_scale=" << inner->outputScale() << "\n";
+    inner->writeWeights(f);     // inner's weight block inline (mlp writes its layers= line here too)
     return true;
 }
 
@@ -53,8 +214,58 @@ bool LinearModel::save(const string& path) const {
 // ============================================================
 Model* makeModel(const string& type, int head, int featVersion, int featCount, float scale) {
     if (type == "linear") return new LinearModel(head, featVersion, featCount, scale);
-    // mlp / nnue / transformer: registered for docs, not yet constructible.
+    // mlp / residual need extra structure (hidden sizes / a skip + inner) and are
+    // built by loadModel / the trainer directly. nnue / transformer: docs only.
     return nullptr;
+}
+
+// Parse a comma list "129,32,1" into ints.
+static std::vector<int> parseIntList(const string& s) {
+    std::vector<int> v; size_t i = 0;
+    while (i <= s.size()) {
+        size_t c = s.find(',', i);
+        string tok = s.substr(i, (c == string::npos ? s.size() : c) - i);
+        if (!tok.empty()) { try { v.push_back(std::stoi(tok)); } catch (...) {} }
+        if (c == string::npos) break;
+        i = c + 1;
+    }
+    return v;
+}
+
+// Build a linear model's weights from a parsed key/value map. Reused by the direct
+// `type=linear` case and by the residual loader for a linear inner.
+static LinearModel* buildLinearFromKV(const map<string, string>& kv, int head, int featVer, int n, float scale) {
+    LinearModel* m = new LinearModel(head, featVer, n, scale);
+    map<string, string>::const_iterator it = kv.find("bias");
+    if (it != kv.end()) m->bias = std::stof(it->second);
+    for (int i = 0; i < n; i++) {
+        it = kv.find("w" + std::to_string(i));
+        if (it != kv.end()) m->w[i] = std::stof(it->second);
+    }
+    return m;
+}
+
+// Build an MLP model's weights from a parsed key/value map (needs the `layers=`
+// line for the architecture). Reused by the direct case and the residual loader.
+static MLPModel* buildMLPFromKV(const map<string, string>& kv, int head, int featVer, int n, float scale) {
+    map<string, string>::const_iterator it = kv.find("layers");
+    if (it == kv.end()) return nullptr;
+    std::vector<int> sz = parseIntList(it->second);
+    if ((int)sz.size() < 2 || sz.front() != n) return nullptr;
+    std::vector<int> hidden(sz.begin() + 1, sz.end() - 1);   // strip input + output
+    MLPModel* m = new MLPModel(head, featVer, n, scale, hidden);
+    int L = (int)m->sizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        for (size_t t = 0; t < m->W[k].size(); t++) {
+            it = kv.find("l" + std::to_string(k) + "w" + std::to_string(t));
+            if (it != kv.end()) m->W[k][t] = std::stof(it->second);
+        }
+        for (size_t t = 0; t < m->B[k].size(); t++) {
+            it = kv.find("l" + std::to_string(k) + "b" + std::to_string(t));
+            if (it != kv.end()) m->B[k][t] = std::stof(it->second);
+        }
+    }
+    return m;
 }
 
 Model* loadModel(const string& path) {
@@ -76,13 +287,23 @@ Model* loadModel(const string& path) {
     float scale = kv.count("out_scale")        ? std::stof(kv["out_scale"])        : 900.0f;
 
     if (type == "linear") {
-        LinearModel* m = new LinearModel(head, featVer, n, scale);
+        LinearModel* m = buildLinearFromKV(kv, head, featVer, n, scale);
         if (kv.count("teacher")) m->teacher = kv["teacher"];
-        if (kv.count("bias")) m->bias = std::stof(kv["bias"]);
-        for (int i = 0; i < n; i++) {
-            string k = "w" + std::to_string(i);
-            if (kv.count(k)) m->w[i] = std::stof(kv[k]);
-        }
+        return m;
+    }
+    if (type == "mlp") {
+        MLPModel* m = buildMLPFromKV(kv, head, featVer, n, scale);
+        if (m && kv.count("teacher")) m->teacher = kv["teacher"];
+        return m;
+    }
+    if (type == "residual") {
+        float skipW = kv.count("skip_weight") ? std::stof(kv["skip_weight"]) : 0.0f;
+        string innerType = kv.count("inner_type") ? kv["inner_type"] : "linear";
+        Model* inner = (innerType == "mlp") ? (Model*)buildMLPFromKV(kv, head, featVer, n, scale)
+                                            : (Model*)buildLinearFromKV(kv, head, featVer, n, scale);
+        if (!inner) return nullptr;
+        ResidualModel* m = new ResidualModel(skipW, featVer, inner);
+        if (kv.count("teacher")) m->teacher = kv["teacher"];
         return m;
     }
     return nullptr;   // unimplemented architecture
@@ -93,7 +314,8 @@ Model* loadModel(const string& path) {
 // ============================================================
 const ModelTypeDef g_modelTypes[] = {
     { "linear",      "Linear: bias + weighted sum of features. Fast; value or policy head.", true  },
-    { "mlp",         "Multilayer perceptron (1-2 hidden layers), hand-written forward pass.", false },
+    { "mlp",         "Multilayer perceptron (1-2 hidden layers), hand-written forward + backprop; ReLU hidden, linear output.", true },
+    { "residual",    "Frozen chip-count skip + an inner model (linear or mlp): output = skipW*matDiff + inner. Learns the residual.", true },
     { "nnue",        "Efficiently updatable NN; designed to plug into the g_evalPos accumulator.", false },
     { "transformer", "Squares-as-tokens self-attention; teacher / offline label generator only.", false },
 };

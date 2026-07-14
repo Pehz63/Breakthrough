@@ -60,6 +60,14 @@ struct ModelRecord {
 // ranking/matches.jsonl -- the existing diverse, already-Elo-differentiated
 // agent pool -- deterministically by seed and emits this format). The file's
 // declared feature version must match featVer.
+//
+// Model architecture: modelType = "linear" (default, the historical path) or
+// "mlp" (a hand-written ReLU net; mlpHidden = hidden-layer widths, e.g. {32} or
+// {32,16}, defaulting to {32} when empty). residualSkip adds a frozen chip-count
+// skip connection (ResidualModel) around the chosen inner model: 0 = off (plain
+// model, unchanged), > 0 = a fixed skip weight of that value, < 0 = auto-calibrate
+// the skip from a material-only logistic pre-fit on the training data. The inner
+// model then learns only the residual on top of material.
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
@@ -71,7 +79,10 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
                          int genRandomDecayPlies = 0,
                          const string& genModelPath = "",
                          const string& genModelExplorer = "alphabeta",
-                         const string& fromDataFile = "");
+                         const string& fromDataFile = "",
+                         const string& modelType = "linear",
+                         const std::vector<int>& mlpHidden = {},
+                         double residualSkip = 0.0);
 
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
