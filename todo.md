@@ -145,7 +145,13 @@ against the same seams.
   --mlp-hidden "32"|"32,16"`. Full-scan leaf (not incremental -- NNUE below is the incremental
   step). See `plans/residual-mlp-results-1-tingly-chipmunk.md` `[done]`
 - Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]`
-- NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`) `[Later]`
+- NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`).
+  Concrete next step now that `MLPModel` (full-scan) ships and beats the linear PST ceiling on
+  offline equal-material calibration (theory 24): make its FIRST layer an incremental accumulator
+  -- widen the scalar `g_mlAcc` that the linear inner already maintains into a vector, and
+  recompute only the hidden units touched by the 2-3 changed inputs per make/unmake -- so the MLP
+  can compete at FIXED compute. Motivated directly by the residual-mlp results' full-scan Elo
+  caveat (its per-node eval is strong but per-second it is handicapped). `[Next]`
 - ~~Residual/skip-connection value head: fix (or strongly regularize toward) a chip-count term as
   an additive skip connection into the head's output, i.e. output `chipCount + learned(board)`
   instead of `learned(board)` alone. Motivated directly by the Agent Track's current standing
@@ -164,6 +170,16 @@ against the same seams.
   stays fully incremental (`skipW*g_chipDiff` added at the leaf); MLP inner is full-scan. Measured
   by a stratified loss over `|matDiff|` buckets (theory 24). Soft/regularized skip and a broader
   hand-crafted baseline stay open. See `plans/residual-mlp-results-1-tingly-chipmunk.md` `[done]`
+- Residual skip design space (follow-up to the shipped HARD frozen chip skip; theory 24,
+  `plans/residual-mlp-results-1-tingly-chipmunk.md`). The linear residual HELPED + stabilized
+  equal-material calibration but the MLP residual was a WASH, so probe whether a softer/richer
+  skip or more capacity changes that split: (a) SOFT / regularized skip -- a learnable material
+  weight initialized at the material-only logistic fit and penalized for drifting, vs the hard
+  frozen one (theory 24 Q1); (b) a BROADER hand-crafted baseline as the skip (e.g. the Advanced
+  linear mix) instead of the literal chip differential (theory 24 Q2); (c) a wider / DEEPER MLP
+  capacity sweep (2 hidden layers, more widths) to map where added capacity stops improving
+  calibration. All measurable with the existing stratified-loss printout + the generalized
+  `sweep_pst_v2.ps1` groups. `[Next]`
 - Transformer value model (squares as tokens) -- teacher / label generator only, not in-search `[Dream]`
 - Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
   instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
@@ -331,6 +347,12 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),
   and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]`
+  - Test the low-Elo-data-quality hypothesis (theory 26, `Docs/theories.md`) using the --min-elo /
+    Elo-filter controls above: retrain the existing value-model recipes on replay data (a) EXCLUDING
+    low-Elo agents' games, (b) EXCLUDING mixed high-vs-low games, (c) EXCLUDING high-Elo games (the
+    control), and compare the trained models' Elo. Also try an Elo-weighted reward (stronger label
+    signal from higher-Elo games). Use seed replicas so the deltas clear the training-seed noise
+    band (theory 8) `[Next]`
 - ~~Pool-pair game generation: generate FRESH training games by pairing agents from the
   rank.exe pool (instead of one teacher's self-play), with the dilution-decay schedule
   overriding each agent's own dilution. Combines replay's diverse-teachers win (~+250
@@ -355,7 +377,12 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
 - Tapered / phase-split PST: separate opening/endgame weight tables interpolated by piece count
   (piece count changes only on capture, so it stays fully incremental). The natural capacity step
   before MLP `[Next]`
-- Validation split + early stopping instead of the fixed 6-epoch folklore cap `[Next]`
+- ~~Validation split + early stopping instead of the fixed 6-epoch folklore cap~~ Shipped:
+  `selfplay-supervised --val-split <f>` holds out that fraction (deterministic by seed), prints
+  per-epoch `val=` loss, and computes the final stratified loss on the held-out set (so the
+  theory-24 equal-material measure becomes a generalization number). `--early-stop` keeps the
+  lowest-validation-loss epoch as the saved model. See
+  `plans/residual-mlp-results-2-tingly-chipmunk.md` `[done]`
 - PV/leaf position harvesting: train on positions from inside the teacher's search tree labeled
   by subtree value, matching the off-path distribution the eval actually sees in search `[Later]`
 - Active / hard-example mining: oversample positions where the current model most

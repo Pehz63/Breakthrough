@@ -120,6 +120,8 @@ static void usage() {
     cout << "  --model-type linear|mlp      inner value-model architecture (default linear)\n";
     cout << "  --mlp-hidden \"32\" or \"32,16\"  MLP hidden-layer widths (default 32 when --model-type mlp)\n";
     cout << "  --residual-skip <f>          frozen chip-count skip: 0=off, >0 fixed weight, <0 auto-calibrate\n";
+    cout << "  --val-split <f>              hold out this fraction as a validation set (0=off); prints per-epoch val loss + held-out stratified loss\n";
+    cout << "  --early-stop                 with --val-split, keep the lowest-validation-loss epoch as the saved model\n";
     cout << "  train.exe selfplay-supervised --out models/res_mlp --feature-version 2 --from-data data/replay_v2.jsonl --model-type mlp --mlp-hidden 32 --residual-skip -1\n";
     cout << "      (nonlinear residual value head: chipCount skip + an MLP learning the rest)\n";
     cout << "  --gen-random-floor <f> --gen-random-decay-plies <n>  linearly decay teacher dilution from\n";
@@ -174,7 +176,9 @@ int main(int argc, char** argv) {
             getOpt(argc, argv, "--from-data", ""),
             getOpt(argc, argv, "--model-type", "linear"),
             getIntList(argc, argv, "--mlp-hidden"),
-            getDbl(argc, argv, "--residual-skip", 0.0));
+            getDbl(argc, argv, "--residual-skip", 0.0),
+            getDbl(argc, argv, "--val-split", 0.0),
+            hasFlag(argc, argv, "--early-stop"));
     } else if (cmd == "imitate") {
         rc = trainImitationPolicy(
             getOpt(argc, argv, "--out", "models/lin_policy.txt"),

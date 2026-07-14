@@ -187,6 +187,37 @@ w1=...
 `mlValueScore` applies the shared near-win shortcut, then maps the model output
 through `tanh * out_scale` and clamps it strictly inside the `+/-WIN` sentinels.
 
+## Worked example: the MLP value agent
+
+A concrete learned agent end to end, so the pieces above (model type, features,
+evaluator, explorer) connect into one picture.
+
+- **Model = `MLPModel`, a VALUE model (board -> one scalar).** Inputs: feature
+  version 2, 129 binary inputs (one per (color, square): 64 White piece-presence +
+  64 Black + 1 side-to-move = +1/-1). Fully-connected. The code supports an
+  arbitrary number of hidden layers (the `--mlp-hidden` widths list, designed for
+  1-2); models trained so far use one hidden layer of width 16 or 32. ReLU on the
+  hidden layer, linear output. The output scalar (a logit) becomes an eval via
+  `tanh * out_scale (900)`, clamped inside the win sentinels: a white-centric board
+  value. Optionally wrapped by `ResidualModel`, a frozen chip-count skip
+  (`skipW * material_diff` added to the logit) plus the MLP learning the residual.
+- **Agent = alpha-beta search + this value model.** e.g.
+  `ab(d6,tt,ord,nb200k)@1.learned(<hash>)@1`: alpha-beta minimax at depth 6 with a
+  200000-node budget, transposition table + move ordering, scoring leaf positions
+  with the MLP. The model is a position evaluator, not a move-output policy; the
+  agent searches and evaluates. The MLP is full-scan (not incrementally updatable
+  like a linear v2 model), so a deeper search costs more per node -- the NNUE step
+  in the value-head roadmap addresses that.
+- **Training = supervised value regression on outcomes.** `selfplay-supervised
+  --model-type mlp --residual-skip -1 --from-data <replay>`, where `<replay>` is a
+  `rank.exe extract` sample of the rated pool's stored match history
+  (`ranking/matches.jsonl`) -- real games the pool already played, each position
+  labeled by its game result (logistic loss). Not self-play by this model, not
+  imitation of a teacher's moves.
+- **Strength:** measured as pooled Elo from a full-roster run at depth 4 and depth 6
+  (see `Docs/benchmarking.md`); the residual/MLP results are in
+  `plans/residual-mlp-results-2-tingly-chipmunk.md`.
+
 ## How to add more (extension workflow)
 
 | To add a... | Edit | Result |

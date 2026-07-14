@@ -590,3 +590,27 @@ TEST_CASE("trainStep with a frozen offset still reduces loss") {
         REQUIRE(last < first);
     }
 }
+
+// End-to-end: a validation split + early stopping runs to completion and produces a
+// loadable model (exercises the train/val partition, per-epoch val loss, and the
+// early-stop best-checkpoint reload path).
+TEST_CASE("trainSupervisedValue --val-split + --early-stop completes and saves") {
+    int rc = trainSupervisedValue("build/test_valsplit_model", "boards/board1.txt",
+                                  4,          // games (tiny self-play)
+                                  3,          // epochs
+                                  0.05,       // lr
+                                  3,          // ckptEvery
+                                  2,          // genDepth
+                                  0.2,        // genRandom
+                                  777u,       // seed
+                                  "Classic", {}, 2, 0.0, 0.0, 0, "", "alphabeta", "",
+                                  "linear", {}, 0.0,
+                                  0.25,       // valSplit
+                                  true);      // earlyStop
+    REQUIRE(rc == 0);
+    Model* m = loadModel("build/test_valsplit_model.txt");
+    REQUIRE(m != nullptr);
+    REQUIRE(m->featureVersion() == 2);
+    delete m;
+    mlClearSlots();
+}

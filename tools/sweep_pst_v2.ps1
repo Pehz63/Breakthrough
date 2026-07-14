@@ -52,7 +52,9 @@ param(
     [int]$Epochs = 6,
     [double]$Lr = 0.05,
     [string]$Groups = "all",   # "all" or a comma list, e.g. "F,G" to run only the new groups
+    [int[]]$Seeds = @(1001,2002,3003,4004,5005,6006),  # training-seed replicas for groups F/G (about 6, to clear the training-seed-noise band, theory 8)
     [switch]$NoRate,           # train + report stratified loss only; skip the pool rating + roster/matches append
+    [switch]$RateOnly,         # skip training; hash existing slot files, roster, and rate (reuse models from an earlier -NoRate pass)
     [int]$Only = 0   # 0 = all candidates; N = dry-run just the first N (for validating the pipeline cheaply)
 )
 
@@ -208,7 +210,7 @@ foreach ($depth in 4,6) {
 # replicas. Isolates the skip's effect at the linear level.
 if ($selectedGroups -contains "F") {
 foreach ($skip in "off","auto") {
-    foreach ($seed in 1001,2002) {
+    foreach ($seed in $Seeds) {
         $s = NextSlot
         $a = @("selfplay-supervised", "--out", "models/sweep/slot$s", "--feature-version", "2",
                "--from-data", $resReplay, "--epochs", $Epochs, "--lr", $Lr, "--seed", $seed)
@@ -229,7 +231,7 @@ foreach ($skip in "off","auto") {
 if ($selectedGroups -contains "G") {
 foreach ($hid in 16,32) {
     foreach ($skip in "off","auto") {
-        foreach ($seed in 1001,2002) {
+        foreach ($seed in $Seeds) {
             $s = NextSlot
             $a = @("selfplay-supervised", "--out", "models/sweep/slot$s", "--feature-version", "2",
                    "--from-data", $resReplay, "--model-type", "mlp", "--mlp-hidden", $hid,
@@ -254,7 +256,9 @@ if ($Only -gt 0) {
 }
 
 # ---- Train every candidate (groups run in enumeration order; C's generations
-#      depend on the prior generation's file, already enumerated first) ----
+#      depend on the prior generation's file, already enumerated first).
+#      -RateOnly skips this and rates the slot files left by an earlier pass. ----
+if (-not $RateOnly) {
 $n = 0
 foreach ($cand in $candidates) {
     $n++
@@ -275,6 +279,9 @@ foreach ($cand in $candidates) {
         $cand | Add-Member -NotePropertyName Loss1 -NotePropertyValue ([double]$sl.Matches[0].Groups[2].Value) -Force
         $cand | Add-Member -NotePropertyName Loss2 -NotePropertyValue ([double]$sl.Matches[0].Groups[3].Value) -Force
     }
+}
+} else {
+    Write-Host "-RateOnly: skipping training; rating existing models/sweep/slot*.txt files."
 }
 
 # ---- Hash every trained slot in one pass, build roster ids ----

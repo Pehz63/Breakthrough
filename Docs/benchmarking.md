@@ -39,6 +39,20 @@ Rules of thumb:
 - Full refits are the permanent record; gauntlets are the screening
   instrument.
 
+### A new learned model: full run + training-seed replicas (2026-07-14)
+
+A new learned model or agent is not done until its Elo is recorded. Measure it
+with a FULL-roster refit (`rank.exe run`, not a lone gauntlet), rated at BOTH
+standard heads (depth 4 and depth 6 at the nb200k budget) so it sits on the pool's
+depth ladder next to the champion. A learned model's own TRAINING seed (weight init
+plus data shuffle) adds 50-150 Elo of noise, theory 8 -- a separate axis from the
+gauntlet's opponent seed above -- so train about 6 training-seed replicas of each
+recipe and read a recipe's strength as the mean and spread over its seeds. Elo is
+the primary metric of an agent. Offline proxies such as training loss, calibration,
+or winrate-vs-random do not substitute for it. This mirrors the CLAUDE.md standing
+instruction "A new model or agent is not done until its Elo is measured and it is
+documented."
+
 ## Pick the right metric first
 
 | Metric | What it answers | When to use |

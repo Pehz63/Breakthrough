@@ -254,6 +254,22 @@ static void initInnerRandom(Model* inner) {
     }
 }
 
+// Mean logistic loss of `model` over the given position indices (the validation
+// loss when idxs are held out). Uses the virtual forward, so a residual model's
+// frozen skip is included exactly as in training.
+static double meanLossOver(Model* model, const std::vector<std::vector<float> >& X,
+                           const std::vector<float>& Y, const std::vector<int>& idxs, int featCount) {
+    if (idxs.empty()) return 0.0;
+    const double eps = 1e-7;
+    double s = 0.0;
+    for (size_t k = 0; k < idxs.size(); k++) {
+        int i = idxs[k];
+        double p = sigmoidd(model->forward(X[i].data(), featCount));
+        s += -(Y[i] * log(p + eps) + (1.0 - Y[i]) * log(1.0 - p + eps));
+    }
+    return s / idxs.size();
+}
+
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
@@ -262,7 +278,7 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
                          int genRandomDecayPlies, const string& genModelPath,
                          const string& genModelExplorer, const string& fromDataFile,
                          const string& modelType, const std::vector<int>& mlpHidden,
-                         double residualSkip) {
+                         double residualSkip, double valSplit, bool earlyStop) {
     srand(seed);
     PRNT = 0;
     if (featVer != 1 && featVer != 2) featVer = 1;
@@ -366,21 +382,44 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
     if (residualSkip != 0.0) cout << " skip=" << skipW << (residualSkip < 0.0 ? " (auto)" : "");
     cout << "\n";
 
-    std::vector<int> idx(X.size());
-    for (size_t i = 0; i < idx.size(); i++) idx[i] = (int)i;
+    // Train/validation split: hold out valSplit of the positions (deterministic
+    // under the run seed). SGD runs on the training remainder only.
+    std::vector<int> allIdx(X.size());
+    for (size_t i = 0; i < allIdx.size(); i++) allIdx[i] = (int)i;
+    std::vector<int> trainIdx, valIdx;
+    if (valSplit > 0.0) {
+        shuffleVec(allIdx);
+        size_t nval = (size_t)(valSplit * (double)X.size());
+        if (nval < 1) nval = 1;
+        if (nval >= X.size()) nval = X.size() - 1;
+        for (size_t i = 0; i < allIdx.size(); i++) (i < nval ? valIdx : trainIdx).push_back(allIdx[i]);
+        cout << "Validation split: " << trainIdx.size() << " train / " << valIdx.size() << " val\n";
+    } else {
+        trainIdx = allIdx;
+    }
 
     std::vector<ModelRecord> records;
     string runId = "linval_" + std::to_string((long)time(nullptr));
+    double bestVal = 1e300; int bestEpoch = -1;
 
     for (int e = 1; e <= epochs; e++) {
-        shuffleVec(idx);
+        shuffleVec(trainIdx);
         double sum = 0.0;
-        for (size_t i = 0; i < idx.size(); i++)
-            sum += model->trainStep(X[idx[i]].data(), featCount, Y[idx[i]], lr, (float)l2);
-        double avg = sum / X.size();
+        for (size_t i = 0; i < trainIdx.size(); i++)
+            sum += model->trainStep(X[trainIdx[i]].data(), featCount, Y[trainIdx[i]], lr, (float)l2);
+        double avg = sum / (double)trainIdx.size();
+        double vloss = (valSplit > 0.0) ? meanLossOver(model, X, Y, valIdx, featCount) : -1.0;
 
         bool ckpt = (e % ckptEvery == 0) || (e == epochs);
-        cout << "epoch " << e << "/" << epochs << "  loss=" << avg << (ckpt ? "  [ckpt]" : "") << "\n";
+        cout << "epoch " << e << "/" << epochs << "  loss=" << avg;
+        if (valSplit > 0.0) cout << "  val=" << vloss;
+        cout << (ckpt ? "  [ckpt]" : "") << "\n";
+
+        // Early stopping: keep the lowest-validation-loss epoch as the saved model.
+        if (earlyStop && valSplit > 0.0 && vloss < bestVal) {
+            bestVal = vloss; bestEpoch = e;
+            model->save(outDir + ".txt");
+        }
         if (!ckpt) continue;
 
         string path = outDir + "_ckpt" + std::to_string(e) + ".txt";
@@ -410,24 +449,35 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
         cout << "          saved " << path << "  winrate_vs_random=" << wr << "  elo~" << (int)elo << "\n";
     }
 
-    model->save(outDir + ".txt");
+    if (earlyStop && bestEpoch > 0) {
+        // The best-validation epoch was already saved to outDir.txt during the loop.
+        // Reload it so the final report + datastore emit reflect the KEPT model.
+        Model* best = loadModel(outDir + ".txt");
+        if (best) { delete model; model = best; }
+        cout << "Early stopping: kept epoch " << bestEpoch << " (val=" << bestVal << ")\n";
+    } else {
+        model->save(outDir + ".txt");
+    }
     cout << "Final model -> " << outDir << ".txt\n";
 
     // Stratified loss by |material differential| -- the direct theory-24 measure:
     // whether the model is better calibrated on near-equal-material positions
     // (where a pure chip count cannot discriminate at all). Printed for every model
-    // (plain and residual) so two runs on the same data are directly comparable.
+    // (plain and residual) so two runs on the same data are directly comparable. On
+    // the HELD-OUT set when a validation split is active (generalization, not fit).
     {
+        const std::vector<int>& evalIdx = (valSplit > 0.0) ? valIdx : allIdx;
         double bLoss[3] = { 0, 0, 0 }; long bCnt[3] = { 0, 0, 0 };
         const double eps = 1e-7;
-        for (size_t i = 0; i < X.size(); i++) {
+        for (size_t k = 0; k < evalIdx.size(); k++) {
+            int i = evalIdx[k];
             double p = sigmoidd(model->forward(X[i].data(), featCount));
             double l = -(Y[i] * log(p + eps) + (1.0 - Y[i]) * log(1.0 - p + eps));
             int md = (int)lround(fabs((double)matDiffFromFeatures(X[i].data(), featVer)));
             int b = (md == 0) ? 0 : (md == 1) ? 1 : 2;
             bLoss[b] += l; bCnt[b]++;
         }
-        cout << "Stratified loss by |matDiff|:";
+        cout << "Stratified loss by |matDiff|" << (valSplit > 0.0 ? " (held-out)" : "") << ":";
         const char* lbl[3] = { "==0", "==1", ">=2" };
         for (int b = 0; b < 3; b++) {
             cout << "  " << lbl[b] << " n=" << bCnt[b] << " loss="

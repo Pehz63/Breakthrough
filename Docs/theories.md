@@ -84,8 +84,10 @@ theories out of a single stray entry into their own subsection.
 | 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | 2026-07-11 session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Weakened toward refuted (2 of 6 noise seeds beat baseline) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
 | 23 | Deterministic tie-breaking creates a systematic directional (left-file) bias exploitable as a fingerprint | Confirmed (mechanism + empirical) | Game-Theoretic Structure & Optimal Play | developer question 2026-07-12 | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
-| 24 | A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting | Partially confirmed (linear: yes + stabilizes; MLP: wash) | Model & Evaluator Design | this session's conversation | [residual-mlp-results-1](../plans/residual-mlp-results-1-tingly-chipmunk.md) |
+| 24 | A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting | Refuted at 6 seeds (skip's calibration effect within seed noise at all capacities; the 2-seed "linear yes" was noise; capacity is the real lever) | Model & Evaluator Design | this session's conversation | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
 | 25 | Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts) | Open / untested | Model & Evaluator Design | this session's conversation | -- |
+| 26 | Low-Elo games are low-quality value-training data | Open / untested | Training Data & Recipes | developer hypothesis 2026-07-14 | -- |
+| 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (1 recipe: MLP beat linear on loss ~0.17 but lost ~60-110 Elo at d4) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -332,6 +334,34 @@ extra generation cost.
 
 **Notes:** This result is what motivated `tools/train_scaling.ps1`'s replay-data arm, which went on to produce the d6 Elo 920 model promoted to `models/pst_value.txt`.
 
+#### 26. Low-Elo games are low-quality value-training data
+
+**Claim:** Training a value model on positions drawn from low-Elo (weak) agents'
+games produces a weaker model than training on high-Elo games only. Weak play
+mislabels positions: a position is labeled with its game's eventual outcome, but in
+a low-Elo game that outcome often hinges on a later blunder, so the label is noisy
+and does not reflect the position's true value. Mixed high-vs-low games may be
+similarly poor (the result reflects the weaker side's error, not position value). A
+reward signal weighted toward higher-Elo games may improve data quality.
+
+**Status:** Open / untested.
+
+**Origin:** developer hypothesis, 2026-07-14, raised while planning the
+residual/MLP Elo follow-up.
+
+**Tested in:** --
+
+**Notes:** Test by retraining the existing value-model recipes on replay data
+filtered by the participating agents' Elo: (a) excluding low-Elo agents' games,
+(b) excluding mixed high-vs-low games, (c) excluding high-Elo games (the control),
+and comparing the resulting models' Elo; plus an Elo-weighted-label variant
+(stronger signal from higher-Elo games). The mechanism is the `todo.md`
+"Extraction quality controls in rank.exe extract" item (`--min-elo` floor /
+Elo-confidence weighting). Relates to theory 12 (replay-extraction beats
+single-teacher self-play) -- this refines it by asking WHICH replayed games help --
+and to theory 8 (training-seed noise dominates hyperparameter effects), which any
+such comparison must clear with seed replicas before its deltas mean anything.
+
 ### Model & Evaluator Design
 
 Theories about what an evaluator or value model should represent or weight
@@ -480,7 +510,12 @@ training recipe, is what caps model strength.
 
 **Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 8.
 
-**Notes:** Implies the next real strength lever is model capacity (MLP/NNUE), which is itself untested -- see theory 4.
+**Notes:** Was read as implying the next real strength lever is model capacity
+(MLP/NNUE). Theory 27 challenges that reading: a hand-written MLP DID break the
+linear loss ceiling (much lower outcome loss) but rated LOWER in Elo at depth 4, so
+"more capacity" lowered loss without raising strength for that recipe. The linear
+class caps LOSS-based fit, but raising capacity is not automatically a strength win
+-- see theory 27 and theory 4.
 
 #### 24. A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting
 
@@ -496,42 +531,79 @@ part to specialize on the residual: distinguishing and tie-breaking among
 positions with equal or near-equal material, which a pure material count
 cannot do at all.
 
-**Status:** Partially confirmed. The HARD (frozen) skip was built (`ResidualModel`
-= `skipW*matDiff` + inner) with both a linear and an MLP inner and measured by a
-stratified logistic loss over `|matDiff|` buckets. Split by inner capacity: for a
-LINEAR inner the skip works as predicted, for an MLP inner it does not.
+**Status:** Refuted as a calibration effect once properly seeded. The HARD (frozen)
+skip was built (`ResidualModel` = `skipW*matDiff` + a linear or MLP inner) and
+measured by a stratified logistic loss over `|matDiff|` buckets. A first 2-seed run
+looked like the skip helped a LINEAR inner, but at 6 training seeds the effect falls
+inside the seed-noise band at every capacity.
 
 **Origin:** developer's hypothesis in conversation, motivated directly by the
 Agent Track's current standing and posed as a way to make a future capacity
 jump (MLP/NNUE, theory 4) target the right thing rather than just adding raw
 capacity.
 
-**Tested in:** [residual-mlp-results-1-tingly-chipmunk.md](../plans/residual-mlp-results-1-tingly-chipmunk.md) --
-`sweep_pst_v2.ps1` groups F (linear) and G (MLP) at seeds 1001/2002 on an
-8000-game replay extract, reading each model's equal-material (`==0`) logistic loss.
+**Tested in:** [residual-mlp-results-2-tingly-chipmunk.md](../plans/residual-mlp-results-2-tingly-chipmunk.md)
+(6-seed, the settled result; supersedes the 2-seed
+[residual-mlp-results-1](../plans/residual-mlp-results-1-tingly-chipmunk.md)):
+`sweep_pst_v2.ps1` groups F (linear) and G (MLP) across 6 training seeds on an
+8000-game replay extract, reading each recipe's equal-material (`==0`) loss, plus a
+`--val-split` held-out re-check.
 
-**Notes:** Result, split by inner capacity. (1) LINEAR inner: the frozen chip
-skip lowers mean equal-material loss ~0.10 (0.644 vs 0.742) AND cuts the
-seed-to-seed spread ~18x (0.010 vs 0.179) -- it removes a fragile bad seed and
-improves the other buckets too. Confirmed as predicted: a linear head does spend
-capacity/robustness re-deriving material, and fixing it helps. (2) MLP inner: the
-skip is a wash -- |plain - residual| on `==0` is <= 0.008 at hidden 16 and 32,
-inside the seed spread and pointing both ways. A high-capacity model already fits
-material, so freezing it frees nothing useful; an earlier single-seed run that
-looked like the MLP skip HURT did not survive replication. The larger calibration
-lever is capacity itself (every MLP ~0.53 on `==0` beats every linear 0.64-0.74,
-skip or not), consistent with theory 10. So the theory's motivating premise ("a
-learned head re-derives material from scratch") is real for the linear class but
-dissolves once the model is expressive enough -- tempering the original idea that
-the skip is what a future MLP/NNUE capacity jump needs. Decisions taken this
-session: HARD frozen skip (not the soft/regularized alternative) and the literal
-chip differential (not a broader hand-crafted baseline); both alternatives remain
-open, as does whether the linear calibration win moves Elo at all (measured by
-loss only -- the `-NoRate` sweep skipped rating; theory 22 predicts little).
-Related to theory 4 (nonlinear capacity jump), theory 10 (linear PST ceiling), and
-the Training Regimes "Tapered / phase-split PST" and "Weight symmetrization" ideas
-in `todo.md`, since all inject known structure rather than trusting a general
-learner to discover it.
+**Notes:** The 2-seed pass (results-1) reported the linear skip lowering `==0` loss
+~0.10 (0.742 vs 0.644) and "confirmed theory 24 at the linear level." At 6 seeds
+that gap collapses to 0.019 (0.698 plain vs 0.679 residual) inside a ~0.18-0.20 seed
+spread, and the held-out re-check gives 0.6267 vs 0.6268 -- the skip does essentially
+nothing for equal-material calibration, in-sample or held-out. The MLP skip deltas
+are also within noise and slightly POSITIVE (worse): +0.010 at hidden 16, +0.006 at
+hidden 32. So the skip's calibration benefit does not survive proper seeding at any
+capacity. What DOES move calibration is capacity itself: linear ~0.69 -> mlp(16)
+~0.55 -> mlp(32) ~0.52, with the MLP seed spreads ~10x tighter -- the theory-10
+story (break the linear PST ceiling with capacity, not a material scaffold). The
+motivating premise ("a linear head wastes capacity re-deriving material") is not
+supported: a linear v2 model already spans material, so fixing it changes only the
+optimization path, and at 6 seeds that averages out. This is a direct win for the
+~6-seed rule (theory 8): the 2-seed comparison invented an effect that is not there.
+The linear group's full-roster Elo (depth 4, 6 seeds) agrees: residual-linear mean
+747 vs plain-linear 799, within the seed spread and if anything slightly negative,
+so the skip does not help strength either. The MLP capacity group's Elo -- whether
+its far better calibration becomes strength (the theory-10 question) -- is the
+pending measurement (full-scan MLP at depth 6 is slow). Decisions this session: HARD frozen skip and the
+literal chip differential; the soft/regularized skip and a broader baseline remain
+open (they could still matter for a model class that cannot already express
+material, unlike the linear v2 here). Related to theory 4 (nonlinear capacity jump),
+theory 10 (linear PST ceiling), theory 8 (training-seed noise), and theory 22.
+
+#### 27. Lower value-model outcome-loss does not imply higher agent Elo
+
+**Claim:** For a value model used as an alpha-beta leaf evaluator, a lower
+outcome-prediction loss (better offline calibration) does not translate to higher
+agent Elo. The two can diverge outright: a higher-capacity model that fits the
+outcome labels better can play worse.
+
+**Status:** Promising / observed -- one recipe, depth 4.
+
+**Origin:** the residual/MLP Elo follow-up, 2026-07-14, when the MLP value model was
+finally rated (the whole point of that follow-up).
+
+**Tested in:** [residual-mlp-results-2-tingly-chipmunk.md](../plans/residual-mlp-results-2-tingly-chipmunk.md) --
+6-seed full-roster run at depth 4. The MLP (129 -> 16 or 32 -> 1, ReLU) beat the
+linear v2 model on equal-material loss by ~0.17 (0.52 vs 0.69) and on overall loss,
+yet rated ~60-110 Elo LOWER in the same depth-4 search (mlp(32) ~652, mlp(16) ~675,
+linear ~756); more hidden width lowered loss further and Elo further.
+
+**Notes:** Candidate mechanisms: (1) overfitting the noisy outcome labels -- early
+stopping showed even the linear model's validation loss bottoms at epoch 1 on 320k
+positions, and these MLPs trained 6 epochs; (2) a loss-optimal evaluator is not a
+good move-RANKER for alpha-beta (cf. the PST pruning ~3x worse than Classic in
+[training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md)); (3)
+miscalibration at the decision-relevant margins that a mean loss washes out.
+Directly motivates training objectives beyond raw outcome log-loss (eval-blended
+labels, ranking losses -- see `todo.md` Training Regimes), early stopping /
+regularization for the MLP, and measuring move-ordering quality, not just loss. It
+refutes the naive reading of theory 10 that "the next strength lever is capacity":
+capacity lowered loss but not Elo here. And it is the concrete case the
+always-measure-Elo standing rule exists to catch -- on calibration alone the MLP
+looked like a large win.
 
 #### 25. Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts)
 

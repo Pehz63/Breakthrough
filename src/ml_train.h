@@ -68,6 +68,14 @@ struct ModelRecord {
 // model, unchanged), > 0 = a fixed skip weight of that value, < 0 = auto-calibrate
 // the skip from a material-only logistic pre-fit on the training data. The inner
 // model then learns only the residual on top of material.
+//
+// Validation split: valSplit (0 = off, the historical all-data path) holds out that
+// fraction of positions as a validation set (deterministic split by the run seed).
+// SGD runs on the training remainder; each epoch prints the mean validation loss,
+// and the final stratified-loss printout is computed on the held-out set (so the
+// theory-24 equal-material measure is a generalization number, not in-sample). With
+// earlyStop set, the saved model is the epoch with the lowest validation loss rather
+// than the last epoch.
 int trainSupervisedValue(const string& outDir, const string& boardFile, int games,
                          int epochs, double lr, int ckptEvery, int genDepth,
                          double genRandom, unsigned seed,
@@ -82,7 +90,9 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
                          const string& fromDataFile = "",
                          const string& modelType = "linear",
                          const std::vector<int>& mlpHidden = {},
-                         double residualSkip = 0.0);
+                         double residualSkip = 0.0,
+                         double valSplit = 0.0,
+                         bool earlyStop = false);
 
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
