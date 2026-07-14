@@ -87,7 +87,7 @@ theories out of a single stray entry into their own subsection.
 | 24 | A residual/skip-connection chip-count term lets a learned value head spend its capacity on tie-breaking rather than re-deriving material counting | Refuted at 6 seeds (skip's calibration effect within seed noise at all capacities; the 2-seed "linear yes" was noise; capacity is the real lever) | Model & Evaluator Design | this session's conversation | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
 | 25 | Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts) | Open / untested | Model & Evaluator Design | this session's conversation | -- |
 | 26 | Low-Elo games are low-quality value-training data | Open / untested | Training Data & Recipes | developer hypothesis 2026-07-14 | -- |
-| 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (1 recipe: MLP beat linear on loss ~0.17 but lost ~60-110 Elo at d4) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
+| 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (MLP beat linear on loss ~0.17 yet lost ~95-130 Elo, at BOTH depth 4 and depth 6) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -563,11 +563,11 @@ motivating premise ("a linear head wastes capacity re-deriving material") is not
 supported: a linear v2 model already spans material, so fixing it changes only the
 optimization path, and at 6 seeds that averages out. This is a direct win for the
 ~6-seed rule (theory 8): the 2-seed comparison invented an effect that is not there.
-The linear group's full-roster Elo (depth 4, 6 seeds) agrees: residual-linear mean
-747 vs plain-linear 799, within the seed spread and if anything slightly negative,
-so the skip does not help strength either. The MLP capacity group's Elo -- whether
-its far better calibration becomes strength (the theory-10 question) -- is the
-pending measurement (full-scan MLP at depth 6 is slow). Decisions this session: HARD frozen skip and the
+The full-roster Elo (6 seeds, depth 4 AND depth 6) agrees: the skip has no reliable
+strength effect at any capacity or depth (linear d4 759 vs 753, d6 959 vs 947; the
+MLP skip deltas bounce +14..+45, all inside ~100+ seed spreads). Separately, the MLP
+capacity group answered the theory-10 question and the answer is negative: its far
+better calibration made it WEAKER, not stronger (theory 27). Decisions this session: HARD frozen skip and the
 literal chip differential; the soft/regularized skip and a broader baseline remain
 open (they could still matter for a model class that cannot already express
 material, unlike the linear v2 here). Related to theory 4 (nonlinear capacity jump),
@@ -586,10 +586,11 @@ outcome labels better can play worse.
 finally rated (the whole point of that follow-up).
 
 **Tested in:** [residual-mlp-results-2-tingly-chipmunk.md](../plans/residual-mlp-results-2-tingly-chipmunk.md) --
-6-seed full-roster run at depth 4. The MLP (129 -> 16 or 32 -> 1, ReLU) beat the
-linear v2 model on equal-material loss by ~0.17 (0.52 vs 0.69) and on overall loss,
-yet rated ~60-110 Elo LOWER in the same depth-4 search (mlp(32) ~652, mlp(16) ~675,
-linear ~756); more hidden width lowered loss further and Elo further.
+6-seed full-roster runs at depth 4 AND depth 6. The MLP (129 -> 16 or 32 -> 1, ReLU)
+beat the linear v2 model on equal-material loss by ~0.17 (0.52 vs 0.69) and on
+overall loss, yet rated ~95-130 Elo LOWER in the same search at BOTH depths (d6:
+linear ~953, mlp(16) ~858, mlp(32) ~823; d4: linear ~756, mlp(16) ~675, mlp(32)
+~652); more hidden width lowered loss further and Elo further, at both depths.
 
 **Notes:** Candidate mechanisms: (1) overfitting the noisy outcome labels -- early
 stopping showed even the linear model's validation loss bottoms at epoch 1 on 320k

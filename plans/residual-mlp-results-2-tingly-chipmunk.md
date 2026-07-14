@@ -130,12 +130,35 @@ For scale, the reigning champion is ~1140. None of these value-model-in-search
 agents approach it: the best is a plain linear seed at 789. The learned value head,
 at this recipe and depth, does not beat the hand-crafted chip counter.
 
-**Depth 6 (follow-up):** the developer convention rates at d4 AND d6. At d6 the node
-budget binds for the full-scan MLP, so it is a multi-hour run left as a documented
-follow-up; the d4 pattern (MLP weaker than linear, skip no help, all below the
-champion) is unlikely to reverse. Command:
-`.\tools\sweep_pst_v2.ps1 -Groups "F,G" -RateOnly -RateGames 2 -Workers 12
--Wrapper "ab(d6,tt,ord,nb200k)@1" -MlpWrapper "ab(d6,tt,ord,nb200k)@1"`.
+### 3. Elo at depth 6 (champion-depth comparison)
+
+Same run at `ab(d6,tt,ord,nb200k)` -- the champion's head, so this is the fair
+strength comparison. (It completed in minutes, not the feared hours: tt + ordering
+keep the full-scan MLP's node counts well under nb200k at d6 too.)
+
+| recipe | mean Elo d6 | seed range | Elo d4 (sec.2) |
+|---|---|---|---|
+| linear plain     | 959 | 924 - 991 | 759 |
+| linear residual  | 947 | 891 - 991 | 753 |
+| mlp(16) plain    | 835 | 797 - 909 | 655 |
+| mlp(16) residual | 880 | 811 - 939 | 695 |
+| mlp(32) plain    | 807 | 783 - 840 | 645 |
+| mlp(32) residual | 840 | 797 - 840 | 659 |
+
+d6 confirms every d4 conclusion at champion depth:
+- **Same ranking: linear (~953) > mlp(16) (~858) > mlp(32) (~823).** The MLP is
+  ~95-130 Elo BELOW linear, and more capacity is still weaker. Better calibration ->
+  weaker play holds at d6 (theory 27).
+- **Skip: no reliable Elo effect.** linear -12, mlp(16) +45, mlp(32) +33 -- all
+  inside the ~100+ seed spread. (The MLP skip deltas are weakly positive at both
+  depths, the opposite sign to its calibration effect, but never outside noise.)
+- **None beat the champion (~1140).** The strongest learned agent is a plain linear
+  seed at 991 (d6), still ~150 Elo short. The learned value head, at this recipe,
+  does not reach the hand-crafted chip counter -- and the higher-capacity MLP moves
+  AWAY from it.
+
+Both depths agree, so the headline is robust: capacity lowered loss but lowered Elo,
+and the chip skip does nothing for strength.
 
 ## Implementation notes / caveats
 
