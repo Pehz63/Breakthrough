@@ -1,6 +1,11 @@
 #include "ai_random.h"
 #include "moves.h"
 #include "board_analysis.h"
+#include "datastore.h"   // positionKey (book-opener lookup key)
+#include <map>
+#include <set>
+#include <fstream>
+#include <sstream>
 
 // ============================================================
 // UNIFORM RANDOM -- pureRandomMove*
@@ -689,8 +694,69 @@ static bool openerRandom(int side, int ownPly, int arg, int& victor) {
     return true;
 }
 
+// The "book" opener: play the stored reply for the current position from the
+// book file models/book<arg>.txt, handing off to the brain when out of book.
+// A book line is "<positionKey hash, 16 hex digits> <sx> <sy> <dx>" (the
+// destination row is implied by the mover's direction); '#' lines are
+// comments. Entries are keyed by positionKey(sideToMove, false) -- the same
+// canonical key the TT uses -- so an entry fires for whichever agent reaches
+// the position with the move. Books load lazily once per process and are
+// treated as IMMUTABLE data: the opener ID does not hash the file the way
+// learned() hashes a model, so editing a book under the same <arg> would
+// silently change that agent's identity-play mapping. Give a new book a new
+// arg instead. A stored move that is not legal in the position (corrupt or
+// stale book) is ignored: the opener returns false and the brain plays.
+struct BookEntry { int sx, sy, dx; };
+static std::map<int, std::map<unsigned long long, BookEntry> > s_books;
+static std::set<int> s_bookLoadTried;
+
+static const std::map<unsigned long long, BookEntry>* bookForSlot(int arg) {
+    if (s_bookLoadTried.find(arg) == s_bookLoadTried.end()) {
+        s_bookLoadTried.insert(arg);
+        std::ostringstream fn;
+        fn << "models/book" << arg << ".txt";
+        std::ifstream f(fn.str().c_str());
+        if (f.is_open()) {
+            std::map<unsigned long long, BookEntry>& bk = s_books[arg];
+            string line;
+            while (std::getline(f, line)) {
+                if (line.empty() || line[0] == '#') continue;
+                std::istringstream ls(line);
+                string hex;
+                BookEntry e;
+                if (!(ls >> hex >> e.sx >> e.sy >> e.dx)) continue;
+                unsigned long long h = strtoull(hex.c_str(), nullptr, 16);
+                if (bk.find(h) == bk.end()) bk[h] = e;
+            }
+        }
+    }
+    std::map<int, std::map<unsigned long long, BookEntry> >::const_iterator it = s_books.find(arg);
+    return (it == s_books.end()) ? nullptr : &it->second;
+}
+
+static bool openerBook(int side, int ownPly, int arg, int& victor) {
+    (void)ownPly;   // the book plays whenever the position matches, at any ply
+    const std::map<unsigned long long, BookEntry>* bk = bookForSlot(arg);
+    if (!bk) return false;
+    unsigned long long h = positionKey(side, false).hash;
+    std::map<unsigned long long, BookEntry>::const_iterator it = bk->find(h);
+    if (it == bk->end()) return false;
+    const BookEntry& e = it->second;
+    // Bounds first: tryMoveQuick* skips bounds checks by design, and a corrupt
+    // book must never index off the board.
+    if (e.sx < 0 || e.sx >= SIZE || e.sy < 0 || e.sy >= SIZE
+        || e.dx < 0 || e.dx >= SIZE || e.dx < e.sx - 1 || e.dx > e.sx + 1) return false;
+    bool legal = (side == White) ? tryMoveQuickWhite(e.sx, e.sy, e.dx)
+                                 : tryMoveQuickBlack(e.sx, e.sy, e.dx);
+    if (!legal) return false;
+    victor = (side == White) ? playMoveWhite(e.sx, e.sy, e.dx)
+                             : playMoveBlack(e.sx, e.sy, e.dx);
+    return true;
+}
+
 const OpenerDef g_openers[] = {
     { "Random", "rand", "uniform-random move for the agent's first <arg> plies, then hand off", true, openerRandom },
+    { "Book",   "book", "opening-book follower: play models/book<arg>.txt's stored reply while the position is in book, then hand off", true, openerBook },
 };
 const int g_openerCount = (int)(sizeof(g_openers) / sizeof(g_openers[0]));
 

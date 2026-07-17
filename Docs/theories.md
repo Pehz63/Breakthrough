@@ -74,7 +74,7 @@ theories out of a single stray entry into their own subsection.
 | 11 | Dilution decay beats flat dilution | Promising / unproven | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | Search & Evaluation Engineering | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
-| 14 | An offline refutation book could dethrone the champion with less live compute | Open / untested | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | -- |
+| 14 | An offline refutation book could dethrone the champion with less live compute | Refuted in the naive form (mined-move book + weaker live brain); reset-state + stay-in-book variants remain open | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | [dethrone-champion-results-3](../plans/dethrone-champion-results-3-wiggly-mitten.md) |
 | 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
 | 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
@@ -187,11 +187,37 @@ can be mined from `games.tsv`; running deep budgeted searches (d8-d10,
 `positionKey` would let a book + d6 search agent beat the champion using less
 live computation than search alone.
 
-**Status:** Open / untested -- no plan doc written yet.
+**Status:** Refuted in the naive form (a book of a stronger agent's mined
+moves handed to a weaker live brain). Two repaired variants remain open:
+reset-state reproducibility + a book that stays in book to the win.
 
 **Origin:** `todo.md`, "The most promising follow-up for the standing dethrone goal" (`[Next]`).
 
-**Tested in:** --
+**Tested in:** [dethrone-champion-results-3-wiggly-mitten.md](../plans/dethrone-champion-results-3-wiggly-mitten.md) --
+`rank.exe bookgen` mined 553 positions from 29 d8/nb2m-oracle wins over the
+s98 champion; the `book` opener replayed them from two brains, measured at 32
+games/pair on the full-roster instrument. s98+book rated 1059 +/- 14 vs plain
+s98's 1075 +/- 13 and went 14-18 in the direct pair; chip-counter+book rated
+967 +/- 13 vs 983 +/- 12 bookless and went 7-25 against s98 -- WORSE than the
+bookless chip counter's 0.28 against the very target the book was mined to
+beat. Both book agents also went 3-29 / 20-12 vs the oracle (the 20-12 is the
+oracle facing its own replayed positions, a curiosity, not a dethrone).
+
+**Notes:** Two premises failed, and both are the durable lesson. (1) The
+"deterministic" target is not reproducibly deterministic ACROSS RUNS:
+cross-game TT/killer/history state (theory 19 mechanism b) made s98 deviate
+from the mined lines within a few plies -- 3 of the 32 source games did not
+even reproduce their own stored result at bookgen time -- so the booked agent
+falls out of book holding an oracle-shaped middlegame with a weaker brain.
+(2) Mined moves are not brain-portable: the oracle's moves win because the
+oracle's deep search stands behind them at every subsequent ply. Repair path,
+now the concrete open version of this theory: a `--reset-state` mode so
+deterministic pairs actually replay (also unblocks theory 19's mechanism
+separation), plus a book that carries a full winning continuation or a
+response tree over the target's deviations (pairgen's `--branch-tries`
+machinery is the natural miner). Related: theories 19 (the blocking
+artifact), 28 (why the chip counter loses these middlegames), 23
+(deterministic tie-bias as the book's implicit key).
 
 #### 19. Same-policy agents with different IDs score differently in gauntlets (identity artifact)
 

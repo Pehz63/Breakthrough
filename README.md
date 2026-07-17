@@ -431,6 +431,14 @@ against the replay and self-play baselines.
 .\rank.exe pairgen --a "ab(d2)@1.classic(t1,c4,w0,l0)@2" --b "ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2" --games 200 --dil-apply a --out data/pg.jsonl
 ```
 
+`bookgen` mines an opening/refutation book from stored games: it replays every
+match between `--a` and `--b`, keeps the positions and moves `--a` played in its
+wins (first `--plies` half-moves), and writes them to `models/book<N>.txt` keyed
+by canonical position hash. An agent plays the book via the `book` opener ID
+segment (`.opener(book,<N>)@1`): the stored reply while the position is in book,
+its own brain otherwise. Book files are not content-hashed into the agent ID, so
+treat a book slot as immutable and give a regenerated book a new slot number.
+
 **Opener-bias study (Theory 6).** The vs-champion head-to-heads used a symmetric
 random opener (`--open-plies 6` on both sides), which forces the deterministic
 champion to play random opening moves it would never choose. `--open-side` and the

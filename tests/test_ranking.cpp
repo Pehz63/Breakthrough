@@ -1,12 +1,15 @@
 #include "catch.hpp"
+#include "helpers.h"
 #include "ranking.h"
 #include "ai_eval.h"
 #include "ai_random.h"
 #include "ml_model.h"
 #include "ml_eval.h"
+#include "datastore.h"
 #include <sstream>
 #include <set>
 #include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #ifdef _WIN32
 #include <direct.h>
@@ -133,6 +136,50 @@ TEST_CASE("ranking id - canonical round trips") {
     a = parseOk("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1.opener(rand,6)@1");
     REQUIRE(a.spec.dilDepth == 3);
     REQUIRE(a.spec.openerArg == 6);
+
+    // The book opener kind (arg = book slot, models/book<arg>.txt).
+    a = parseOk("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1");
+    REQUIRE(a.spec.openerKind == openerIndexByIdName("book"));
+    REQUIRE(a.spec.openerArg == 1);
+}
+
+TEST_CASE("book opener - plays the stored reply, hands off out of book") {
+    // Slot 99 is a scratch book written and removed by this test.
+    clearBoard();
+    board[2][4] = WHITE;   // c5
+    board[1][5] = BLACK;   // b6 (capturable by c5)
+    board[7][7] = BLACK;   // second black piece so the capture is not a win
+    g_whiteCount = 1; g_blackCount = 2; g_chipDiff = -1;
+
+    unsigned long long h = (unsigned long long)positionKey(White, false).hash;
+    {
+        std::ofstream f("models/book99.txt", std::ios::trunc);
+        char hex[24];
+        snprintf(hex, sizeof(hex), "%016llx", h);
+        f << "# scratch test book\n";
+        f << hex << " 2 4 1\n";               // c5xb6
+        f << "0000000000000001 9 9 9\n";      // out-of-bounds entry, must never fire
+    }
+
+    int bookIdx = openerIndexByIdName("book");
+    REQUIRE(bookIdx >= 0);
+    int victor = None;
+
+    // In book: the opener plays the stored capture and reports it handled the ply.
+    bool played = g_openers[bookIdx].fn(White, 0, 99, victor);
+    REQUIRE(played);
+    REQUIRE(board[1][5] == WHITE);
+    REQUIRE(board[2][4] == EMPTY);
+
+    // Out of book (the position changed): the opener defers to the brain.
+    played = g_openers[bookIdx].fn(Black, 0, 99, victor);
+    REQUIRE_FALSE(played);
+
+    // A missing book file also defers (slot 98 never written).
+    played = g_openers[bookIdx].fn(White, 0, 98, victor);
+    REQUIRE_FALSE(played);
+
+    std::remove("models/book99.txt");
 }
 
 TEST_CASE("ranking id - stale or missing module versions are rejected") {

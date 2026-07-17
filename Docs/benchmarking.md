@@ -67,7 +67,9 @@ read ORDER and error bands within one fit, never absolute values across fits;
 re-quote current numbers when citing strength in docs; and when the top of the
 table must be resolved, boost the contender pairs' game counts (see
 `ranking/roster_top.txt`, the reusable top-resolution roster) and refit rather
-than trusting 8-games/pair separations.
+than trusting 8-games/pair separations. The reigning champion is declared in
+`ranking/CHAMPION.md` (the single source of truth other docs point at), and
+the certification procedure is a standing instruction in `CLAUDE.md`.
 
 ## Pick the right metric first
 

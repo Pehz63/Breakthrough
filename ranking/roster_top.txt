@@ -23,3 +23,9 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # Quiescence challengers (dethrone plan phase 1).
 on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
 on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
+
+# Refutation-book challengers (dethrone plan phase 2). Include the oracle here
+# too so the book agents' games against their own line source are well sampled.
+on      ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,1)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1

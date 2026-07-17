@@ -113,3 +113,13 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # leaves. Same head as the reigning champion s98 otherwise.
 on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
 on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
+
+# Refutation-book challengers (dethrone plan phase 2): .opener(book,1) plays
+# models/book1.txt (the d8/nb2m oracle's winning replies against s98, mined by
+# rank.exe bookgen) while in book, then hands off to the brain. Against s98 the
+# book replays oracle wins; elsewhere out of book each agent is its plain self.
+# NOTE: the book file is not hashed into the ID (unlike learned models), so
+# models/book1.txt is treated as immutable -- regenerating it under slot 1 would
+# silently change these agents' behavior. A new book gets a new slot number.
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,1)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1

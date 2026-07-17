@@ -48,7 +48,9 @@ is a registry, so adding one is a single table entry + a function body, and ever
 (UIs, tournaments, docs) picks it up automatically.
 
 **Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
-depth, then at lower compute (deeper-for-cheaper). **The first tier was achieved
+depth, then at lower compute (deeper-for-cheaper). The reigning champion is
+declared in `ranking/CHAMPION.md` (single source of truth; the numbers below are
+tagged to their fit dates). **The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
 after boosting the top pairs to 32 games each and refitting, the reigning
 champion is `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1` -- the linear PST
@@ -61,11 +63,14 @@ stays above the pool at 1145 (reference, not the target). Fit-scale caveat: Elo
 is not comparable across fits as the pool grows (see `Docs/benchmarking.md`),
 so these numbers supersede all pre-2026-07-14 quotes. The second goal tier is
 open: s98 pays 2.6x the chip counter's cpu/move (13.1 vs 5.0 ms). The dethrone
-loop continues with s98 as the target. Phase 1 (quiescence) is done and did NOT
-dethrone: s98+qs ties s98 pooled and loses the pair 9-23 (theory 29). Remaining
-paths: the refutation book aimed at s98 (dethrone plan phase 2) and the
-learned-eval training fixes -- eval-blended labels, Elo-filtered extraction,
-seed ensembling (phase 3).
+loop continues with s98 as the target. Phase 1 (quiescence) did NOT dethrone:
+s98+qs ties s98 pooled and loses the pair 9-23 (theory 29). Phase 2 (the oracle
+refutation book) did NOT dethrone either and refuted theory 14's naive form:
+both book agents rated below their bookless selves (cross-run nondeterminism
+via search state + mined moves not being brain-portable). The remaining path is
+phase 3, the learned-eval training fixes -- eval-blended labels, Elo-filtered
+extraction, seed ensembling -- plus the repaired book variants and the
+runner-threat quiescence filed in the results docs.
 
 **Standing loop:** the recurring success criterion for any new agent is dethroning
 the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by
@@ -86,7 +91,7 @@ against the same seams.
   - ~~Asymmetric opener for `pairgen`: add `--open-plies-side a|b|both` so only ONE named agent plays random moves during the opener window while the other plays its own normal policy throughout.~~ Shipped as `pairgen --open-side a|b|both` (Theory 6 test, `plans/opener-bias-results-1-synchronous-stearns.md`). Finding: the symmetric opener DID inflate the champdil/dilution result (65% -> 40% once the champion plays its true policy) but NOT the oracle headline result (survives at ~66%). A third layer retrained the oracle on asymmetric-opener data and saw a large d6 drop (1137 -> 832), but that turned out to be confounded by training-label skew (win:loss ratio 2.55:1 -> 4.46:1), not a clean confirmation -- see the results doc. Also added the `rank.exe opener-bias` mechanism measure and the two study scripts (`tools/opener_bias_study.ps1`, `tools/opener_bias_retrain.ps1`) `[done]`
   - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase. Specific angle worth testing: train the opener on WINNING-line data (see the refutation-book idea below) and hand off to a cheaper depth-5 search after the opener phase, on the theory that a strong precomputed opening plus a shallower live search could beat the d6 champion for less total compute -- directly on-target for the session's "beat d6 without searching deeper" goal `[Later]`
   - Single-line refutation book (extended, more concrete version of the offline-refutation idea below): find ONE oracle-verified winning line against the champion for each color (2 lines total), play that fixed line against every other deterministic agent in the roster, and whenever an opponent deviates from the line (or the line stops applying), use the oracle to find a new winning continuation from that deviation point. Builds a small branching decision tree rooted at "beat the champion," tested for robustness against the whole pool, not just the champion. Consider separate White/Black book models plus a combined one `[Later]`
-  - Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction. The most promising follow-up for the standing dethrone goal `[Next]`
+  - ~~Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction.~~ Shipped 2026-07-17 as `rank.exe bookgen` (mines A's winning positions/moves from stored games) + the `book` opener (`.opener(book,<N>)@1` plays `models/book<N>.txt`). Verdict: REFUTED in this naive form (theory 14, `plans/dethrone-champion-results-3-wiggly-mitten.md`) -- both book agents rated ~16 Elo below their bookless selves, and the chip counter + the very book mined to beat s98 did WORSE against s98 than bookless. Mechanisms: the "deterministic" target deviates across runs via cross-game search state (theory 19b), and mined moves are not brain-portable (they need the miner's deep search behind them). The repaired variants (a `--reset-state` mode for reproducible det-vs-det play, and a stay-in-book-to-the-win / response-tree book via `--branch-tries`-style mining) fold into the single-line refutation book idea above `[done]`
 - Interpret board analysis
   - Which piece is most impactful to the current evaluation? `[Later]`
   - What's the cheapest strategy to beat each given bot/parameters, even if overfitted? `[Dream]`

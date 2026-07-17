@@ -150,6 +150,22 @@ int rankGauntlet(const std::string& rosterFile, const std::string& storeFile,
 int rankExtract(const std::string& storeFile, const std::string& outFile,
                 const std::string& board, int featVer, int sampleN, unsigned seed);
 
+// ---- Opening/refutation book generation (bookgen) ----
+// Mine a book from stored games between two agents: replay every stored match
+// between idA and idB (either color assignment), and at each ply where A was
+// to move within the first maxPlies half-moves, record the canonical position
+// key -> the move A played. Games whose replayed result mismatches the stored
+// result are skipped whole (the extract determinism-drift guard). First-seen
+// wins on key conflicts; conflicting entries are counted and reported (they
+// mark cross-game search-state variance in the source games, theory 19b).
+// Output: a text book file the "book" opener (src/ai_random.cpp) reads --
+// '#' provenance header, then one "<hash hex16> <sx> <sy> <dx>" line per
+// position. Write it to models/book<N>.txt and roster the follower as
+// ".opener(book,<N>)@1".
+int rankBookGen(const std::string& storeFile, const std::string& board,
+                const std::string& idA, const std::string& idB,
+                int maxPlies, const std::string& outFile);
+
 // ---- Pair-play training-data generation (pairgen) ----
 // A dilution override applied on top of the two agents' own specs during
 // generation, so games between deterministic agents still vary without

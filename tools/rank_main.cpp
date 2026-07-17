@@ -42,6 +42,7 @@ static void usage() {
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
+    cout << "  bookgen    mine an opening/refutation book from stored games between two agents\n";
     cout << "  pairgen    play FRESH games between two named agents, capturing labeled training data\n";
     cout << "  opener-bias  measure whether the symmetric random opener handicaps a deterministic champion\n";
     cout << "  opener-swap  color-swap recovery test: same random-opener snapshot played out twice with\n";
@@ -57,6 +58,9 @@ static void usage() {
     cout << "history:  --agent <id or unique prefix>, --last 20\n";
     cout << "gauntlet: --id <candidate id>, --keep (append to the store instead of scratch)\n";
     cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
+    cout << "bookgen:  --a <line-owner id> --b <target id> --plies 60 --out models/book<N>.txt\n";
+    cout << "          Replays the pair's stored games; keeps positions/moves from A's wins only.\n";
+    cout << "          Roster the follower as '<head>.<eval>.opener(book,<N>)@1'.\n";
     cout << "pairgen:  --a <id> --b <id> --games 100 --out data/pairgen.jsonl, --feature-version 2,\n";
     cout << "          --dil-apply a|b|both|none (dilute that agent: --dil-start 0.3 --dil-floor 0.05\n";
     cout << "          --dil-decay-plies 30), --open-plies K (random first K half-moves),\n";
@@ -113,6 +117,11 @@ int main(int argc, char** argv) {
         rc = rankExtract(store, getOpt(argc, argv, "--out", "data/replay.jsonl"), board,
                          getInt(argc, argv, "--feature-version", 2),
                          getInt(argc, argv, "--sample", 0), seed);
+    } else if (cmd == "bookgen") {
+        rc = rankBookGen(store, board, getOpt(argc, argv, "--a", ""),
+                         getOpt(argc, argv, "--b", ""),
+                         getInt(argc, argv, "--plies", 60),
+                         getOpt(argc, argv, "--out", ""));
     } else if (cmd == "pairgen") {
         string dilApply = getOpt(argc, argv, "--dil-apply", "none");
         RankDilOverride dil;

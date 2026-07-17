@@ -2163,6 +2163,131 @@ int rankExtract(const string& storeFile, const string& outFile, const string& bo
 }
 
 // ============================================================
+// BOOKGEN
+// ============================================================
+// Recover the move a replayed half-move made by diffing the pre-move snapshot
+// against the live board: the mover's source square lost its piece, the
+// destination square gained one (capture or not). Returns false if no clean
+// single-move diff is found.
+static bool diffMoveFromSnap(const BoardSnap& before, int side, int& sx, int& sy, int& dx) {
+    char me = (side == White) ? WHITE : BLACK;
+    int fsx = -1, fsy = -1, fdx = -1;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            if (before.sq[x][y] == me && board[x][y] != me) { fsx = x; fsy = y; }
+            if (before.sq[x][y] != me && board[x][y] == me) { fdx = x; }
+        }
+    if (fsx < 0 || fdx < 0) return false;
+    sx = fsx; sy = fsy; dx = fdx;
+    return true;
+}
+
+int rankBookGen(const string& storeFile, const string& board, const string& idA,
+                const string& idB, int maxPlies, const string& outFile) {
+    if (idA.empty() || idB.empty()) { cout << "ERROR: bookgen needs --a (line owner) and --b (target)\n"; return 1; }
+    if (outFile.empty()) { cout << "ERROR: bookgen needs --out (models/book<N>.txt)\n"; return 1; }
+    RankAgent aAg, bAg;
+    string err;
+    if (!rankAgentFromId(idA, aAg, err)) { cout << "ERROR: --a: " << err << "\n"; return 1; }
+    if (!rankAgentFromId(idB, bAg, err)) { cout << "ERROR: --b: " << err << "\n"; return 1; }
+    std::vector<const RankAgent*> pairAgents;
+    pairAgents.push_back(&aAg);
+    pairAgents.push_back(&bAg);
+    if (!loadModelSlots(pairAgents, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    rankLoadMatches(storeFile, board, rows, skipped);
+    std::vector<const RankMatchRow*> games;
+    for (size_t i = 0; i < rows.size(); i++)
+        if ((rows[i].w == idA && rows[i].b == idB) || (rows[i].w == idB && rows[i].b == idA))
+            games.push_back(&rows[i]);
+    if (games.empty()) {
+        cout << "ERROR: no stored games between the two ids for board " << board << "\n";
+        return 1;
+    }
+    cout << "bookgen: " << games.size() << " stored games between the pair, mining A's first "
+         << maxPlies << " half-moves per game\n";
+
+    struct BookRec { int sx, sy, dx; int seen; };
+    std::map<unsigned long long, BookRec> book;
+    int replayed = 0, mismatch = 0, conflicts = 0, diffFail = 0;
+
+    for (size_t g = 0; g < games.size(); g++) {
+        const RankMatchRow& row = *games[g];
+        bool aIsWhite = (row.w == idA);
+        if (!reloadBoard(board)) { cout << "ERROR: cannot load board " << board << "\n"; return 1; }
+        srand(row.seed);
+        AgentSpec wSpec = (aIsWhite ? aAg : bAg).spec;
+        AgentSpec bSpec = (aIsWhite ? bAg : aAg).spec;
+        std::vector<std::pair<unsigned long long, BookRec> > rec;
+        int victor = None;
+        for (int h = 0; h < 400; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            bool record = ((side == White) == aIsWhite) && h < maxPlies;
+            unsigned long long key = 0;
+            BoardSnap before;
+            if (record) { key = (unsigned long long)positionKey(side, false).hash; snapBoard(before); }
+            const AgentSpec& moverSpec = (side == White) ? wSpec : bSpec;
+            bool playedByOpener = false;
+            if (moverSpec.openerKind >= 0 && moverSpec.openerKind < g_openerCount)
+                playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, moverSpec.openerArg, victor);
+            if (!playedByOpener) victor = agentChooseMove(moverSpec, side);
+            if (record) {
+                BookRec br;
+                br.seen = 1;
+                if (diffMoveFromSnap(before, side, br.sx, br.sy, br.dx))
+                    rec.push_back(std::make_pair(key, br));
+                else
+                    diffFail++;
+            }
+            if (gameOutcome(victor)) break;
+        }
+        int oc = gameOutcome(victor);
+        char r = (oc == 1) ? 'W' : (oc == 2) ? 'B' : 'D';
+        if (r != row.r) mismatch++;   // replay drift (cross-game state, theory 19b): informational only
+        // Keep only winning lines: a drifted replay is still a real game between
+        // the two agents, and its recordings are book-worthy iff A won IT.
+        bool aWon = (oc == 1 && aIsWhite) || (oc == 2 && !aIsWhite);
+        if (!aWon) continue;
+        for (size_t i = 0; i < rec.size(); i++) {
+            std::map<unsigned long long, BookRec>::iterator it = book.find(rec[i].first);
+            if (it == book.end()) {
+                book[rec[i].first] = rec[i].second;
+            } else if (it->second.sx == rec[i].second.sx && it->second.sy == rec[i].second.sy
+                       && it->second.dx == rec[i].second.dx) {
+                it->second.seen++;
+            } else {
+                conflicts++;   // same position, different A move in another game: first-seen wins
+            }
+        }
+        replayed++;
+    }
+
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+    out << "# book v1 (rank.exe bookgen)\n";
+    out << "# a (line owner): " << idA << "\n";
+    out << "# b (target):     " << idB << "\n";
+    out << "# board " << board << ", max half-moves " << maxPlies
+        << ", A-won replays kept " << replayed << " of " << games.size()
+        << " (replay drift vs stored result: " << mismatch
+        << "), entries " << book.size() << ", move conflicts " << conflicts << "\n";
+    char hex[24];
+    for (std::map<unsigned long long, BookRec>::const_iterator it = book.begin(); it != book.end(); ++it) {
+        snprintf(hex, sizeof(hex), "%016llx", it->first);
+        out << hex << " " << it->second.sx << " " << it->second.sy << " " << it->second.dx << "\n";
+    }
+    out.close();
+    cout << "Kept " << replayed << " A-won replays of " << games.size() << " stored games ("
+         << mismatch << " replays drifted from the stored result, " << diffFail
+         << " move-diff failures), " << book.size() << " book entries ("
+         << conflicts << " conflicting duplicates dropped) -> " << outFile << "\n";
+    mlClearSlots();
+    return book.empty() ? 1 : 0;
+}
+
+// ============================================================
 // PAIRGEN
 // ============================================================
 // Generate FRESH labeled training games between two named agents (the queued
