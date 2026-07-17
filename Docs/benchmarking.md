@@ -53,6 +53,22 @@ or winrate-vs-random do not substitute for it. This mirrors the CLAUDE.md standi
 instruction "A new model or agent is not done until its Elo is measured and it is
 documented."
 
+### Elo scale drift across fits (2026-07-17)
+
+Absolute Elo values are NOT comparable between fits taken before and after the
+pool grows. The Bradley-Terry fit adds 0.5 virtual games at 50% score per
+PLAYED pair (`rankFitBT`, `src/ranking.cpp`), so when a large cohort joins,
+every agent gains prior mass pulling it toward its opponents' mean and the
+whole scale compresses toward the middle even if no real result changed.
+Measured: the 72-ID residual/MLP study cohort compressed every top agent by
+80-112 Elo between the 2026-07-12 and 2026-07-14 fits (oracle 1254 -> 1142,
+then-champion family 1062-1135 -> 969-1029), on top of any real losses. Rules:
+read ORDER and error bands within one fit, never absolute values across fits;
+re-quote current numbers when citing strength in docs; and when the top of the
+table must be resolved, boost the contender pairs' game counts (see
+`ranking/roster_top.txt`, the reusable top-resolution roster) and refit rather
+than trusting 8-games/pair separations.
+
 ## Pick the right metric first
 
 | Metric | What it answers | When to use |

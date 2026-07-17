@@ -48,16 +48,23 @@ is a registry, so adding one is a single table entry + a function body, and ever
 (UIs, tournaments, docs) picks it up automatically.
 
 **Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
-depth, then at lower compute (deeper-for-cheaper). Yardstick in the current fit
-(post heuristic-eval overhaul, 2026-07-12): champion classic d6 = Elo 1135, now
-statistically tied by THREE challengers: the best learned PST (`learned(s98)`,
-1124), and the two hand-crafted Advanced climb winners `adv(t20,c77,d-2,b1,g1)`
-(1124, went 4-4 with the champion AND 4-4 with the d8 oracle) and
-`adv(t20,c75,h3,r2,g1)` (1114, 4-4 with the champion) -- though the adv pair pays
-2-3x the champion's cpu/move. The d8/nb2m oracle tops the table at 1254
-(reference, not the target). Next Elo probably comes from more games at the top
-(the tie is under-sampled at 8 games/pair), the refutation opening book, or a
-capacity jump (MLP/NNUE) on the proven champdil + oracle data recipe.
+depth, then at lower compute (deeper-for-cheaper). **The first tier was achieved
+and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
+after boosting the top pairs to 32 games each and refitting, the reigning
+champion is `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1` -- the linear PST
+trained on oracle-vs-champion data -- at Elo 1064 +/- 14, while the classic chip
+counter on the SAME head sits at 976 +/- 13 (direct head-to-head 23-9 for s98).
+The chip counter's weakness class is now known: d6-head learned piece-square
+models beat it far above their pooled Elo (it scored 57% vs the 36-model
+residual/MLP study cohort rated ~300 below it; theory 28). The d8/nb2m oracle
+stays above the pool at 1145 (reference, not the target). Fit-scale caveat: Elo
+is not comparable across fits as the pool grows (see `Docs/benchmarking.md`),
+so these numbers supersede all pre-2026-07-14 quotes. The second goal tier is
+open: s98 pays 2.6x the chip counter's cpu/move (13.1 vs 5.0 ms). The dethrone
+loop continues with s98 as the target: quiescence at the d6 head (dethrone plan
+phase 1), the refutation book aimed at s98 (phase 2), and the learned-eval
+training fixes -- eval-blended labels, Elo-filtered extraction, seed ensembling
+(phase 3).
 
 **Standing loop:** the recurring success criterion for any new agent is dethroning
 the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by

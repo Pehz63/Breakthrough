@@ -1,0 +1,21 @@
+# Temporary top-contender roster for the phase-0 throne resolution
+# (dethrone-champion-plan-1-wiggly-mitten). Boosts games among the six
+# contenders + the classic d6 head family to 32/pair so the top of the table
+# separates. Games append to the shared matches.jsonl; the permanent record
+# is the full-roster refit (rank.exe rate with the default roster).
+# The d8/nb2m oracle is deliberately absent: reference-class, not a contender,
+# and it dominates compute cost.
+
+anchor  rand@1
+
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1

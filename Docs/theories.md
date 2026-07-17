@@ -88,6 +88,7 @@ theories out of a single stray entry into their own subsection.
 | 25 | Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts) | Open / untested | Model & Evaluator Design | this session's conversation | -- |
 | 26 | Low-Elo games are low-quality value-training data | Open / untested | Training Data & Recipes | developer hypothesis 2026-07-14 | -- |
 | 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (MLP beat linear on loss ~0.17 yet lost ~95-130 Elo, at BOTH depth 4 and depth 6) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
+| 28 | Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo | Confirmed as a pattern (mechanism hypothesized, untested) | Gameplay Performance & Dethroning the Champion | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) | [dethrone-champion-results-1](../plans/dethrone-champion-results-1-wiggly-mitten.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -260,6 +261,50 @@ general per-agent opener-Elo gap) could isolate. Within the isolated agent-effec
 bucket the result is one-sided in every sample so far, which is suggestive, but
 n=20 is still small -- see Future Work in the results doc for a larger-sample
 follow-up before treating this as settled.
+
+#### 28. Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo
+
+**Claim:** Learned piece-square value models at the d6 head beat the classic
+chip counter in direct play at rates their pooled Elo says should be nearly
+impossible -- the chip counter has a style-level weakness class, and the
+learned models exploit it regardless of training recipe.
+
+**Status:** Confirmed as an empirical pattern. The mechanism is hypothesized
+(labeled below), not tested.
+
+**Origin:** phase 0 of the dethrone plan
+([dethrone-champion-plan-1-wiggly-mitten.md](../plans/dethrone-champion-plan-1-wiggly-mitten.md)),
+while diagnosing why the 2026-07-14 refit compressed the top of the table.
+
+**Tested in:** [dethrone-champion-results-1-wiggly-mitten.md](../plans/dethrone-champion-results-1-wiggly-mitten.md) --
+the chip counter `ab(d6,tt,ord,nb200k).classic(t1,c4,w0,l0)` scored 41/72
+(57%) against the 36 d6-head residual/MLP-study models rated ~300 Elo below
+it (expected score at that gap: ~85-95%), and was swept 0-2 by eleven of
+them spanning every recipe class in the study (linear plain s3/s4/s6, linear
+residual s10/s12/s13, mlp16 s16/s22, mlp32 s28/s33/s35). Against the d4-head
+cohort of the SAME models it scored 94%. Top learned/adv agents held 88-92%
+against the same new opponents. Boosted 32-game head-to-heads agree: s98
+beats the chip counter 23-9, s96 beats it 18-14. The consequence is the
+2026-07-17 dethrone: s98 certified at 1064 +/- 14 vs the chip counter's 976
++/- 13 on the identical search head.
+
+**Notes:** Labeled hypothesis for the mechanism: equal-material positional
+tie-breaking. The chip counter's eval is blind among equal-material lines
+(exact ties everywhere material does not change), so its play there is
+enumeration-order default (theory 23's left-file bias), while ANY piece-square
+table always has a positional preference. A learned opponent can steer the
+game through material-equal channels where the chip counter drifts. Tests
+that would settle it: (a) replay chip-counter-vs-s98 games logging the chip
+counter's root eval and count decisive plies where its top moves were exact
+ties; (b) ablate s98 toward material-only and watch the head-to-head
+collapse; (c) check whether quiescence (a tactics fix, dethrone plan phase 1)
+moves the 57% number at all -- if it does not, the weakness is positional,
+not a leaf-tactics horizon artifact. Related: theory 1 (this is what its
+standing longitudinal re-check exists to catch -- a NEW style class joining
+the pool and exposing out-of-distribution weakness, here in the old champion
+itself), theory 19 (det-vs-det replicate noise qualifies the per-pair
+records), theory 27 (pooled metrics hiding head-to-head structure), theory
+23 (the tie-default mechanism the hypothesis builds on).
 
 ### Training Data & Recipes
 
