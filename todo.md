@@ -61,10 +61,11 @@ stays above the pool at 1145 (reference, not the target). Fit-scale caveat: Elo
 is not comparable across fits as the pool grows (see `Docs/benchmarking.md`),
 so these numbers supersede all pre-2026-07-14 quotes. The second goal tier is
 open: s98 pays 2.6x the chip counter's cpu/move (13.1 vs 5.0 ms). The dethrone
-loop continues with s98 as the target: quiescence at the d6 head (dethrone plan
-phase 1), the refutation book aimed at s98 (phase 2), and the learned-eval
-training fixes -- eval-blended labels, Elo-filtered extraction, seed ensembling
-(phase 3).
+loop continues with s98 as the target. Phase 1 (quiescence) is done and did NOT
+dethrone: s98+qs ties s98 pooled and loses the pair 9-23 (theory 29). Remaining
+paths: the refutation book aimed at s98 (dethrone plan phase 2) and the
+learned-eval training fixes -- eval-blended labels, Elo-filtered extraction,
+seed ensembling (phase 3).
 
 **Standing loop:** the recurring success criterion for any new agent is dethroning
 the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by
@@ -334,7 +335,13 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
 - ~~Iterative deepening (shipped: used by the node-budgeted search)~~
 - ~~Time-budgeted search by wall-clock seconds (`g_timeBudgetMs`, shipped)~~
 - ~~Transposition table + move ordering (killers/history) shipped as opt-in, ablatable features (`useTT`/`useMoveOrder`); aspiration windows too (`aspirationWindow`)~~
-- Quiescence search (extend on captures / near-wins) `[Next]`
+- ~~Quiescence search (extend on captures / near-wins)~~ Shipped 2026-07-17 as the
+  opt-in `qs` head flag (`quiesceMax/Min`, captures-only stand-pat extension at
+  depth leaves; near-wins covered by the existing per-qnode `canWin*` sentinels).
+  Strength verdict at the d6/nb200k head: no dethrone -- s98+qs ties plain s98
+  pooled (1073 vs 1074) and loses the direct pair 9-23; classic+qs +19 within
+  noise. Theory 29; `plans/dethrone-champion-results-2-wiggly-mitten.md`. The
+  runner-threat extension variant remains open `[done]`
 - MCTS / PUCT (pairs a policy head with a value head) `[Later]`
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]`
 

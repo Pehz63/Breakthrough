@@ -1,0 +1,10 @@
+# One-off boost roster (dethrone plan phase 1): resolve the s98+qs challenger
+# directly against the d8/nb2m oracle (excluded from roster_top.txt for cost)
+# and against plain s98, since the 8-games/pair fill put s98+qs level with the
+# oracle on pooled Elo. Games append to the shared matches.jsonl as always.
+
+anchor  rand@1
+
+on      ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1

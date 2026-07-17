@@ -88,7 +88,8 @@ theories out of a single stray entry into their own subsection.
 | 25 | Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts) | Open / untested | Model & Evaluator Design | this session's conversation | -- |
 | 26 | Low-Elo games are low-quality value-training data | Open / untested | Training Data & Recipes | developer hypothesis 2026-07-14 | -- |
 | 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (MLP beat linear on loss ~0.17 yet lost ~95-130 Elo, at BOTH depth 4 and depth 6) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
-| 28 | Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo | Confirmed as a pattern (mechanism hypothesized, untested) | Gameplay Performance & Dethroning the Champion | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) | [dethrone-champion-results-1](../plans/dethrone-champion-results-1-wiggly-mitten.md) |
+| 28 | Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo | Confirmed as a pattern; tactical explanation refuted (qs probe), positional hypothesis remains | Gameplay Performance & Dethroning the Champion | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) | [dethrone-champion-results-1](../plans/dethrone-champion-results-1-wiggly-mitten.md), [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
+| 29 | Quiescence (captures-only stand-pat leaf extension) adds strength at the d6/nb200k head | Refuted for the learned-eval champion (pooled tie, loses h2h 9-23); weak positive inside noise for the chip counter (+19 at ~1 SE) | Model & Evaluator Design | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) phase 1 | [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -306,6 +307,14 @@ itself), theory 19 (det-vs-det replicate noise qualifies the per-pair
 records), theory 27 (pooled metrics hiding head-to-head structure), theory
 23 (the tie-default mechanism the hypothesis builds on).
 
+**Update 2026-07-17 (test (c) ran, phase 1):** quiescence did not close the
+gap -- it widened it. The chip counter WITH quiescence lost its learned-model
+head-to-heads worse than without (5-27 vs s98 and 4-28 vs s96, from 9-23 and
+14-18 plain), while gaining against its own classic family. The tactical
+(leaf-horizon) explanation is refuted; the positional tie-breaking hypothesis
+stands, with tests (a) and (b) still open. See
+[dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md).
+
 ### Training Data & Recipes
 
 Theories about what data a training run should use and how, independent of
@@ -511,6 +520,40 @@ or budget-cut searches, where the detector genuinely adds horizon. Note the
 soundness is unconditional (rules-proven), so enabling it can change play
 only toward truth; any Elo loss beyond timing noise would indicate an
 implementation bug, and none was seen.
+
+#### 29. Quiescence adds strength at the d6/nb200k head
+
+**Claim:** A captures-only stand-pat extension at depth leaves (the `qs` head
+flag) converts the d6/nb200k head's idle node budget into tactical horizon
+and therefore Elo.
+
+**Status:** Refuted for the learned-eval champion; weak positive inside noise
+for the chip counter. Shallow heads and tight budgets untested (same open
+regime as theory 21).
+
+**Origin:** dethrone plan phase 1
+([dethrone-champion-plan-1-wiggly-mitten.md](../plans/dethrone-champion-plan-1-wiggly-mitten.md)),
+motivated by the champion head using only ~15-20k of its 200k node budget.
+
+**Tested in:** [dethrone-champion-results-2-wiggly-mitten.md](../plans/dethrone-champion-results-2-wiggly-mitten.md) --
+full-roster refit with all contender pairs at 32 games. `s98+qs` 1073 +/- 15
+vs plain s98 1074 +/- 14 (pooled tie) while LOSING the direct pair 9-23;
+`classic+qs` 1002 +/- 14 vs plain 983 +/- 12 (+19, ~1 SE). At the classic
+head qs cost ~40% nodes/move and ~33% cpu/move, still far under budget.
+
+**Notes:** Reads as the theory-21 story repeating for a second leaf
+extension: at d6 with tt+ord the main search already resolves the exchanges
+that matter, so capture-only leaf knowledge rarely changes a decision.
+LABELED HYPOTHESIS (untested): stand-pat is systematically optimistic in
+Breakthrough because no quiet moves exist (Lemma B, every move advances
+irreversibly) and the decisive threats are runner ADVANCES, which a
+captures-only extension never explores -- a runner-threat-aware quiescence
+(D9 detection via the existing row counts) is the natural follow-up. The
+probe also produced theory 28's test-(c) answer: quiescence made the chip
+counter's learned-model head-to-heads WORSE (5-27 vs s98, 4-28 vs s96), so
+that weakness is positional, not tactical. Methodology: the 8-games/pair
+preliminary read (+80, level with the oracle) fully inverted at 32
+games/pair -- never quote preliminary fills (see `Docs/benchmarking.md`).
 
 #### 22. Deterministic first-found tie-breaking outperforms random tie-breaking
 

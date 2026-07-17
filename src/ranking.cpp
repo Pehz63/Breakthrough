@@ -275,6 +275,7 @@ string rankAgentId(const AgentSpec& a) {
             if (!a.useAlphaBeta)        s += ",noab";
             if (a.useTT)                s += ",tt";
             if (a.useMoveOrder)         s += ",ord";
+            if (a.useQuiescence)        s += ",qs";
             if (a.keepPartial)          s += ",part";
             if (a.aspirationWindow > 0) s += ",asp" + std::to_string(a.aspirationWindow);
             if (a.nodeBudget)           s += ",nb" + fmtBudget(a.nodeBudget);
@@ -459,7 +460,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
 
     bool isSearch = false;
     int explorerIdx = -1, chooserIdx = -1, chooserParam = 0, depth = 1;
-    bool fNoab = false, fTT = false, fOrd = false, fPart = false;
+    bool fNoab = false, fTT = false, fOrd = false, fQs = false, fPart = false;
     bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false;
     long long asp = 0, cap = 0, tbMs = 0;
     unsigned long long nb = 0;
@@ -509,6 +510,9 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             } else if (f == "ord") {
                 if (fOrd) { err = "duplicate ab() flag 'ord'"; return false; }
                 fOrd = true;
+            } else if (f == "qs") {
+                if (fQs) { err = "duplicate ab() flag 'qs'"; return false; }
+                fQs = true;
             } else if (f == "part") {
                 if (fPart) { err = "duplicate ab() flag 'part'"; return false; }
                 fPart = true;
@@ -729,6 +733,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         a.useAlphaBeta = !fNoab;
         a.useTT = fTT;
         a.useMoveOrder = fOrd;
+        a.useQuiescence = fQs;
         a.keepPartial = fPart;
         a.aspirationWindow = (int)asp;
         a.nodeBudget = nb;

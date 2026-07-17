@@ -88,6 +88,13 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.timeBudgetMs == Approx(250.0));
     REQUIRE(a.spec.depthCap == 2);
 
+    // Quiescence flag on the ab head (captures-only leaf extension).
+    a = parseOk("ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2");
+    REQUIRE(a.spec.useQuiescence);
+    REQUIRE(a.spec.useTT);
+    REQUIRE(a.spec.useMoveOrder);
+    parseErr("ab(d4,qs,qs)@1.classic(t1,c4,w0,l0)@2");   // duplicate flag rejected
+
     // Advanced evaluator: all 16 weights, including a negative one (signed
     // weights are legal in IDs) and the noise seed / racewin toggle slots.
     a = parseOk("ab(d4)@1.adv(t20,c50,w-3,l0,f10,d5,e2,m3,h4,b2,o2,r3,x2,n1,s7,g1)@1");

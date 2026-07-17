@@ -32,6 +32,7 @@ static void seedAgentDefaults(AgentSpec& a) {
     a.useAlphaBeta = true;
     a.useTT = false;
     a.useMoveOrder = false;
+    a.useQuiescence = false;
     a.keepPartial = false;
     a.aspirationWindow = 0;
 }
@@ -105,12 +106,14 @@ int agentChooseMove(const AgentSpec& a, int side) {
     // afterward so one tournament can mix agents with different settings.
     unsigned long long savedNode = g_nodeBudget; double savedTime = g_timeBudgetMs;
     bool savedAB = g_useAlphaBeta, savedTT = g_useTT, savedMO = g_useMoveOrder, savedKP = g_keepPartial;
+    bool savedQS = g_useQuiescence;
     int savedAsp = g_aspirationWindow;
     if (a.nodeBudget)        g_nodeBudget = a.nodeBudget;
     if (a.timeBudgetMs > 0.0) g_timeBudgetMs = a.timeBudgetMs;
     g_useAlphaBeta = a.useAlphaBeta;
     g_useTT = a.useTT;
     g_useMoveOrder = a.useMoveOrder;
+    g_useQuiescence = a.useQuiescence;
     g_keepPartial = a.keepPartial;
     g_aspirationWindow = a.aspirationWindow;
 
@@ -118,6 +121,7 @@ int agentChooseMove(const AgentSpec& a, int side) {
 
     g_nodeBudget = savedNode; g_timeBudgetMs = savedTime;
     g_useAlphaBeta = savedAB; g_useTT = savedTT; g_useMoveOrder = savedMO;
+    g_useQuiescence = savedQS;
     g_keepPartial = savedKP; g_aspirationWindow = savedAsp;
     return victor;
 }
@@ -154,6 +158,7 @@ string agentDescribe(const AgentSpec& a) {
         if (!a.useAlphaBeta)       flags += "noAB,";
         if (a.useTT)               flags += "TT,";
         if (a.useMoveOrder)        flags += "ord,";
+        if (a.useQuiescence)       flags += "qs,";
         if (a.keepPartial)         flags += "part,";
         if (a.aspirationWindow > 0) flags += "asp" + std::to_string(a.aspirationWindow) + ",";
         if (!flags.empty()) { flags.pop_back(); s += " [" + flags + "]"; }

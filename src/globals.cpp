@@ -40,6 +40,7 @@ double g_timeBudgetMs = 0.0;              // 0 = off
 bool g_useAlphaBeta = true;
 bool g_useTT = false;
 bool g_useMoveOrder = false;
+bool g_useQuiescence = false;
 bool g_keepPartial = false;
 int  g_aspirationWindow = 0;
 

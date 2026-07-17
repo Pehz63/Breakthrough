@@ -64,7 +64,7 @@ for visually and how to capture matchup-gated controls.
 | `moves.cpp` | Move validation, execution, simulation, player input, move routing |
 | `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard`, the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
-| `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets, opt-in transposition/ordering/aspiration |
+| `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets, opt-in transposition/ordering/aspiration/quiescence |
 | `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation; value features v1 (dense aggregates) and v2 (sparse piece-square) |
 | `ml_model.cpp` | `Model` base + `LinearModel`, model-type registry, save/load (`type=` format) |
 | `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy), incremental v2 accumulator (`mlIncrementalBegin`/`mlLeafScore`) |
@@ -364,7 +364,10 @@ greedy@1.learned(s0,7cc8a70d)@1                    learned value model (content-
 ```
 
 The head names the move choice / search, then the evaluator with all its weights,
-then optional `dil()` dilution. Dilution weakens an agent to spread the Elo ladder:
+then optional `dil()` dilution. Search heads take opt-in flags: `tt`
+(transposition table), `ord` (move ordering), `qs` (quiescence: a captures-only
+stand-pat extension at depth leaves), `aspN` (aspiration window), `noab` (full
+minimax), plus `nb`/`tb` budgets. Dilution weakens an agent to spread the Elo ladder:
 `dil(rP)` plays a fully random move `P`% of the time, while `dil(rP,dN)` instead
 plays a shallower depth-`N` search `P`% of the time (a plausible-but-weaker move
 rather than a blunder, `0 < N <` the agent depth). Every module segment carries its own `@N` **code

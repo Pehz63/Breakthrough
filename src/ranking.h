@@ -25,7 +25,7 @@
 //   id      := head [ "." evalseg ] [ "." dilseg ]                (policy: head [ "." linpol ] [ "." dilseg ])
 //   head    := ( "rand" | "tiered" | "smart(" N ")" | "policy"    (policy brains)
 //              | "greedy" | "ab(" "d" N { "," flag } ")" ) "@" V  (search brains)
-//   flag    := "noab" | "tt" | "ord" | "part" | "asp" N
+//   flag    := "noab" | "tt" | "ord" | "qs" | "part" | "asp" N
 //            | "nb" budget | "tb" N "ms" | "cap" N                (budget: 200k, 2m, raw)
 //   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
 //              | "learned(s" slot "," hash8 ")" ) "@" V           (LearnedValue; hash = weights)

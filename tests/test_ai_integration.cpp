@@ -72,6 +72,65 @@ TEST_CASE("MiniMax - move ordering and TT preserve the search value") {
     REQUIRE(runValue(true,  true)  == base);  // both
 }
 
+TEST_CASE("MiniMax - quiescence resolves the leaf exchange (horizon fix)") {
+    // W c5 can capture B b6, but b6 is defended by B a7: the exchange is even.
+    // A depth-1 search sees only the capture's +1 material at its leaf; with
+    // quiescence the recapture is resolved, so the root value drops to equal
+    // material. The move can stay the same - the claim is about the VALUE.
+    // W f3 exists so White has quiet alternatives (which hang nothing once c5
+    // trades itself off; keeping c5 in place is punished by qs via b6xc5).
+    clearBoard();
+    board[2][4] = WHITE;   // c5
+    board[5][2] = WHITE;   // f3
+    board[1][5] = BLACK;   // b6 (capturable by c5)
+    board[0][6] = BLACK;   // a7 (defends b6)
+    g_whiteCount = 2; g_blackCount = 2; g_chipDiff = 0;
+
+    int params[MAX_EVAL_PARAMS] = { 0, 4, 0, 0 };  // Classic: turn 0, chip 4
+
+    char snapshot[SIZE][SIZE];
+    memcpy(snapshot, board, sizeof(board));
+    auto rootValue = [&](bool qs) -> int {
+        memcpy(board, snapshot, sizeof(board));
+        g_whiteCount = 2; g_blackCount = 2; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+        g_useQuiescence = qs;
+        moveWhite(MiniMax, 1, 0, params, StandardOpener);
+        g_useQuiescence = false;
+        return g_downEvalWhite;
+    };
+
+    REQUIRE(rootValue(false) == 4);   // horizon: the capture looks like +1 chip
+    REQUIRE(rootValue(true)  == 0);   // qs: the recapture resolves it to equal
+}
+
+TEST_CASE("MiniMax - quiescence value is search-path invariant (tt/ord)") {
+    // With quiescence enabled, move ordering and the transposition table must
+    // still preserve the exact search value, like they do for the plain leaf.
+    clearBoard();
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {5,5,5,6,6};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {2,2,2,1,1};
+    for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
+    g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+
+    char snapshot[SIZE][SIZE];
+    memcpy(snapshot, board, sizeof(board));
+
+    auto runValue = [&](bool tt, bool ord) -> int {
+        memcpy(board, snapshot, sizeof(board));
+        g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+        g_useTT = tt; g_useMoveOrder = ord; g_aspirationWindow = 0; g_useQuiescence = true;
+        int params[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
+        moveWhite(MiniMax, 4, 0, params, StandardOpener);
+        g_useTT = false; g_useMoveOrder = false; g_useQuiescence = false;
+        return g_downEvalWhite;
+    };
+
+    int base = runValue(false, false);
+    REQUIRE(runValue(false, true) == base);   // move ordering only
+    REQUIRE(runValue(true,  false) == base);  // transposition table only
+    REQUIRE(runValue(true,  true)  == base);  // both
+}
+
 TEST_CASE("MiniMax - White captures only black piece to win") {
     clearBoard();
     // W at (4, 0), B at (3, 1) only.

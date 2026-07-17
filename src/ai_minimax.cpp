@@ -100,6 +100,96 @@ static void orderMoves(const Move* mv, int n, int side, int level,
     std::stable_sort(order, order+n, [&](int a, int b){ return pr[a] > pr[b]; });
 }
 
+// === QUIESCENCE (opt-in, g_useQuiescence) ===
+// Captures-only stand-pat extension entered at true depth leaves (level == depth,
+// not budget-cut pseudo-leaves), so a fixed-depth search stops mid-exchange less
+// often. Each recursion consumes a capture, and captures strictly shrink material
+// (A7), so the extension terminates on its own; QS_MAX_PLY is a belt-and-braces
+// cap. Quiescence nodes are counted against the node budget like any other node
+// (one nodes++ per capture-child visited; the entry position was already counted
+// by the calling leaf). Stand-pat (the side to move may decline all captures and
+// keep the static eval) is the standard heuristic; like all quiescence it is
+// blind to zugzwang, which Breakthrough's forced-advance rule makes possible --
+// this is an Elo experiment, not a soundness proof. canWin checks at each qnode
+// keep the same near-win sentinel semantics as the plain leaf, and the win-decay
+// on return preserves the fastest-win preference.
+static const int QS_MAX_PLY = 32;
+
+static int quiesceMin(int alpha, int beta, int qdepth, int evaluator, const int* evalParams,
+                      unsigned long long& nodes, unsigned long long& leafs);
+
+static int quiesceMax(int alpha, int beta, int qdepth, int evaluator, const int* evalParams,
+                      unsigned long long& nodes, unsigned long long& leafs) {
+    if (canWinWhite()) { leafs++; return WhiteWin; }
+    if (canWinBlack()) { leafs++; return BlackWin; }
+    int standPat = evalLeaf(White, evaluator, evalParams);
+    if (qdepth >= QS_MAX_PLY) { leafs++; return standPat; }
+    if (standPat > alpha) alpha = standPat;
+    if (g_useAlphaBeta && alpha >= beta) { leafs++; return beta; }
+
+    bool tried = false, stop = false;
+    for (int y = SIZE-2; y >= 0 && !stop; y--) {
+        for (int x = 0; x < SIZE && !stop; x++) {
+            if (board[x][y] != WHITE) continue;
+            int ny = y + 1;
+            auto tryCap = [&](int z) -> bool {   // true = stop exploring (cutoff/budget)
+                tried = true;
+                nodes++;
+                if (budgetTripped(nodes)) { s_budgetHit = true; return true; }
+                bool isCapture = simulateMoveWhite(x, y, z);
+                int eval = quiesceMin(g_useAlphaBeta ? alpha : INT_MIN,
+                                      g_useAlphaBeta ? beta  : INT_MAX,
+                                      qdepth+1, evaluator, evalParams, nodes, leafs);
+                unsimulateMoveWhite(x, y, z, isCapture);
+                if (eval > alpha) alpha = eval;
+                return g_useAlphaBeta && alpha >= beta;
+            };
+            if (x > 0      && board[x-1][ny] == BLACK && tryCap(x-1)) { stop = true; break; }
+            if (x < SIZE-1 && board[x+1][ny] == BLACK && tryCap(x+1)) { stop = true; break; }
+        }
+    }
+    if (!tried) { leafs++; return alpha; }        // quiet position: stand-pat
+    if (g_useAlphaBeta && alpha >= beta) return beta;
+    if (alpha > WhiteWin-1024) alpha--;
+    return alpha;
+}
+
+static int quiesceMin(int alpha, int beta, int qdepth, int evaluator, const int* evalParams,
+                      unsigned long long& nodes, unsigned long long& leafs) {
+    if (canWinBlack()) { leafs++; return BlackWin; }
+    if (canWinWhite()) { leafs++; return WhiteWin; }
+    int standPat = evalLeaf(Black, evaluator, evalParams);
+    if (qdepth >= QS_MAX_PLY) { leafs++; return standPat; }
+    if (standPat < beta) beta = standPat;
+    if (g_useAlphaBeta && beta <= alpha) { leafs++; return alpha; }
+
+    bool tried = false, stop = false;
+    for (int y = 1; y <= SIZE-1 && !stop; y++) {
+        for (int x = 0; x < SIZE && !stop; x++) {
+            if (board[x][y] != BLACK) continue;
+            int ny = y - 1;
+            auto tryCap = [&](int z) -> bool {   // true = stop exploring (cutoff/budget)
+                tried = true;
+                nodes++;
+                if (budgetTripped(nodes)) { s_budgetHit = true; return true; }
+                bool isCapture = simulateMoveBlack(x, y, z);
+                int eval = quiesceMax(g_useAlphaBeta ? alpha : INT_MIN,
+                                      g_useAlphaBeta ? beta  : INT_MAX,
+                                      qdepth+1, evaluator, evalParams, nodes, leafs);
+                unsimulateMoveBlack(x, y, z, isCapture);
+                if (eval < beta) beta = eval;
+                return g_useAlphaBeta && beta <= alpha;
+            };
+            if (x > 0      && board[x-1][ny] == WHITE && tryCap(x-1)) { stop = true; break; }
+            if (x < SIZE-1 && board[x+1][ny] == WHITE && tryCap(x+1)) { stop = true; break; }
+        }
+    }
+    if (!tried) { leafs++; return beta; }         // quiet position: stand-pat
+    if (g_useAlphaBeta && beta <= alpha) return alpha;
+    if (beta < BlackWin+1024) beta++;
+    return beta;
+}
+
 // Ordered/TT-enabled recursive search (mirrors maxAlphaBeta/minAlphaBeta). Entered via
 // the dispatch at the top of those functions when g_useTT || g_useMoveOrder.
 static int maxAlphaBetaOrdered(int alpha, int beta, int level, int depth, int evaluator,
@@ -108,6 +198,8 @@ static int maxAlphaBetaOrdered(int alpha, int beta, int level, int depth, int ev
     bool budgetCut = budgetTripped(nodes);
     if (level == depth || budgetCut) {
         if (budgetCut && level != depth) s_budgetHit = true;
+        if (g_useQuiescence && level == depth && !budgetCut)
+            return quiesceMax(alpha, beta, 0, evaluator, evalParams, nodes, leafs);
         leafs++;
         if (canWinWhite()) return WhiteWin;
         if (canWinBlack()) return BlackWin;
@@ -161,6 +253,8 @@ static int minAlphaBetaOrdered(int alpha, int beta, int level, int depth, int ev
     bool budgetCut = budgetTripped(nodes);
     if (level == depth || budgetCut) {
         if (budgetCut && level != depth) s_budgetHit = true;
+        if (g_useQuiescence && level == depth && !budgetCut)
+            return quiesceMin(alpha, beta, 0, evaluator, evalParams, nodes, leafs);
         leafs++;
         if (canWinBlack()) return BlackWin;
         if (canWinWhite()) return WhiteWin;
@@ -528,6 +622,8 @@ int maxAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const
     if (level == depth || budgetCut) //Leaf: depth reached or budget hit
     {
         if (budgetCut && level != depth) s_budgetHit = true;
+        if (g_useQuiescence && level == depth && !budgetCut)
+            return quiesceMax(alpha, beta, 0, evaluator, evalParams, nodes, leafs);
         leafs++;
         if (canWinWhite()) return WhiteWin;
         if (canWinBlack()) return BlackWin;
@@ -584,6 +680,8 @@ int minAlphaBeta(int alpha, int beta, int level, int depth, int evaluator, const
     if (level == depth || budgetCut) //Leaf: depth reached or budget hit
     {
         if (budgetCut && level != depth) s_budgetHit = true;
+        if (g_useQuiescence && level == depth && !budgetCut)
+            return quiesceMin(alpha, beta, 0, evaluator, evalParams, nodes, leafs);
         leafs++;
         if (canWinBlack()) return BlackWin;
         if (canWinWhite()) return WhiteWin;

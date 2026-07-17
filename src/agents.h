@@ -42,6 +42,7 @@ struct AgentSpec {
     bool   useAlphaBeta;                // false = full minimax (ablation baseline)
     bool   useTT;                       // transposition table
     bool   useMoveOrder;                // killer/history/TT move ordering
+    bool   useQuiescence;               // captures-only stand-pat extension at depth leaves
     bool   keepPartial;                 // keep a budget-cut iteration's best move
     int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
 

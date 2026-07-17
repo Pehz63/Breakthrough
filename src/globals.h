@@ -127,6 +127,7 @@ extern double g_timeBudgetMs;
 extern bool g_useAlphaBeta;     // false = full minimax (no alpha/beta cutoffs)
 extern bool g_useTT;            // transposition table probe/store
 extern bool g_useMoveOrder;     // TT/killer/history move ordering (capture-first always on)
+extern bool g_useQuiescence;    // captures-only stand-pat extension at depth leaves
 extern bool g_keepPartial;      // keep a budget-cut iteration's best move instead of discarding
 extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width at the root
 
