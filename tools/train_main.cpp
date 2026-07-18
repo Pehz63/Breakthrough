@@ -124,6 +124,8 @@ static void usage() {
     cout << "  --early-stop                 with --val-split, keep the lowest-validation-loss epoch as the saved model\n";
     cout << "  train.exe selfplay-supervised --out models/res_mlp --feature-version 2 --from-data data/replay_v2.jsonl --model-type mlp --mlp-hidden 32 --residual-skip -1\n";
     cout << "      (nonlinear residual value head: chipCount skip + an MLP learning the rest)\n";
+    cout << "  train.exe ensemble --models \"models/sweep/slot3.txt,models/sweep/slot4.txt\" --mirror 1 --out models/sweep/slot9\n";
+    cout << "      (average K linear v2 models' weights, optionally left-right mirror-symmetrized, into one model)\n";
     cout << "  --gen-random-floor <f> --gen-random-decay-plies <n>  linearly decay teacher dilution from\n";
     cout << "      --gen-random to --gen-random-floor over that many half-moves (0 plies = off, constant dilution)\n";
     cout << "  train.exe imitate --out models/lin_policy.txt --games 150 --epochs 15\n";
@@ -179,6 +181,22 @@ int main(int argc, char** argv) {
             getDbl(argc, argv, "--residual-skip", 0.0),
             getDbl(argc, argv, "--val-split", 0.0),
             hasFlag(argc, argv, "--early-stop"));
+    } else if (cmd == "ensemble") {
+        // Comma-separated model files -> one averaged (optionally mirror-
+        // symmetrized) linear v2 model at --out + ".txt".
+        std::vector<string> files;
+        {
+            string list = getOpt(argc, argv, "--models", "");
+            size_t p = 0;
+            while (p < list.size()) {
+                size_t c = list.find(',', p);
+                if (c == string::npos) c = list.size();
+                if (c > p) files.push_back(list.substr(p, c - p));
+                p = c + 1;
+            }
+        }
+        rc = trainEnsemble(files, getInt(argc, argv, "--mirror", 1) != 0,
+                           getOpt(argc, argv, "--out", "models/ensemble"));
     } else if (cmd == "imitate") {
         rc = trainImitationPolicy(
             getOpt(argc, argv, "--out", "models/lin_policy.txt"),

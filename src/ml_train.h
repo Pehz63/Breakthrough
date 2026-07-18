@@ -94,6 +94,18 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
                          double valSplit = 0.0,
                          bool earlyStop = false);
 
+// Weight symmetrization + seed ensembling for LINEAR v2 value models: load K
+// trained models, optionally project each onto its left-right mirror symmetry
+// (w'[sq] = (w[sq] + w[mirror sq]) / 2 per color plane; the rules and the
+// standard start are mirror symmetric, so the true value function is too and
+// the anti-symmetric part is pure noise), then average the K weight vectors
+// and biases into ONE model saved to outDir + ".txt". For a linear model the
+// ensemble IS the weight average, so this stays fully incremental in search.
+// Directly attacks the theory-8 training-seed noise band. Returns 0 on
+// success; rejects non-linear or non-v2 inputs and mismatched shapes.
+int trainEnsemble(const std::vector<string>& modelFiles, bool mirror,
+                  const string& outDir);
+
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,

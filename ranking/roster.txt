@@ -123,3 +123,26 @@ on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
 # silently change these agents' behavior. A new book gets a new slot number.
 on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,1)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
+
+# Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the
+# todo's weight-symmetrization [Now] item). Slots 3-8 are 6 fresh seed
+# replicas of the champion's exact recipe (pg_oracle_champ.jsonl, 6 epochs,
+# lr 0.05, seeds 1001..6006; slot5/seed 3003 reproduces the champion's
+# weights byte-identically and is NOT rostered -- the champion row already
+# is that policy). slot9 = mirror-symmetrized average of all 6 seeds;
+# slot10 = mirror-symmetrized champion weights alone (separates the
+# symmetrization effect from the ensembling effect). Both standard heads.
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s3,68364898)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s4,eb105733)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s7,c7f7ce61)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s8,6f1a4264)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7)@1

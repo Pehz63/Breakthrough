@@ -20,6 +20,7 @@ Priority tags: `[Now]` = active focus, `[Next]` = queued up, `[Later]` = valuabl
 # 1v1 / GUI Track
 
 - Display whose turn it is in the main board area `[Next]`
+- Add a button or something that changes the white and black pieces to red and blue in the GUI `[Next]`
 - Best moves list or recommendation arrow `[Later]`
 - GUI: play against a named saved agent `[Next]`
 - GUI: agent-vs-agent ladder / leaderboard view `[Later]`
@@ -67,10 +68,14 @@ loop continues with s98 as the target. Phase 1 (quiescence) did NOT dethrone:
 s98+qs ties s98 pooled and loses the pair 9-23 (theory 29). Phase 2 (the oracle
 refutation book) did NOT dethrone either and refuted theory 14's naive form:
 both book agents rated below their bookless selves (cross-run nondeterminism
-via search state + mined moves not being brain-portable). The remaining path is
-phase 3, the learned-eval training fixes -- eval-blended labels, Elo-filtered
-extraction, seed ensembling -- plus the repaired book variants and the
-runner-threat quiescence filed in the results docs.
+via search state + mined moves not being brain-portable). Phase 3's first
+increment (weight symmetrization + seed ensembling) also did NOT dethrone and
+was refuted for strength (theory 30): mirroring the champion's weights cost 135
+Elo. The remaining learned-eval fixes are still open -- eval-blended labels and
+Elo-filtered extraction (both untried), seed SELECTION by Elo (the best of 6
+champion-recipe seeds is +28 over the champion, an untested cheap challenger) --
+plus the repaired book variants and runner-threat quiescence filed in the
+results docs.
 
 **Standing loop:** the recurring success criterion for any new agent is dethroning
 the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by
@@ -358,10 +363,18 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   it away; blending turns one noisy bit per game into a real-valued signal per position (the NNUE
   training recipe) and should also improve move ordering, where the PST prunes 3x worse than
   Classic `[Now]`
-- Weight symmetrization + seed-ensembling for linear models: after training, average each weight
+- ~~Weight symmetrization + seed-ensembling for linear models: after training, average each weight
   with its left-right mirror (exact symmetry projection, free variance cut), and average the
   weights of K seed-replicas (for a linear model the ensemble IS the average). Directly attacks
-  the measured 50-150 Elo training-seed noise `[Now]`
+  the measured 50-150 Elo training-seed noise~~ Shipped 2026-07-17 as `train.exe ensemble`
+  (`--models` list, `--mirror 0|1`). Verdict: REFUTED for playing strength (theory 30,
+  `plans/dethrone-champion-results-4-wiggly-mitten.md`). Mirroring the champion's own weights
+  cost 135 Elo (1079 -> 944), the 6-seed mirror ensemble 144 vs the seed mean -- likely because
+  a symmetric model's extra evaluation ties get broken by the directional first-found rule
+  (theory 23) and the learned asymmetry is doing useful anti-pool tie-breaking (theory 19), not
+  just noise. Open follow-ups: a pure-average (mirror=0) control to isolate averaging from
+  mirroring, the calibration-vs-strength check (theory 27 parallel), and seed SELECTION by Elo
+  instead of averaging (the best of 6 seeds is +28 over the champion) `[done]`
 - Extraction quality controls in rank.exe extract: --min-elo floor or Elo-confidence weighting
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),

@@ -517,6 +517,69 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
 }
 
 // ============================================================
+// REGIME: ENSEMBLE (mirror symmetrization + seed averaging)
+// ============================================================
+// The v2 layout's left-right mirror partner of input i (same color plane,
+// same row, column x -> SIZE-1-x). The side-to-move input maps to itself.
+static int mlv2MirrorIndex(int i) {
+    if (i == MLV2_STM) return i;
+    int plane = (i >= SIZE * SIZE) ? SIZE * SIZE : 0;
+    int sq = i - plane;
+    int x = sq % SIZE, y = sq / SIZE;
+    return plane + (SIZE - 1 - x) + SIZE * y;
+}
+
+int trainEnsemble(const std::vector<string>& modelFiles, bool mirror, const string& outDir) {
+    if (modelFiles.empty()) { cout << "ERROR: ensemble needs at least one --models file\n"; return 1; }
+    LinearModel* out = nullptr;
+    std::vector<double> acc;
+    double accBias = 0.0;
+    string parts;
+    for (size_t k = 0; k < modelFiles.size(); k++) {
+        Model* m = loadModel(modelFiles[k]);
+        if (!m) { cout << "ERROR: cannot load " << modelFiles[k] << "\n"; delete out; return 1; }
+        LinearModel* lm = dynamic_cast<LinearModel*>(m);
+        if (!lm || lm->featureVersion() != 2) {
+            cout << "ERROR: " << modelFiles[k] << " is not a linear feature-v2 model "
+                 << "(ensemble supports only that class; the average of linear models is linear)\n";
+            delete m; delete out;
+            return 1;
+        }
+        if (!out) {
+            out = new LinearModel(lm->head(), lm->featVer, lm->n, lm->outScale);
+            acc.assign(lm->n, 0.0);
+        } else if (lm->n != out->n || lm->head() != out->head()
+                   || lm->outScale != out->outScale) {
+            cout << "ERROR: " << modelFiles[k] << " shape/head/scale mismatch with the first model\n";
+            delete m; delete out;
+            return 1;
+        }
+        for (int i = 0; i < lm->n; i++) {
+            double wi = lm->w[i];
+            if (mirror) wi = 0.5 * (wi + lm->w[mlv2MirrorIndex(i)]);
+            acc[i] += wi;
+        }
+        accBias += lm->bias;
+        if (!parts.empty()) parts += ",";
+        parts += modelFiles[k];
+        delete m;
+    }
+    double invK = 1.0 / (double)modelFiles.size();
+    for (int i = 0; i < out->n; i++) out->w[i] = (float)(acc[i] * invK);
+    out->bias = (float)(accBias * invK);
+    out->teacher = "ensemble(k=" + std::to_string(modelFiles.size())
+                 + ",mirror=" + (mirror ? "1" : "0") + "):" + parts;
+    bool ok = out->save(outDir + ".txt");
+    if (ok)
+        cout << "Ensemble of " << modelFiles.size() << " models"
+             << (mirror ? " (mirror-symmetrized)" : "") << " -> " << outDir << ".txt\n";
+    else
+        cout << "ERROR: cannot write " << outDir << ".txt\n";
+    delete out;
+    return ok ? 0 : 1;
+}
+
+// ============================================================
 // REGIME: IMITATION POLICY (behavioral cloning)
 // ============================================================
 static int identifyMove(const char snap[SIZE][SIZE], int side, const Move* mv, int n) {
@@ -1716,6 +1779,7 @@ void writeManifest(const std::vector<ModelRecord>& records) {
 // ============================================================
 const RegimeDef g_regimes[] = {
     { "selfplay-supervised", "Self-play games labeled by outcome; fit a linear value model." },
+    { "ensemble",            "Average K trained linear v2 value models (optionally mirror-symmetrized) into one." },
     { "imitate",             "Behavioral cloning: a teacher's chosen move trains the policy move-rater." },
     { "tdleaf",              "TD-Leaf(lambda) self-play bootstrap of a value model. (future)" },
     { "population",          "Other-play tournaments, Elo-tie labeling, multi-condition runs. (future)" },

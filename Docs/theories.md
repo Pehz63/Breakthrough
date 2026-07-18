@@ -90,6 +90,7 @@ theories out of a single stray entry into their own subsection.
 | 27 | Lower value-model outcome-loss does not imply higher agent Elo (offline calibration and in-search strength diverge) | Promising / observed (MLP beat linear on loss ~0.17 yet lost ~95-130 Elo, at BOTH depth 4 and depth 6) | Model & Evaluator Design | residual/MLP Elo follow-up 2026-07-14 | [residual-mlp-results-2](../plans/residual-mlp-results-2-tingly-chipmunk.md) |
 | 28 | Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo | Confirmed as a pattern; tactical explanation refuted (qs probe), positional hypothesis remains | Gameplay Performance & Dethroning the Champion | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) | [dethrone-champion-results-1](../plans/dethrone-champion-results-1-wiggly-mitten.md), [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
 | 29 | Quiescence (captures-only stand-pat leaf extension) adds strength at the d6/nb200k head | Refuted for the learned-eval champion (pooled tie, loses h2h 9-23); weak positive inside noise for the chip counter (+19 at ~1 SE) | Model & Evaluator Design | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) phase 1 | [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
+| 30 | Weight mirror-symmetrization + seed-ensembling of a linear value model is a free variance cut that raises Elo | Refuted for playing strength: mirroring cost 135 Elo alone, the 6-seed mirror ensemble 144 (mechanism hypothesized: symmetric ties + directional tie-break) | Model & Evaluator Design | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) phase 3 | [dethrone-champion-results-4](../plans/dethrone-champion-results-4-wiggly-mitten.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -369,7 +370,7 @@ hyperparameter comparisons in the sweep.
 
 **Tested in:** [training-sweep-results-1-luminous-snail.md](../plans/training-sweep-results-1-luminous-snail.md) -- Finding 1.
 
-**Notes:** Seed replicas showed a 50-150 Elo spread, an order of magnitude above rating error -- any sweep conclusion needs multiple seeds to be trustworthy.
+**Notes:** Seed replicas showed a 50-150 Elo spread, an order of magnitude above rating error -- any sweep conclusion needs multiple seeds to be trustworthy. Re-confirmed 2026-07-17 on the champion's own recipe: six seeds of `pg_oracle_champ` at the d6 head spanned 1017-1107 (90 Elo), and the seed the vs-champion study promoted (3003, the reigning champion) is a middling 1079, NOT the best -- the best seed (4004) is +28. But averaging the seeds' WEIGHTS does not bank that spread as strength: it is decisively worse (theory 30). Seed SELECTION by full-roster Elo, not seed averaging, is the way to spend replicas, subject to the held-out-overfit caveat.
 
 #### 9. Teacher search depth doesn't matter for linear-PST label quality
 
@@ -719,6 +720,53 @@ refutes the naive reading of theory 10 that "the next strength lever is capacity
 capacity lowered loss but not Elo here. And it is the concrete case the
 always-measure-Elo standing rule exists to catch -- on calibration alone the MLP
 looked like a large win.
+
+#### 30. Weight mirror-symmetrization + seed-ensembling is a free variance cut that raises Elo
+
+**Claim:** For a linear v2 value model, (a) projecting the weights onto their
+left-right mirror symmetry (the value function is exactly mirror symmetric, so
+the anti-symmetric component is sampling noise) and (b) averaging K seed
+replicas' weights (for a linear model the ensemble IS the weight average) both
+cut training-seed variance (theory 8) at zero inference cost and should raise
+Elo.
+
+**Status:** Refuted for playing strength. Both interventions HURT.
+
+**Origin:** `todo.md` Training Regimes, "Weight symmetrization + seed-ensembling
+for linear models" (`[Now]`), framed as a direct attack on the theory-8 seed
+noise.
+
+**Tested in:** [dethrone-champion-results-4-wiggly-mitten.md](../plans/dethrone-champion-results-4-wiggly-mitten.md) --
+`train.exe ensemble` (new regime) built a mirror-symmetrized champion (slot10)
+and a 6-seed mirror ensemble (slot9) from six seed replicas of the champion's
+exact recipe; full-roster refit with the d6 contender pairs at 32 games.
+Mirroring the champion's OWN weights cost 135 Elo (1079 -> 944, a clean
+isolation: same weights, only the mirror projection differs); the 6-seed mirror
+ensemble was 924, -144 vs the seed mean (~1068) and worse than every single
+seed (1017-1107). The effect widened from the 8-game preliminary, so it is not
+under-sampling.
+
+**Notes:** The design rationale is sound for the value FUNCTION (the x ->
+SIZE-1-x reflection is an exact symmetry of the rules + standard start, so
+projecting onto the symmetric subspace cannot change how a model ranks a
+position vs its mirror), which makes the 135 Elo drop the finding. LABELED
+HYPOTHESIS for the mechanism: a symmetric model produces MORE exact evaluation
+ties (mirror-image moves score identically), and the engine breaks ties by a
+fixed directional first-found rule (theory 23's left-file bias); the asymmetric
+component the champion learned is a definite learned preference at each such
+fork that scores better than the enumeration default against a pool of
+DETERMINISTIC, directionally-biased opponents (theory 19) -- i.e. the asymmetry
+is not noise for PLAYING, only for the value function. Averaging linear PST
+weights separately blurs each seed's sharp decisive features into a flatter,
+weaker table ("the ensemble is the average" is arithmetic truth, not a strength
+claim). Second labeled hypothesis (a theory-27 parallel, untested): mirror
+symmetrization may LOWER outcome-prediction loss while lowering Elo. Repair
+paths / open controls: a pure-average (mirror=0) ensemble to isolate averaging
+from mirroring; a non-directional tie-break or softmax tie policy (todo `[Now]`)
+if the tie mechanism is confirmed; seed SELECTION by Elo instead of averaging
+(the best seed is +28 over the champion). Related: theories 8 (the noise this
+targeted), 23 (directional tie-break), 19 (deterministic biased pool), 27
+(calibration/strength divergence), and axioms O4/D5/E1.
 
 #### 25. Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts)
 

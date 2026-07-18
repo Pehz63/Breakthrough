@@ -11,6 +11,7 @@
 #include "ranking.h"
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 
 // Find a registry entry by name (small helper for the tests).
 static int explorerIdx(const char* n) { for (int i=0;i<g_explorerCount;i++) if (string(g_explorers[i].name)==n) return i; return 0; }
@@ -613,4 +614,36 @@ TEST_CASE("trainSupervisedValue --val-split + --early-stop completes and saves")
     REQUIRE(m->featureVersion() == 2);
     delete m;
     mlClearSlots();
+}
+
+TEST_CASE("ensemble - mirror symmetrization + seed averaging of linear v2 models") {
+    // Two tiny linear v2 models with known weights on a mirror pair: White
+    // square (0,0) is input 0, its left-right mirror (7,0) is input 7.
+    LinearModel a(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    LinearModel b(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    for (int i = 0; i < MLV2_FEATURES; i++) { a.w[i] = 0.0f; b.w[i] = 0.0f; }
+    a.w[0] = 4.0f; a.w[7] = 0.0f; a.bias = 1.0f;
+    b.w[0] = 0.0f; b.w[7] = 2.0f; b.bias = 3.0f;
+    REQUIRE(a.save("models/sweep/ens_test_a.txt"));
+    REQUIRE(b.save("models/sweep/ens_test_b.txt"));
+
+    std::vector<string> files;
+    files.push_back("models/sweep/ens_test_a.txt");
+    files.push_back("models/sweep/ens_test_b.txt");
+    REQUIRE(trainEnsemble(files, true, "models/sweep/ens_test_out") == 0);
+
+    Model* m = loadModel("models/sweep/ens_test_out.txt");
+    REQUIRE(m != nullptr);
+    LinearModel* lm = dynamic_cast<LinearModel*>(m);
+    REQUIRE(lm != nullptr);
+    // Mirror projection first (a: both 2.0; b: both 1.0), then the seed
+    // average: 1.5 on both squares. Bias averages without mirroring.
+    REQUIRE(lm->w[0] == Approx(1.5f));
+    REQUIRE(lm->w[7] == Approx(1.5f));
+    REQUIRE(lm->bias == Approx(2.0f));
+    delete m;
+
+    std::remove("models/sweep/ens_test_a.txt");
+    std::remove("models/sweep/ens_test_b.txt");
+    std::remove("models/sweep/ens_test_out.txt");
 }

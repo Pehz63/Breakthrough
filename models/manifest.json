@@ -1,3 +1,3 @@
 [
-  {"id":"linval_1784268698_e3","type":"linear","head":"value","regime":"selfplay-supervised","conditions":"genDepth=2,genRandom=0.200000,featVer=2,l2=0.000000,skip=0.000000,teacher=AlphaBeta(Classic, d2) params=[1,4,0,0] dil(0.2)","epoch":3,"games":4,"loss":0.22007,"winrate":0.3125,"elo":1363,"path":"build/test_valsplit_model_ckpt3.txt"}
+  {"id":"linval_1784334089_e3","type":"linear","head":"value","regime":"selfplay-supervised","conditions":"genDepth=2,genRandom=0.200000,featVer=2,l2=0.000000,skip=0.000000,teacher=AlphaBeta(Classic, d2) params=[1,4,0,0] dil(0.2)","epoch":3,"games":4,"loss":0.22007,"winrate":0.3125,"elo":1363,"path":"build/test_valsplit_model_ckpt3.txt"}
 ]
