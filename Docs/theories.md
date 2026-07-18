@@ -74,7 +74,7 @@ theories out of a single stray entry into their own subsection.
 | 11 | Dilution decay beats flat dilution | Promising / unproven | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | Search & Evaluation Engineering | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
-| 14 | An offline refutation book could dethrone the champion with less live compute | Refuted in the naive form (mined-move book + weaker live brain); reset-state + stay-in-book variants remain open | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | [dethrone-champion-results-3](../plans/dethrone-champion-results-3-wiggly-mitten.md) |
+| 14 | An offline refutation book could dethrone the champion with less live compute | Refuted in the naive (foreign-agent-mined) form; CONFIRMED in the self-mined form (theory 33) -- a 2026-07-18 book mined from the book-wearer's OWN wins dethroned the champion, 1145 vs 1074 | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | [dethrone-champion-results-3](../plans/dethrone-champion-results-3-wiggly-mitten.md), [dethrone-champion-results-5](../plans/dethrone-champion-results-5-wiggly-mitten.md) |
 | 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
 | 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
@@ -91,6 +91,9 @@ theories out of a single stray entry into their own subsection.
 | 28 | Learned piece-square evaluators counter the chip counter head-to-head far above their pooled Elo | Confirmed as a pattern; tactical explanation refuted (qs probe), positional hypothesis remains | Gameplay Performance & Dethroning the Champion | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) | [dethrone-champion-results-1](../plans/dethrone-champion-results-1-wiggly-mitten.md), [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
 | 29 | Quiescence (captures-only stand-pat leaf extension) adds strength at the d6/nb200k head | Refuted for the learned-eval champion (pooled tie, loses h2h 9-23); weak positive inside noise for the chip counter (+19 at ~1 SE) | Model & Evaluator Design | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) phase 1 | [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md) |
 | 30 | Weight mirror-symmetrization + seed-ensembling of a linear value model is a free variance cut that raises Elo | Refuted for playing strength: mirroring cost 135 Elo alone, the 6-seed mirror ensemble 144 (mechanism hypothesized: symmetric ties + directional tie-break) | Model & Evaluator Design | [dethrone-champion-plan-1](../plans/dethrone-champion-plan-1-wiggly-mitten.md) phase 3 | [dethrone-champion-results-4](../plans/dethrone-champion-results-4-wiggly-mitten.md) |
+| 31 | Quiescence induces a "posturing" style (deferring an even trade until it lands exactly at the search horizon, since only pending-capture leaves get a deeper look) | Open / untested -- mechanism plausible from code, but a same-pair avg-plies/repetition check was inconclusive | Model & Evaluator Design | this session's conversation, 2026-07-17 | -- |
+| 32 | This pool's shared left-file tie-break bias (theory 23) makes an asymmetric value model an adaptation, not noise -- mirror-symmetrizing discards real fitted signal about how THIS pool plays | Open / untested -- proposed 5-way design (unflipped / flipped / averaged / left-onto-both / right-onto-both) not yet built | Model & Evaluator Design | this session's conversation, 2026-07-17 | -- |
+| 33 | Mining a book from the WEAK/book-wearing agent's OWN wins (not a stronger agent's wins over it) fixes the naive refutation book's brain-portability failure (theory 14) | Confirmed as a major result: dethroned the champion (1145 vs 1074, 25-7 head-to-head); open question whether "opponent must be stronger" is load-bearing or just "own win, any opponent" suffices | Gameplay Performance & Dethroning the Champion | developer hypothesis, 2026-07-18 | [dethrone-champion-results-5](../plans/dethrone-champion-results-5-wiggly-mitten.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -220,6 +223,15 @@ machinery is the natural miner). Related: theories 19 (the blocking
 artifact), 28 (why the chip counter loses these middlegames), 23
 (deterministic tie-bias as the book's implicit key).
 
+**Update 2026-07-18 (theory 33 confirms a repaired form):** premise (2), not
+(1), turned out to be the fixable one. Mining the BOOK-WEARER'S OWN wins
+(instead of a foreign stronger agent's wins) removes the brain-portability
+failure by construction, since the line-owner and the wearer are the same
+brain. This dethroned the champion outright (1145 vs 1074). See theory 33 for
+the full result and its own open scrutiny question (genuine strength vs a
+pool-specific/memorization effect). The reset-state prerequisite from premise
+(1) remains unaddressed and would still improve measurement quality here.
+
 #### 19. Same-policy agents with different IDs score differently in gauntlets (identity artifact)
 
 **Claim:** Two agents with provably identical policies but different canonical
@@ -341,6 +353,56 @@ head-to-heads worse than without (5-27 vs s98 and 4-28 vs s96, from 9-23 and
 (leaf-horizon) explanation is refuted; the positional tie-breaking hypothesis
 stands, with tests (a) and (b) still open. See
 [dethrone-champion-results-2](../plans/dethrone-champion-results-2-wiggly-mitten.md).
+
+#### 33. Mining a book from the book-wearer's OWN wins fixes the naive refutation book's brain-portability failure
+
+**Claim:** Theory 14's book failed because it mined the STRONG agent's
+(oracle's) winning moves and handed them to a WEAKER brain that couldn't
+reproduce the oracle's follow-up once out of book. Mining the WEAK/book-
+wearing agent's OWN wins instead -- even if those wins came against a
+stronger opponent -- fixes this by construction: the line-owner and the
+wearer are the same brain, so there is no handoff mismatch. In-book, it plays
+exactly what it would have chosen anyway; out-of-book, it reverts to its own
+normal search, never a foreign, badly-fitting position.
+
+**Status:** Confirmed as a major result. Dethroned the reigning champion.
+
+**Origin:** developer's hypothesis in conversation, 2026-07-18, directly
+targeting theory 14's identified brain-portability failure mode.
+
+**Tested in:** [dethrone-champion-results-5-wiggly-mitten.md](../plans/dethrone-champion-results-5-wiggly-mitten.md) --
+`rank.exe bookgen` re-run with the two agent roles swapped from theory 14's
+book (`--a` = classic, the book-wearer itself, `--b` = s98, the target),
+mining classic's own 7 reproducible wins (of 9 historically recorded,
+32 stored games) into a 134-entry book (`models/book2.txt`), zero new code.
+Boosted to 32 games/pair, full-roster refit: classic+selfbook rated 1145 +/-
+13, ABOVE s98's 1074 +/- 12 (non-overlapping error bands), and went 25-7
+(78%) against s98 directly, up from bookless classic's 9-23 (28%) and the
+theory-14 book's WORSE 7-25 (22%). It also went 27-5 (84%) against the
+ORACLE -- an opponent it was never mined against -- and 32-0 against its own
+bookless self.
+
+**Notes:** The oracle result reframes the mechanism. The book fires from very
+early-game positions (the standard start is identical across every game
+classic plays, regardless of opponent), so its effect is not really "a
+countermeasure tuned to s98's specific weaknesses" -- it is closer to "the
+best opening/early-game line classic has ever been observed to find, locked
+in and replayed on demand," which then generalizes to any opponent. Candidate
+explanation for why classic's own LIVE search doesn't reliably find this line
+on its own: cross-game search-state carryover (theory 19 mechanism b) makes
+even a fully deterministic agent's play depend on incidental prior-game
+state, so it sometimes finds its own best line and sometimes doesn't; the
+book removes that variance. This softens the original hypothesis's emphasis
+on "the mined opponent must be stronger" -- the load-bearing ingredient may
+simply be "the book-wearer's own win, against anyone," untested (see the
+results doc's Future Work). Open scrutiny question, NOT resolved by this
+theory: whether this represents genuine transferable strength or a
+pool-specific effect (the community-competition-vision memory's "one script"
+degenerate-strategy concern) -- both readings are consistent with the data
+so far, since the book has only been tested inside this project's own
+deterministic, shared-tie-break-convention pool. Related: theories 14 (the
+premise this repairs), 19 (the blocking artifact for premise 1, still open),
+23 (the shared tie-break convention the pool-specific reading would invoke).
 
 ### Training Data & Recipes
 
@@ -792,6 +854,83 @@ if the tie mechanism is confirmed; seed SELECTION by Elo instead of averaging
 (the best seed is +28 over the champion). Related: theories 8 (the noise this
 targeted), 23 (directional tie-break), 19 (deterministic biased pool), 27
 (calibration/strength divergence), and axioms O4/D5/E1.
+
+#### 31. Quiescence induces a "posturing" style via even-trade square-value bias
+
+**Claim:** Quiescence only extends leaves where the mover has a pending
+capture, and only cares whether a capture exists, not whether it is even or
+favorable. For a per-square (not just per-material) value model, resolving
+an EVEN trade can still shift the evaluation, because it changes which
+specific squares end up occupied. This creates an incentive structure where
+lines that happen to land a pending (even) trade exactly at the search
+horizon get a more informed second look than lines that don't, so the agent
+may defer an attack, massing pieces so that a trade is available right at the
+horizon, rather than attacking as soon as it can -- a "posturing" style,
+distinct from and not explained by the race-blindness mechanism in theory 28.
+
+**Status:** Open / untested. Plausible from the code, not yet confirmed by a
+controlled experiment.
+
+**Origin:** developer's hypothesis in conversation, 2026-07-17, following up
+on quiescence's agent-dependent strength effect (theory 29).
+
+**Tested in:** -- A same-pair (s98 vs s98+qs) check of average game length and
+final piece counts was run informally in conversation and was inconclusive:
+pool-wide, s98+qs averages slightly SHORTER games than plain s98 (46.8 vs 49.4
+plies), which cuts against a naive "always defers, so always longer" reading,
+but the specific stored sample was too repetitive (theory 19b) to isolate a
+clean signal either way.
+
+**Notes:** The proposed test is a new Advanced-evaluator term, tentatively
+"Cluster": the existing Wall/Column orthogonal-adjacency logic
+(`structOwner`/`pairContrib`, `src/ai_eval.cpp`), restricted to the middle
+rows only (excluding the 2 rows nearest each side's home row and the 2 nearest
+the goal row, avoiding confounds with the existing Hole/Control/RaceWin terms
+that already own that territory). Confirmed from the code: Wall/Column
+currently scan the WHOLE board with no row restriction, so this is a new
+variant, not already covered. The critical test: hill-climb the Advanced
+weight mix TWICE, once with `qs` off and once with `qs` on, and see whether
+Cluster's climbed weight differs sharply between the two runs (and whether
+Race/RaceWin's weight rises when `qs` is on, the same blind-spot prediction
+theory 28/29 already made). Not yet implemented. Filed to `todo.md`'s
+Heuristic Evaluator Feature Ideas.
+
+#### 32. This pool's shared left-file bias makes model asymmetry an adaptation, not noise
+
+**Claim:** Theory 30 found that mirror-symmetrizing a linear value model's
+weights cost significant Elo, which was surprising given the value function
+is genuinely mirror-symmetric. This theory proposes why: most of the pool's
+deterministic search agents share the SAME first-found left-file tie-break
+bias (theory 23), including the very champion (the old classic incumbent)
+whose games trained s98's weights. A model that has learned an asymmetric
+preference matching or countering that shared pool bias is exploiting real,
+useful information about how THIS SPECIFIC pool plays -- not fitting noise --
+so removing the asymmetry throws away a genuine adaptation.
+
+**Status:** Open / untested. A concrete 5-way experimental design has been
+proposed but not built.
+
+**Origin:** developer's hypothesis in conversation, 2026-07-17, refining
+theory 30's own labeled mechanism hypothesis (directional tie-breaking against
+a biased pool).
+
+**Tested in:** -- Proposed design, reusing `trainEnsemble`'s existing
+`mlv2MirrorIndex` machinery (`src/ml_train.cpp`) with additional modes beyond
+the current average (`--mirror 1`): (a) **unflipped** -- the champion's
+original weights (already measured, theory 30's 1079/1074 baseline); (b)
+**flipped** -- a full reflection, `w'[i] = w[mirror(i)]` for every square, no
+averaging (tests whether the SPECIFIC direction of the learned asymmetry
+matters, or whether any consistent asymmetry would do); (c) **averaged** --
+the existing mirror=1 mode (already measured at 944, theory 30); (d)
+**left-onto-both** -- copy each mirror pair's LEFT-column value onto both
+squares (tests whether the left half was better-fitted, e.g. because
+opponents' left-biased play made left-side positions more common/decision-
+relevant in training); (e) **right-onto-both** -- the same, mirrored. If (a)
+>> (b), the specific learned direction matters (fitted to something real
+about the pool, not just "break the tie somehow"). If (b) ~ (a), both >> (c),
+asymmetry itself is what matters, not its direction. If (d) or (e) >> (a),
+one half's fitted values are better than the natural mix. Not yet
+implemented or measured. Related: theories 23, 28, 19, 30, and axioms O4/D5.
 
 #### 25. Breakthrough has distinct game phases best served by separate phase-specialized models (mixture-of-experts)
 

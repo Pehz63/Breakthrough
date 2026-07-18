@@ -53,29 +53,33 @@ depth, then at lower compute (deeper-for-cheaper). The reigning champion is
 declared in `ranking/CHAMPION.md` (single source of truth; the numbers below are
 tagged to their fit dates). **The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
-after boosting the top pairs to 32 games each and refitting, the reigning
-champion is `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1` -- the linear PST
-trained on oracle-vs-champion data -- at Elo 1064 +/- 14, while the classic chip
-counter on the SAME head sits at 976 +/- 13 (direct head-to-head 23-9 for s98).
-The chip counter's weakness class is now known: d6-head learned piece-square
-models beat it far above their pooled Elo (it scored 57% vs the 36-model
-residual/MLP study cohort rated ~300 below it; theory 28). The d8/nb2m oracle
-stays above the pool at 1145 (reference, not the target). Fit-scale caveat: Elo
-is not comparable across fits as the pool grows (see `Docs/benchmarking.md`),
-so these numbers supersede all pre-2026-07-14 quotes. The second goal tier is
-open: s98 pays 2.6x the chip counter's cpu/move (13.1 vs 5.0 ms). The dethrone
-loop continues with s98 as the target. Phase 1 (quiescence) did NOT dethrone:
-s98+qs ties s98 pooled and loses the pair 9-23 (theory 29). Phase 2 (the oracle
-refutation book) did NOT dethrone either and refuted theory 14's naive form:
-both book agents rated below their bookless selves (cross-run nondeterminism
-via search state + mined moves not being brain-portable). Phase 3's first
-increment (weight symmetrization + seed ensembling) also did NOT dethrone and
-was refuted for strength (theory 30): mirroring the champion's weights cost 135
-Elo. The remaining learned-eval fixes are still open -- eval-blended labels and
-Elo-filtered extraction (both untried), seed SELECTION by Elo (the best of 6
-champion-recipe seeds is +28 over the champion, an untested cheap challenger) --
-plus the repaired book variants and runner-threat quiescence filed in the
-results docs.
+after boosting the top pairs to 32 games each and refitting, a learned PST
+(`ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1`, trained on oracle-vs-champion
+data) dethroned the classic chip counter, 1064 +/- 14 vs 976 +/- 13 (direct
+head-to-head 23-9). The chip counter's weakness class is now known: d6-head
+learned piece-square models beat it far above their pooled Elo (theory 28).
+Fit-scale caveat: Elo is not comparable across fits as the pool grows (see
+`Docs/benchmarking.md`). Three follow-up phases then did NOT dethrone s98 and
+each refuted a theory: quiescence (phase 1, theory 29 -- s98+qs ties pooled,
+loses the pair 9-23); the oracle-mined refutation book (phase 2, theory 14's
+naive form -- both book agents rated below their bookless selves); weight
+symmetrization/ensembling (phase 3, theory 30 -- mirroring the champion's own
+weights alone cost 135 Elo). **A FOURTH attempt, 2026-07-18, DID dethrone**:
+mining a book from the WEAK agent's OWN wins (not a stronger agent's wins over
+it -- theory 33, the repaired form of theory 14) turned the classic chip
+counter itself back into the reigning champion,
+`ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1` at 1145 +/- 13,
+25-7 against s98 directly and 27-5 against the d8/nb2m oracle it was never
+mined against. **This has an open scrutiny flag** (`ranking/CHAMPION.md`,
+results-5's "open scrutiny question"): it is a 134-entry hard-coded book on the
+original evaluator, not a generalized strength improvement, and whether it is
+genuine transferable strength or a pool-specific/memorization effect is
+unresolved. The learned-eval fixes remain untried regardless of that question --
+eval-blended labels, Elo-filtered extraction, seed SELECTION by Elo (the best
+of 6 champion-recipe seeds is +28 over s98) -- alongside the now-open follow-ups:
+apply the same self-mining fix to s98's own book, test whether "stronger
+opponent" is load-bearing or any own-win suffices, runner-threat quiescence,
+and the reset-state prerequisite. See the results docs (1-5) for full detail.
 
 **Standing loop:** the recurring success criterion for any new agent is dethroning
 the current #1 in `ranking/ratings.tsv`, either by outrating it outright or by
@@ -96,7 +100,7 @@ against the same seams.
   - ~~Asymmetric opener for `pairgen`: add `--open-plies-side a|b|both` so only ONE named agent plays random moves during the opener window while the other plays its own normal policy throughout.~~ Shipped as `pairgen --open-side a|b|both` (Theory 6 test, `plans/opener-bias-results-1-synchronous-stearns.md`). Finding: the symmetric opener DID inflate the champdil/dilution result (65% -> 40% once the champion plays its true policy) but NOT the oracle headline result (survives at ~66%). A third layer retrained the oracle on asymmetric-opener data and saw a large d6 drop (1137 -> 832), but that turned out to be confounded by training-label skew (win:loss ratio 2.55:1 -> 4.46:1), not a clean confirmation -- see the results doc. Also added the `rank.exe opener-bias` mechanism measure and the two study scripts (`tools/opener_bias_study.ps1`, `tools/opener_bias_retrain.ps1`) `[done]`
   - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase. Specific angle worth testing: train the opener on WINNING-line data (see the refutation-book idea below) and hand off to a cheaper depth-5 search after the opener phase, on the theory that a strong precomputed opening plus a shallower live search could beat the d6 champion for less total compute -- directly on-target for the session's "beat d6 without searching deeper" goal `[Later]`
   - Single-line refutation book (extended, more concrete version of the offline-refutation idea below): find ONE oracle-verified winning line against the champion for each color (2 lines total), play that fixed line against every other deterministic agent in the roster, and whenever an opponent deviates from the line (or the line stops applying), use the oracle to find a new winning continuation from that deviation point. Builds a small branching decision tree rooted at "beat the champion," tested for robustness against the whole pool, not just the champion. Consider separate White/Black book models plus a combined one `[Later]`
-  - ~~Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction.~~ Shipped 2026-07-17 as `rank.exe bookgen` (mines A's winning positions/moves from stored games) + the `book` opener (`.opener(book,<N>)@1` plays `models/book<N>.txt`). Verdict: REFUTED in this naive form (theory 14, `plans/dethrone-champion-results-3-wiggly-mitten.md`) -- both book agents rated ~16 Elo below their bookless selves, and the chip counter + the very book mined to beat s98 did WORSE against s98 than bookless. Mechanisms: the "deterministic" target deviates across runs via cross-game search state (theory 19b), and mined moves are not brain-portable (they need the miner's deep search behind them). The repaired variants (a `--reset-state` mode for reproducible det-vs-det play, and a stay-in-book-to-the-win / response-tree book via `--branch-tries`-style mining) fold into the single-line refutation book idea above `[done]`
+  - ~~Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction.~~ Shipped 2026-07-17 as `rank.exe bookgen` (mines A's winning positions/moves from stored games) + the `book` opener (`.opener(book,<N>)@1` plays `models/book<N>.txt`). First verdict (mining the STRONG agent's wins over the weak target): REFUTED in this naive form (theory 14, `plans/dethrone-champion-results-3-wiggly-mitten.md`) -- both book agents rated ~16 Elo below their bookless selves. **Reversed 2026-07-18** (theory 33, `plans/dethrone-champion-results-5-wiggly-mitten.md`): mining the WEAK/book-wearing agent's OWN wins instead (zero new code, just swapped which agent's wins get kept) fixes the brain-portability failure by construction and DETHRONED s98 outright (classic+selfbook 1145 +/- 13 vs s98 1074 +/- 12, 25-7 head-to-head, 27-5 vs the oracle it was never mined against). Open scrutiny flag: genuine strength vs pool-specific effect, unresolved (`ranking/CHAMPION.md`). Remaining open repairs: a `--reset-state` mode for reproducible det-vs-det play (still needed, drift rate was 12/32 for this pairing); testing whether "opponent must be stronger" is load-bearing or any own-win suffices; applying the same self-mining fix to s98's own book; and the stay-in-book-to-the-win / response-tree variant via `--branch-tries`-style mining, which folds into the single-line refutation book idea above `[Next]`
 - Interpret board analysis
   - Which piece is most impactful to the current evaluation? `[Later]`
   - What's the cheapest strategy to beat each given bot/parameters, even if overfitted? `[Dream]`
@@ -332,6 +336,15 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
 - Per-term incremental routing: let each Advanced term declare whether it is maintained in
   `g_evalPos` or recomputed at the leaf based on which weights are enabled, so sparse mixes
   (e.g. chip+mobility) stop paying delta overhead (from the ladder pricing above) `[Next]`
+- "Cluster": a Wall/Column variant restricted to the middle rows only (excluding the 2 rows
+  nearest each side's home row and the 2 nearest the goal row, avoiding overlap with the
+  existing Hole/Control/RaceWin terms that already own that territory). Motivated by theory
+  31 (`Docs/theories.md`): quiescence may induce a "posturing" style (deferring an even trade
+  until it lands exactly at the search horizon, since only pending-capture leaves get a
+  deeper look), and a middle-only clustering term might reward the same pattern statically.
+  Test by hill-climbing the Advanced weight mix twice, once with `qs` off and once on, and
+  checking whether Cluster's (and Race/RaceWin's) climbed weight shifts between the two runs
+  `[Next]`
 
 ## Move Choosers / Policies (direct, no search)
 - ~~Human, UniformRandom, TieredRandom, SmartRandom (done)~~
@@ -375,6 +388,15 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   just noise. Open follow-ups: a pure-average (mirror=0) control to isolate averaging from
   mirroring, the calibration-vs-strength check (theory 27 parallel), and seed SELECTION by Elo
   instead of averaging (the best of 6 seeds is +28 over the champion) `[done]`
+  - Follow-up (theory 32, `Docs/theories.md`): is the harm from asymmetry PER SE being removed,
+    or from removing THIS SPECIFIC learned asymmetry (fitted to how this pool's shared
+    left-file tie-break bias, theory 23, actually plays)? Extend `train.exe ensemble`'s
+    `--mirror` flag with 3 more modes beyond off/average -- flip (full reflection, no
+    averaging), left-onto-both (copy each mirror pair's left-column value onto both squares),
+    right-onto-both (same, mirrored) -- and rate all 5 variants (unflipped/flipped/averaged/
+    left/right) against each other. If flipped ~ unflipped >> averaged, asymmetry itself is
+    what matters, not its direction; if unflipped >> flipped, the specific learned direction is
+    fitted to something real about the pool `[Next]`
 - Extraction quality controls in rank.exe extract: --min-elo floor or Elo-confidence weighting
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),

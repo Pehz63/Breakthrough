@@ -124,6 +124,17 @@ on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,1)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 
+# Self-mined book (developer hypothesis 2026-07-18, theory 31): instead of
+# giving classic the ORACLE's winning moves against s98 (book,1 above, which
+# handed foreign foresight to a brain that couldn't use it), models/book2.txt
+# mines CLASSIC's OWN winning moves from the 7 stored games (of 32) where
+# classic itself already beat s98. The book-wearer and the line-owner are the
+# same brain, so there is no handoff mismatch: in-book, it plays exactly what
+# it would have chosen anyway; out-of-book, it just plays normally. Tests
+# whether this out-performs both the bookless baseline (9-23 vs s98) and the
+# oracle-book variant (7-25, worse than bookless).
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
+
 # Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the
 # todo's weight-symmetrization [Now] item). Slots 3-8 are 6 fresh seed
 # replicas of the champion's exact recipe (pg_oracle_champ.jsonl, 6 epochs,

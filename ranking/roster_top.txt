@@ -33,3 +33,6 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 # Symmetrization/ensemble challengers (dethrone plan phase 3).
 on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7)@1
+
+# Self-mined book challenger (theory 31, 2026-07-18).
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
