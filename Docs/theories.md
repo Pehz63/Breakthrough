@@ -554,9 +554,11 @@ implementation bug, and none was seen.
 flag) converts the d6/nb200k head's idle node budget into tactical horizon
 and therefore Elo.
 
-**Status:** Refuted for the learned-eval champion; weak positive inside noise
-for the chip counter. Shallow heads and tight budgets untested (same open
-regime as theory 21).
+**Status:** Refuted for the learned-eval champion on a CLOSED-BOOK (no-opener)
+det-vs-det comparison; weak positive inside noise for the chip counter.
+REOPENED by a 2026-07-17 opener probe: under a 6-ply random opener the same
+pair reverses to a clear win for qs (see Notes). Shallow heads and tight
+budgets untested (same open regime as theory 21).
 
 **Origin:** dethrone plan phase 1
 ([dethrone-champion-plan-1-wiggly-mitten.md](../plans/dethrone-champion-plan-1-wiggly-mitten.md)),
@@ -581,6 +583,29 @@ counter's learned-model head-to-heads WORSE (5-27 vs s98, 4-28 vs s96), so
 that weakness is positional, not tactical. Methodology: the 8-games/pair
 preliminary read (+80, level with the oracle) fully inverted at 32
 games/pair -- never quote preliminary fills (see `Docs/benchmarking.md`).
+
+**Update 2026-07-17 (opener probe, developer hypothesis):** the closed-book
+9-23 loss was suspected of being a narrow, correlated sample rather than a
+representative one, since s98 and s98+qs share the same evaluator and, without
+forced diversity, walk nearly the same path every game (theory 19's only
+source of variation between them is incidental cross-game search-state
+carryover, not a deliberately varied sample). `rank.exe pairgen` between the
+same two IDs with a 6-ply (3-move-per-side) random opener, 150 games: **91-59
+(60.7%) in favor of s98+qs** -- a full reversal. This does not overturn the
+strength-vs-tactics conclusion above (theory 28's test-(c) answer stands), but
+it does overturn "quiescence doesn't help s98": the closed-book comparison was
+measuring a narrow correlated sample, not qs's average behavior. Caveat: theory
+6 found symmetric random openers can inflate a challenger's apparent win rate
+by handicapping a deterministic base agent into off-policy moves; that
+mechanism is milder here (both agents share nearly the same evaluator, so both
+absorb the same handicap) but is not ruled out, so 91-59 should not be read as
+the final number either. The clean permanent fix is the `--reset-state` mode
+already filed under theory 14/19 -- it would let a closed-book comparison
+generate many genuinely distinct games without needing artificial opener
+randomization at all. Until that exists, qs's true effect on s98 is unsettled
+between "roughly neutral" (closed-book) and "a real win, partly opener-
+inflated" (opener probe); re-run the certification-standard 32-game boost with
+this opener before trusting either number as the standing figure.
 
 #### 22. Deterministic first-found tie-breaking outperforms random tie-breaking
 

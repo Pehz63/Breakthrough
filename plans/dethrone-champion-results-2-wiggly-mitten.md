@@ -122,6 +122,24 @@ only agent strong vs the classic family but crushed by learned PSTs), s98+qs
 (~1073) has a head-to-head profile distinct from s98 despite the pooled tie.
 Retire later per the curation policy if their profiles prove redundant.
 
+## Addendum 2026-07-17 (opener probe reopens the s98 verdict)
+
+The closed-book (no-opener) comparison above compares two agents that share
+the same evaluator and, absent forced diversity, mostly walk the same path
+(theory 19's only variance source between them is incidental cross-game
+search-state carryover) -- so a small closed sample can be dominated by
+whatever a few correlated lines happen to do, not by qs's real average
+behavior. Testing this (developer hypothesis): `rank.exe pairgen` between
+s98+qs and plain s98, 150 games, 6-ply (3-move-per-side) random opener ->
+**91-59 (60.7%) in favor of s98+qs**, a full reversal of the 9-23 closed-book
+loss above. "Quiescence doesn't help s98" does not survive this probe; see
+theory 29's 2026-07-17 update for the full writeup, including the theory-6
+symmetric-opener-inflation caveat and the recommended `--reset-state`
+permanent fix. The strength-vs-tactics conclusion (quiescence made the chip
+counter's LEARNED-model losses worse, supporting theory 28) is unaffected --
+that used a different pair (classic+qs vs learned agents) and is not
+implicated by this closed-book-sampling concern.
+
 ## Future Work
 
 - **Runner-threat quiescence** (tethered to the labeled hypothesis in
