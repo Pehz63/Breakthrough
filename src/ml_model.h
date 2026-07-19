@@ -17,6 +17,31 @@
 
 enum ModelHead { HEAD_VALUE = 0, HEAD_POLICY = 1 };
 
+// ---- Probit-approximation math for the distributional (mu, sigma) head ----
+// One Bernoulli observation of a playout game from a position whose latent
+// White advantage is A ~ N(mu, sigma^2) in logit units, played by agents with
+// a known Elo gap d (logit units): P(White wins) = sigmoid(kappa*(mu+d)) with
+// kappa = 1/sqrt(1 + (pi/8)*(sigma^2 + v)), the standard logistic-normal
+// probit approximation (constant pi/8, NOT pi^2/8, so sigma reads as the true
+// latent SD). s = log(sigma) is the trained parametrization, clamped to
+// [PROBIT_S_MIN, PROBIT_S_MAX]; callers zero gS when s sits on a clamp.
+// Shared by the per-position label fit (rank.exe labelfit) and the DistModel
+// training step, so the two can never diverge.
+const double ELO_PER_LOGIT = 173.7177928;   // 400/ln(10)
+const double PROBIT_S_MIN  = -4.0;          // sigma ~ 3 Elo
+const double PROBIT_S_MAX  = 3.0;           // sigma ~ 3500 Elo
+
+struct ProbitGrad {
+    double p;      // predicted P(White wins)
+    double kappa;  // variance-flattening factor
+    double gMu;    // dL/dmu
+    double gS;     // dL/ds  (s = log sigma)
+};
+// Returns the BCE loss of outcome y in {0,1} (0.5 works for draws) and fills
+// the gradients. v = known extra variance (e.g. rating standard errors) in
+// logit^2 units, 0 to disable.
+double probitPoint(double mu, double s, double d, double v, double y, ProbitGrad& out);
+
 struct Model {
     // Provenance: how this model was trained (e.g. the teacher/generator agent that
     // produced its data). Written to the model file as `teacher=...` and surfaced in
@@ -42,6 +67,13 @@ struct Model {
     // training (see ResidualModel). Default no-op returns 0 for non-trainable models.
     virtual float trainStep(const float* x, int n, float target, float lr,
                             float l2 = 0.0f, float offset = 0.0f) { (void)x;(void)n;(void)target;(void)lr;(void)l2;(void)offset; return 0.0f; }
+
+    // Apply an arbitrary upstream gradient gOut on the output (dL/d_output) as
+    // one SGD step. Generalizes trainStep (whose logistic loss has
+    // gOut = p - target) so a wrapper like DistModel can push its own loss
+    // gradients through each head. Default no-op for non-trainable models.
+    virtual void gradStep(const float* x, int n, float gOut, float lr,
+                          float l2 = 0.0f) { (void)x;(void)n;(void)gOut;(void)lr;(void)l2; }
 };
 
 // Raw white-minus-black piece count read out of a value feature vector, used as the
@@ -82,6 +114,7 @@ struct LinearModel : public Model {
     float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override {
         return sgdLogisticStep(x, m, target, lr, l2, offset);
     }
+    void gradStep(const float* x, int m, float gOut, float lr, float l2) override;
 };
 
 // ---- MLP model: 1-2 hidden layers, ReLU hidden, linear output logit ----
@@ -114,6 +147,7 @@ struct MLPModel : public Model {
     bool save(const string& path) const override;
     void writeWeights(std::ostream& f) const override;
     float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override;
+    void gradStep(const float* x, int m, float gOut, float lr, float l2) override;
 
     // Break weight symmetry before training (zero-init hidden layers can't learn).
     // Uses rand(), so seed with srand() first for reproducibility.
@@ -122,6 +156,9 @@ struct MLPModel : public Model {
 private:
     // Fill act[]/pre[] scratch from x and return the output logit (no offset).
     float computeForward(const float* x, int m) const;
+    // Backprop an output gradient through act[]/pre[] (must be freshly filled by
+    // computeForward for the same x) and apply the SGD update in place.
+    void backprop(float gOut, float lr, float l2);
 };
 
 // ---- Residual model: a frozen chip-count skip + an inner learned model ----

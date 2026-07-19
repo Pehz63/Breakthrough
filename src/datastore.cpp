@@ -31,6 +31,37 @@ PosKey positionKey(int sideToMove, bool mirrorFold) {
     return k;
 }
 
+bool decodePositionEnc(const string& enc, int& sideToMove) {
+    if ((int)enc.size() != SIZE * SIZE + 1) return false;
+    char sc = enc[SIZE * SIZE];
+    if (sc != 'W' && sc != 'B') return false;
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        char c = enc[i];
+        if (c != EMPTY && c != WHITE && c != BLACK) return false;
+    }
+    // Same square order as encodeBoard: index = y*SIZE + x.
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++)
+            board[x][y] = enc[y * SIZE + x];
+    sideToMove = (sc == 'W') ? White : Black;
+    // Rebuild the incremental counters exactly the way reloadBoard seeds them.
+    g_whiteCount = 0; g_blackCount = 0; g_chipDiff = 0;
+    g_whiteAtEnd = 0; g_blackAtEnd = 0;
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            if (board[x][y] == WHITE) {
+                g_whiteCount++;
+                g_chipDiff++;
+                if (y == SIZE-1) g_whiteAtEnd++;
+            } else if (board[x][y] == BLACK) {
+                g_blackCount++;
+                g_chipDiff--;
+                if (y == 0) g_blackAtEnd++;
+            }
+        }
+    return true;
+}
+
 // ============================================================
 // JSONL OUTPUT
 // ============================================================

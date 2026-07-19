@@ -8,6 +8,35 @@ static inline float sigmoidf(float z) {
     float e = expf(z); return e / (1.0f + e);
 }
 
+static inline double sigmoidD(double z) {
+    if (z >= 0) { double e = exp(-z); return 1.0 / (1.0 + e); }
+    double e = exp(z); return e / (1.0 + e);
+}
+
+// ============================================================
+// PROBIT-APPROXIMATION POINT LOSS (distributional head math)
+// ============================================================
+// See ml_model.h for the model. Gradients, with u = kappa*(mu+d) and
+// sigma2 = exp(2s): dL/du = p - y (BCE through sigmoid), dkappa/ds =
+// -(pi/8)*sigma2*kappa^3, so du/ds = -u*(pi/8)*sigma2*kappa^2, giving
+// gMu = (p-y)*kappa and gS = -(p-y)*u*(pi/8)*sigma2*kappa^2. A surprising
+// outcome in a confidently-called position raises s (sigma grows), a
+// confirmed call shrinks it.
+double probitPoint(double mu, double s, double d, double v, double y, ProbitGrad& out) {
+    const double C = 0.39269908169872414;   // pi/8
+    double sigma2 = exp(2.0 * s);
+    double kappa  = 1.0 / sqrt(1.0 + C * (sigma2 + v));
+    double u      = kappa * (mu + d);
+    double p      = sigmoidD(u);
+    const double eps = 1e-12;
+    double loss   = -(y * log(p + eps) + (1.0 - y) * log(1.0 - p + eps));
+    out.p     = p;
+    out.kappa = kappa;
+    out.gMu   = (p - y) * kappa;
+    out.gS    = -(p - y) * u * C * sigma2 * kappa * kappa;
+    return loss;
+}
+
 // ============================================================
 // FEATURE-VECTOR MATERIAL READOUT (chip-count skip term)
 // ============================================================
@@ -52,6 +81,12 @@ float LinearModel::sgdLogisticStep(const float* x, int m, float target, float lr
     for (int i = 0; i < lim; i++) w[i] -= lr * (g * x[i] + l2 * w[i]);
     bias -= lr * g;
     return loss;
+}
+
+void LinearModel::gradStep(const float* x, int m, float gOut, float lr, float l2) {
+    int lim = (m < n) ? m : n;
+    for (int i = 0; i < lim; i++) w[i] -= lr * (gOut * x[i] + l2 * w[i]);
+    bias -= lr * gOut;                       // bias not decayed
 }
 
 void LinearModel::writeWeights(std::ostream& f) const {
@@ -129,15 +164,24 @@ float MLPModel::forward(const float* x, int m) const {
 }
 
 float MLPModel::trainStep(const float* x, int m, float target, float lr, float l2, float offset) {
-    int L = (int)sizes.size() - 1;
     float out = computeForward(x, m);       // fills act[]/pre[]
     float z = out + offset;
     float p = sigmoidf(z);
     float eps = 1e-7f;
     float loss = -(target * logf(p + eps) + (1.0f - target) * logf(1.0f - p + eps));
+    backprop(p - target, lr, l2);
+    return loss;
+}
 
+void MLPModel::gradStep(const float* x, int m, float gOut, float lr, float l2) {
+    computeForward(x, m);                   // fills act[]/pre[]
+    backprop(gOut, lr, l2);
+}
+
+void MLPModel::backprop(float gOut, float lr, float l2) {
+    int L = (int)sizes.size() - 1;
     // g holds dL/d(pre) for the current layer's OUTPUT units; start at the scalar output.
-    std::vector<float> g(1, p - target);
+    std::vector<float> g(1, gOut);
     for (int k = L - 1; k >= 0; k--) {
         int in = sizes[k], out2 = sizes[k+1];
         std::vector<float>& Wk = W[k];
@@ -160,7 +204,6 @@ float MLPModel::trainStep(const float* x, int m, float target, float lr, float l
             g.swap(gPrev);
         }
     }
-    return loss;
 }
 
 void MLPModel::writeWeights(std::ostream& f) const {

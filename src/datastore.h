@@ -20,6 +20,14 @@ struct PosKey {
 // positions share one key (useful for aggregating evaluations).
 PosKey positionKey(int sideToMove, bool mirrorFold);
 
+// Decode a positionKey enc string (64 y-major square chars + a 'W'/'B'
+// side-to-move char) onto the global board, rebuilding the incremental
+// counters (g_whiteCount/g_blackCount/g_chipDiff/g_whiteAtEnd/g_blackAtEnd)
+// exactly the way reloadBoard seeds them, so play can start from the decoded
+// position. Returns false (board untouched) on malformed input: wrong length,
+// an invalid square char, or an invalid side char.
+bool decodePositionEnc(const string& enc, int& sideToMove);
+
 // Append one already-formatted JSON object (single line) to a file, creating it
 // (and parent dirs are assumed to exist). Adds the trailing newline.
 void dsAppendLine(const string& file, const string& jsonLine);

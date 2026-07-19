@@ -647,3 +647,78 @@ TEST_CASE("ensemble - mirror symmetrization + seed averaging of linear v2 models
     std::remove("models/sweep/ens_test_b.txt");
     std::remove("models/sweep/ens_test_out.txt");
 }
+
+// ============================================================
+// Distributional head math (position-oracle Stage A)
+// ============================================================
+
+TEST_CASE("probitPoint - gradients match central finite differences") {
+    ProbitGrad g, t;
+    const double eps = 1e-6;
+    double mus[] = { -1.2, 0.0, 0.7 };
+    double ss[]  = { -3.5, -1.0, 0.5, 2.5 };
+    double ds[]  = { -2.0, 0.0, 1.5 };
+    double vs[]  = { 0.0, 0.05 };
+    double ys[]  = { 0.0, 1.0 };
+    for (double mu : mus) for (double s : ss) for (double d : ds)
+    for (double v : vs) for (double y : ys) {
+        probitPoint(mu, s, d, v, y, g);
+        double lpMu = probitPoint(mu + eps, s, d, v, y, t);
+        double lmMu = probitPoint(mu - eps, s, d, v, y, t);
+        double lpS  = probitPoint(mu, s + eps, d, v, y, t);
+        double lmS  = probitPoint(mu, s - eps, d, v, y, t);
+        REQUIRE(g.gMu == Approx((lpMu - lmMu) / (2 * eps)).margin(1e-6).epsilon(1e-4));
+        REQUIRE(g.gS  == Approx((lpS  - lmS)  / (2 * eps)).margin(1e-6).epsilon(1e-4));
+    }
+}
+
+TEST_CASE("probitPoint - advantage raises p, volatility flattens toward 0.5") {
+    ProbitGrad a, b;
+    probitPoint(0.5, -1.0, 0.0, 0.0, 1.0, a);
+    probitPoint(1.0, -1.0, 0.0, 0.0, 1.0, b);
+    REQUIRE(b.p > a.p);                        // more advantage, higher win prob
+    probitPoint(2.0, -3.0, 0.0, 0.0, 1.0, a);  // sharp position (tiny sigma)
+    probitPoint(2.0,  2.0, 0.0, 0.0, 1.0, b);  // volatile position (huge sigma)
+    REQUIRE(b.p < a.p);
+    REQUIRE(b.p > 0.5);
+    // The known Elo gap d shifts p exactly like mu does.
+    probitPoint(0.7, -1.0, 0.3, 0.0, 1.0, a);
+    probitPoint(1.0, -1.0, 0.0, 0.0, 1.0, b);
+    REQUIRE(a.p == Approx(b.p));
+}
+
+TEST_CASE("gradStep - matches trainStep's update for linear and mlp") {
+    float x[8] = { 0.3f, -0.1f, 0.7f, 0.0f, 1.0f, -0.5f, 0.2f, 0.9f };
+    float target = 1.0f, lr = 0.1f, l2 = 0.01f, offset = 0.4f;
+
+    LinearModel la(HEAD_VALUE, 1, 8, 900.0f), lb(HEAD_VALUE, 1, 8, 900.0f);
+    for (int i = 0; i < 8; i++) { la.w[i] = 0.1f * i - 0.3f; lb.w[i] = la.w[i]; }
+    la.bias = lb.bias = 0.25f;
+    la.trainStep(x, 8, target, lr, l2, offset);
+    {
+        double z = (double)lb.forward(x, 8) + offset;
+        float p = (float)(1.0 / (1.0 + exp(-z)));
+        lb.gradStep(x, 8, p - target, lr, l2);
+    }
+    for (int i = 0; i < 8; i++) REQUIRE(lb.w[i] == Approx(la.w[i]).margin(1e-6));
+    REQUIRE(lb.bias == Approx(la.bias).margin(1e-6));
+
+    std::vector<int> hidden(1, 4);
+    MLPModel ma(HEAD_VALUE, 1, 8, 900.0f, hidden);
+    srand(4242);
+    ma.initRandom();
+    MLPModel mb = ma;                          // identical copy
+    ma.trainStep(x, 8, target, lr, l2, offset);
+    {
+        double z = (double)mb.forward(x, 8) + offset;
+        float p = (float)(1.0 / (1.0 + exp(-z)));
+        mb.gradStep(x, 8, p - target, lr, l2);
+    }
+    int L = (int)ma.sizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        for (size_t t = 0; t < ma.W[k].size(); t++)
+            REQUIRE(mb.W[k][t] == Approx(ma.W[k][t]).margin(1e-6));
+        for (size_t t = 0; t < ma.B[k].size(); t++)
+            REQUIRE(mb.B[k][t] == Approx(ma.B[k][t]).margin(1e-6));
+    }
+}

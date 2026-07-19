@@ -2,4 +2,4 @@
 
 | id | type | head | regime | epoch | games | loss | winrate | elo~ | path |
 |----|------|------|--------|-------|-------|------|---------|------|------|
-| linval_1784334089_e3 | linear | value | selfplay-supervised | 3 | 4 | 0.22007 | 0.3125 | 1363 | build/test_valsplit_model_ckpt3.txt |
+| linval_1784435182_e3 | linear | value | selfplay-supervised | 3 | 4 | 0.22007 | 0.3125 | 1363 | build/test_valsplit_model_ckpt3.txt |

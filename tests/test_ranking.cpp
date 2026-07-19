@@ -860,3 +860,42 @@ TEST_CASE("opener-swap - color-swap recovery test runs and is deterministic") {
     // succeed identically without crashing or erroring differently).
     REQUIRE(rankOpenerSwap(a, b, 6, "boards/board1.txt", 6, 11) == 0);
 }
+
+TEST_CASE("decodePositionEnc - roundtrip, counters, and rejection") {
+    srand(777);
+    for (int trial = 0; trial < 20; trial++) {
+        // Random layout, recomputing counters via the shared helper.
+        char layout[SIZE][SIZE];
+        for (int y = 0; y < SIZE; y++)
+            for (int x = 0; x < SIZE; x++) {
+                int r = rand() % 10;
+                layout[x][y] = (r < 2) ? WHITE : (r < 4) ? BLACK : EMPTY;
+            }
+        setupBoard(layout);
+        int side = (trial % 2 == 0) ? White : Black;
+        PosKey k = positionKey(side, false);
+        int wc = g_whiteCount, bc = g_blackCount, cd = g_chipDiff;
+        int we = g_whiteAtEnd, be = g_blackAtEnd;
+
+        clearBoard();                          // clobber everything
+        int stm = -1;
+        REQUIRE(decodePositionEnc(k.enc, stm));
+        REQUIRE(stm == side);
+        REQUIRE(positionKey(stm, false).enc == k.enc);   // re-encode roundtrip
+        REQUIRE(g_whiteCount == wc);
+        REQUIRE(g_blackCount == bc);
+        REQUIRE(g_chipDiff   == cd);
+        REQUIRE(g_whiteAtEnd == we);
+        REQUIRE(g_blackAtEnd == be);
+    }
+    // Rejection battery: wrong length, bad square char, bad side char.
+    int stm = -1;
+    REQUIRE_FALSE(decodePositionEnc("WWW", stm));
+    string good = string(SIZE * SIZE, '.') + "W";
+    REQUIRE(decodePositionEnc(good, stm));
+    REQUIRE(stm == White);
+    string badSq = good; badSq[10] = 'X';
+    REQUIRE_FALSE(decodePositionEnc(badSq, stm));
+    string badSide = good; badSide[SIZE * SIZE] = 'x';
+    REQUIRE_FALSE(decodePositionEnc(badSide, stm));
+}
