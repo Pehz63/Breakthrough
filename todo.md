@@ -401,6 +401,9 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),
   and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]`
+  (partly superseded: the position-oracle pipeline sidesteps found-data label quality entirely
+  by playing designed fresh games per position; posgen ships the positionKey dedup for pools.
+  extract's own controls still matter for the outcome-label training path)
   - Test the low-Elo-data-quality hypothesis (theory 26, `Docs/theories.md`) using the --min-elo /
     Elo-filter controls above: retrain the existing value-model recipes on replay data (a) EXCLUDING
     low-Elo agents' games, (b) EXCLUDING mixed high-vs-low games, (c) EXCLUDING high-Elo games (the
@@ -447,7 +450,18 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
   into new agents, add them to the round-robin, drop the weakest, and iterate -- so the
   population crawls the weight surface by selection `[Now]`
-- Elo-tie labeling: label a position by the interpolated Elo E* at which expected score = 0.5 `[Dream]`
+- ~~Elo-tie labeling: label a position by the interpolated Elo E* at which expected score = 0.5~~
+  Shipped as the position-oracle label pipeline (rank.exe posgen/label/labelfit + train.exe
+  dist-value, `plans/position-oracle-plan-1-lazy-popping-simon.md`): each position's measured
+  mu IS the Elo gap at which expected score = 0.5 (sign flipped), and the pipeline adds the
+  volatility SD on top. Theories 34 and 35 track the oracle-prediction and sigma claims
+- Position-oracle follow-ups (after the first campaign's results doc): activate --elo-se
+  (rating-SE variance is plumbed, off by default); an adaptive second labeling pass (per
+  position, add pairings whose gap centers on -mu_hat from the first labels, where sigma is
+  best identified); relabel-free retrain after each future ratings refit (rerun labelfit +
+  dist-value on the same raw stores, documented in ML.md); sigma as a search-time signal
+  (e.g. prefer high-sigma lines when behind); rate the mlp dist variants at the d6/nb200k
+  head once a faster mlp leaf exists (currently d4-only, full-scan cost) `[Next]`
 - Distillation from deep search or from a teacher model `[Later]`
 
 ## Weight optimization / geometry mapping

@@ -183,14 +183,14 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `ai_random.cpp/.h` | Random-move choosers, scripted openers, pluggable opener registry `g_openers[]` |
 | `ai_minimax.cpp/.h` | Alpha-beta search, iterative-deepening budgets, telemetry, opt-in TT/ordering/aspiration |
 | `ml_features.cpp/.h` | Move generation + ML feature extractors (v1 dense, v2 sparse piece-square) |
-| `ml_model.cpp/.h` | Model base + LinearModel, save/load factory, model-type registry |
+| `ml_model.cpp/.h` | Model base + Linear/MLP/Residual/Dist models, probit distribution math, save/load factory, model-type registry |
 | `ml_eval.cpp/.h` | 128 model slots, `mlValueScore`, incremental v2 path, move rating |
 | `explorers.cpp/.h` / `choosers.cpp/.h` | Explorer registry (Greedy, AlphaBeta) and direct-chooser registry |
 | `agents.cpp/.h` | `AgentSpec` composition (brain + dilution + budgets + toggles), `agentChooseMove` |
 | `datastore.cpp/.h` | Append-only JSONL + canonical `positionKey` (also keys the TT) |
 | `transposition.cpp/.h` | Opt-in transposition table (inert unless `useTT`) |
 | `ml_train.cpp/.h` | Trainer: self-play, supervised value + imitation policy, tournament play/rate, run archive |
-| `ranking.cpp/.h` | Persistent Elo ranking: ID codec, roster, match store, scheduler, BT fit, subcommands |
+| `ranking.cpp/.h` | Persistent Elo ranking: ID codec, roster, match store, scheduler, BT fit, subcommands (incl. the posgen/label/labelfit position-oracle pipeline) |
 
 ### `tools/` C++ CLIs (details: `tools/CLAUDE.md`)
 | File | Purpose |

@@ -94,6 +94,8 @@ theories out of a single stray entry into their own subsection.
 | 31 | Quiescence induces a "posturing" style (deferring an even trade until it lands exactly at the search horizon, since only pending-capture leaves get a deeper look) | Open / untested -- mechanism plausible from code, but a same-pair avg-plies/repetition check was inconclusive | Model & Evaluator Design | this session's conversation, 2026-07-17 | -- |
 | 32 | This pool's shared left-file tie-break bias (theory 23) makes an asymmetric value model an adaptation, not noise -- mirror-symmetrizing discards real fitted signal about how THIS pool plays | Open / untested -- proposed 5-way design (unflipped / flipped / averaged / left-onto-both / right-onto-both) not yet built | Model & Evaluator Design | this session's conversation, 2026-07-17 | -- |
 | 33 | Mining a book from the WEAK/book-wearing agent's OWN wins (not a stronger agent's wins over it) fixes the naive refutation book's brain-portability failure (theory 14) | Confirmed as a major result: dethroned the champion (1145 vs 1074, 25-7 head-to-head); open question whether "opponent must be stronger" is load-bearing or just "own win, any opponent" suffices | Gameplay Performance & Dethroning the Champion | developer hypothesis, 2026-07-18 | [dethrone-champion-results-5](../plans/dethrone-champion-results-5-wiggly-mitten.md) |
+| 34 | Per-position Elo advantage measured by designed fresh-game playouts at controlled Elo gaps trains a distributional model that out-predicts the calibrated d8 oracle at position strength (beat it on held-out outcome NLL AND mu MAE) | Open / campaign in flight | Model & Evaluator Design | developer idea 2026-07-18 | [position-oracle-plan-1](../plans/position-oracle-plan-1-lazy-popping-simon.md) |
+| 35 | Position volatility (sigma) is identified by the flatness of the win-prob vs Elo-gap curve and the learned sigma head predicts conversion reliability on held-out positions | Open / campaign in flight | Model & Evaluator Design | developer framing 2026-07-18 (advantage is a range, not a point) | [position-oracle-plan-1](../plans/position-oracle-plan-1-lazy-popping-simon.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -969,6 +971,70 @@ should be hard or soft/blended near boundaries; (3) how each expert should
 be trained -- the same recipe with phase-filtered data, or a different
 recipe per phase; (4) whether phase should be measured by piece count alone
 or a richer signal (e.g. total remaining capacity, `Docs/axioms.md` Lemma B).
+
+#### 34. A distributional model trained on designed fresh-game gap labels out-predicts the d8 oracle at position strength
+
+**Claim:** Per-position Elo advantage can be MEASURED by playing designed
+fresh games from the position between rated agents at controlled Elo gaps
+(the win-probability curve's horizontal slide is the advantage, its flatness
+the volatility), and a two-headed model (mu + log-sigma over the v2
+piece-square features) trained on those raw outcomes predicts a held-out
+position's measured advantage better than the d8/nb2m oracle's own root
+search score does (after mapping the oracle's score to the Elo scale by a
+1-parameter calibration fitted on training positions). Success criterion,
+locked before the campaign: beat the calibrated d8 baseline on BOTH held-out
+outcome likelihood and mean-advantage error (train.exe dist-eval's VERDICT
+line).
+
+**Status:** Open / campaign in flight.
+
+**Origin:** developer's idea in conversation, 2026-07-18 (rank a position by
+its Elo advantage as a mean + standard deviation), sharpened by the
+developer's insistence on designed new data over found corpus data and on
+oracle-grade quality.
+
+**Tested in:** [position-oracle-plan-1-lazy-popping-simon.md](../plans/position-oracle-plan-1-lazy-popping-simon.md) --
+the posgen/label/labelfit pipeline plus train.exe dist-value and dist-eval.
+Results doc pending.
+
+**Notes:** The theory-27 caution is carried explicitly: better offline
+prediction has twice failed to imply higher playing Elo here, so the roster
+Elo of the dist models is a separate measurement, not part of this claim.
+The labels are relative to the labeling ladder's style of play (mixed
+random-dilution and depth-dilution rungs), the same scoping caveat agent Elo
+itself carries. Related: theories 26 (this design sidesteps low-Elo label
+noise by conditioning on the players' measured strength), 27, and the
+Elo-tie labeling idea in todo.md (the mean at zero gap realizes it).
+
+#### 35. Position volatility (sigma) is identified by the flatness of the win-prob vs Elo-gap curve and predicts conversion reliability
+
+**Claim:** Positions differ not only in who is favored but in how RELIABLY
+the advantage converts. This is measurable as the flatness of the
+win-probability curve against the players' Elo gap: from a volatile (sharp,
+swingy) position, even a much stronger player wins unreliably, so the curve
+is flat and the fitted latent-SD sigma is large; from a quiet position the
+gap predicts the winner well and sigma is small. The dist model's sigma head
+learns this signal well enough that its predicted sigma correlates with the
+per-position measured sd on held-out positions.
+
+**Status:** Open / campaign in flight.
+
+**Origin:** the developer's framing that a position's Elo advantage is a
+range, not a point (2026-07-18), operationalized as the latent-Gaussian
+probit model (probitPoint, pi/8 constant).
+
+**Tested in:** same campaign as theory 34 (dist-eval's SD-validity line:
+correlation of predicted sigma with measured sd, plus the per-epoch mean
+sigma and material-stratified sigma printouts). Results doc pending.
+
+**Notes:** Identification caveats recorded at design time: (1) dilution
+rungs inject move randomness that inflates measured sigma at weak rungs, so
+the gap design uses the strongest pair available at each gap level and the
+labelfit per-pairing QC table watches for rung-dependent inflation; (2) a
+global sigma floor absorbs pool-level noise, so positional volatility is the
+deviation from that floor, not the absolute value; (3) small sigmas are not
+identifiable from sparse per-position samples (the synthetic-recovery test
+pins this), which is why the eval tier plays a dense design per position.
 
 ### Search & Evaluation Engineering
 
