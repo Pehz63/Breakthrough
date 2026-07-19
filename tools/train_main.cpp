@@ -135,6 +135,17 @@ static void usage() {
     cout << "  (or use tools/run_tournament.ps1 to shard across all CPUs in parallel)\n";
     cout << "  train.exe run-note --run <id> --note \"CPU throttled, ignore ms/move\"\n";
     cout << "  train.exe docs --ml ML.md\n";
+    cout << "\nPosition-oracle options (the rank.exe posgen/label/labelfit pipeline feeds these):\n";
+    cout << "  train.exe dist-value --raw data/labels/raw_train.jsonl --pool data/labels/pool_train.jsonl\n";
+    cout << "      --ratings data/labels/ratings_snapshot.tsv --out models/dist_value --epochs 40\n";
+    cout << "      --lr 0.02 --lr-sigma 0.004 --mu-type linear|mlp --mu-hidden \"128,64\"\n";
+    cout << "      --s-type linear|mlp --s-hidden \"32\" --val-split 0.1 --early-stop --ckpt-every 5\n";
+    cout << "      --elo-se (fold rating SEs into v) --labels <fitted labels> (secondary Gaussian mode)\n";
+    cout << "  train.exe score --model models/dist_value.txt --pos <pool/labels jsonl or enc lines>\n";
+    cout << "      --boards \"boards/board1.txt,boards/puzzle1.txt\" --stm w|b   (ranked by mean advantage)\n";
+    cout << "  train.exe dist-eval --model models/dist_value.txt --labels-eval ... --raw-eval ...\n";
+    cout << "      --pool-eval ... --labels-train ... --raw-train ... --ratings ... --calib 800\n";
+    cout << "      --oracle-depth 8 --oracle-nb 2000000   (the beat-the-oracle verdict)\n";
     cout << "\nTournament options:\n";
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
@@ -208,6 +219,43 @@ int main(int argc, char** argv) {
             seed,
             getOpt(argc, argv, "--teacher-eval", "Classic"),
             getIntList(argc, argv, "--teacher-params"));
+    } else if (cmd == "dist-value") {
+        rc = trainDistValue(
+            getOpt(argc, argv, "--out", "models/dist_value"),
+            getOpt(argc, argv, "--raw", "data/labels/raw_train.jsonl"),
+            getOpt(argc, argv, "--pool", "data/labels/pool_train.jsonl"),
+            getOpt(argc, argv, "--ratings", "data/labels/ratings_snapshot.tsv"),
+            getInt(argc, argv, "--epochs", 40),
+            getDbl(argc, argv, "--lr", 0.02),
+            getDbl(argc, argv, "--lr-sigma", 0.004),
+            getDbl(argc, argv, "--l2", 0.000001),
+            seed,
+            getOpt(argc, argv, "--mu-type", "linear"),
+            getIntList(argc, argv, "--mu-hidden"),
+            getOpt(argc, argv, "--s-type", "linear"),
+            getIntList(argc, argv, "--s-hidden"),
+            getDbl(argc, argv, "--val-split", 0.1),
+            hasFlag(argc, argv, "--early-stop"),
+            getInt(argc, argv, "--ckpt-every", 5),
+            hasFlag(argc, argv, "--elo-se"),
+            getOpt(argc, argv, "--labels", ""));
+    } else if (cmd == "score") {
+        const char* stm = getOpt(argc, argv, "--stm", "w");
+        rc = scoreBoards(getOpt(argc, argv, "--model", "models/dist_value.txt"),
+                         getOpt(argc, argv, "--pos", ""),
+                         getOpt(argc, argv, "--boards", ""),
+                         stm[0]);
+    } else if (cmd == "dist-eval") {
+        rc = distEval(getOpt(argc, argv, "--model", "models/dist_value.txt"),
+                      getOpt(argc, argv, "--labels-eval", "data/labels/labels_eval.jsonl"),
+                      getOpt(argc, argv, "--raw-eval", "data/labels/raw_eval.jsonl"),
+                      getOpt(argc, argv, "--pool-eval", "data/labels/pool_eval.jsonl"),
+                      getOpt(argc, argv, "--ratings", "data/labels/ratings_snapshot.tsv"),
+                      getOpt(argc, argv, "--labels-train", "data/labels/labels_train.jsonl"),
+                      getOpt(argc, argv, "--raw-train", "data/labels/raw_train.jsonl"),
+                      getInt(argc, argv, "--calib", 800),
+                      getInt(argc, argv, "--oracle-depth", 8),
+                      (unsigned long long)getDbl(argc, argv, "--oracle-nb", 2000000));
     } else if (cmd == "tournament") {
         rc = runTournament(board, getInt(argc, argv, "--games", 10), seed);
     } else if (cmd == "tournament-play") {

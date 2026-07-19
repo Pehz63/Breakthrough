@@ -15,6 +15,7 @@
 #include "ml_model.h"
 #include "ml_features.h"
 #include "datastore.h"
+#include "transposition.h"
 #include "board_io.h"
 #include "board_analysis.h"
 #include "moves.h"
@@ -1777,10 +1778,744 @@ void writeManifest(const std::vector<ModelRecord>& records) {
 // ============================================================
 // REGIME REGISTRY + DOC EXPORT
 // ============================================================
+// ============================================================
+// POSITION-ORACLE: dist-value regime, score CLI, dist-eval
+// ============================================================
+// Consumers of the rank.exe posgen/label/labelfit pipeline. The tiny file
+// parsers are replicated locally (same convention as the other shared
+// utilities): the trainer never links ranking.cpp.
+
+static bool readMetaLadderT(const string& metaPath, std::vector<string>& ladder) {
+    std::ifstream mf(metaPath.c_str());
+    if (!mf.is_open()) return false;
+    std::ostringstream all; all << mf.rdbuf();
+    string meta = all.str();
+    size_t at = meta.find("\"ladder\":[");
+    if (at == string::npos) return false;
+    size_t pos = at + 10;
+    while (pos < meta.size() && meta[pos] != ']') {
+        if (meta[pos] == '"') {
+            size_t e = meta.find('"', pos + 1);
+            if (e == string::npos) break;
+            ladder.push_back(meta.substr(pos + 1, e - pos - 1));
+            pos = e + 1;
+        } else pos++;
+    }
+    return !ladder.empty();
+}
+
+static bool readRatingsEloPmT(const string& path, std::map<string, std::pair<double, double> >& out) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) return false;
+    string line;
+    bool first = true;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+        if (first) { first = false; continue; }
+        std::vector<string> cols;
+        size_t i = 0;
+        while (i <= line.size()) {
+            size_t t = line.find('\t', i);
+            size_t end = (t == string::npos) ? line.size() : t;
+            cols.push_back(line.substr(i, end - i));
+            if (t == string::npos) break;
+            i = t + 1;
+        }
+        if (cols.size() < 4) continue;
+        try { out[cols[cols.size()-1]] = std::make_pair(std::stod(cols[1]), std::stod(cols[2])); } catch (...) {}
+    }
+    return !out.empty();
+}
+
+// One position, decoded and featurized once (v2 layout).
+struct DistPos {
+    string hex, enc;
+    unsigned long long hash;
+    int stm;
+    std::vector<float> feat;
+};
+// One raw playout outcome joined to its position and the players' Elos.
+struct DistRow { int pos; float d, v, y; };
+
+// Load positions (any JSONL with "enc" + "h" fields: a posgen pool or a
+// labelfit labels file) plus the raw store's rows joined through the store
+// meta's frozen ladder ids -> ratingsFile Elos (d and v recomputed at load
+// time, so the same raw store retrains under any future ratings snapshot).
+static bool loadDistData(const string& rawStore, const string& posFile,
+                         const string& ratingsFile, bool useEloSe,
+                         std::vector<DistPos>& P, std::vector<DistRow>& R, string& err) {
+    std::vector<string> ladder;
+    if (!readMetaLadderT(rawStore + ".meta.json", ladder)) { err = "cannot read the ladder array from " + rawStore + ".meta.json"; return false; }
+    std::map<string, std::pair<double, double> > ratings;
+    if (!readRatingsEloPmT(ratingsFile, ratings)) { err = "cannot read ratings " + ratingsFile; return false; }
+    std::vector<double> elo(ladder.size()), pm(ladder.size());
+    for (size_t i = 0; i < ladder.size(); i++) {
+        std::map<string, std::pair<double, double> >::iterator it = ratings.find(ladder[i]);
+        if (it == ratings.end()) { err = "ladder rung " + std::to_string(i) + " (" + ladder[i] + ") is missing from " + ratingsFile; return false; }
+        elo[i] = it->second.first;
+        pm[i]  = it->second.second;
+    }
+    std::map<string, int> posIdx;
+    {
+        std::ifstream pf(posFile.c_str());
+        if (!pf.is_open()) { err = "cannot open positions " + posFile; return false; }
+        string line;
+        while (std::getline(pf, line)) {
+            DistPos p;
+            if (!jsonStr(line, "enc", p.enc) || !jsonStr(line, "h", p.hex)) continue;
+            if (posIdx.count(p.hex)) continue;
+            int stm = White;
+            if (!decodePositionEnc(p.enc, stm)) continue;
+            p.stm = stm;
+            p.hash = strtoull(p.hex.c_str(), nullptr, 16);
+            p.feat.assign(MLV2_FEATURES, 0.0f);
+            mlExtractValueFeaturesV2(stm, p.feat.data());
+            posIdx[p.hex] = (int)P.size();
+            P.push_back(p);
+        }
+    }
+    if (P.empty()) { err = "no usable positions in " + posFile; return false; }
+    long long dropped = 0;
+    {
+        std::ifstream rf(rawStore.c_str());
+        if (!rf.is_open()) { err = "cannot open raw store " + rawStore; return false; }
+        string line, hex;
+        double wi, bi, y;
+        while (std::getline(rf, line)) {
+            if (!jsonStr(line, "h", hex) || !jsonNum(line, "wi", wi)
+                || !jsonNum(line, "bi", bi) || !jsonNum(line, "y", y)) { dropped++; continue; }
+            std::map<string, int>::iterator it = posIdx.find(hex);
+            int w = (int)wi, b = (int)bi;
+            if (it == posIdx.end() || w < 0 || w >= (int)ladder.size()
+                || b < 0 || b >= (int)ladder.size()) { dropped++; continue; }
+            DistRow r;
+            r.pos = it->second;
+            r.d = (float)((elo[w] - elo[b]) / ELO_PER_LOGIT);
+            r.v = useEloSe ? (float)((pm[w]*pm[w] + pm[b]*pm[b]) / (ELO_PER_LOGIT * ELO_PER_LOGIT)) : 0.0f;
+            r.y = (float)y;
+            R.push_back(r);
+        }
+    }
+    if (R.empty()) { err = "no usable raw rows in " + rawStore; return false; }
+    if (dropped > 0)
+        cout << "  (dropped " << dropped << " raw rows: malformed, unknown position, or bad rung index)\n";
+    return true;
+}
+
+// Pooled probit fit over a row subset: fits a global mean shift (frozen at 0
+// when !fitMu) and a global log-sigma, on top of optional per-position fixed
+// mu offsets in logits (muOfsByPos indexed by DistRow::pos; null = zero).
+// Returns the mean NLL at the optimum. Serves the gap-only and intercept-only
+// nulls and each baseline's global-sigma fit.
+static double fitPooledProbit(const std::vector<DistRow>& R, const std::vector<int>& idx,
+                              const std::vector<double>* muOfsByPos, bool fitMu,
+                              double& muG, double& sG) {
+    muG = 0.0; sG = 0.0;
+    if (idx.empty()) return 0.0;
+    auto eval = [&](double m, double s, double& gm, double& gs) {
+        double sum = 0.0; gm = 0.0; gs = 0.0;
+        ProbitGrad gg;
+        for (size_t k = 0; k < idx.size(); k++) {
+            const DistRow& r = R[idx[k]];
+            double ofs = muOfsByPos ? (*muOfsByPos)[r.pos] : 0.0;
+            sum += probitPoint(m + ofs, s, r.d, r.v, r.y, gg);
+            gm += gg.gMu; gs += gg.gS;
+        }
+        return sum;
+    };
+    double gM, gS;
+    double L = eval(muG, sG, gM, gS);
+    double lr = 0.5 / (double)idx.size();
+    for (int it = 0; it < 300; it++) {
+        double nm = fitMu ? (muG - lr * gM) : 0.0;
+        double ns = sG - lr * gS;
+        if (nm > 10.0) nm = 10.0;
+        if (nm < -10.0) nm = -10.0;
+        if (ns > PROBIT_S_MAX) ns = PROBIT_S_MAX;
+        if (ns < PROBIT_S_MIN) ns = PROBIT_S_MIN;
+        double ngM, ngS;
+        double nL = eval(nm, ns, ngM, ngS);
+        if (nL <= L) {
+            bool conv = (std::fabs(nm - muG) < 1e-8 && std::fabs(ns - sG) < 1e-8);
+            muG = nm; sG = ns; L = nL; gM = ngM; gS = ngS;
+            lr *= 1.2;
+            if (conv) break;
+        } else {
+            lr *= 0.5;
+            if (lr < 1e-14) break;
+        }
+    }
+    return L / (double)idx.size();
+}
+
+// Mean NLL of fixed global (muG, sG) over a row subset.
+static double pooledNllAt(const std::vector<DistRow>& R, const std::vector<int>& idx,
+                          double muG, double sG) {
+    if (idx.empty()) return 0.0;
+    double sum = 0.0;
+    ProbitGrad g;
+    for (size_t k = 0; k < idx.size(); k++)
+        sum += probitPoint(muG, sG, R[idx[k]].d, R[idx[k]].v, R[idx[k]].y, g);
+    return sum / (double)idx.size();
+}
+
+static Model* buildDistHead(const string& type, const std::vector<int>& hidden) {
+    if (type == "mlp") {
+        std::vector<int> h = hidden;
+        if (h.empty()) h.push_back(32);
+        MLPModel* m = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, h);
+        m->initRandom();
+        return m;
+    }
+    return new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+}
+
+int trainDistValue(const string& outPath, const string& rawStore,
+                   const string& poolFile, const string& ratingsFile,
+                   int epochs, double lr, double lrSigma, double l2,
+                   unsigned seed, const string& muType,
+                   const std::vector<int>& muHidden, const string& sType,
+                   const std::vector<int>& sHidden, double valSplit,
+                   bool earlyStop, int ckptEvery, bool useEloSe,
+                   const string& labelsFile) {
+    std::vector<DistPos> P;
+    std::vector<DistRow> R;
+    string err;
+    if (!loadDistData(rawStore, poolFile, ratingsFile, useEloSe, P, R, err)) {
+        cout << "ERROR: " << err << "\n";
+        return 1;
+    }
+    const int featCount = MLV2_FEATURES;
+
+    srand(seed);
+    DistModel* model = new DistModel(buildDistHead(muType, muHidden), buildDistHead(sType, sHidden));
+    model->teacher = "labelstore:" + rawStore + "|ratings:" + ratingsFile
+                   + "|mu=" + muType + "|s=" + sType + (useEloSe ? "|eloSe" : "")
+                   + "|seed=" + std::to_string(seed);
+    cout << "Model: type=dist mu=" << muType << " s=" << sType << " featVer=2\n";
+
+    int valCut = (int)(valSplit * 1000.0 + 0.5);
+
+    // ---- Secondary mode: SE-weighted regression on fitted labels. ----
+    if (!labelsFile.empty()) {
+        struct GRow { int pos; float muLab, sdLab, wMu, wSd; };
+        std::vector<GRow> G;
+        std::map<string, int> hexIdx;
+        for (size_t i = 0; i < P.size(); i++) hexIdx[P[i].hex] = (int)i;
+        std::ifstream lf(labelsFile.c_str());
+        if (!lf.is_open()) { cout << "ERROR: cannot open labels " << labelsFile << "\n"; delete model; return 1; }
+        string line, hex, flags;
+        double mu, sd, tmp;
+        while (std::getline(lf, line)) {
+            if (!jsonStr(line, "h", hex) || !jsonNum(line, "mu_elo", mu) || !jsonNum(line, "sd_elo", sd)) continue;
+            std::map<string, int>::iterator it = hexIdx.find(hex);
+            if (it == hexIdx.end()) continue;
+            if (jsonStr(line, "flags", flags) && (flags == "allwin" || flags == "allloss")) continue;
+            double seMu = jsonNum(line, "se_mu", tmp) ? tmp : 60.0;
+            GRow r;
+            r.pos = it->second;
+            r.muLab = (float)(mu / ELO_PER_LOGIT);
+            r.sdLab = (float)(sd / ELO_PER_LOGIT);
+            double seL = seMu / ELO_PER_LOGIT;
+            r.wMu = (float)(1.0 / (seL * seL + 0.01));
+            r.wSd = r.wMu * 0.25f;
+            G.push_back(r);
+        }
+        if (G.empty()) { cout << "ERROR: no usable label rows in " << labelsFile << "\n"; delete model; return 1; }
+        std::vector<int> tIdx, vIdx;
+        for (size_t i = 0; i < G.size(); i++)
+            (((int)(P[G[i].pos].hash % 1000) < valCut) ? vIdx : tIdx).push_back((int)i);
+        cout << "Gaussian mode: " << G.size() << " labels (" << tIdx.size() << " train / "
+             << vIdx.size() << " val, split by position)\n";
+        double bestVal = 1e300;
+        int bestEpoch = -1;
+        for (int e = 1; e <= epochs; e++) {
+            shuffleVec(tIdx);
+            double sum = 0.0;
+            for (size_t i = 0; i < tIdx.size(); i++) {
+                GRow& r = G[tIdx[i]];
+                sum += model->trainStepGauss(P[r.pos].feat.data(), featCount, r.muLab, r.sdLab,
+                                             r.wMu, r.wSd, (float)lr, (float)l2);
+            }
+            double vsum = 0.0;
+            for (size_t i = 0; i < vIdx.size(); i++) {
+                GRow& r = G[vIdx[i]];
+                float pm2, ps2;
+                model->forwardDist(P[r.pos].feat.data(), featCount, pm2, ps2);
+                double eMu = pm2 - r.muLab, eS = log((double)ps2) - log((double)r.sdLab);
+                vsum += 0.5 * (r.wMu * eMu * eMu + r.wSd * eS * eS);
+            }
+            double vloss = vIdx.empty() ? -1.0 : vsum / (double)vIdx.size();
+            cout << "epoch " << e << "/" << epochs << "  train wMSE=" << (sum / tIdx.size());
+            if (!vIdx.empty()) cout << "  val wMSE=" << vloss;
+            cout << "\n" << flush;
+            if (earlyStop && !vIdx.empty() && vloss < bestVal) { bestVal = vloss; bestEpoch = e; model->save(outPath + ".txt"); }
+        }
+        if (earlyStop && bestEpoch > 0) cout << "Early stopping: kept epoch " << bestEpoch << " (val=" << bestVal << ")\n";
+        else model->save(outPath + ".txt");
+        cout << "Final model -> " << outPath << ".txt\n";
+        delete model;
+        return 0;
+    }
+
+    // ---- Primary mode: probit BCE on raw rows. ----
+    std::vector<int> tRows, vRows;
+    for (size_t i = 0; i < R.size(); i++)
+        (((int)(P[R[i].pos].hash % 1000) < valCut) ? vRows : tRows).push_back((int)i);
+    cout << "Data: " << P.size() << " positions, " << R.size() << " rows ("
+         << tRows.size() << " train / " << vRows.size() << " val, split by position)\n";
+    if (tRows.empty()) { cout << "ERROR: empty training split\n"; delete model; return 1; }
+
+    // Fixed nulls: fit on train rows, score on val rows (the board must beat
+    // the intercept null on held-out rows or it is adding nothing).
+    {
+        double m0, s0, m1, s1;
+        fitPooledProbit(R, tRows, nullptr, false, m0, s0);
+        fitPooledProbit(R, tRows, nullptr, true, m1, s1);
+        const std::vector<int>& scoreIdx = vRows.empty() ? tRows : vRows;
+        cout << "Nulls (fit on train, scored on " << (vRows.empty() ? "train" : "val") << " rows): "
+             << "gap-only NLL " << pooledNllAt(R, scoreIdx, 0.0, s0)
+             << " (sigma " << exp(s0) * ELO_PER_LOGIT << " Elo), intercept NLL "
+             << pooledNllAt(R, scoreIdx, m1, s1)
+             << " (mu " << m1 * ELO_PER_LOGIT << " Elo, sigma " << exp(s1) * ELO_PER_LOGIT << " Elo)\n";
+    }
+
+    std::vector<ModelRecord> records;
+    string runId = "dist_" + std::to_string((long)time(nullptr));
+    double bestVal = 1e300;
+    int bestEpoch = -1;
+
+    std::vector<float> pMu(P.size()), pSd(P.size());
+    auto refreshPosPreds = [&]() {
+        for (size_t i = 0; i < P.size(); i++)
+            model->forwardDist(P[i].feat.data(), featCount, pMu[i], pSd[i]);
+    };
+    auto rowsNll = [&](const std::vector<int>& idx) {
+        if (idx.empty()) return 0.0;
+        double sum = 0.0;
+        ProbitGrad g;
+        for (size_t k = 0; k < idx.size(); k++) {
+            const DistRow& r = R[idx[k]];
+            sum += probitPoint(pMu[r.pos], log((double)pSd[r.pos]), r.d, r.v, r.y, g);
+        }
+        return sum / (double)idx.size();
+    };
+
+    for (int e = 1; e <= epochs; e++) {
+        shuffleVec(tRows);
+        double sum = 0.0;
+        for (size_t i = 0; i < tRows.size(); i++) {
+            const DistRow& r = R[tRows[i]];
+            sum += model->trainStepRow(P[r.pos].feat.data(), featCount, r.y, r.d, r.v,
+                                       (float)lr, (float)lrSigma, (float)l2);
+        }
+        refreshPosPreds();
+        double vloss = vRows.empty() ? -1.0 : rowsNll(vRows);
+        double sigSum = 0.0;
+        long sigN = 0;
+        for (size_t i = 0; i < P.size(); i++) {
+            bool isVal = ((int)(P[i].hash % 1000) < valCut);
+            if (vRows.empty() || isVal) { sigSum += pSd[i]; sigN++; }
+        }
+        bool ckpt = (ckptEvery > 0 && e % ckptEvery == 0) || e == epochs;
+        cout << "epoch " << e << "/" << epochs << "  train NLL=" << (sum / (double)tRows.size());
+        if (!vRows.empty()) cout << "  val NLL=" << vloss;
+        cout << "  mean sigma=" << (sigN ? sigSum / sigN * ELO_PER_LOGIT : 0.0) << " Elo"
+             << (ckpt ? "  [ckpt]" : "") << "\n" << flush;
+        if (earlyStop && !vRows.empty() && vloss < bestVal) {
+            bestVal = vloss; bestEpoch = e;
+            model->save(outPath + ".txt");
+        }
+        if (!ckpt) continue;
+        string path = outPath + "_ckpt" + std::to_string(e) + ".txt";
+        model->save(path);
+        double wr = quickScoreVsRandom(path, false, "boards/board1.txt", ML_SLOTS - 1, 8);
+        ModelRecord rec;
+        rec.id = runId + "_e" + std::to_string(e);
+        rec.type = "dist"; rec.head = "value"; rec.regime = "dist-value";
+        rec.conditions = "mu=" + muType + ",s=" + sType + ",lr=" + std::to_string(lr)
+                       + ",lrS=" + std::to_string(lrSigma) + ",l2=" + std::to_string(l2)
+                       + ",eloSe=" + std::to_string(useEloSe ? 1 : 0)
+                       + ",store=" + rawStore;
+        rec.path = path; rec.epoch = e; rec.games = (int)(R.size() / 1000);
+        rec.loss = (vRows.empty() ? sum / (double)tRows.size() : vloss);
+        rec.winrate = wr; rec.elo = winrateToElo(wr);
+        records.push_back(rec);
+    }
+
+    if (earlyStop && bestEpoch > 0) {
+        Model* best = loadModel(outPath + ".txt");
+        DistModel* bd = best ? dynamic_cast<DistModel*>(best) : nullptr;
+        if (bd) { delete model; model = bd; }
+        else delete best;
+        cout << "Early stopping: kept epoch " << bestEpoch << " (val=" << bestVal << ")\n";
+    } else {
+        model->save(outPath + ".txt");
+    }
+    refreshPosPreds();
+
+    // Final report: calibration by |d| bucket + sigma stratified by material.
+    {
+        const std::vector<int>& idx = vRows.empty() ? tRows : vRows;
+        double n[5] = {0}, sp[5] = {0}, sy[5] = {0};
+        ProbitGrad g;
+        for (size_t k = 0; k < idx.size(); k++) {
+            const DistRow& r = R[idx[k]];
+            double dElo = std::fabs((double)r.d) * ELO_PER_LOGIT;
+            int b = dElo < 50 ? 0 : dElo < 150 ? 1 : dElo < 300 ? 2 : dElo < 600 ? 3 : 4;
+            probitPoint(pMu[r.pos], log((double)pSd[r.pos]), r.d, r.v, r.y, g);
+            n[b]++; sp[b] += g.p; sy[b] += r.y;
+        }
+        cout << "Calibration by |d| Elo (" << (vRows.empty() ? "train" : "val") << " rows):";
+        const char* lbl[5] = { "0-50", "50-150", "150-300", "300-600", "600+" };
+        for (int b = 0; b < 5; b++)
+            if (n[b] > 0) cout << "  " << lbl[b] << " n=" << (long)n[b]
+                               << " p=" << sp[b] / n[b] << " y=" << sy[b] / n[b];
+        cout << "\n";
+
+        double sSum[3] = {0}; long sCnt[3] = {0};
+        for (size_t i = 0; i < P.size(); i++) {
+            bool isVal = ((int)(P[i].hash % 1000) < valCut);
+            if (!vRows.empty() && !isVal) continue;
+            int md = (int)lround(std::fabs((double)matDiffFromFeatures(P[i].feat.data(), 2)));
+            int b = (md == 0) ? 0 : (md == 1) ? 1 : 2;
+            sSum[b] += pSd[i]; sCnt[b]++;
+        }
+        cout << "Mean sigma (Elo) by |matDiff|:";
+        const char* ml[3] = { "==0", "==1", ">=2" };
+        for (int b = 0; b < 3; b++)
+            cout << "  " << ml[b] << " n=" << sCnt[b]
+                 << " sigma=" << (sCnt[b] ? sSum[b] / sCnt[b] * ELO_PER_LOGIT : 0.0);
+        cout << "\n";
+    }
+    writeManifest(records);
+    cout << "Final model -> " << outPath << ".txt\n";
+    delete model;
+    return 0;
+}
+
+int scoreBoards(const string& modelPath, const string& posFile,
+                const string& boardsCsv, char stmC) {
+    Model* m = loadModel(modelPath);
+    if (!m) { cout << "ERROR: cannot load model " << modelPath << "\n"; return 1; }
+    DistModel* dm = dynamic_cast<DistModel*>(m);
+    int featVer = m->featureVersion();
+    int featCount = m->featureCount();
+    struct Scored { string name; int decided; double mu, sd, p; };
+    std::vector<Scored> out;
+    std::vector<float> feat(featCount > 0 ? featCount : 1);
+
+    auto scoreCurrent = [&](const string& name, int stm) {
+        Scored s;
+        s.name = name; s.decided = nearWinCheck(stm); s.mu = 0; s.sd = -1; s.p = -1;
+        if (!s.decided) {
+            if (featVer == 2) mlExtractValueFeaturesV2(stm, feat.data());
+            else              mlExtractValueFeatures(stm, feat.data());
+            if (dm) {
+                float mu, sd;
+                dm->forwardDist(feat.data(), featCount, mu, sd);
+                s.mu = mu * ELO_PER_LOGIT;
+                s.sd = sd * ELO_PER_LOGIT;
+                double kap = 1.0 / sqrt(1.0 + 0.39269908169872414 * (double)sd * sd);
+                s.p = 1.0 / (1.0 + exp(-kap * mu));
+            } else {
+                s.mu = tanh((double)m->forward(feat.data(), featCount)) * m->outputScale();
+            }
+        }
+        out.push_back(s);
+    };
+
+    if (!posFile.empty()) {
+        std::ifstream f(posFile.c_str());
+        if (!f.is_open()) { cout << "ERROR: cannot open " << posFile << "\n"; delete m; return 1; }
+        string line;
+        while (std::getline(f, line)) {
+            string enc;
+            if (!jsonStr(line, "enc", enc)) {
+                if (line.size() >= (size_t)(SIZE * SIZE + 1)) enc = line.substr(0, SIZE * SIZE + 1);
+                else continue;
+            }
+            int stm = White;
+            if (!decodePositionEnc(enc, stm)) continue;
+            scoreCurrent(enc.substr(0, 16) + "... " + (stm == White ? "W" : "B"), stm);
+        }
+    }
+    if (!boardsCsv.empty()) {
+        int stm = (stmC == 'b' || stmC == 'B') ? Black : White;
+        size_t i = 0;
+        while (i <= boardsCsv.size()) {
+            size_t c = boardsCsv.find(',', i);
+            string f = boardsCsv.substr(i, (c == string::npos ? boardsCsv.size() : c) - i);
+            if (!f.empty()) {
+                if (reloadBoard(f)) scoreCurrent(f + " " + (stm == White ? "W" : "B"), stm);
+                else cout << "  (skipping unreadable board " << f << ")\n";
+            }
+            if (c == string::npos) break;
+            i = c + 1;
+        }
+    }
+    if (out.empty()) { cout << "ERROR: no positions to score (give --pos and/or --boards)\n"; delete m; return 1; }
+
+    std::sort(out.begin(), out.end(), [](const Scored& a, const Scored& b) {
+        double ka = a.decided ? (a.decided > 0 ? 1e9 : -1e9) : a.mu;
+        double kb = b.decided ? (b.decided > 0 ? 1e9 : -1e9) : b.mu;
+        return ka > kb;
+    });
+    cout << "Positions ranked by White advantage (" << (dm ? "mean +- SD in Elo" : "squashed eval, non-dist model") << "):\n";
+    for (size_t i = 0; i < out.size(); i++) {
+        const Scored& s = out[i];
+        char buf[64];
+        if (s.decided)      snprintf(buf, sizeof(buf), "  %s", s.decided > 0 ? "WHITE WIN (decided)" : "BLACK WIN (decided)");
+        else if (dm)        snprintf(buf, sizeof(buf), "  %+8.0f +- %5.0f  P(win|equal)=%.3f", s.mu, s.sd, s.p);
+        else                snprintf(buf, sizeof(buf), "  eval %+8.0f", s.mu);
+        cout << (i + 1) << "." << buf << "   " << s.name << "\n";
+    }
+    delete m;
+    return 0;
+}
+
+// ---- dist-eval: the oracle-comparison success criterion ----
+
+struct LabelRowT { string hex; double mu, sd; string flags; };
+static bool readLabelsT(const string& path, std::vector<LabelRowT>& out) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) return false;
+    string line;
+    while (std::getline(f, line)) {
+        LabelRowT r;
+        double d;
+        if (!jsonStr(line, "h", r.hex) || !jsonNum(line, "mu_elo", d)) continue;
+        r.mu = d;
+        r.sd = jsonNum(line, "sd_elo", d) ? d : 0.0;
+        if (!jsonStr(line, "flags", r.flags)) r.flags = "ok";
+        out.push_back(r);
+    }
+    return !out.empty();
+}
+
+static void rankVecT(const std::vector<double>& x, std::vector<double>& r) {
+    std::vector<int> ord(x.size());
+    for (size_t i = 0; i < ord.size(); i++) ord[i] = (int)i;
+    std::sort(ord.begin(), ord.end(), [&](int a, int b) { return x[a] < x[b]; });
+    r.assign(x.size(), 0.0);
+    size_t i = 0;
+    while (i < ord.size()) {
+        size_t j = i;
+        while (j + 1 < ord.size() && x[ord[j+1]] == x[ord[i]]) j++;
+        double avg = 0.5 * (double)(i + j) + 1.0;
+        for (size_t k = i; k <= j; k++) r[ord[k]] = avg;
+        i = j + 1;
+    }
+}
+static double pearsonT(const std::vector<double>& a, const std::vector<double>& b) {
+    size_t n = a.size();
+    if (n < 2) return 0.0;
+    double ma = 0, mb = 0;
+    for (size_t i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    double sab = 0, saa = 0, sbb = 0;
+    for (size_t i = 0; i < n; i++) {
+        sab += (a[i] - ma) * (b[i] - mb);
+        saa += (a[i] - ma) * (a[i] - ma);
+        sbb += (b[i] - mb) * (b[i] - mb);
+    }
+    return (saa > 0 && sbb > 0) ? sab / sqrt(saa * sbb) : 0.0;
+}
+static double spearmanT(const std::vector<double>& a, const std::vector<double>& b) {
+    std::vector<double> ra, rb;
+    rankVecT(a, ra);
+    rankVecT(b, rb);
+    return pearsonT(ra, rb);
+}
+
+int distEval(const string& modelPath, const string& labelsEval, const string& rawEval,
+             const string& poolEval, const string& ratingsFile, const string& labelsTrain,
+             const string& rawTrain, int calibN, int oracleDepth,
+             unsigned long long oracleBudget) {
+    Model* mm = loadModel(modelPath);
+    DistModel* dm = mm ? dynamic_cast<DistModel*>(mm) : nullptr;
+    if (!dm) { cout << "ERROR: " << modelPath << " is not a dist model\n"; delete mm; return 1; }
+
+    string err;
+    std::vector<DistPos> Pe; std::vector<DistRow> Re;
+    if (!loadDistData(rawEval, poolEval, ratingsFile, false, Pe, Re, err)) { cout << "ERROR: eval tier: " << err << "\n"; delete mm; return 1; }
+    std::vector<LabelRowT> Le;
+    if (!readLabelsT(labelsEval, Le)) { cout << "ERROR: cannot read " << labelsEval << "\n"; delete mm; return 1; }
+    std::map<string, int> peIdx;
+    for (size_t i = 0; i < Pe.size(); i++) peIdx[Pe[i].hex] = (int)i;
+
+    // Train side for calibration only (its labels file doubles as the position list).
+    std::vector<DistPos> Pt; std::vector<DistRow> Rt;
+    if (!loadDistData(rawTrain, labelsTrain, ratingsFile, false, Pt, Rt, err)) { cout << "ERROR: train tier: " << err << "\n"; delete mm; return 1; }
+    std::vector<LabelRowT> Lt;
+    if (!readLabelsT(labelsTrain, Lt)) { cout << "ERROR: cannot read " << labelsTrain << "\n"; delete mm; return 1; }
+    std::map<string, int> ptIdx;
+    for (size_t i = 0; i < Pt.size(); i++) ptIdx[Pt[i].hex] = (int)i;
+
+    std::vector<int> calibPos;
+    std::vector<double> calibMu;
+    for (size_t i = 0; i < Lt.size() && (int)calibPos.size() < calibN; i++) {
+        if (Lt[i].flags != "ok") continue;
+        std::map<string, int>::iterator it = ptIdx.find(Lt[i].hex);
+        if (it == ptIdx.end()) continue;
+        calibPos.push_back(it->second);
+        calibMu.push_back(Lt[i].mu);
+    }
+    if ((int)calibPos.size() < 8) { cout << "ERROR: only " << calibPos.size() << " ok-flagged train labels for calibration\n"; delete mm; return 1; }
+
+    // Baselines.
+    Model* pst = loadModel("models/pst_value.txt");
+    bool pstOk = pst && pst->featureVersion() == 2;
+    int classicIdx = -1;
+    for (int i = 0; i < g_evalCount; i++) if (string(g_evaluators[i].name) == "Classic") classicIdx = i;
+    int classicParams[MAX_EVAL_PARAMS] = { 0 };
+    classicParams[0] = 1; classicParams[1] = 4; classicParams[2] = 0; classicParams[3] = 0;
+    AgentSpec oracle = agentMakeSearch("oracle", explorerIndexByName("AlphaBeta"), classicIdx, oracleDepth, 0);
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) oracle.evalParams[i] = classicParams[i];
+    oracle.useTT = true; oracle.useMoveOrder = true; oracle.nodeBudget = oracleBudget;
+
+    enum { B_ORACLE = 0, B_PST = 1, B_CLASSIC = 2, NBASE = 3 };
+    char oracleName[32];
+    snprintf(oracleName, sizeof(oracleName), "oracle-d%d", oracleDepth);
+    const char* baseName[NBASE] = { oracleName, "pst_value", "classic" };
+
+    auto rawScore = [&](const DistPos& p, int which) -> double {
+        int stm = White;
+        decodePositionEnc(p.enc, stm);
+        if (which == B_ORACLE) {
+            ttClear();
+            srand(1);
+            agentChooseMove(oracle, stm);
+            double sc = (stm == White) ? (double)g_downEvalWhite : (double)g_downEvalBlack;
+            decodePositionEnc(p.enc, stm);          // undo the played move
+            return sc;
+        }
+        if (which == B_PST && pstOk) return (double)pst->forward(p.feat.data(), MLV2_FEATURES);
+        if (which == B_CLASSIC) return (double)evaluateBoard(stm, classicIdx, classicParams);
+        return 0.0;
+    };
+
+    double aScale[NBASE] = { 0, 0, 0 }, loCap[NBASE], hiCap[NBASE], sGlob[NBASE];
+    for (int b = 0; b < NBASE; b++) {
+        if (b == B_PST && !pstOk) continue;
+        if (b == B_ORACLE)
+            cout << "Calibrating " << baseName[b] << " on " << calibPos.size()
+                 << " train positions (root searches, be patient)...\n" << flush;
+        std::vector<double> sc(calibPos.size());
+        for (size_t i = 0; i < calibPos.size(); i++) sc[i] = rawScore(Pt[calibPos[i]], b);
+        std::vector<double> sorted = sc;
+        std::sort(sorted.begin(), sorted.end());
+        loCap[b] = sorted[(size_t)(0.02 * (double)(sorted.size() - 1))];
+        hiCap[b] = sorted[(size_t)(0.98 * (double)(sorted.size() - 1))];
+        double num = 0.0, den = 0.0;
+        for (size_t i = 0; i < sc.size(); i++) {
+            double s = sc[i] < loCap[b] ? loCap[b] : sc[i] > hiCap[b] ? hiCap[b] : sc[i];
+            num += s * calibMu[i];
+            den += s * s;
+        }
+        aScale[b] = (den > 1e-9) ? num / den : 0.0;
+        std::vector<double> muOfs(Pt.size(), 0.0);
+        std::vector<char> inCalib(Pt.size(), 0);
+        for (size_t i = 0; i < calibPos.size(); i++) {
+            double s = sc[i] < loCap[b] ? loCap[b] : sc[i] > hiCap[b] ? hiCap[b] : sc[i];
+            muOfs[calibPos[i]] = aScale[b] * s / ELO_PER_LOGIT;
+            inCalib[calibPos[i]] = 1;
+        }
+        std::vector<int> rows;
+        for (size_t k = 0; k < Rt.size(); k++) if (inCalib[Rt[k].pos]) rows.push_back((int)k);
+        double mg;
+        fitPooledProbit(Rt, rows, &muOfs, false, mg, sGlob[b]);
+    }
+
+    // Predictions on the eval tier.
+    std::vector<double> mMu(Pe.size()), mSd(Pe.size());
+    for (size_t i = 0; i < Pe.size(); i++) {
+        float a, s2;
+        dm->forwardDist(Pe[i].feat.data(), MLV2_FEATURES, a, s2);
+        mMu[i] = a * ELO_PER_LOGIT;
+        mSd[i] = s2 * ELO_PER_LOGIT;
+    }
+    std::vector<std::vector<double> > bMu(NBASE, std::vector<double>(Pe.size(), 0.0));
+    for (int b = 0; b < NBASE; b++) {
+        if (b == B_PST && !pstOk) continue;
+        if (b == B_ORACLE)
+            cout << "Scoring " << Pe.size() << " eval positions with " << baseName[b] << "...\n" << flush;
+        for (size_t i = 0; i < Pe.size(); i++) {
+            double s = rawScore(Pe[i], b);
+            if (s < loCap[b]) s = loCap[b];
+            if (s > hiCap[b]) s = hiCap[b];
+            bMu[b][i] = aScale[b] * s;
+            if (b == B_ORACLE && (i + 1) % 250 == 0) cout << "  " << (i + 1) << "/" << Pe.size() << "\n" << flush;
+        }
+    }
+
+    // Metrics vs ok-flagged labels.
+    std::vector<int> okPos;
+    std::vector<double> labMu, labSd;
+    for (size_t i = 0; i < Le.size(); i++) {
+        if (Le[i].flags != "ok") continue;
+        std::map<string, int>::iterator it = peIdx.find(Le[i].hex);
+        if (it == peIdx.end()) continue;
+        okPos.push_back(it->second);
+        labMu.push_back(Le[i].mu);
+        labSd.push_back(Le[i].sd);
+    }
+    cout << "\ndist-eval: " << okPos.size() << " ok-flagged eval labels, " << Re.size()
+         << " eval raw rows, calibration on " << calibPos.size() << " train positions\n";
+    cout << "predictor        MAE      RMSE   spearman  outcomeNLL\n";
+    double vMae[NBASE + 1], vNll[NBASE + 1];
+    for (int p = 0; p <= NBASE; p++) {                     // 0 = the model, 1.. = baselines
+        if (p == B_PST + 1 && !pstOk) { vMae[p] = 1e9; vNll[p] = 1e9; continue; }
+        std::vector<double> pred(okPos.size());
+        for (size_t i = 0; i < okPos.size(); i++)
+            pred[i] = (p == 0) ? mMu[okPos[i]] : bMu[p - 1][okPos[i]];
+        double mae = 0, rmse = 0;
+        for (size_t i = 0; i < pred.size(); i++) {
+            double e = pred[i] - labMu[i];
+            mae += std::fabs(e); rmse += e * e;
+        }
+        mae /= (double)pred.size();
+        rmse = sqrt(rmse / (double)pred.size());
+        double sp = spearmanT(pred, labMu);
+        double nll = 0;
+        ProbitGrad g;
+        for (size_t k = 0; k < Re.size(); k++) {
+            const DistRow& r = Re[k];
+            double muL = ((p == 0) ? mMu[r.pos] : bMu[p - 1][r.pos]) / ELO_PER_LOGIT;
+            double sL  = (p == 0) ? log(mSd[r.pos] / ELO_PER_LOGIT) : sGlob[p - 1];
+            nll += probitPoint(muL, sL, r.d, r.v, r.y, g);
+        }
+        nll /= (double)Re.size();
+        vMae[p] = mae; vNll[p] = nll;
+        char buf[160];
+        snprintf(buf, sizeof(buf), "%-14s %7.1f  %7.1f    %6.3f     %.5f\n",
+                 (p == 0) ? "dist model" : baseName[p - 1], mae, rmse, sp, nll);
+        cout << buf;
+    }
+    {
+        std::vector<double> predSd(okPos.size());
+        for (size_t i = 0; i < okPos.size(); i++) predSd[i] = mSd[okPos[i]];
+        cout << "SD validity (model sigma vs measured sd): pearson "
+             << pearsonT(predSd, labSd) << ", spearman " << spearmanT(predSd, labSd) << "\n";
+    }
+    bool beatsNll = vNll[0] < vNll[B_ORACLE + 1];
+    bool beatsMae = vMae[0] < vMae[B_ORACLE + 1];
+    cout << "VERDICT vs " << baseName[B_ORACLE] << ": outcome NLL "
+         << (beatsNll ? "BEATS" : "does NOT beat") << ", mu MAE "
+         << (beatsMae ? "BEATS" : "does NOT beat")
+         << (beatsNll && beatsMae ? "  -> stronger at predicting position strength" : "") << "\n";
+    delete pst;
+    delete mm;
+    return 0;
+}
+
 const RegimeDef g_regimes[] = {
     { "selfplay-supervised", "Self-play games labeled by outcome; fit a linear value model." },
     { "ensemble",            "Average K trained linear v2 value models (optionally mirror-symmetrized) into one." },
     { "imitate",             "Behavioral cloning: a teacher's chosen move trains the policy move-rater." },
+    { "dist-value",          "Distributional (mu, sigma) position-strength model fit on rated-gap playout outcomes from the label store (rank.exe posgen/label/labelfit)." },
+    { "score",               "Score positions with a saved model, ranked by mean White advantage (a dist model prints mean +- SD in Elo)." },
+    { "dist-eval",           "Evaluate a dist model against the calibrated d8 oracle, pst_value, and Classic baselines on the held-out eval tier." },
     { "tdleaf",              "TD-Leaf(lambda) self-play bootstrap of a value model. (future)" },
     { "population",          "Other-play tournaments, Elo-tie labeling, multi-condition runs. (future)" },
     { "tournament",          "Round-robin of composed agents; prints an Elo table." },

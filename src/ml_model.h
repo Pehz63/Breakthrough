@@ -217,18 +217,20 @@ struct DistModel : public Model {
 
     // One SGD step on a raw playout outcome: y in {0,1}, dLogit = the players'
     // Elo gap in logit units, extraVar = known rating-SE variance in logit^2
-    // (0 = off). Returns the pre-update BCE loss. The s head is frozen against
-    // OUTWARD pushes while its raw output sits on a clamp (an inward gradient
-    // still applies, so a drifted head can recover).
+    // (0 = off). lrMu/lrS are separate learning rates for the two heads (the
+    // sigma signal is weaker and noisier, so it usually trains slower).
+    // Returns the pre-update BCE loss. The s head is frozen against OUTWARD
+    // pushes while its raw output sits on a clamp (an inward gradient still
+    // applies, so a drifted head can recover).
     float trainStepRow(const float* x, int m, float y, float dLogit, float extraVar,
-                       float lr, float l2);
+                       float lrMu, float lrS, float l2);
     // Secondary mode: weighted regression toward a fitted label (muLab in
     // logits, sdLab = sigma in logits). Returns the weighted squared loss.
     float trainStepGauss(const float* x, int m, float muLab, float sdLab,
                          float wMu, float wSd, float lr, float l2);
     // Generic scaffolding entry: target = outcome, offset carries dLogit.
     float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override {
-        return trainStepRow(x, m, target, offset, 0.0f, lr, l2);
+        return trainStepRow(x, m, target, offset, 0.0f, lr, lr * 0.2f, l2);
     }
     bool save(const string& path) const override;
     void writeWeights(std::ostream& f) const override;

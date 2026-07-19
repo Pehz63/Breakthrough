@@ -265,7 +265,7 @@ void DistModel::forwardDist(const float* x, int m, float& muLogit, float& sigmaL
 }
 
 float DistModel::trainStepRow(const float* x, int m, float y, float dLogit, float extraVar,
-                              float lr, float l2) {
+                              float lrMu, float lrS, float l2) {
     double mu   = muHead->forward(x, m);
     double sRaw = sHead->forward(x, m);
     double s = sRaw;
@@ -273,12 +273,12 @@ float DistModel::trainStepRow(const float* x, int m, float y, float dLogit, floa
     if (s > PROBIT_S_MAX) s = PROBIT_S_MAX;
     ProbitGrad g;
     double loss = probitPoint(mu, s, dLogit, extraVar, y, g);
-    muHead->gradStep(x, m, (float)g.gMu, lr, l2);
+    muHead->gradStep(x, m, (float)g.gMu, lrMu, l2);
     // Projected gradient at the s clamp: block only pushes that would move s
     // further outside the range (descent direction is -gS).
     bool outward = (sRaw >= PROBIT_S_MAX && g.gS < 0.0) ||
                    (sRaw <= PROBIT_S_MIN && g.gS > 0.0);
-    if (!outward) sHead->gradStep(x, m, (float)g.gS, lr, l2);
+    if (!outward) sHead->gradStep(x, m, (float)g.gS, lrS, l2);
     return (float)loss;
 }
 

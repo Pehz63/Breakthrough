@@ -106,6 +106,61 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
 int trainEnsemble(const std::vector<string>& modelFiles, bool mirror,
                   const string& outDir);
 
+// ---- Position-oracle distributional regime + evaluation ----
+// Train a DistModel (mu + log-sigma heads) on a raw playout label store
+// (rank.exe label): per row, features come from decoding the pool position's
+// enc, and the players' Elo gap d plus rating-SE variance v are recomputed AT
+// LOAD TIME from ratingsFile joined through the store meta's frozen ladder id
+// array, so the same raw store retrains cleanly under any future ratings
+// snapshot. Loss is the shared probitPoint BCE (DistModel::trainStepRow), so
+// the trainer and the per-position label fit can never diverge. The
+// validation split is by POSITION (hash % 1000 < valSplit * 1000), never by
+// row, since every row of a position shares its latent advantage. Per epoch:
+// train/val NLL and the mean predicted sigma in Elo. The final report adds
+// calibration by |d| bucket, sigma stratified by |material diff|, and two
+// fixed nulls fit on the train rows (gap-only and intercept-only) that the
+// model must beat on held-out rows for the board to be adding anything.
+// muType/sType are "linear" or "mlp" (mlpHidden-style width lists, default
+// {32}). useEloSe folds rating standard errors into v. labelsFile switches
+// to the secondary Gaussian mode: SE-weighted regression on fitted labels
+// instead of raw outcomes. outPath is the model base name (final model at
+// outPath.txt, checkpoints at outPath_ckptN.txt).
+int trainDistValue(const string& outPath, const string& rawStore,
+                   const string& poolFile, const string& ratingsFile,
+                   int epochs, double lr, double lrSigma, double l2,
+                   unsigned seed, const string& muType,
+                   const std::vector<int>& muHidden, const string& sType,
+                   const std::vector<int>& sHidden, double valSplit,
+                   bool earlyStop, int ckptEvery, bool useEloSe,
+                   const string& labelsFile = "");
+
+// Score positions with a saved model and print them ranked by mean White
+// advantage. posFile: a JSONL file with "enc" fields (pool or labels format)
+// or bare 65-char enc lines. boardsCsv: comma-separated board .txt files
+// scored with stm ('w' or 'b') to move. A DistModel prints mean +- SD in Elo
+// plus P(win | equal opponents); any other value model prints its squashed
+// eval as a fallback. Decided positions print a WIN marker.
+int scoreBoards(const string& modelPath, const string& posFile,
+                const string& boardsCsv, char stm);
+
+// Evaluate a dist model against calibrated baselines on the held-out eval
+// tier. Baselines: the oracle's root search score (depth oracleDepth at
+// oracleBudget nodes, tt+ord, champion Classic weights), models/pst_value.txt,
+// and the Classic static eval, each mapped to the Elo scale by a 1-parameter
+// least-squares fit on a calibN-position calibration subsample of TRAIN-tier
+// labels (never eval positions, scores winsorized at the 2nd/98th
+// percentiles), each with one global sigma fit on the subsample's raw rows.
+// Metrics on the eval tier: MAE + RMSE + Spearman vs measured mu (ok-flagged
+// labels), per-row outcome NLL under each predictor's (mu, sigma), and SD
+// validity (correlation of predicted sigma with measured sd). Prints the
+// VERDICT line for the oracle claim: the model must beat the calibrated
+// oracle baseline on BOTH outcome NLL and mu MAE.
+int distEval(const string& modelPath, const string& labelsEval,
+             const string& rawEval, const string& poolEval,
+             const string& ratingsFile, const string& labelsTrain,
+             const string& rawTrain, int calibN = 800, int oracleDepth = 8,
+             unsigned long long oracleBudget = 2000000ULL);
+
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,

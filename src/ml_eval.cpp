@@ -76,6 +76,27 @@ int mlValueScore(int turnColor, int slot) {
     return mlSquashToEval(m->forward(feats, MLV_FEATURES), m->outputScale());
 }
 
+bool mlValueScoreDist(int turnColor, int slot, double& muElo, double& sdElo) {
+    Model* m = mlGetModel(slot);
+    DistModel* dm = m ? dynamic_cast<DistModel*>(m) : nullptr;
+    if (!dm) return false;
+    int nw = nearWinCheck(turnColor);
+    if (nw) { muElo = (nw > 0) ? 99999.0 : -99999.0; sdElo = 0.0; return true; }
+    float mu, sd;
+    if (dm->featureVersion() == 2) {
+        float feats[MLV2_FEATURES];
+        mlExtractValueFeaturesV2(turnColor, feats);
+        dm->forwardDist(feats, MLV2_FEATURES, mu, sd);
+    } else {
+        float feats[MLV_FEATURES];
+        mlExtractValueFeatures(turnColor, feats);
+        dm->forwardDist(feats, MLV_FEATURES, mu, sd);
+    }
+    muElo = mu * ELO_PER_LOGIT;
+    sdElo = sd * ELO_PER_LOGIT;
+    return true;
+}
+
 // ============================================================
 // INCREMENTAL VALUE PATH (feature v2 accumulator)
 // ============================================================

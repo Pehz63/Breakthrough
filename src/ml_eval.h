@@ -37,6 +37,13 @@ void   mlClearSlots();
 // empty, so callers always get a usable number.
 int mlValueScore(int turnColor, int slot);
 
+// Distribution accessor: mean and SD of the current board's White advantage,
+// in Elo, from the DistModel in `slot`. Returns false (outputs untouched) when
+// the slot holds no dist model. A decided position (nearWinCheck) returns true
+// with muElo = +-99999 and sdElo = 0. Analysis/GUI surface; search never
+// reads the SD.
+bool mlValueScoreDist(int turnColor, int slot, double& muElo, double& sdElo);
+
 // ---- Incremental ML value path (sparse piece-square models, feature v2) ----
 // mlIncrementalBegin: if the model in `slot` is a value head over the v2 sparse
 // piece-square features, seed g_mlAcc (bias + occupied piece-square weights, one

@@ -9,6 +9,7 @@
 #include "ml_train.h"
 #include "ai_eval.h"
 #include "ranking.h"
+#include "datastore.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -811,7 +812,7 @@ TEST_CASE("DistModel - trainStepRow matches finite differences through both head
     }
     float before[4];
     for (int i = 0; i < 4; i++) before[i] = *params[i];
-    d.trainStepRow(x, 6, y, dg, v, lr, 0.0f);
+    d.trainStepRow(x, 6, y, dg, v, lr, lr, 0.0f);   // equal head rates so one lr divides out
     for (int i = 0; i < 4; i++) {
         double analytic = (double)(before[i] - *params[i]) / lr;   // step = -lr * grad
         REQUIRE(analytic == Approx(num[i]).epsilon(0.05).margin(1e-4));
@@ -827,13 +828,33 @@ TEST_CASE("DistModel - s head frozen only against outward pushes at the clamp") 
     float x[4] = { 1.0f, 0.5f, -0.5f, 0.25f };
     // y=0 with u>0: descent would push s further UP (outward) -> frozen.
     float sb = sh->bias, mb = mu->bias;
-    d.trainStepRow(x, 4, 0.0f, 0.5f, 0.0f, 0.1f, 0.0f);
+    d.trainStepRow(x, 4, 0.0f, 0.5f, 0.0f, 0.1f, 0.1f, 0.0f);
     REQUIRE(sh->bias == sb);
     REQUIRE(mu->bias != mb);            // mu head still learns
     // y=1 with u>0: descent pushes s DOWN (inward) -> allowed.
     sb = sh->bias;
-    d.trainStepRow(x, 4, 1.0f, 0.5f, 0.0f, 0.1f, 0.0f);
+    d.trainStepRow(x, 4, 1.0f, 0.5f, 0.0f, 0.1f, 0.1f, 0.0f);
     REQUIRE(sh->bias < sb);
+}
+
+TEST_CASE("mlValueScoreDist - reads mean and SD from a dist slot") {
+    LinearModel* mu = makeV2Model();
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    sh->bias = 0.3f;
+    DistModel* d = new DistModel(mu, sh);
+    mlSetModel(0, d);
+    clearBoard(); board[2][2] = WHITE; board[5][5] = BLACK;
+    double muElo = 0, sdElo = 0;
+    REQUIRE(mlValueScoreDist(White, 0, muElo, sdElo));
+    REQUIRE(sdElo > 0.0);
+    mlSetModel(1, makeV2Model());                       // a plain linear slot
+    REQUIRE_FALSE(mlValueScoreDist(White, 1, muElo, sdElo));
+    // Decided position: sentinel mu, zero sd.
+    clearBoard(); board[3][SIZE-2] = WHITE;
+    REQUIRE(mlValueScoreDist(White, 0, muElo, sdElo));
+    REQUIRE(muElo > 90000.0);
+    REQUIRE(sdElo == 0.0);
+    mlClearSlots();
 }
 
 TEST_CASE("Dist+linear mu: incremental leaf matches full recompute over a walk") {
@@ -855,6 +876,91 @@ TEST_CASE("Dist+linear mu: incremental leaf matches full recompute over a walk")
     REQUIRE(g_mlWalkAccMismatch == 0);
     REQUIRE(g_mlWalkLeafMismatch == 0);
     mlClearSlots();
+}
+
+TEST_CASE("dist-value + dist-eval - synthetic end-to-end (position-oracle Stage G/H)") {
+    // Ten positions from board1 (straight pushes on cols 0..4, alternating
+    // sides), a synthetic truth mu rising from -0.9 to +0.9 logits (sigma 1),
+    // and raw outcomes drawn from the probit model at +-300 Elo gaps.
+    std::vector<string> encs;
+    std::vector<string> hexes;
+    REQUIRE(reloadBoard("boards\\board1.txt"));
+    for (int c = 0; c < 5; c++) {
+        PosKey kw = positionKey(White, false);
+        encs.push_back(kw.enc);
+        char hx[24]; snprintf(hx, sizeof(hx), "%016llx", kw.hash); hexes.push_back(hx);
+        REQUIRE(tryMoveQuickWhite(c, 1, c));
+        simulateMoveWhite(c, 1, c);
+        PosKey kb = positionKey(Black, false);
+        encs.push_back(kb.enc);
+        snprintf(hx, sizeof(hx), "%016llx", kb.hash); hexes.push_back(hx);
+        REQUIRE(tryMoveQuickBlack(c, 6, c));
+        simulateMoveBlack(c, 6, c);
+    }
+    {
+        std::ofstream pool("build\\dist_pool.jsonl", std::ios::trunc);
+        for (size_t i = 0; i < encs.size(); i++)
+            pool << "{\"enc\":\"" << encs[i] << "\",\"h\":\"" << hexes[i] << "\",\"ply\":" << i
+                 << ",\"stm\":\"" << ((i % 2 == 0) ? "W" : "B") << "\",\"md\":0,\"seen\":1}\n";
+        std::ofstream rat("build\\dist_ratings.tsv", std::ios::trunc);
+        rat << "rank\telo\tpm\tgames\tid\n";
+        rat << "1\t400\t10\t500\ta\n";
+        rat << "2\t100\t12\t500\tb\n";
+        std::ofstream meta("build\\dist_raw.jsonl.meta.json", std::ios::trunc);
+        meta << "{\"pool\":\"build/dist_pool.jsonl\",\"ladder\":[\"a\",\"b\"]}\n";
+        std::ofstream raw("build\\dist_raw.jsonl", std::ios::trunc);
+        double dLogit = 300.0 / ELO_PER_LOGIT;
+        srand(555);
+        ProbitGrad g;
+        for (size_t i = 0; i < encs.size(); i++) {
+            double truthMu = -0.9 + 0.2 * (double)i;
+            for (int pair = 0; pair < 2; pair++) {
+                double d = (pair == 0) ? dLogit : -dLogit;
+                for (int n = 0; n < 20; n++) {
+                    probitPoint(truthMu, 0.0, d, 0.0, 1.0, g);
+                    int y = ((double)rand() / ((double)RAND_MAX + 1.0)) < g.p ? 1 : 0;
+                    raw << "{\"h\":\"" << hexes[i] << "\",\"wi\":" << (pair == 0 ? 0 : 1)
+                        << ",\"bi\":" << (pair == 0 ? 1 : 0) << ",\"g\":" << n
+                        << ",\"seed\":1,\"y\":" << y << ",\"p\":30}\n";
+                }
+            }
+        }
+    }
+
+    REQUIRE(trainDistValue("build\\dist_model", "build\\dist_raw.jsonl", "build\\dist_pool.jsonl",
+                           "build\\dist_ratings.tsv", 30, 0.1, 0.02, 0.0, 4242,
+                           "linear", std::vector<int>(), "linear", std::vector<int>(),
+                           0.0, false, 0, false, "") == 0);
+    Model* m = loadModel("build\\dist_model.txt");
+    DistModel* dml = dynamic_cast<DistModel*>(m);
+    REQUIRE(dml != nullptr);
+    float f[MLV2_FEATURES];
+    int stm = White;
+    REQUIRE(decodePositionEnc(encs[0], stm));
+    mlExtractValueFeaturesV2(stm, f);
+    float mu0, sg0;
+    dml->forwardDist(f, MLV2_FEATURES, mu0, sg0);
+    REQUIRE(decodePositionEnc(encs[9], stm));
+    mlExtractValueFeaturesV2(stm, f);
+    float mu9, sg9;
+    dml->forwardDist(f, MLV2_FEATURES, mu9, sg9);
+    REQUIRE(mu9 > mu0);              // recovered ordering follows the truth
+    REQUIRE(mu0 < 0.0f);
+    REQUIRE(mu9 > 0.0f);
+    REQUIRE(sg0 > 0.0f);
+    delete m;
+
+    // score CLI over the pool file.
+    REQUIRE(scoreBoards("build\\dist_model.txt", "build\\dist_pool.jsonl", "", 'w') == 0);
+
+    // labelfit on the same store, then dist-eval end-to-end with a cheap oracle
+    // (depth 2, small budget) standing in for the d8 (protocol test, not the
+    // real verdict).
+    REQUIRE(rankLabelFit("build\\dist_raw.jsonl", "build\\dist_pool.jsonl", "build\\dist_ratings.tsv",
+                         "build\\dist_labels.jsonl", 8, false) == 0);
+    REQUIRE(distEval("build\\dist_model.txt", "build\\dist_labels.jsonl", "build\\dist_raw.jsonl",
+                     "build\\dist_pool.jsonl", "build\\dist_ratings.tsv", "build\\dist_labels.jsonl",
+                     "build\\dist_raw.jsonl", 10, 2, 4000) == 0);
 }
 
 TEST_CASE("Dist+MLP mu: incremental stays off, full-scan leaf is used") {
