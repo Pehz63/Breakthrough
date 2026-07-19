@@ -2352,16 +2352,18 @@ int distEval(const string& modelPath, const string& labelsEval, const string& ra
     std::map<string, int> ptIdx;
     for (size_t i = 0; i < Pt.size(); i++) ptIdx[Pt[i].hex] = (int)i;
 
+    // ok = clean fit; thin = clean but under 32 rows (honest SE, just noisy) --
+    // both usable. Degenerate fits (allwin/allloss/clamped) are excluded.
     std::vector<int> calibPos;
     std::vector<double> calibMu;
     for (size_t i = 0; i < Lt.size() && (int)calibPos.size() < calibN; i++) {
-        if (Lt[i].flags != "ok") continue;
+        if (Lt[i].flags != "ok" && Lt[i].flags != "thin") continue;
         std::map<string, int>::iterator it = ptIdx.find(Lt[i].hex);
         if (it == ptIdx.end()) continue;
         calibPos.push_back(it->second);
         calibMu.push_back(Lt[i].mu);
     }
-    if ((int)calibPos.size() < 8) { cout << "ERROR: only " << calibPos.size() << " ok-flagged train labels for calibration\n"; delete mm; return 1; }
+    if ((int)calibPos.size() < 8) { cout << "ERROR: only " << calibPos.size() << " usable (ok/thin) train labels for calibration\n"; delete mm; return 1; }
 
     // Baselines.
     Model* pst = loadModel("models/pst_value.txt");
@@ -2449,18 +2451,19 @@ int distEval(const string& modelPath, const string& labelsEval, const string& ra
         }
     }
 
-    // Metrics vs ok-flagged labels.
+    // Metrics vs clean-fit labels (ok or thin; degenerate fits excluded).
     std::vector<int> okPos;
     std::vector<double> labMu, labSd;
     for (size_t i = 0; i < Le.size(); i++) {
-        if (Le[i].flags != "ok") continue;
+        if (Le[i].flags != "ok" && Le[i].flags != "thin") continue;
         std::map<string, int>::iterator it = peIdx.find(Le[i].hex);
         if (it == peIdx.end()) continue;
         okPos.push_back(it->second);
         labMu.push_back(Le[i].mu);
         labSd.push_back(Le[i].sd);
     }
-    cout << "\ndist-eval: " << okPos.size() << " ok-flagged eval labels, " << Re.size()
+    if (okPos.empty()) { cout << "ERROR: no clean-fit eval labels to score against\n"; delete pst; delete mm; return 1; }
+    cout << "\ndist-eval: " << okPos.size() << " clean-fit eval labels, " << Re.size()
          << " eval raw rows, calibration on " << calibPos.size() << " train positions\n";
     cout << "predictor        MAE      RMSE   spearman  outcomeNLL\n";
     double vMae[NBASE + 1], vNll[NBASE + 1];

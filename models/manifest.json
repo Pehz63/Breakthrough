@@ -1,3 +1,3 @@
 [
-  {"id":"dist_1784437905_e30","type":"dist","head":"value","regime":"dist-value","conditions":"mu=linear,s=linear,lr=0.100000,lrS=0.020000,l2=0.000000,eloSe=0,store=build\\dist_raw.jsonl","epoch":30,"games":0,"loss":0.571363,"winrate":0.0625,"elo":1029,"path":"build\\dist_model_ckpt30.txt"}
+  {"id":"dist_1784469025_e30","type":"dist","head":"value","regime":"dist-value","conditions":"mu=linear,s=linear,lr=0.100000,lrS=0.020000,l2=0.000000,eloSe=0,store=build\\dist_raw.jsonl","epoch":30,"games":0,"loss":0.571363,"winrate":0.0625,"elo":1029,"path":"build\\dist_model_ckpt30.txt"}
 ]

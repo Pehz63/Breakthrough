@@ -87,6 +87,17 @@ agents/library.txt
 # results.jsonl copy (it mirrors the already-ignored data/tourney.jsonl).
 runs/**/results.jsonl
 
+# Position-oracle label pipeline (tools/label_study.ps1). The raw playout
+# stores are bulky and regenerable only by replaying the campaign, so back
+# them up outside git; their .meta.json sidecars (the rung-id mapping), the
+# position pools, ladder specs, fitted labels, frozen ratings snapshot, and
+# the study ledger are small durable records and stay committed.
+data/labels/raw_train.jsonl
+data/labels/raw_eval.jsonl
+data/labels/*.jsonl.s*
+data/labels/dry/
+data/labels/logs/
+
 # Agent Elo ranking (rank.exe). Unlike data/*.jsonl, ranking/matches.jsonl is
 # deliberately KEPT: it is the never-recomputed match history the ratings are
 # built from. Only per-shard temp files and the gauntlet scratch are ignored.
