@@ -1,6 +1,7 @@
 #include "ml_model.h"
 #include <cmath>
 #include <ostream>
+#include <sstream>
 #include <iomanip>
 
 static inline float sigmoidf(float z) {
@@ -253,6 +254,81 @@ bool ResidualModel::save(const string& path) const {
 }
 
 // ============================================================
+// DIST MODEL (two heads: mu + log-sigma)
+// ============================================================
+void DistModel::forwardDist(const float* x, int m, float& muLogit, float& sigmaLogit) const {
+    muLogit = muHead->forward(x, m);
+    double s = sHead->forward(x, m);
+    if (s < PROBIT_S_MIN) s = PROBIT_S_MIN;
+    if (s > PROBIT_S_MAX) s = PROBIT_S_MAX;
+    sigmaLogit = (float)exp(s);
+}
+
+float DistModel::trainStepRow(const float* x, int m, float y, float dLogit, float extraVar,
+                              float lr, float l2) {
+    double mu   = muHead->forward(x, m);
+    double sRaw = sHead->forward(x, m);
+    double s = sRaw;
+    if (s < PROBIT_S_MIN) s = PROBIT_S_MIN;
+    if (s > PROBIT_S_MAX) s = PROBIT_S_MAX;
+    ProbitGrad g;
+    double loss = probitPoint(mu, s, dLogit, extraVar, y, g);
+    muHead->gradStep(x, m, (float)g.gMu, lr, l2);
+    // Projected gradient at the s clamp: block only pushes that would move s
+    // further outside the range (descent direction is -gS).
+    bool outward = (sRaw >= PROBIT_S_MAX && g.gS < 0.0) ||
+                   (sRaw <= PROBIT_S_MIN && g.gS > 0.0);
+    if (!outward) sHead->gradStep(x, m, (float)g.gS, lr, l2);
+    return (float)loss;
+}
+
+float DistModel::trainStepGauss(const float* x, int m, float muLab, float sdLab,
+                                float wMu, float wSd, float lr, float l2) {
+    double mu   = muHead->forward(x, m);
+    double sRaw = sHead->forward(x, m);
+    double sLab = log((sdLab > 1e-6f) ? (double)sdLab : 1e-6);
+    double eMu = mu - muLab;
+    double eS  = sRaw - sLab;
+    muHead->gradStep(x, m, (float)(wMu * eMu), lr, l2);
+    sHead->gradStep(x, m, (float)(wSd * eS), lr, l2);
+    return (float)(0.5 * (wMu * eMu * eMu + wSd * eS * eS));
+}
+
+// Serialize a head's weight block with every key prefixed, so two heads of the
+// same architecture never collide in the flat key=value file.
+static void writePrefixedWeights(std::ostream& f, const char* prefix, const Model* m) {
+    std::ostringstream ss;
+    ss << std::setprecision(9);
+    m->writeWeights(ss);
+    std::istringstream in(ss.str());
+    string line;
+    while (std::getline(in, line))
+        if (!line.empty()) f << prefix << line << "\n";
+}
+
+void DistModel::writeWeights(std::ostream& f) const {
+    writePrefixedWeights(f, "mu_", muHead);
+    writePrefixedWeights(f, "s_", sHead);
+}
+
+bool DistModel::save(const string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) return false;
+    f << std::setprecision(9);
+    f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
+    f << "type=dist\n";
+    f << "mu_type=" << muHead->typeName() << "\n";
+    f << "s_type=" << sHead->typeName() << "\n";
+    f << "head=value\n";
+    f << "feature_version=" << muHead->featureVersion() << "\n";
+    f << "feature_count=" << muHead->featureCount() << "\n";
+    f << "out_scale=" << muHead->outputScale() << "\n";
+    writeWeights(f);
+    return true;
+}
+
+// ============================================================
 // FACTORY / LOADER
 // ============================================================
 Model* makeModel(const string& type, int head, int featVersion, int featCount, float scale) {
@@ -349,6 +425,26 @@ Model* loadModel(const string& path) {
         if (kv.count("teacher")) m->teacher = kv["teacher"];
         return m;
     }
+    if (type == "dist") {
+        string muType = kv.count("mu_type") ? kv["mu_type"] : "linear";
+        string sType  = kv.count("s_type")  ? kv["s_type"]  : "linear";
+        // Split the flat key space into the two heads' prefixed sub-maps
+        // (mu_type/s_type land as a harmless "type" key in each sub-map).
+        map<string, string> muKv, sKv;
+        for (map<string, string>::const_iterator it = kv.begin(); it != kv.end(); ++it) {
+            const string& k = it->first;
+            if (k.compare(0, 3, "mu_") == 0)     muKv[k.substr(3)] = it->second;
+            else if (k.compare(0, 2, "s_") == 0) sKv[k.substr(2)]  = it->second;
+        }
+        Model* mu = (muType == "mlp") ? (Model*)buildMLPFromKV(muKv, head, featVer, n, scale)
+                                      : (Model*)buildLinearFromKV(muKv, head, featVer, n, scale);
+        Model* sh = (sType == "mlp") ? (Model*)buildMLPFromKV(sKv, head, featVer, n, scale)
+                                     : (Model*)buildLinearFromKV(sKv, head, featVer, n, scale);
+        if (!mu || !sh) { delete mu; delete sh; return nullptr; }
+        DistModel* m = new DistModel(mu, sh);
+        if (kv.count("teacher")) m->teacher = kv["teacher"];
+        return m;
+    }
     return nullptr;   // unimplemented architecture
 }
 
@@ -359,6 +455,7 @@ const ModelTypeDef g_modelTypes[] = {
     { "linear",      "Linear: bias + weighted sum of features. Fast; value or policy head.", true  },
     { "mlp",         "Multilayer perceptron (1-2 hidden layers), hand-written forward + backprop; ReLU hidden, linear output.", true },
     { "residual",    "Frozen chip-count skip + an inner model (linear or mlp): output = skipW*matDiff + inner. Learns the residual.", true },
+    { "dist",        "Two-headed distributional value model: mu head (White advantage in logits, the evaluator output) + log-sigma head (volatility), probit-BCE trained on rated-gap playout outcomes.", true },
     { "nnue",        "Efficiently updatable NN; designed to plug into the g_evalPos accumulator.", false },
     { "transformer", "Squares-as-tokens self-attention; teacher / offline label generator only.", false },
 };

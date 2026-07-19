@@ -100,7 +100,10 @@ bool mlIncrementalBegin(int slot) {
     // accumulator, so we fall through to false and the full-scan leaf path.
     Model* core = m;
     float skip = 0.0f;
-    if (ResidualModel* rm = dynamic_cast<ResidualModel*>(m)) { skip = rm->skipW; core = rm->inner; }
+    // Unwrap a distributional wrapper to its mean head first: search only ever
+    // reads the mu logit (the sigma head plays no role at the leaf).
+    if (DistModel* dm = dynamic_cast<DistModel*>(core)) core = dm->muHead;
+    if (ResidualModel* rm = dynamic_cast<ResidualModel*>(core)) { skip = rm->skipW; core = rm->inner; }
     LinearModel* lm = dynamic_cast<LinearModel*>(core);
     if (!lm || lm->n != MLV2_FEATURES) return false;
 

@@ -722,3 +722,156 @@ TEST_CASE("gradStep - matches trainStep's update for linear and mlp") {
             REQUIRE(mb.B[k][t] == Approx(ma.B[k][t]).margin(1e-6));
     }
 }
+
+// ============================================================
+// DistModel (position-oracle Stage F)
+// ============================================================
+
+TEST_CASE("DistModel - save/load round trip (linear and mlp heads)") {
+    float f[MLV2_FEATURES];
+    clearBoard(); board[1][2] = WHITE; board[6][5] = BLACK; board[4][4] = BLACK;
+    mlExtractValueFeaturesV2(White, f);
+
+    SECTION("linear heads") {
+        LinearModel* mu = makeV2Model();
+        LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+        sh->bias = -0.7f;
+        for (int i = 0; i < sh->n; i++) sh->w[i] = 0.002f * ((i * 13) % 53) - 0.04f;
+        DistModel d(mu, sh);
+        REQUIRE(d.save("build\\test_dist_lin.tmp"));
+        Model* loaded = loadModel("build\\test_dist_lin.tmp");
+        REQUIRE(loaded != nullptr);
+        REQUIRE(string(loaded->typeName()) == "dist");
+        DistModel* dl = dynamic_cast<DistModel*>(loaded);
+        REQUIRE(dl != nullptr);
+        REQUIRE(dl->featureVersion() == 2);
+        REQUIRE(dl->featureCount() == MLV2_FEATURES);
+        float m1, s1, m2, s2;
+        d.forwardDist(f, MLV2_FEATURES, m1, s1);
+        dl->forwardDist(f, MLV2_FEATURES, m2, s2);
+        REQUIRE(m2 == Approx(m1).margin(1e-4));
+        REQUIRE(s2 == Approx(s1).margin(1e-4));
+        REQUIRE(loaded->forward(f, MLV2_FEATURES) == Approx(m1).margin(1e-6));   // forward == mu
+        REQUIRE(s1 > 0.0f);
+        delete loaded;
+    }
+    SECTION("mlp heads") {
+        srand(31);
+        std::vector<int> h1(1, 6), h2(1, 4);
+        MLPModel* mu = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, h1);
+        mu->initRandom();
+        MLPModel* sh = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, h2);
+        sh->initRandom();
+        DistModel d(mu, sh);
+        REQUIRE(d.save("build\\test_dist_mlp.tmp"));
+        Model* loaded = loadModel("build\\test_dist_mlp.tmp");
+        REQUIRE(loaded != nullptr);
+        DistModel* dl = dynamic_cast<DistModel*>(loaded);
+        REQUIRE(dl != nullptr);
+        REQUIRE(string(dl->muHead->typeName()) == "mlp");
+        REQUIRE(string(dl->sHead->typeName()) == "mlp");
+        float m1, s1, m2, s2;
+        d.forwardDist(f, MLV2_FEATURES, m1, s1);
+        dl->forwardDist(f, MLV2_FEATURES, m2, s2);
+        REQUIRE(m2 == Approx(m1).margin(1e-3));
+        REQUIRE(s2 == Approx(s1).margin(1e-3));
+        delete loaded;
+    }
+}
+
+TEST_CASE("DistModel - trainStepRow matches finite differences through both heads") {
+    srand(99);
+    std::vector<int> hidden(1, 3);
+    MLPModel* mu = new MLPModel(HEAD_VALUE, 1, 6, 900.0f, hidden);
+    mu->initRandom();
+    MLPModel* sh = new MLPModel(HEAD_VALUE, 1, 6, 900.0f, hidden);
+    sh->initRandom();
+    DistModel d(mu, sh);
+    float x[6] = { 0.8f, -0.4f, 0.3f, 1.0f, -0.2f, 0.5f };
+    float y = 1.0f, dg = 0.6f, v = 0.02f, lr = 0.05f;
+
+    // Loss recomputed from scratch, no updates (for finite differences).
+    auto lossAt = [&]() {
+        double m = mu->forward(x, 6);
+        double s = sh->forward(x, 6);
+        if (s < PROBIT_S_MIN) s = PROBIT_S_MIN;
+        if (s > PROBIT_S_MAX) s = PROBIT_S_MAX;
+        ProbitGrad g;
+        return probitPoint(m, s, dg, v, y, g);
+    };
+    float* params[4] = { &mu->W[0][2], &mu->B[1][0], &sh->W[0][4], &sh->B[0][1] };
+    double num[4];
+    const double eps = 1e-3;
+    for (int i = 0; i < 4; i++) {
+        float save = *params[i];
+        *params[i] = save + (float)eps; double lp = lossAt();
+        *params[i] = save - (float)eps; double lm = lossAt();
+        *params[i] = save;
+        num[i] = (lp - lm) / (2 * eps);
+    }
+    float before[4];
+    for (int i = 0; i < 4; i++) before[i] = *params[i];
+    d.trainStepRow(x, 6, y, dg, v, lr, 0.0f);
+    for (int i = 0; i < 4; i++) {
+        double analytic = (double)(before[i] - *params[i]) / lr;   // step = -lr * grad
+        REQUIRE(analytic == Approx(num[i]).epsilon(0.05).margin(1e-4));
+    }
+}
+
+TEST_CASE("DistModel - s head frozen only against outward pushes at the clamp") {
+    LinearModel* mu = new LinearModel(HEAD_VALUE, 1, 4, 900.0f);
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 1, 4, 900.0f);
+    mu->bias = 1.0f;         // mu + d > 0
+    sh->bias = 10.0f;        // raw s far above PROBIT_S_MAX
+    DistModel d(mu, sh);
+    float x[4] = { 1.0f, 0.5f, -0.5f, 0.25f };
+    // y=0 with u>0: descent would push s further UP (outward) -> frozen.
+    float sb = sh->bias, mb = mu->bias;
+    d.trainStepRow(x, 4, 0.0f, 0.5f, 0.0f, 0.1f, 0.0f);
+    REQUIRE(sh->bias == sb);
+    REQUIRE(mu->bias != mb);            // mu head still learns
+    // y=1 with u>0: descent pushes s DOWN (inward) -> allowed.
+    sb = sh->bias;
+    d.trainStepRow(x, 4, 1.0f, 0.5f, 0.0f, 0.1f, 0.0f);
+    REQUIRE(sh->bias < sb);
+}
+
+TEST_CASE("Dist+linear mu: incremental leaf matches full recompute over a walk") {
+    int lvIdx = evalIdx("LearnedValue");
+    int params[MAX_EVAL_PARAMS] = { 0 };
+    LinearModel* mu = makeV2Model();
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    sh->bias = 0.5f;
+    DistModel* d = new DistModel(mu, sh);
+    mlSetModel(0, d);   // slot owns d + heads; `mu` pointer stays valid for mlAccFull
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    evalBeginSearch(lvIdx, params);
+    REQUIRE(g_mlIncremental);                          // linear mu head -> incremental on
+    REQUIRE(g_mlAcc == Approx(mlAccFull(mu)).margin(1e-6));   // accumulator tracks the MU logit
+    g_mlWalkAccMismatch = 0; g_mlWalkLeafMismatch = 0;
+    mlWalk(mu, 0, params, White, 2);
+    evalEndSearch();
+    REQUIRE(g_mlWalkAccMismatch == 0);
+    REQUIRE(g_mlWalkLeafMismatch == 0);
+    mlClearSlots();
+}
+
+TEST_CASE("Dist+MLP mu: incremental stays off, full-scan leaf is used") {
+    int lvIdx = evalIdx("LearnedValue");
+    int params[MAX_EVAL_PARAMS] = { 0 };
+    srand(17);
+    std::vector<int> hidden(1, 8);
+    MLPModel* mu = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+    mu->initRandom();
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    DistModel* d = new DistModel(mu, sh);
+    mlSetModel(0, d);
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    evalBeginSearch(lvIdx, params);
+    REQUIRE(g_mlIncremental == false);                 // MLP mu head has no linear accumulator
+    REQUIRE(evalLeaf(White, lvIdx, params) == mlValueScore(White, 0));   // fallback == full scan
+    evalEndSearch();
+    mlClearSlots();
+}

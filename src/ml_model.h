@@ -190,6 +190,50 @@ struct ResidualModel : public Model {
     bool save(const string& path) const override;
 };
 
+// ---- Dist model: two-headed distributional value model (mu + log-sigma) ----
+// muHead predicts the position's White advantage in logit units (the evaluator
+// head: forward() returns it, so a DistModel drops into LearnedValue and the
+// tanh squash unchanged; multiply by ELO_PER_LOGIT for calibrated Elo). sHead
+// predicts s = log(sigma), the volatility of that advantage, clamped to
+// [PROBIT_S_MIN, PROBIT_S_MAX] at read time. Both heads are trainable Models
+// over the SAME feature layout (linear or mlp), serialized inline with mu_/s_
+// key prefixes. Training pushes probitPoint gradients through each head via
+// gradStep. Owns both heads.
+struct DistModel : public Model {
+    Model* muHead;
+    Model* sHead;
+
+    DistModel(Model* mu, Model* s) : muHead(mu), sHead(s) {}
+    ~DistModel() override { delete muHead; delete sHead; }
+    const char* typeName()  const override { return "dist"; }
+    int  head()             const override { return HEAD_VALUE; }
+    int  featureVersion()   const override { return muHead->featureVersion(); }
+    int  featureCount()     const override { return muHead->featureCount(); }
+    float outputScale()     const override { return muHead->outputScale(); }
+    float forward(const float* x, int m) const override { return muHead->forward(x, m); }
+
+    // Mean and sigma, both in logit units (sigma already exponentiated).
+    void forwardDist(const float* x, int m, float& muLogit, float& sigmaLogit) const;
+
+    // One SGD step on a raw playout outcome: y in {0,1}, dLogit = the players'
+    // Elo gap in logit units, extraVar = known rating-SE variance in logit^2
+    // (0 = off). Returns the pre-update BCE loss. The s head is frozen against
+    // OUTWARD pushes while its raw output sits on a clamp (an inward gradient
+    // still applies, so a drifted head can recover).
+    float trainStepRow(const float* x, int m, float y, float dLogit, float extraVar,
+                       float lr, float l2);
+    // Secondary mode: weighted regression toward a fitted label (muLab in
+    // logits, sdLab = sigma in logits). Returns the weighted squared loss.
+    float trainStepGauss(const float* x, int m, float muLab, float sdLab,
+                         float wMu, float wSd, float lr, float l2);
+    // Generic scaffolding entry: target = outcome, offset carries dLogit.
+    float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override {
+        return trainStepRow(x, m, target, offset, 0.0f, lr, l2);
+    }
+    bool save(const string& path) const override;
+    void writeWeights(std::ostream& f) const override;
+};
+
 // ---- Factory / loader ----
 // Construct an empty model of the named type (caller fills weights), or nullptr
 // for an unimplemented / unknown type. (mlp/residual need extra structure and are
