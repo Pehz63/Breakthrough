@@ -33,6 +33,17 @@ struct EvalDef {
 extern const EvalDef g_evaluators[];
 extern const int     g_evalCount;
 
+// The Advanced evaluator's fixed parameter-slot layout (paramCount 16; slots
+// 0..4 are the standard turn/chip/wall/column/forward layout shared with
+// Experimental). Exposed so other modules can read specific slots, e.g. the
+// ranking labeler's check that a nonzero Noise weight makes an agent stochastic.
+#define ADV_PARAMS 16
+enum AdvParamIdx {
+    ADV_SUPPORT = 5, ADV_CENTER = 6, ADV_MOBILITY = 7, ADV_HOLE = 8,
+    ADV_CONTROL = 9, ADV_OPEN = 10, ADV_RACE = 11, ADV_OVEREXT = 12,
+    ADV_NOISE = 13, ADV_NOISESEED = 14, ADV_RACEWIN = 15
+};
+
 // Near-win shortcut: WhiteWin / BlackWin if the position is decided one move from a
 // goal row, else 0. Exposed so the learned evaluator and 1-ply explorers reuse the
 // exact same decided-position logic as the Classic/Experimental leaf scores.

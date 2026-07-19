@@ -242,3 +242,83 @@ int rankOpenerBias(const std::string& idA, const std::string& idB, int games,
 // which a single-continuation measurement (rankOpenerBias) cannot distinguish.
 int rankOpenerSwap(const std::string& idA, const std::string& idB, int games,
                    const std::string& board, int openPlies, unsigned runSeed);
+
+// ---- Position-oracle label pipeline (posgen / label / labelfit) ----
+// Measures per-position Elo advantage empirically: posgen builds a pool of
+// distinct positions from stored games, label plays DESIGNED fresh games from
+// each position between rated ladder agents at controlled Elo gaps, and
+// labelfit turns the raw outcomes into per-position (mu, sigma) labels via the
+// shared probitPoint math (ml_model.h). Raw rows are keyed by rung indices
+// whose id list is frozen in the store's .meta.json sidecar, so labels can be
+// re-fit under any future ratings snapshot without replaying a single game.
+
+// Build a position pool: replay a deterministic sample of storeFile's matches
+// (the extract replay loop + determinism-drift guard) and emit DISTINCT
+// positions as JSONL rows {"enc","h","ply","stm","md","seen"}, deduped by enc,
+// stratified by ply band ({6-10, 11-16, 17-24, 25-34, 35-44}, quota = target/5
+// each) and |material diff| bucket ({0,1,2,>=3}, cap = bandQuota/3), skipping
+// decided (nearWinCheck) positions and plies outside [minPly, maxPly], with at
+// most perGameCap positions kept per game. Positions whose hash % 17 == 0 go
+// to outEval, the rest to outTrain (hash-disjoint tiers by construction). If
+// an out file already exists its encs pre-seed the dedup set and new rows are
+// APPENDED (targets count new rows), so a second pass over another store
+// merges cleanly.
+int rankPosGen(const std::string& storeFile, const std::string& board,
+               const std::string& outTrain, const std::string& outEval,
+               int targetTrain, int targetEval, int perGameCap,
+               int minPly, int maxPly, unsigned seed);
+
+// A labeling-ladder spec (hand-edited text): "rung <i> <canonical id>" lines
+// declare the ladder agents (indices sequential from 0, ids copied verbatim
+// from ratings.tsv), and "pair <wi> <bi> <games> [mod <k> <r>]" lines declare
+// the per-position design: play <games> games with rung wi as White and rung
+// bi as Black; the optional mod clause restricts the pairing to positions with
+// hash % k == r (the premium-rung ration knob). '#' starts a comment.
+struct LabelRung    { std::string id; };
+struct LabelPairing { int wi, bi, games, modK, modR; };
+bool rankLoadLadder(std::istream& in, std::vector<LabelRung>& rungs,
+                    std::vector<LabelPairing>& pairs, std::string& err);
+
+// Play the ladder design over a position pool, appending raw outcome rows
+// {"h","wi","bi","g","seed","y","p"} to outFile plus a <outFile>.meta.json
+// sidecar whose "ladder" id array is the AUTHORITATIVE rung-index mapping for
+// that store (the hand-edited ladder file may change later; the meta copy may
+// not, and a resumed run hard-errors on a mismatch). Positions are sharded by
+// pool index (idx % ofK == shard) so each position's whole seed stream lives
+// in one shard; per-game seeds fold in the ids, pairing ordinal, and position
+// hash, so any worker count reproduces identical games. Without --resume an
+// existing outFile is truncated; with resume, rows already in outFile (and in
+// doneFile, the merged master, if given) are counted per (h, wi, bi) and only
+// the missing games are played (exact top-up). maxPositions > 0 caps how many
+// positions may have NEW games played this invocation (chunked multi-day
+// runs). Validation: every rung id must parse and its model slots load; rungs
+// with an identity opener are rejected (opener ply counters assume games start
+// at ply 0); pairings between two deterministic rungs are rejected (they
+// replay one game). Draws (400-half cap) are dropped and tallied in the meta.
+int rankLabel(const std::string& poolFile, const std::string& ladderFile,
+              const std::string& outFile, unsigned runSeed, int shard, int ofK,
+              bool resume, const std::string& doneFile, int maxPositions);
+
+// 2-parameter probit MLE for ONE position's raw outcomes: d[i]/v[i] in logit
+// units, y[i] in {0,1}. Fits (mu, s = log sigma) by adaptive gradient descent
+// with s projected into [PROBIT_S_MIN, PROBIT_S_MAX] (mu into [-10, 10]),
+// then standard errors from the numeric observed Fisher information (99.0
+// sentinels when the information matrix is degenerate, e.g. unanimous
+// outcomes). Returns iterations used.
+int rankFitMuSigma(const std::vector<double>& d, const std::vector<double>& v,
+                   const std::vector<double>& y, double& mu, double& s,
+                   double& seMu, double& seS);
+
+// Join a raw label store to a ratings snapshot and fit every position: emits
+// labels JSONL {"enc","h","mu_elo","sd_elo","se_mu","se_sd","n","nll","flags"}
+// (flags: ok | allwin | allloss | clamped | thin) in pool-file order, plus a
+// per-pairing QC table (games, empirical White-win rate, mean fitted p) and a
+// pooled intercept-only baseline NLL. Rung Elos come from the store meta's
+// ladder id array joined to ratingsFile (elo + pm columns, id last); with
+// useRatingSe, v = (pmW^2 + pmB^2) in logit^2 rides into every fit. This is
+// also the free re-fit path after a future ratings refit: same raw rows, new
+// ratingsFile. Positions with fewer than minRows raw rows are skipped (and
+// any fit under 32 rows is tagged thin).
+int rankLabelFit(const std::string& storeFile, const std::string& poolFile,
+                 const std::string& ratingsFile, const std::string& outFile,
+                 int minRows, bool useRatingSe);

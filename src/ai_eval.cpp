@@ -82,12 +82,8 @@ static inline int forwardContrib(int x, int y, int fwdW) {
 // (Docs/axioms.md D5). Each helper serves BOTH the full board scan
 // (evalPosFull) and the per-move local delta (evalPosLocal), so the two paths
 // cannot diverge (the theory-13 lesson).
-#define ADV_PARAMS 16
-enum AdvParamIdx {
-    ADV_SUPPORT = 5, ADV_CENTER = 6, ADV_MOBILITY = 7, ADV_HOLE = 8,
-    ADV_CONTROL = 9, ADV_OPEN = 10, ADV_RACE = 11, ADV_OVEREXT = 12,
-    ADV_NOISE = 13, ADV_NOISESEED = 14, ADV_RACEWIN = 15
-};
+// (ADV_PARAMS and the AdvParamIdx slot enum live in ai_eval.h so other modules
+// can read the fixed layout, e.g. the ranking labeler's jitter-stochasticity check.)
 
 // Support: diagonal same-color adjacent pairs. The diagonal-behind piece is
 // exactly the piece that recaptures after a capture (Docs/axioms.md Lemma C),

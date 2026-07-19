@@ -6,6 +6,7 @@
 #include "ml_model.h"
 #include "ml_eval.h"
 #include "datastore.h"
+#include <algorithm>
 #include <sstream>
 #include <set>
 #include <cstdlib>
@@ -898,4 +899,290 @@ TEST_CASE("decodePositionEnc - roundtrip, counters, and rejection") {
     REQUIRE_FALSE(decodePositionEnc(badSq, stm));
     string badSide = good; badSide[SIZE * SIZE] = 'x';
     REQUIRE_FALSE(decodePositionEnc(badSide, stm));
+}
+
+// ============================================================
+// Position-oracle label pipeline (posgen / label / labelfit)
+// ============================================================
+
+// Tiny JSON field extractors matching ranking.cpp's writer format (its own
+// jsonStr/jsonNum are file-static, so the tests carry their own copies).
+static bool jsonFieldStr(const string& line, const string& key, string& out) {
+    size_t k = line.find("\"" + key + "\":\"");
+    if (k == string::npos) return false;
+    size_t s = k + key.size() + 4;
+    size_t e = line.find('"', s);
+    if (e == string::npos) return false;
+    out = line.substr(s, e - s);
+    return true;
+}
+static bool jsonFieldNum(const string& line, const string& key, double& out) {
+    size_t k = line.find("\"" + key + "\":");
+    if (k == string::npos) return false;
+    size_t s = k + key.size() + 3;
+    if (s < line.size() && line[s] == '"') return false;
+    try { out = std::stod(line.substr(s)); } catch (...) { return false; }
+    return true;
+}
+
+// (slurpFile lives in the Pairgen section above and is reused here.)
+static std::vector<string> fileLines(const string& path) {
+    std::ifstream f(path.c_str());
+    std::vector<string> out;
+    string line;
+    while (std::getline(f, line)) if (!line.empty()) out.push_back(line);
+    return out;
+}
+
+TEST_CASE("rankLoadLadder - parses good specs and rejects bad ones") {
+    std::vector<LabelRung> rungs;
+    std::vector<LabelPairing> pairs;
+    string err;
+
+    std::istringstream good(
+        "# ladder comment\n"
+        "rung 0 ab(d2)@1.classic(t1,c4,w0,l0)@2\n"
+        "rung 1 ab(d2)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1   # stochastic\n"
+        "pair 1 0 3\n"
+        "pair 0 1 3\n"
+        "pair 1 1 2 mod 2 0\n");
+    REQUIRE(rankLoadLadder(good, rungs, pairs, err));
+    REQUIRE(rungs.size() == 2);
+    REQUIRE(pairs.size() == 3);
+    REQUIRE(pairs[2].modK == 2);
+    REQUIRE(pairs[2].games == 2);
+
+    std::istringstream badIdx("rung 1 someid\n");
+    REQUIRE_FALSE(rankLoadLadder(badIdx, rungs, pairs, err));
+    std::istringstream badPair("rung 0 someid\npair 0 5 3\n");
+    REQUIRE_FALSE(rankLoadLadder(badPair, rungs, pairs, err));
+    std::istringstream badMod("rung 0 someid\npair 0 0 3 mod 0 0\n");
+    REQUIRE_FALSE(rankLoadLadder(badMod, rungs, pairs, err));
+    std::istringstream badKind("rungx 0 someid\n");
+    REQUIRE_FALSE(rankLoadLadder(badKind, rungs, pairs, err));
+    std::istringstream noPairs("rung 0 someid\n");
+    REQUIRE_FALSE(rankLoadLadder(noPairs, rungs, pairs, err));
+}
+
+// Build a 3-position micro pool from board1 (start + two one-move successors)
+// and the standard hex key format. Returns the pool path.
+static string writeMicroPool() {
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    std::vector<std::pair<string, unsigned long long> > rows;
+    PosKey k0 = positionKey(White, false);
+    rows.push_back(std::make_pair(k0.enc, k0.hash));
+    // One White move: a2-a3 equivalent (x=0: y=1 -> straight ahead).
+    REQUIRE(tryMoveQuickWhite(0, 1, 0));
+    bool cap = simulateMoveWhite(0, 1, 0);
+    PosKey k1 = positionKey(Black, false);
+    rows.push_back(std::make_pair(k1.enc, k1.hash));
+    // One Black reply: h7-h6 equivalent (x=7, y=6 -> straight ahead).
+    REQUIRE(tryMoveQuickBlack(7, 6, 7));
+    bool cap2 = simulateMoveBlack(7, 6, 7);
+    PosKey k2 = positionKey(White, false);
+    rows.push_back(std::make_pair(k2.enc, k2.hash));
+    unsimulateMoveBlack(7, 6, 7, cap2);
+    unsimulateMoveWhite(0, 1, 0, cap);
+
+    string path = "build/label_pool.jsonl";
+    std::ofstream f(path.c_str(), std::ios::trunc);
+    for (size_t i = 0; i < rows.size(); i++) {
+        char hex[24];
+        snprintf(hex, sizeof(hex), "%016llx", rows[i].second);
+        f << "{\"enc\":\"" << rows[i].first << "\",\"h\":\"" << hex << "\",\"ply\":" << i
+          << ",\"stm\":\"" << ((i % 2 == 0) ? "W" : "B") << "\",\"md\":0,\"seen\":1}\n";
+    }
+    return path;
+}
+
+static string writeMicroLadder() {
+    string path = "build/label_ladder.txt";
+    std::ofstream f(path.c_str(), std::ios::trunc);
+    f << "rung 0 ab(d2)@1.classic(t1,c4,w0,l0)@2\n";
+    f << "rung 1 ab(d2)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1\n";
+    f << "pair 1 0 3\n";
+    f << "pair 0 1 3\n";
+    f << "pair 1 1 2 mod 2 0\n";
+    return path;
+}
+
+TEST_CASE("rank label - deterministic, shard-invariant, resumable") {
+    string pool = writeMicroPool();
+    string ladder = writeMicroLadder();
+
+    // Determinism: two fresh runs are byte-identical.
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw.jsonl", 9, 0, 1, false, "", 0) == 0);
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw2.jsonl", 9, 0, 1, false, "", 0) == 0);
+    string full = slurpFile("build/label_raw.jsonl");
+    REQUIRE(full.size() > 0);
+    REQUIRE(full == slurpFile("build/label_raw2.jsonl"));
+
+    // Every row parses and y is 0/1.
+    std::vector<string> lines = fileLines("build/label_raw.jsonl");
+    REQUIRE((int)lines.size() >= 6 * 3 - 2);   // 3 positions x (3+3[+2 mod-gated]) games, no draws at d2
+    for (size_t i = 0; i < lines.size(); i++) {
+        string hex;
+        double wi, bi, y, p;
+        REQUIRE(jsonFieldStr(lines[i], "h", hex));
+        REQUIRE(jsonFieldNum(lines[i], "wi", wi));
+        REQUIRE(jsonFieldNum(lines[i], "bi", bi));
+        REQUIRE(jsonFieldNum(lines[i], "y", y));
+        REQUIRE(jsonFieldNum(lines[i], "p", p));
+        REQUIRE((y == 0.0 || y == 1.0));
+        REQUIRE(p > 0);
+    }
+
+    // Shard invariance: 2-shard union == 1-of-1 run (as line multisets).
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw_s0.jsonl", 9, 0, 2, false, "", 0) == 0);
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw_s1.jsonl", 9, 1, 2, false, "", 0) == 0);
+    std::vector<string> merged = fileLines("build/label_raw_s0.jsonl");
+    std::vector<string> s1 = fileLines("build/label_raw_s1.jsonl");
+    merged.insert(merged.end(), s1.begin(), s1.end());
+    std::vector<string> whole = fileLines("build/label_raw.jsonl");
+    std::sort(merged.begin(), merged.end());
+    std::sort(whole.begin(), whole.end());
+    REQUIRE(merged == whole);
+
+    // Resume: a truncated prefix tops up to exactly the full file.
+    {
+        std::ofstream part("build/label_raw_res.jsonl", std::ios::trunc);
+        for (size_t i = 0; i < 5 && i < lines.size(); i++) part << lines[i] << "\n";
+    }
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw_res.jsonl", 9, 0, 1, true, "", 0) == 0);
+    REQUIRE(slurpFile("build/label_raw_res.jsonl") == full);
+
+    // Fully-labeled store + resume = no new rows.
+    string before = slurpFile("build/label_raw_res.jsonl");
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw_res.jsonl", 9, 0, 1, true, "", 0) == 0);
+    REQUIRE(slurpFile("build/label_raw_res.jsonl") == before);
+
+    // Deterministic-vs-deterministic pairing is rejected.
+    {
+        std::ofstream f("build/label_ladder_bad.txt", std::ios::trunc);
+        f << "rung 0 ab(d2)@1.classic(t1,c4,w0,l0)@2\npair 0 0 2\n";
+    }
+    REQUIRE(rankLabel(pool, "build/label_ladder_bad.txt", "build/label_raw_bad.jsonl", 9, 0, 1, false, "", 0) == 1);
+
+    // Identity-opener rungs are rejected.
+    {
+        std::ofstream f("build/label_ladder_op.txt", std::ios::trunc);
+        f << "rung 0 ab(d2)@1.classic(t1,c4,w0,l0)@2.opener(rand,2)@1\n";
+        f << "rung 1 ab(d2)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1\n";
+        f << "pair 0 1 2\n";
+    }
+    REQUIRE(rankLabel(pool, "build/label_ladder_op.txt", "build/label_raw_op.jsonl", 9, 0, 1, false, "", 0) == 1);
+}
+
+TEST_CASE("rankFitMuSigma - recovers known (mu, sigma) from synthetic outcomes") {
+    // A small true sigma flattens the win curve by less than the sampling
+    // noise at this n, so its MAGNITUDE is not identifiable here (the campaign
+    // uses far denser eval-tier designs for that). What IS testable: exact mu
+    // recovery, sharp-vs-volatile ORDERING, and magnitude recovery for a
+    // large, unmistakable sigma.
+    double gaps[7] = { -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0 };
+    struct Case { double mu, s; } cases[3] = {
+        { 0.5, -0.693 },    // sharp    (sigma 0.5 logits)
+        { 0.5,  1.0   },    // volatile (sigma 2.72 logits)
+        { -1.0, 0.0   }     // moderate (sigma 1 logit)
+    };
+    double fitMu[3], fitS[3];
+    srand(20260718);
+    for (int c = 0; c < 3; c++) {
+        std::vector<double> d, v, y;
+        ProbitGrad g;
+        for (int gi = 0; gi < 7; gi++)
+            for (int rep = 0; rep < 150; rep++) {
+                probitPoint(cases[c].mu, cases[c].s, gaps[gi], 0.0, 1.0, g);
+                double u = (double)rand() / ((double)RAND_MAX + 1.0);
+                d.push_back(gaps[gi]);
+                v.push_back(0.0);
+                y.push_back(u < g.p ? 1.0 : 0.0);
+            }
+        double mu, s, seMu, seS;
+        int iters = rankFitMuSigma(d, v, y, mu, s, seMu, seS);
+        REQUIRE(iters > 0);
+        REQUIRE(std::fabs(mu - cases[c].mu) < 4.0 * seMu + 0.05);
+        REQUIRE(seMu < 1.0);
+        fitMu[c] = mu; fitS[c] = s;
+    }
+    REQUIRE(fitS[1] > fitS[0]);                 // volatile ranks above sharp
+    REQUIRE(exp(fitS[1]) > 0.45 * exp(1.0));    // large sigma recovered in magnitude
+    REQUIRE(exp(fitS[1]) < 2.5  * exp(1.0));
+}
+
+TEST_CASE("rank posgen - deduped, stratified, deterministic pools") {
+    std::remove("build/pool_tr.jsonl");
+    std::remove("build/pool_ev.jsonl");
+    REQUIRE(rankPosGen("ranking/matches.jsonl", "boards/board1.txt",
+                       "build/pool_tr.jsonl", "build/pool_ev.jsonl",
+                       40, 6, 4, 6, 44, 123) == 0);
+    string tr1 = slurpFile("build/pool_tr.jsonl");
+    std::vector<string> tr = fileLines("build/pool_tr.jsonl");
+    std::vector<string> ev = fileLines("build/pool_ev.jsonl");
+    REQUIRE((int)tr.size() > 0);
+
+    std::set<string> encs;
+    for (int t = 0; t < 2; t++) {
+        const std::vector<string>& rows = (t == 0) ? tr : ev;
+        for (size_t i = 0; i < rows.size(); i++) {
+            string enc, hex;
+            double ply;
+            REQUIRE(jsonFieldStr(rows[i], "enc", enc));
+            REQUIRE(jsonFieldStr(rows[i], "h", hex));
+            REQUIRE(jsonFieldNum(rows[i], "ply", ply));
+            REQUIRE(encs.insert(enc).second);              // globally unique
+            REQUIRE(ply >= 6); REQUIRE(ply <= 44);
+            unsigned long long h = strtoull(hex.c_str(), nullptr, 16);
+            if (t == 0) REQUIRE(h % 17 != 0);              // train tier
+            else        REQUIRE(h % 17 == 0);              // eval tier
+            int stm = -1;
+            REQUIRE(decodePositionEnc(enc, stm));
+            REQUIRE(nearWinCheck(stm) == 0);               // undecided positions only
+        }
+    }
+
+    // Determinism: a fresh rerun reproduces the train pool byte-identically.
+    std::remove("build/pool_tr.jsonl");
+    std::remove("build/pool_ev.jsonl");
+    REQUIRE(rankPosGen("ranking/matches.jsonl", "boards/board1.txt",
+                       "build/pool_tr.jsonl", "build/pool_ev.jsonl",
+                       40, 6, 4, 6, 44, 123) == 0);
+    REQUIRE(slurpFile("build/pool_tr.jsonl") == tr1);
+}
+
+TEST_CASE("rank labelfit - joins ratings, fits labels, deterministic") {
+    // Reuse the micro label store from the labeler test (rebuild it here so the
+    // test stands alone).
+    string pool = writeMicroPool();
+    string ladder = writeMicroLadder();
+    REQUIRE(rankLabel(pool, ladder, "build/label_raw_fit.jsonl", 9, 0, 1, false, "", 0) == 0);
+
+    {
+        std::ofstream f("build/label_ratings.tsv", std::ios::trunc);
+        f << "rank\telo\tpm\tgames\tid\n";
+        f << "1\t500\t15\t100\tab(d2)@1.classic(t1,c4,w0,l0)@2\n";
+        f << "2\t350\t18\t100\tab(d2)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1\n";
+    }
+    REQUIRE(rankLabelFit("build/label_raw_fit.jsonl", pool, "build/label_ratings.tsv",
+                         "build/label_labels.jsonl", 1, false) == 0);
+    std::vector<string> lab = fileLines("build/label_labels.jsonl");
+    REQUIRE((int)lab.size() == 3);
+    for (size_t i = 0; i < lab.size(); i++) {
+        double muElo, sdElo, n;
+        string flags;
+        REQUIRE(jsonFieldNum(lab[i], "mu_elo", muElo));
+        REQUIRE(jsonFieldNum(lab[i], "sd_elo", sdElo));
+        REQUIRE(jsonFieldNum(lab[i], "n", n));
+        REQUIRE(jsonFieldStr(lab[i], "flags", flags));
+        REQUIRE(sdElo > 0.0);
+        REQUIRE(n >= 6);
+    }
+    string first = slurpFile("build/label_labels.jsonl");
+    REQUIRE(rankLabelFit("build/label_raw_fit.jsonl", pool, "build/label_ratings.tsv",
+                         "build/label_labels.jsonl", 1, false) == 0);
+    REQUIRE(slurpFile("build/label_labels.jsonl") == first);
+
+    // With rating SEs folded in, the fit still runs (v > 0 path).
+    REQUIRE(rankLabelFit("build/label_raw_fit.jsonl", pool, "build/label_ratings.tsv",
+                         "build/label_labels_se.jsonl", 1, true) == 0);
 }

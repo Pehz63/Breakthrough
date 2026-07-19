@@ -47,6 +47,9 @@ static void usage() {
     cout << "  opener-bias  measure whether the symmetric random opener handicaps a deterministic champion\n";
     cout << "  opener-swap  color-swap recovery test: same random-opener snapshot played out twice with\n";
     cout << "               colors swapped, to separate 'position favors a color' from 'agent recovers better'\n";
+    cout << "  posgen     build a deduped, stratified position pool (train + eval tiers) from stored games\n";
+    cout << "  label      play a designed ladder of fresh games from every pool position (raw outcome rows)\n";
+    cout << "  labelfit   fit per-position (mu, sigma) Elo-advantage labels from a raw label store\n";
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
     cout << "  --in ranking/matches.jsonl    the append-only match store\n";
@@ -76,6 +79,19 @@ static void usage() {
     cout << "          random-opener snapshot to conclusion twice with colors swapped; reports\n";
     cout << "          White-won-both / Black-won-both (color effect) vs a-won-both / b-won-both\n";
     cout << "          (agent effect). No data files written.\n";
+    cout << "posgen:   --out-train/--out-eval <pool files> --train N --eval N (targets),\n";
+    cout << "          --per-game 4 --min-ply 6 --max-ply 44. Replays a deterministic sample of\n";
+    cout << "          the store into DISTINCT positions (enc + hash + side to move), stratified\n";
+    cout << "          by ply band and material, eval tier = hash%17==0 (disjoint from train).\n";
+    cout << "label:    --pool <pool file> --ladder <spec: 'rung i <id>' + 'pair wi bi games\n";
+    cout << "          [mod k r]' lines> --out <raw store> --shard i --of k (by position),\n";
+    cout << "          --resume (top up instead of truncating) --done <merged master store>\n";
+    cout << "          --max-positions N (chunking). Plays the design from every position;\n";
+    cout << "          raw outcome rows + a .meta.json freezing the rung-id mapping.\n";
+    cout << "labelfit: --in <raw store> --pool <pool file> --ratings <snapshot tsv>\n";
+    cout << "          --out <labels file> --min-rows 8 --rating-se (fold rating SEs into v).\n";
+    cout << "          Per-position probit MLE -> mu/sd in Elo + SEs + QC tables. Rerunnable\n";
+    cout << "          against any future ratings file (the raw store never changes).\n";
     cout << "\nExamples:\n";
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
@@ -156,6 +172,29 @@ int main(int argc, char** argv) {
         rc = rankOpenerSwap(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
                             getInt(argc, argv, "--games", 40), board,
                             getInt(argc, argv, "--open-plies", 6), seed);
+    } else if (cmd == "posgen") {
+        rc = rankPosGen(store, board,
+                        getOpt(argc, argv, "--out-train", "data/labels/pool_train.jsonl"),
+                        getOpt(argc, argv, "--out-eval", "data/labels/pool_eval.jsonl"),
+                        getInt(argc, argv, "--train", 24000),
+                        getInt(argc, argv, "--eval", 1500),
+                        getInt(argc, argv, "--per-game", 4),
+                        getInt(argc, argv, "--min-ply", 6),
+                        getInt(argc, argv, "--max-ply", 44), seed);
+    } else if (cmd == "label") {
+        rc = rankLabel(getOpt(argc, argv, "--pool", "data/labels/pool_train.jsonl"),
+                       getOpt(argc, argv, "--ladder", "data/labels/ladder.txt"),
+                       getOpt(argc, argv, "--out", "data/labels/raw.jsonl"),
+                       seed, getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
+                       hasFlag(argc, argv, "--resume"), getOpt(argc, argv, "--done", ""),
+                       getInt(argc, argv, "--max-positions", 0));
+    } else if (cmd == "labelfit") {
+        rc = rankLabelFit(getOpt(argc, argv, "--in", "data/labels/raw.jsonl"),
+                          getOpt(argc, argv, "--pool", "data/labels/pool_train.jsonl"),
+                          getOpt(argc, argv, "--ratings", "data/labels/ratings_snapshot.tsv"),
+                          getOpt(argc, argv, "--out", "data/labels/labels.jsonl"),
+                          getInt(argc, argv, "--min-rows", 8),
+                          hasFlag(argc, argv, "--rating-se"));
     } else {
         cout << "Unknown command: " << cmd << "\n\n";
         usage();

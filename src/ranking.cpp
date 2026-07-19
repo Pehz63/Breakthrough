@@ -23,6 +23,7 @@
 #include "ai_random.h"
 #include "ml_eval.h"
 #include "datastore.h"
+#include "transposition.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -2626,14 +2627,18 @@ int rankOpenerBias(const string& idA, const string& idB, int games,
 // Play from the current board state (no reload) to conclusion; unlike
 // playOneGame, takes no match-row telemetry and does not touch the board on
 // entry, so the caller controls exactly which position play resumes from.
-static int playToConclusion(const RankAgent& wa, const RankAgent& ba, int startHalf) {
+static int playToConclusion(const RankAgent& wa, const RankAgent& ba, int startHalf,
+                            int* pliesOut = nullptr) {
     int victor = None;
+    int played = 0;
     for (int h = startHalf; h < 400; h++) {
         int side = (h % 2 == 0) ? White : Black;
         const RankAgent& ag = (side == White) ? wa : ba;
         victor = agentChooseMove(ag.spec, side);
+        played++;
         if (gameOutcome(victor)) break;
     }
+    if (pliesOut) *pliesOut = played;
     return victor;
 }
 
@@ -2706,6 +2711,662 @@ int rankOpenerSwap(const string& idA, const string& idB, int games,
          << " (" << (100.0 * (bothWhite + bothBlack) / classified) << "%), agent effect total: "
          << (bothA + bothB) << "/" << classified << " (" << (100.0 * (bothA + bothB) / classified) << "%)\n";
     return 0;
+}
+
+// ============================================================
+// POSITION-ORACLE LABEL PIPELINE (posgen / label / labelfit)
+// ============================================================
+// See ranking.h for the pipeline overview. All three subcommands share the
+// probitPoint math from ml_model.h, so the per-position label fit and the
+// DistModel trainer can never diverge.
+
+static string hashHex16(unsigned long long h) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%016llx", h);
+    return string(buf);
+}
+
+// Ply band for the pool stratification: {6-10, 11-16, 17-24, 25-34, 35+}.
+static int posgenPlyBand(int ply) {
+    if (ply <= 10) return 0;
+    if (ply <= 16) return 1;
+    if (ply <= 24) return 2;
+    if (ply <= 34) return 3;
+    return 4;
+}
+
+int rankPosGen(const string& storeFile, const string& board,
+               const string& outTrain, const string& outEval,
+               int targetTrain, int targetEval, int perGameCap,
+               int minPly, int maxPly, unsigned seed) {
+    if (targetTrain <= 0 && targetEval <= 0) { cout << "ERROR: nothing to do (targets are 0)\n"; return 1; }
+    std::vector<RankMatchRow> rows;
+    int storeSkipped = 0;
+    rankLoadMatches(storeFile, board, rows, storeSkipped);
+    if (rows.empty()) { cout << "ERROR: no matches for board " << board << " in " << storeFile << "\n"; return 1; }
+    cout << "Loaded " << rows.size() << " match rows (" << storeSkipped << " store-parse skipped) for board " << board << "\n";
+
+    // Deterministic shuffle, same convention as rankExtract.
+    std::vector<int> order(rows.size());
+    for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
+    srand(seed);
+    for (size_t i = order.size(); i > 1; i--) {
+        size_t j = (size_t)(((double)rand() / ((double)RAND_MAX + 1.0)) * i);
+        if (j >= i) j = i - 1;
+        std::swap(order[i-1], order[j]);
+    }
+
+    // Pre-seed the dedup set from existing pool files so a second pass merges.
+    std::set<string> seenEnc;
+    int preexisting = 0;
+    for (int t = 0; t < 2; t++) {
+        const string& f = (t == 0) ? outTrain : outEval;
+        std::ifstream in(f.c_str());
+        string line, enc;
+        while (in.is_open() && std::getline(in, line))
+            if (jsonStr(line, "enc", enc) && seenEnc.insert(enc).second) preexisting++;
+    }
+
+    struct PoolRow { int tier; string enc; unsigned long long hash; int ply, stm, md, seen; };
+    std::vector<PoolRow> kept;
+    std::map<string, size_t> keptIdx;                    // enc -> kept index (seen bumps)
+    // Quotas: per tier x ply band x |md| bucket.
+    int bandQuota[2], bucketCap[2];
+    bandQuota[0] = (targetTrain + 4) / 5; bucketCap[0] = (bandQuota[0] + 2) / 3;
+    bandQuota[1] = (targetEval  + 4) / 5; bucketCap[1] = (bandQuota[1] + 2) / 3;
+    int bandCount[2][5] = {{0}};
+    int buckCount[2][5][4] = {{{0}}};
+    int tierCount[2] = { 0, 0 };
+    int target[2] = { targetTrain, targetEval };
+
+    int replayed = 0, idSkipped = 0, mismatchSkipped = 0, nearWinSkipped = 0, dupSeen = 0;
+    for (size_t k = 0; k < order.size(); k++) {
+        if (tierCount[0] >= target[0] && tierCount[1] >= target[1]) break;
+        const RankMatchRow& row = rows[order[k]];
+        RankAgent wa, ba;
+        string err;
+        if (!rankAgentFromId(row.w, wa, err) || !rankAgentFromId(row.b, ba, err)) { idSkipped++; continue; }
+        std::vector<const RankAgent*> pair;
+        pair.push_back(&wa); pair.push_back(&ba);
+        if (!loadModelSlots(pair, err)) { idSkipped++; continue; }
+
+        // A fresh TT per replay makes each game's replay independent of every
+        // other game this process has run (cross-game TT pollution is the known
+        // source of order-dependent determinism mismatches).
+        ttClear();
+        srand(row.seed);
+        std::vector<int> capSide;
+        std::vector<std::vector<float> > capFeat;
+        std::vector<BoardSnap> snaps;
+        int victor = playOneGameCapture(wa, ba, board, 2, capSide, capFeat, nullptr, 0, &snaps);
+        int oc = gameOutcome(victor);
+        char r = (oc == 1) ? 'W' : (oc == 2) ? 'B' : 'D';
+        if (r != row.r) { mismatchSkipped++; continue; }   // determinism drift guard
+        replayed++;
+
+        int fromThisGame = 0;
+        for (size_t h = 0; h < snaps.size() && fromThisGame < perGameCap; h++) {
+            int ply = (int)h;
+            if (ply < minPly || ply > maxPly) continue;
+            restoreBoardSnapshot(snaps[h]);
+            if (nearWinCheck(capSide[h]) != 0) { nearWinSkipped++; continue; }
+            PosKey key = positionKey(capSide[h], false);
+            std::map<string, size_t>::iterator it = keptIdx.find(key.enc);
+            if (it != keptIdx.end()) { kept[it->second].seen++; dupSeen++; continue; }
+            if (seenEnc.count(key.enc)) { dupSeen++; continue; }   // from a previous pass
+
+            int tier = (key.hash % 17 == 0) ? 1 : 0;
+            int band = posgenPlyBand(ply);
+            int md = g_chipDiff;
+            int buck = (md < 0 ? -md : md); if (buck > 3) buck = 3;
+            if (tierCount[tier] >= target[tier]) continue;
+            if (bandCount[tier][band] >= bandQuota[tier]) continue;
+            if (buckCount[tier][band][buck] >= bucketCap[tier]) continue;
+
+            PoolRow pr;
+            pr.tier = tier; pr.enc = key.enc; pr.hash = key.hash;
+            pr.ply = ply; pr.stm = capSide[h]; pr.md = md; pr.seen = 1;
+            keptIdx[pr.enc] = kept.size();
+            kept.push_back(pr);
+            seenEnc.insert(pr.enc);
+            tierCount[tier]++; bandCount[tier][band]++; buckCount[tier][band][buck]++;
+            fromThisGame++;
+        }
+        if (replayed % 500 == 0)
+            cout << "  replayed " << replayed << " games: " << tierCount[0] << "/" << target[0]
+                 << " train, " << tierCount[1] << "/" << target[1] << " eval positions\n" << flush;
+    }
+
+    ensureDir("data");
+    ensureDir("data/labels");
+    std::ofstream fTrain(outTrain.c_str(), std::ios::app);
+    std::ofstream fEval(outEval.c_str(), std::ios::app);
+    if (!fTrain.is_open() || !fEval.is_open()) { cout << "ERROR: cannot write pool files\n"; return 1; }
+    for (size_t i = 0; i < kept.size(); i++) {
+        const PoolRow& p = kept[i];
+        std::ostringstream ln;
+        ln << "{\"enc\":\"" << p.enc << "\",\"h\":\"" << hashHex16(p.hash) << "\""
+           << ",\"ply\":" << p.ply << ",\"stm\":\"" << (p.stm == White ? "W" : "B") << "\""
+           << ",\"md\":" << p.md << ",\"seen\":" << p.seen << "}";
+        ((p.tier == 0) ? fTrain : fEval) << ln.str() << "\n";
+    }
+    cout << "posgen: replayed " << replayed << " games (" << idSkipped << " unparseable/stale ids, "
+         << mismatchSkipped << " determinism mismatches), kept " << tierCount[0] << " train + "
+         << tierCount[1] << " eval positions (" << preexisting << " preexisting, " << dupSeen
+         << " duplicate encounters, " << nearWinSkipped << " near-win skips) -> "
+         << outTrain << " / " << outEval << "\n";
+    mlClearSlots();
+    return (tierCount[0] > 0 || tierCount[1] > 0) ? 0 : 1;
+}
+
+// ---- Ladder spec ----
+bool rankLoadLadder(std::istream& in, std::vector<LabelRung>& rungs,
+                    std::vector<LabelPairing>& pairs, string& err) {
+    rungs.clear(); pairs.clear();
+    string line;
+    int lineNo = 0;
+    while (std::getline(in, line)) {
+        lineNo++;
+        size_t hashPos = line.find('#');
+        if (hashPos != string::npos) line = line.substr(0, hashPos);
+        std::istringstream ss(line);
+        string kind;
+        if (!(ss >> kind)) continue;                     // blank / comment-only
+        if (kind == "rung") {
+            int idx; string id;
+            if (!(ss >> idx >> id)) { err = "line " + std::to_string(lineNo) + ": rung needs '<index> <id>'"; return false; }
+            if (idx != (int)rungs.size()) { err = "line " + std::to_string(lineNo) + ": rung indices must be sequential from 0 (got " + std::to_string(idx) + ", expected " + std::to_string(rungs.size()) + ")"; return false; }
+            LabelRung r; r.id = id;
+            rungs.push_back(r);
+        } else if (kind == "pair") {
+            LabelPairing p;
+            p.modK = 0; p.modR = 0;
+            if (!(ss >> p.wi >> p.bi >> p.games)) { err = "line " + std::to_string(lineNo) + ": pair needs '<wi> <bi> <games>'"; return false; }
+            string mod;
+            if (ss >> mod) {
+                if (mod != "mod" || !(ss >> p.modK >> p.modR)) { err = "line " + std::to_string(lineNo) + ": trailing clause must be 'mod <k> <r>'"; return false; }
+                if (p.modK <= 0 || p.modR < 0 || p.modR >= p.modK) { err = "line " + std::to_string(lineNo) + ": need mod k > 0 and 0 <= r < k"; return false; }
+            }
+            if (p.games <= 0) { err = "line " + std::to_string(lineNo) + ": pair games must be positive"; return false; }
+            pairs.push_back(p);
+        } else {
+            err = "line " + std::to_string(lineNo) + ": unknown directive '" + kind + "' (want rung or pair)";
+            return false;
+        }
+    }
+    if (rungs.empty()) { err = "ladder has no rungs"; return false; }
+    if (pairs.empty()) { err = "ladder has no pairings"; return false; }
+    for (size_t i = 0; i < pairs.size(); i++) {
+        if (pairs[i].wi < 0 || pairs[i].wi >= (int)rungs.size()
+            || pairs[i].bi < 0 || pairs[i].bi >= (int)rungs.size()) {
+            err = "pair " + std::to_string(i) + " references a rung index outside 0.." + std::to_string(rungs.size() - 1);
+            return false;
+        }
+    }
+    return true;
+}
+
+// A rung produces VARIED playouts from a fixed position only if it consumes
+// rand() during play: a random-family chooser, or dilution (the per-move
+// dilution roll draws from rand(), so different game seeds diverge -- with
+// dil(rP,dN) the "diluted" move is itself a shallower search, so a
+// depth-diluted strong agent stays near full strength while being genuinely
+// stochastic). Advanced-eval noise does NOT count: both noise forms are
+// deterministic per NoiseSeed (they reorder choices without ever drawing from
+// rand()), so a jitter-vs-jitter pairing replays one identical game per
+// position regardless of the game seed.
+static bool labelRungStochastic(const RankAgent& a) {
+    const AgentSpec& s = a.spec;
+    if (s.brain == BRAIN_POLICY)
+        return string(g_choosers[s.chooser].name) != "LearnedPolicy";
+    if (s.randomMoveProb > 0.0) return true;             // dilution rolls rand() per move
+    return false;
+}
+
+int rankLabel(const string& poolFile, const string& ladderFile,
+              const string& outFile, unsigned runSeed, int shard, int ofK,
+              bool resume, const string& doneFile, int maxPositions) {
+    if (ofK <= 0 || shard < 0 || shard >= ofK) { cout << "ERROR: need 0 <= shard < of\n"; return 1; }
+
+    // Ladder: parse, resolve every rung, validate.
+    std::vector<LabelRung> rungs;
+    std::vector<LabelPairing> pairs;
+    string err;
+    {
+        std::ifstream lf(ladderFile.c_str());
+        if (!lf.is_open()) { cout << "ERROR: cannot open ladder " << ladderFile << "\n"; return 1; }
+        if (!rankLoadLadder(lf, rungs, pairs, err)) { cout << "ERROR: ladder: " << err << "\n"; return 1; }
+    }
+    std::vector<RankAgent> agents(rungs.size());
+    std::vector<const RankAgent*> ptrs;
+    for (size_t i = 0; i < rungs.size(); i++) {
+        if (!rankAgentFromId(rungs[i].id, agents[i], err)) {
+            cout << "ERROR: rung " << i << ": " << err << "\n"; return 1;
+        }
+        if (rungs[i].id.find(".opener(") != string::npos) {
+            cout << "ERROR: rung " << i << " has an identity opener; opener ply counters assume games start at ply 0, which is wrong from a mid-game position\n";
+            return 1;
+        }
+        ptrs.push_back(&agents[i]);
+    }
+    if (!loadModelSlots(ptrs, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+    for (size_t i = 0; i < pairs.size(); i++) {
+        if (!labelRungStochastic(agents[pairs[i].wi]) && !labelRungStochastic(agents[pairs[i].bi])) {
+            cout << "ERROR: pairing " << i << " (" << rungs[pairs[i].wi].id << " vs "
+                 << rungs[pairs[i].bi].id << ") is deterministic on both sides; it would replay one game "
+                 << "(give at least one side dilution or a random chooser)\n";
+            return 1;
+        }
+    }
+
+    // Pool.
+    struct PoolPos { string enc, hex; unsigned long long hash; };
+    std::vector<PoolPos> pool;
+    {
+        std::ifstream pf(poolFile.c_str());
+        if (!pf.is_open()) { cout << "ERROR: cannot open pool " << poolFile << "\n"; return 1; }
+        string line;
+        while (std::getline(pf, line)) {
+            PoolPos p;
+            if (!jsonStr(line, "enc", p.enc) || !jsonStr(line, "h", p.hex)) continue;
+            p.hash = strtoull(p.hex.c_str(), nullptr, 16);
+            pool.push_back(p);
+        }
+    }
+    if (pool.empty()) { cout << "ERROR: pool " << poolFile << " has no usable rows\n"; return 1; }
+
+    // Resume: meta consistency + existing-row counts per (h, wi, bi).
+    std::map<string, int> have;
+    if (resume) {
+        for (int t = 0; t < 2; t++) {
+            const string& f = (t == 0) ? outFile : doneFile;
+            if (f.empty()) continue;
+            string metaPath = f + ".meta.json";
+            std::ifstream mf(metaPath.c_str());
+            if (mf.is_open()) {
+                std::ostringstream all; all << mf.rdbuf();
+                string meta = all.str();
+                size_t at = meta.find("\"ladder\":[");
+                if (at != string::npos) {
+                    // Compare the frozen id list against the current ladder.
+                    size_t pos = at + 10;
+                    size_t idx = 0;
+                    while (pos < meta.size() && meta[pos] != ']') {
+                        if (meta[pos] == '"') {
+                            size_t e = meta.find('"', pos + 1);
+                            if (e == string::npos) break;
+                            string id = meta.substr(pos + 1, e - pos - 1);
+                            if (idx >= rungs.size() || rungs[idx].id != id) {
+                                cout << "ERROR: " << metaPath << " ladder mismatch at rung " << idx
+                                     << " (store: " << id << ", current: "
+                                     << (idx < rungs.size() ? rungs[idx].id : string("<missing>"))
+                                     << "); refusing to mix designs\n";
+                                return 1;
+                            }
+                            idx++;
+                            pos = e + 1;
+                        } else pos++;
+                    }
+                }
+            }
+            std::ifstream rf(f.c_str());
+            string line, hex;
+            double wi, bi;
+            while (rf.is_open() && std::getline(rf, line)) {
+                if (!jsonStr(line, "h", hex) || !jsonNum(line, "wi", wi) || !jsonNum(line, "bi", bi)) continue;
+                have[hex + "|" + std::to_string((int)wi) + "|" + std::to_string((int)bi)]++;
+            }
+        }
+    }
+
+    ensureDir("data");
+    ensureDir("data/labels");
+    std::ofstream out(outFile.c_str(), resume ? std::ios::app : std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+
+    long long rowsWritten = 0, draws = 0, decodeSkipped = 0, decidedSkipped = 0;
+    int positionsTouched = 0, positionsSeen = 0;
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    bool capped = false;
+    for (size_t i = 0; i < pool.size() && !capped; i++) {
+        if ((int)(i % (size_t)ofK) != shard) continue;
+        const PoolPos& pp = pool[i];
+        positionsSeen++;
+
+        // What does this position still need?
+        long long needed = 0;
+        for (size_t pi = 0; pi < pairs.size(); pi++) {
+            const LabelPairing& pr = pairs[pi];
+            if (pr.modK > 0 && (int)(pp.hash % (unsigned long long)pr.modK) != pr.modR) continue;
+            std::map<string, int>::iterator it = have.find(pp.hex + "|" + std::to_string(pr.wi) + "|" + std::to_string(pr.bi));
+            int got = (it == have.end()) ? 0 : it->second;
+            if (got < pr.games) needed += pr.games - got;
+        }
+        if (needed == 0) continue;
+        if (maxPositions > 0 && positionsTouched >= maxPositions) { capped = true; break; }
+
+        int stm = White;
+        if (!decodePositionEnc(pp.enc, stm)) { decodeSkipped++; continue; }
+        if (nearWinCheck(stm) != 0) { decidedSkipped++; continue; }
+        positionsTouched++;
+
+        for (size_t pi = 0; pi < pairs.size(); pi++) {
+            const LabelPairing& pr = pairs[pi];
+            if (pr.modK > 0 && (int)(pp.hash % (unsigned long long)pr.modK) != pr.modR) continue;
+            std::map<string, int>::iterator it = have.find(pp.hex + "|" + std::to_string(pr.wi) + "|" + std::to_string(pr.bi));
+            int got = (it == have.end()) ? 0 : it->second;
+            const RankAgent& wa = agents[pr.wi];
+            const RankAgent& ba = agents[pr.bi];
+            for (int g = got; g < pr.games; g++) {
+                int stm2 = White;
+                if (!decodePositionEnc(pp.enc, stm2)) break;
+                // Fresh TT per game: without this, a tt-flagged rung's play
+                // would depend on every game played earlier in the process,
+                // breaking shard-split and resume reproducibility.
+                ttClear();
+                unsigned seed = gameSeed(wa.id, ba.id, (long long)pi * 1000 + g,
+                                         runSeed ^ (unsigned)(pp.hash & 0xffffffffULL));
+                srand(seed);
+                int plies = 0;
+                int victor = playToConclusion(wa, ba, (stm2 == White) ? 0 : 1, &plies);
+                int oc = gameOutcome(victor);
+                if (oc == 0) { draws++; continue; }
+                out << "{\"h\":\"" << pp.hex << "\",\"wi\":" << pr.wi << ",\"bi\":" << pr.bi
+                    << ",\"g\":" << g << ",\"seed\":" << seed << ",\"y\":" << (oc == 1 ? 1 : 0)
+                    << ",\"p\":" << plies << "}\n";
+                rowsWritten++;
+            }
+        }
+        if (positionsTouched % 25 == 0) {
+            double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            double perHour = (secs > 0.5) ? positionsTouched * 3600.0 / secs : 0.0;
+            cout << "  labeled " << positionsTouched << " positions (" << rowsWritten
+                 << " rows, " << (long long)perHour << " pos/hour)\n" << flush;
+        }
+    }
+    out.close();
+
+    // Meta sidecar: the frozen ladder is the authoritative rung-index mapping.
+    {
+        std::ofstream meta((outFile + ".meta.json").c_str(), std::ios::trunc);
+        if (meta.is_open()) {
+            meta << "{\"pool\":\"" << poolFile << "\",\"ladder\":[";
+            for (size_t i = 0; i < rungs.size(); i++) { if (i) meta << ","; meta << "\"" << rungs[i].id << "\""; }
+            meta << "],\"pairings\":[";
+            for (size_t i = 0; i < pairs.size(); i++) {
+                if (i) meta << ",";
+                meta << "{\"wi\":" << pairs[i].wi << ",\"bi\":" << pairs[i].bi
+                     << ",\"games\":" << pairs[i].games << ",\"mod_k\":" << pairs[i].modK
+                     << ",\"mod_r\":" << pairs[i].modR << "}";
+            }
+            meta << "],\"seed\":" << runSeed << ",\"shard\":" << shard << ",\"of\":" << ofK
+                 << ",\"positions_touched\":" << positionsTouched
+                 << ",\"rows_written\":" << rowsWritten << ",\"draws\":" << draws
+                 << ",\"decode_skipped\":" << decodeSkipped
+                 << ",\"decided_skipped\":" << decidedSkipped
+                 << ",\"capped\":" << (capped ? 1 : 0)
+                 << ",\"ts\":\"" << nowUtc() << "\"}\n";
+        }
+    }
+    cout << "label: " << positionsTouched << " positions touched of " << positionsSeen
+         << " in shard " << shard << "/" << ofK << ", " << rowsWritten << " rows appended, "
+         << draws << " draws dropped, " << decodeSkipped << " undecodable + "
+         << decidedSkipped << " decided positions skipped"
+         << (capped ? " (stopped at --max-positions)" : "") << " -> " << outFile << "\n";
+    mlClearSlots();
+    return 0;
+}
+
+// ---- Per-position 2-parameter probit MLE ----
+int rankFitMuSigma(const std::vector<double>& d, const std::vector<double>& v,
+                   const std::vector<double>& y, double& mu, double& s,
+                   double& seMu, double& seS) {
+    size_t n = y.size();
+    mu = 0.0; s = 0.0; seMu = 99.0; seS = 99.0;
+    if (n == 0) return 0;
+
+    struct Eval {
+        const std::vector<double>* d; const std::vector<double>* v; const std::vector<double>* y;
+        double operator()(double m, double sv, double& gM, double& gS) const {
+            double L = 0.0; gM = 0.0; gS = 0.0;
+            ProbitGrad g;
+            for (size_t i = 0; i < y->size(); i++) {
+                L += probitPoint(m, sv, (*d)[i], (*v)[i], (*y)[i], g);
+                gM += g.gMu; gS += g.gS;
+            }
+            return L;
+        }
+    };
+    Eval eval; eval.d = &d; eval.v = &v; eval.y = &y;
+
+    double gM, gS;
+    double L = eval(mu, s, gM, gS);
+    double lr = 0.5 / (double)n;
+    int iters = 0;
+    for (; iters < 500; iters++) {
+        double nm = mu - lr * gM, ns = s - lr * gS;
+        if (nm > 10.0) nm = 10.0;
+        if (nm < -10.0) nm = -10.0;
+        if (ns > PROBIT_S_MAX) ns = PROBIT_S_MAX;
+        if (ns < PROBIT_S_MIN) ns = PROBIT_S_MIN;
+        double ngM, ngS;
+        double nL = eval(nm, ns, ngM, ngS);
+        if (nL <= L) {
+            bool conv = (std::fabs(nm - mu) < 1e-8 && std::fabs(ns - s) < 1e-8);
+            mu = nm; s = ns; L = nL; gM = ngM; gS = ngS;
+            lr *= 1.2;
+            if (conv) break;
+        } else {
+            lr *= 0.5;
+            if (lr < 1e-14) break;
+        }
+    }
+    // Observed Fisher information via central differences of the analytic
+    // gradients; SEs from the inverted 2x2 (99.0 sentinels if degenerate).
+    const double eps = 1e-4;
+    double gMp, gSp, gMm, gSm;
+    eval(mu + eps, s, gMp, gSp); eval(mu - eps, s, gMm, gSm);
+    double H00 = (gMp - gMm) / (2 * eps);
+    double H10 = (gSp - gSm) / (2 * eps);
+    eval(mu, s + eps, gMp, gSp); eval(mu, s - eps, gMm, gSm);
+    double H01 = (gMp - gMm) / (2 * eps);
+    double H11 = (gSp - gSm) / (2 * eps);
+    double off = 0.5 * (H01 + H10);
+    double det = H00 * H11 - off * off;
+    if (det > 1e-12 && H00 > 0.0 && H11 > 0.0) {
+        seMu = std::sqrt(H11 / det);
+        seS  = std::sqrt(H00 / det);
+    }
+    return iters;
+}
+
+// Ratings reader variant that also returns the pm (standard error) column.
+static bool readRatingsEloPm(const string& path, std::map<string, std::pair<double, double> >& out) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) return false;
+    string line;
+    bool first = true;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+        if (first) { first = false; continue; }
+        std::vector<string> cols;
+        size_t i = 0;
+        while (i <= line.size()) {
+            size_t t = line.find('\t', i);
+            size_t end = (t == string::npos) ? line.size() : t;
+            cols.push_back(line.substr(i, end - i));
+            if (t == string::npos) break;
+            i = t + 1;
+        }
+        if (cols.size() < 4) continue;
+        try {
+            out[cols[cols.size()-1]] = std::make_pair(std::stod(cols[1]), std::stod(cols[2]));
+        } catch (...) {}
+    }
+    return !out.empty();
+}
+
+int rankLabelFit(const string& storeFile, const string& poolFile,
+                 const string& ratingsFile, const string& outFile,
+                 int minRows, bool useRatingSe) {
+    // The frozen ladder id list from the store's meta sidecar.
+    std::vector<string> ladder;
+    {
+        std::ifstream mf((storeFile + ".meta.json").c_str());
+        if (!mf.is_open()) { cout << "ERROR: cannot open " << storeFile << ".meta.json (the rung-id mapping)\n"; return 1; }
+        std::ostringstream all; all << mf.rdbuf();
+        string meta = all.str();
+        size_t at = meta.find("\"ladder\":[");
+        if (at == string::npos) { cout << "ERROR: meta has no ladder array\n"; return 1; }
+        size_t pos = at + 10;
+        while (pos < meta.size() && meta[pos] != ']') {
+            if (meta[pos] == '"') {
+                size_t e = meta.find('"', pos + 1);
+                if (e == string::npos) break;
+                ladder.push_back(meta.substr(pos + 1, e - pos - 1));
+                pos = e + 1;
+            } else pos++;
+        }
+    }
+    if (ladder.empty()) { cout << "ERROR: empty ladder in meta\n"; return 1; }
+
+    std::map<string, std::pair<double, double> > ratings;
+    if (!readRatingsEloPm(ratingsFile, ratings)) { cout << "ERROR: cannot read ratings " << ratingsFile << "\n"; return 1; }
+    std::vector<double> rungElo(ladder.size()), rungPm(ladder.size());
+    for (size_t i = 0; i < ladder.size(); i++) {
+        std::map<string, std::pair<double, double> >::iterator it = ratings.find(ladder[i]);
+        if (it == ratings.end()) { cout << "ERROR: rung " << i << " (" << ladder[i] << ") is not in " << ratingsFile << "\n"; return 1; }
+        rungElo[i] = it->second.first;
+        rungPm[i]  = it->second.second;
+    }
+
+    // Pool order + enc lookup.
+    std::vector<string> poolOrder;                       // hex, in file order
+    std::map<string, string> encByHex;
+    {
+        std::ifstream pf(poolFile.c_str());
+        if (!pf.is_open()) { cout << "ERROR: cannot open pool " << poolFile << "\n"; return 1; }
+        string line, enc, hex;
+        while (std::getline(pf, line)) {
+            if (!jsonStr(line, "enc", enc) || !jsonStr(line, "h", hex)) continue;
+            if (encByHex.insert(std::make_pair(hex, enc)).second) poolOrder.push_back(hex);
+        }
+    }
+
+    // Raw rows grouped per position; d/v cached per (wi, bi).
+    struct Obs { std::vector<double> d, v, y; std::vector<int> pairing; };
+    std::map<string, Obs> byPos;
+    std::map<std::pair<int, int>, std::pair<double, double> > dvByPair;
+    struct PairQc { long long games; double wins; double pSum; };
+    std::map<std::pair<int, int>, PairQc> qc;
+    long long rawRows = 0, rawSkipped = 0;
+    {
+        std::ifstream rf(storeFile.c_str());
+        if (!rf.is_open()) { cout << "ERROR: cannot open store " << storeFile << "\n"; return 1; }
+        string line, hex;
+        double wi, bi, yv;
+        while (std::getline(rf, line)) {
+            if (!jsonStr(line, "h", hex) || !jsonNum(line, "wi", wi)
+                || !jsonNum(line, "bi", bi) || !jsonNum(line, "y", yv)) { rawSkipped++; continue; }
+            int w = (int)wi, b = (int)bi;
+            if (w < 0 || w >= (int)ladder.size() || b < 0 || b >= (int)ladder.size()) { rawSkipped++; continue; }
+            std::pair<int, int> key(w, b);
+            std::map<std::pair<int, int>, std::pair<double, double> >::iterator dv = dvByPair.find(key);
+            if (dv == dvByPair.end()) {
+                double dd = (rungElo[w] - rungElo[b]) / ELO_PER_LOGIT;
+                double vv = useRatingSe
+                    ? (rungPm[w] * rungPm[w] + rungPm[b] * rungPm[b]) / (ELO_PER_LOGIT * ELO_PER_LOGIT)
+                    : 0.0;
+                dv = dvByPair.insert(std::make_pair(key, std::make_pair(dd, vv))).first;
+            }
+            Obs& o = byPos[hex];
+            o.d.push_back(dv->second.first);
+            o.v.push_back(dv->second.second);
+            o.y.push_back(yv);
+            o.pairing.push_back(w * 10000 + b);
+            rawRows++;
+        }
+    }
+    if (byPos.empty()) { cout << "ERROR: no usable raw rows in " << storeFile << "\n"; return 1; }
+
+    ensureDir("data");
+    ensureDir("data/labels");
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+
+    long long fitted = 0, thin = 0, allwin = 0, allloss = 0, clamped = 0, tooFew = 0, noEnc = 0;
+    std::vector<double> allD, allV, allY;
+    for (size_t k = 0; k < poolOrder.size(); k++) {
+        const string& hex = poolOrder[k];
+        std::map<string, Obs>::iterator it = byPos.find(hex);
+        if (it == byPos.end()) continue;
+        Obs& o = it->second;
+        int n = (int)o.y.size();
+        if (n < minRows) { tooFew++; continue; }
+
+        double mu, s, seMu, seS;
+        rankFitMuSigma(o.d, o.v, o.y, mu, s, seMu, seS);
+
+        double wsum = 0.0;
+        ProbitGrad g;
+        double nll = 0.0;
+        for (int i = 0; i < n; i++) {
+            nll += probitPoint(mu, s, o.d[i], o.v[i], o.y[i], g);
+            wsum += o.y[i];
+            std::pair<int, int> key(o.pairing[i] / 10000, o.pairing[i] % 10000);
+            PairQc& q = qc[key];
+            q.games++; q.wins += o.y[i]; q.pSum += g.p;
+            allD.push_back(o.d[i]); allV.push_back(o.v[i]); allY.push_back(o.y[i]);
+        }
+        nll /= n;
+
+        string flags = "ok";
+        if (wsum >= n - 1e-9)      { flags = "allwin";  allwin++; }
+        else if (wsum <= 1e-9)     { flags = "allloss"; allloss++; }
+        else if (s >= PROBIT_S_MAX - 1e-6 || s <= PROBIT_S_MIN + 1e-6) { flags = "clamped"; clamped++; }
+        else if (n < 32)           { flags = "thin";    thin++; }
+
+        out << "{\"enc\":\"" << encByHex[hex] << "\",\"h\":\"" << hex << "\""
+            << ",\"mu_elo\":" << (mu * ELO_PER_LOGIT)
+            << ",\"sd_elo\":" << (exp(s) * ELO_PER_LOGIT)
+            << ",\"se_mu\":" << (seMu * ELO_PER_LOGIT)
+            << ",\"se_sd\":" << (seS < 90.0 ? exp(s) * seS * ELO_PER_LOGIT : 9999.0)
+            << ",\"n\":" << n << ",\"nll\":" << nll
+            << ",\"flags\":\"" << flags << "\"}\n";
+        fitted++;
+    }
+    // Positions in the store but missing from the pool file (should be none).
+    for (std::map<string, Obs>::iterator it = byPos.begin(); it != byPos.end(); ++it)
+        if (!encByHex.count(it->first)) noEnc++;
+    out.close();
+
+    // Pooled intercept-only baseline: one (mu, s) over every row.
+    double bMu, bS, bSeMu, bSeS, baseNll = 0.0;
+    if (!allY.empty()) {
+        rankFitMuSigma(allD, allV, allY, bMu, bS, bSeMu, bSeS);
+        ProbitGrad g;
+        for (size_t i = 0; i < allY.size(); i++)
+            baseNll += probitPoint(bMu, bS, allD[i], allV[i], allY[i], g);
+        baseNll /= (double)allY.size();
+    }
+
+    cout << "labelfit: " << fitted << " positions fitted from " << rawRows << " raw rows ("
+         << rawSkipped << " malformed rows, " << tooFew << " positions under --min-rows, "
+         << noEnc << " store positions missing from the pool)\n";
+    cout << "  flags: " << allwin << " allwin, " << allloss << " allloss, " << clamped
+         << " clamped, " << thin << " thin\n";
+    cout << "  pooled intercept-only baseline: mean NLL " << baseNll << " over "
+         << allY.size() << " rows\n";
+    cout << "  per-pairing QC (games, empirical White win rate, mean fitted p):\n";
+    for (std::map<std::pair<int, int>, PairQc>::iterator it = qc.begin(); it != qc.end(); ++it) {
+        char buf[160];
+        snprintf(buf, sizeof(buf), "    w=%d b=%d  %8lld games  emp %.3f  fit %.3f\n",
+                 it->first.first, it->first.second, it->second.games,
+                 it->second.wins / it->second.games, it->second.pSum / it->second.games);
+        cout << buf;
+    }
+    cout << "  labels -> " << outFile << "\n";
+    return fitted > 0 ? 0 : 1;
 }
 
 // ============================================================
