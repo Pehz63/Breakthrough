@@ -24,7 +24,7 @@ param(
     [string[]]$Phases = @("prep","posgen","label-train","label-eval","fit","train","eval","rate"),
     [switch]$DryRun,
     [int]$Seed = 20260718,
-    [int]$ChunkPositions = 2000,
+    [int]$ChunkPositions = 100,
     [string]$Csv = ""
 )
 
@@ -234,6 +234,25 @@ function Phase-Label([string]$phase, [string]$pool, [string]$ladder, [string]$ma
         $chunk++
         if ($chunk -gt 500) { Write-Error "$phase runaway chunk loop"; exit 1 }
         if (Is-Done $phase "chunk$chunk") { continue }
+        # Salvage any leftover shard files from an interrupted chunk: their rows
+        # are complete and deterministic (a replayed game reproduces the exact
+        # same row), so merge them into the master with exact-line dedup before
+        # relaunching. Nothing played before an interruption is ever lost.
+        $leftover = @(Get-ChildItem "$master.s*" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "meta" })
+        if ($leftover.Count -gt 0) {
+            Write-Host "$phase: salvaging $($leftover.Count) leftover shard files into $master..."
+            $seen = @{}
+            if (Test-Path $master) { foreach ($l in Get-Content $master) { $seen[$l] = $true } }
+            $add = New-Object System.Collections.Generic.List[string]
+            foreach ($f in $leftover) {
+                foreach ($l in Get-Content $f.FullName) {
+                    if ($l -and -not $seen.ContainsKey($l)) { $seen[$l] = $true; $add.Add($l) }
+                }
+            }
+            if ($add.Count -gt 0) { Add-Content $master $add }
+            Remove-Item "$master.s*" -Force -ErrorAction SilentlyContinue
+            Write-Host "$phase: salvaged $($add.Count) rows"
+        }
         $procs = @(); $shardFiles = @(); $metaFiles = @()
         for ($s = 0; $s -lt $Workers; $s++) {
             $sf = "$master.s$s"
