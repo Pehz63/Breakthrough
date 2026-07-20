@@ -1,3 +1,27 @@
 prep,rungs-rated,2 rungs,done,20260719T135718Z
 prep,snapshot,data/labels/ratings_snapshot.tsv,done,20260719T135718Z
 posgen,pools,24000 train / 1500 eval,done,20260719T181046Z
+label-train,chunk1,touched=1000,done,20260720T000854Z
+label-train,chunk2,touched=1000,done,20260720T001538Z
+label-train,chunk3,touched=1000,done,20260720T002231Z
+label-train,chunk4,touched=1000,done,20260720T003202Z
+label-train,chunk5,touched=1000,done,20260720T004138Z
+label-train,chunk6,touched=1000,done,20260720T005055Z
+label-train,chunk7,touched=1000,done,20260720T005941Z
+label-train,chunk8,touched=1000,done,20260720T010814Z
+label-train,chunk9,touched=1000,done,20260720T011730Z
+label-train,chunk10,touched=1000,done,20260720T012511Z
+label-train,chunk11,touched=1000,done,20260720T013330Z
+label-train,chunk12,touched=1000,done,20260720T014041Z
+label-train,chunk13,touched=1000,done,20260720T014801Z
+label-train,chunk14,touched=1000,done,20260720T015514Z
+label-train,chunk15,touched=1000,done,20260720T020146Z
+label-train,chunk16,touched=1000,done,20260720T020724Z
+label-train,chunk17,touched=1000,done,20260720T021304Z
+label-train,chunk18,touched=1000,done,20260720T021853Z
+label-train,chunk19,touched=1000,done,20260720T022423Z
+label-train,chunk20,touched=1000,done,20260720T022849Z
+label-train,chunk21,touched=1000,done,20260720T023327Z
+label-train,chunk22,touched=1000,done,20260720T023813Z
+label-train,chunk23,touched=788,done,20260720T024558Z
+label-train,chunk24,touched=0,done,20260720T024600Z
