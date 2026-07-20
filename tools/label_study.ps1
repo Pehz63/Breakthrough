@@ -240,7 +240,7 @@ function Phase-Label([string]$phase, [string]$pool, [string]$ladder, [string]$ma
         # relaunching. Nothing played before an interruption is ever lost.
         $leftover = @(Get-ChildItem "$master.s*" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "meta" })
         if ($leftover.Count -gt 0) {
-            Write-Host "$phase: salvaging $($leftover.Count) leftover shard files into $master..."
+            Write-Host "${phase}: salvaging $($leftover.Count) leftover shard files into $master..."
             $seen = @{}
             if (Test-Path $master) { foreach ($l in Get-Content $master) { $seen[$l] = $true } }
             $add = New-Object System.Collections.Generic.List[string]
@@ -251,7 +251,7 @@ function Phase-Label([string]$phase, [string]$pool, [string]$ladder, [string]$ma
             }
             if ($add.Count -gt 0) { Add-Content $master $add }
             Remove-Item "$master.s*" -Force -ErrorAction SilentlyContinue
-            Write-Host "$phase: salvaged $($add.Count) rows"
+            Write-Host "${phase}: salvaged $($add.Count) rows"
         }
         $procs = @(); $shardFiles = @(); $metaFiles = @()
         for ($s = 0; $s -lt $Workers; $s++) {

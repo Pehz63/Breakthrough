@@ -1,4 +1,4 @@
-# Eval-tier ladder: a dense gap grid, both color orders, d8 premium pairs on ALL positions.
+# Eval-tier ladder, v2 (speed package): the dense gap grid at 20 games per pairing
 rung 0 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1    # ~910
 rung 1 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1       # ~758
 rung 2 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1       # ~616
@@ -6,25 +6,25 @@ rung 3 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1       # ~566
 rung 4 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1       # ~377
 rung 5 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1     # rated in prep
 rung 6 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1     # rated in prep
-pair 0 0 40
-pair 5 5 40
-pair 0 1 40
-pair 1 0 40
-pair 1 2 40
-pair 2 1 40
-pair 0 2 40
-pair 2 0 40
-pair 5 1 40
-pair 1 5 40
-pair 0 3 40
-pair 3 0 40
-pair 5 2 40
-pair 2 5 40
-pair 0 4 40
-pair 4 0 40
-pair 5 4 40
-pair 4 5 40
-pair 6 0 40
-pair 0 6 40
+pair 0 0 20
+pair 5 5 20
+pair 0 1 20
+pair 1 0 20
+pair 1 2 20
+pair 2 1 20
+pair 0 2 20
+pair 2 0 20
+pair 5 1 20
+pair 1 5 20
+pair 0 3 20
+pair 3 0 20
+pair 5 2 20
+pair 2 5 20
+pair 0 4 20
+pair 4 0 20
+pair 5 4 20
+pair 4 5 20
+pair 6 0 20
+pair 0 6 20
 pair 5 6 12
 pair 6 5 12

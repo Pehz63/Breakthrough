@@ -1,19 +1,34 @@
-# Train-tier labeling ladder: 8 pairings x 8 games + a d8 premium pair on hash%4==0.
-# Rung Elo comments are from the fit at design time; the frozen snapshot is authoritative.
+# Train-tier labeling ladder, v2 (the speed package): cheap d4-family rungs
+# carry the bulk gap grid at 4 games per pairing, the strong d6/d8 rungs stay
+# as style anchors gated by mod clauses. Rungs 0..6 keep their v1 indices
+# (append-only, so rows already played under v1 stay joinable); v1's pair
+# design was 8 pairings x 8 games on rungs 0..6 and its rows remain in the
+# store as extra training data. Rung Elo comments are from the frozen
+# snapshot (authoritative at fit/train time).
 rung 0 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1    # ~910
 rung 1 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1       # ~758
 rung 2 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1       # ~616
 rung 3 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1       # ~566
 rung 4 ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1       # ~377
-rung 5 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1     # rated in prep
-rung 6 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1     # rated in prep
-pair 0 0 8
-pair 0 1 8
-pair 1 0 8
-pair 0 2 8
-pair 2 0 8
-pair 5 3 8
-pair 3 5 8
-pair 5 0 8
-pair 5 6 2 mod 4 0
-pair 6 5 2 mod 4 0
+rung 5 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1     # ~1114
+rung 6 ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1     # ~1136
+rung 7 ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)@1                      # ~714
+rung 8 ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1                     # ~617
+rung 9 ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1                     # ~462
+rung 10 ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1                    # ~216
+# Cheap bulk grid (d4 family, ~0.05s/game): gaps ~0, +-97, +-252, +-498.
+pair 8 8 4
+pair 7 8 4
+pair 8 7 4
+pair 7 9 4
+pair 9 7 4
+pair 7 10 4
+pair 10 7 4
+# Strong style anchors (one expensive side): gap ~+-196, half of positions each.
+pair 0 7 4 mod 2 0
+pair 7 0 4 mod 2 1
+# Strong-end gaps and the d8 premium pairs, rationed.
+pair 5 0 2 mod 4 0
+pair 0 5 2 mod 4 1
+pair 5 6 2 mod 8 0
+pair 6 5 2 mod 8 1
