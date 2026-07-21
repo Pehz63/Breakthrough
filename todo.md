@@ -462,6 +462,51 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   dist-value on the same raw stores, documented in ML.md); sigma as a search-time signal
   (e.g. prefer high-sigma lines when behind); rate the mlp dist variants at the d6/nb200k
   head once a faster mlp leaf exists (currently d4-only, full-scan cost) `[Next]`
+- Position-oracle input-feature alternatives (developer question 2026-07-20, feature v2's
+  129 raw piece-square bits are not the only reasonable encoding). Test candidates on the
+  CHEAP linear model first via the same log-triplet position-count-sweep discipline used to
+  find the ~425-1700 saturation point, since it isolates whether a feature helps independent
+  of the architecture-capacity confound the MLP sweep just surfaced, before spending compute
+  confirming a winner on the MLP:
+  - Material/piece advantage as an explicit input (not a frozen skip). `matDiffFromFeatures`
+    + `ResidualModel` already exist and were tested this way for the OUTCOME-trained linear/MLP
+    value models -- refuted at 6 seeds (theory 24: the effect fell inside seed noise at every
+    capacity). That result does NOT settle this case: theory 24 forced material in as a frozen
+    additive skip bypassing the model, this idea is a plain feature the model can freely weight
+    and combine with everything else, and it was tested where data was plentiful, not where a
+    model is capacity-starved relative to its data (which the MLP position-count sweep just
+    showed is true here for the mlp128-64/mlp32 config below ~6800 positions). Worth a fresh,
+    honestly-scoped test, not assumed refuted by the old result `[Next]`
+  - Ternary board encoding (-1/0/+1 per square, 64 features instead of 128) -- considered and
+    NOT recommended, reasoning captured so it is not re-proposed blind: a single shared weight
+    per square forces white-here and black-here to be exact negatives of each other, which is
+    wrong for this game specifically (white advances row0->row7, black row7->row0, so e.g. row6
+    is nearly-won for White and merely unadvanced for Black -- nowhere close to sign-flipped
+    values on the same square). Would encode an incorrect symmetry and likely hurt, not help
+  - Mover's-perspective (color-canonicalized) encoding: recolor every position to "my piece /
+    empty / opponent piece" oriented to the mover's own forward direction, instead of literal
+    White/Black. The rules genuinely have this symmetry (axioms.md color-swap symmetry) --
+    DISTINCT from the LEFT-RIGHT mirror fold this pipeline deliberately does NOT apply
+    (theories 30/32: that asymmetry is real pool-specific signal, not noise; do not conflate
+    the two axes). Canonicalizing this way makes a White-played position and its exact
+    color-swapped mirror the SAME input, roughly doubling usable data for free -- directly
+    attacks the MLP's demonstrated data appetite. Untested anywhere in the project; the
+    strongest candidate on this list `[Next]`
+  - Forward-progress sum per side (Advanced evaluator's Forward term / the capacity axiom,
+    `Docs/axioms.md` Lemma B) -- a race-tempo signal distinct from raw material
+  - Per-row piece histogram -- the engine already maintains this incrementally (`g_rowCountW`/
+    `g_rowCountB` in globals.h, used by the Race/RaceWin terms) so it costs nothing extra to
+    also expose as a feature; gives race structure without inferring it from 128 raw bits
+  - Support/structure count (Advanced's Support term, diagonal same-color adjacency, Lemma C)
+    as a defensive/piece-safety proxy
+  - Mobility (Advanced's Mobility term, legal-move count per side)
+  - The decided-race sentinel (Advanced's Race/RaceWin, the exact D9/D14 detector) as an
+    explicit input -- particularly relevant to the SIGMA head: a decided race should read as
+    near-zero volatility, and handing that fact directly rather than making the model
+    rediscover it could sharpen exactly the number this project cares about most
+  - Ply / game-phase as an input -- already tracked in the position pool (`"ply"` field) but
+    never fed to the model; volatility plausibly differs by phase (quiet openings, sharp
+    midgames, near-decided endgames), so this may matter more for sigma than for mu
 - Distillation from deep search or from a teacher model `[Later]`
 
 ## Weight optimization / geometry mapping
@@ -495,6 +540,16 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Depth cap **(P1)**~~
 - ~~Stochastic depth dilution: play a shallower depth-N search P% of the time (`dil(rP,dN)`),
   a plausible-but-weaker move rather than a blunder~~
+- Measure how often stochastic depth dilution (`dil(rP,dN)`) actually changes the move: for a
+  sample of real positions, run both the full depth and the diluted shallower depth (e.g. depth
+  6 vs depth 8, same node budget, tt+ord on, Classic eval) and compare chosen moves directly
+  (diff the board before/after each search). Developer hypothesis to test alongside this: ODD
+  dilution depths (5, 7) diverge from the full depth MORE than even depths (4, 6, 8), because an
+  odd-depth search's leaf lands on the opponent's reply rather than after a complete move/response
+  round trip, a horizon-style asymmetry -- compare odd vs even depth agreement rates to check.
+  Motivated by a question about `dil(r15,d6)`/`dil(r30,d6)` (the position-oracle campaign's d8
+  ladder rungs, `Docs/Memories/position-oracle-campaign.md`) but stands alone as a general
+  dilution-quality question, deliberately deferred to its own session `[Later]`
 
 ## Elo / Tournaments
 - ~~Round-robin + Elo rating **(P1)**~~

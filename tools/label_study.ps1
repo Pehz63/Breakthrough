@@ -322,9 +322,11 @@ function Phase-Train {
     foreach ($c in $configs) {
         if (Is-Done "train" $c.Name) { Write-Host "train: $($c.Name) already done"; continue }
         $log = "$Dir/logs/train_$($c.Name).log"
+        # lr 0.01 (not the original 0.02 default) per the hyperparameter sweep:
+        # 0.005-0.01 beat 0.02 on held-out MAE/NLL, with 0.04+ visibly unstable.
         $trainArgs = @("dist-value", "--raw", $RawTrain, "--pool", $PoolTrain,
                        "--ratings", $Snapshot, "--out", $c.Out,
-                       "--epochs", $Epochs, "--lr", "0.02", "--lr-sigma", "0.004",
+                       "--epochs", $Epochs, "--lr", "0.01", "--lr-sigma", "0.002",
                        "--val-split", "0.1", "--early-stop", "--ckpt-every", 5) + $c.Extra
         Write-Host "train: launching $($c.Name) -> $($c.Out).txt (log: $log)"
         $procs += @{ Proc = (Start-Process -FilePath ".\train.exe" -ArgumentList $trainArgs `
@@ -332,7 +334,23 @@ function Phase-Train {
     }
     foreach ($e in $procs) {
         $e.Proc | Wait-Process
-        if ($e.Proc.ExitCode -ne 0) { Write-Error "train: $($e.Cfg.Name) failed, log: $Dir/logs/train_$($e.Cfg.Name).log"; exit 1 }
+        # .ExitCode has proven unreliable for -RedirectStandardOutput processes in
+        # this environment (observed: three configs completed correctly, wrote
+        # valid model files, and logged "Final model ->", yet the process object
+        # read back as failed). The output file existing plus the log's own
+        # completion marker is definitive proof of success regardless of what
+        # .ExitCode says, so check those FIRST and only trust .ExitCode as a
+        # fallback when they disagree.
+        $log = "$Dir/logs/train_$($e.Cfg.Name).log"
+        $outFile = "$($e.Cfg.Out).txt"
+        $reallyDone = (Test-Path $outFile) -and (Select-String -Path $log -Pattern "^Final model ->" -Quiet)
+        if (-not $reallyDone -and $e.Proc.ExitCode -ne 0) {
+            Write-Error "train: $($e.Cfg.Name) failed, log: $log"; exit 1
+        }
+        if (-not $reallyDone) {
+            Write-Host "train: $($e.Cfg.Name) exit code 0 but no confirmed output -- treating as failed"
+            Write-Error "train: $($e.Cfg.Name) failed, log: $log"; exit 1
+        }
         Mark-Done "train" $e.Cfg.Name "$($e.Cfg.Out).txt"
     }
 }
@@ -359,22 +377,28 @@ function Phase-Rate {
     Copy-Item "models/dist_lin.txt"       "models/sweep/slot76.txt" -Force
     Copy-Item "models/dist_mlp_s1001.txt" "models/sweep/slot77.txt" -Force
     Copy-Item "models/dist_mlp_s2002.txt" "models/sweep/slot78.txt" -Force
+    # mlp_wide was the capacity probe, not an originally-planned roster entry,
+    # but it came out best on the oracle-verdict eval (MAE 146.2, NLL 0.4079),
+    # so its playing strength is worth measuring too.
+    Copy-Item "models/dist_mlp_wide.txt" "models/sweep/slot79.txt" -Force
     $check = & .\rank.exe check
     $lines = @()
-    foreach ($slot in 76, 77, 78) {
+    foreach ($slot in 76, 77, 78, 79) {
         $hash = ""
         foreach ($l in $check) {
             if ($l -match "slot$slot\.txt = ([0-9a-f]{8}) \(slot $slot\)") { $hash = $Matches[1] }
         }
         if ($hash -eq "") { Write-Error "rate: no model hash for slot $slot in rank.exe check output"; exit 1 }
+        # The "learned" chooser's own codec version is @1 (src/ranking.cpp
+        # g_rkChoosers[]), independent of the classic() head's @2 seen elsewhere.
         if ($slot -eq 76) {
             # The linear variant keeps the incremental leaf: both standard heads.
-            $lines += "on ab(d4)@1.learned(s$slot,$hash)@2"
-            $lines += "on ab(d6,tt,ord,nb200k)@1.learned(s$slot,$hash)@2"
+            $lines += "on ab(d4)@1.learned(s$slot,$hash)@1"
+            $lines += "on ab(d6,tt,ord,nb200k)@1.learned(s$slot,$hash)@1"
         } else {
             # MLP mu heads full-scan every leaf; a d6/nb200k head would cost
             # seconds per move, so the mlp variants rate at the d4 head only.
-            $lines += "on ab(d4)@1.learned(s$slot,$hash)@2"
+            $lines += "on ab(d4)@1.learned(s$slot,$hash)@1"
         }
     }
     $roster = Get-Content "ranking/roster.txt" -Raw

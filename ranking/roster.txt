@@ -159,3 +159,8 @@ on      ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7)@1
 on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1
 on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1
+on ab(d4)@1.learned(s76,ef183148)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1
+on ab(d4)@1.learned(s77,ddaa5090)@1
+on ab(d4)@1.learned(s78,2fa21eda)@1
+on ab(d4)@1.learned(s79,18f19059)@1

@@ -25,3 +25,16 @@ label-train,chunk21,touched=1000,done,20260720T023327Z
 label-train,chunk22,touched=1000,done,20260720T023813Z
 label-train,chunk23,touched=788,done,20260720T024558Z
 label-train,chunk24,touched=0,done,20260720T024600Z
+label-eval,chunk1,touched=700,done,20260720T152037Z
+label-eval,chunk2,touched=0,done,20260720T152038Z
+fit,train,data/labels/labels_train.jsonl,done,20260720T152106Z
+fit,eval,data/labels/labels_eval.jsonl,done,20260720T152115Z
+train,lin,models/dist_lin.txt,done,20260721T035359Z
+train,mlp_s1001,models/dist_mlp_s1001.txt,done,20260721T042158Z
+train,mlp_s2002,models/dist_mlp_s2002.txt,done,20260721T042329Z
+train,mlp_wide,models/dist_mlp_wide.txt,done,20260721T050531Z
+eval,lin,data/labels/logs/eval_lin.log,done,20260721T050915Z
+eval,mlp_s1001,data/labels/logs/eval_mlp_s1001.log,done,20260721T051234Z
+eval,mlp_s2002,data/labels/logs/eval_mlp_s2002.log,done,20260721T051553Z
+eval,mlp_wide,data/labels/logs/eval_mlp_wide.log,done,20260721T051912Z
+rate,roster,on ab(d4)@1.learned(s76,ef183148)@1;on ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1;on ab(d4)@1.learned(s77,ddaa5090)@1;on ab(d4)@1.learned(s78,2fa21eda)@1;on ab(d4)@1.learned(s79,18f19059)@1,done,20260721T055007Z

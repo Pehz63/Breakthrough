@@ -249,6 +249,34 @@ analysis surfaces. Playing strength is a separate measurement from
 prediction quality (theory 27): the dist models' roster Elo is recorded but
 is not the oracle claim.
 
+### Shipped models (2026-07-21 campaign)
+
+Four dist models trained on the full labeled store (22,788 train positions,
+950,884 raw rows; 700 held-out eval positions, 296,800 raw rows). Inputs:
+feature v2, 129 binary piece-square features (as above). Training: `train.exe
+dist-value`, primary raw-BCE mode, lr 0.01, lr-sigma 0.002, l2 1e-6,
+val-split 0.1, early-stop (these hyperparameters were chosen from an
+exploratory sweep documented in
+[position-oracle-results-1](plans/position-oracle-results-1-lazy-popping-simon.md),
+which found lr 0.01 beat the original 0.02 default).
+
+| Model | mu / sigma heads | Parameters | Oracle-verdict MAE / NLL (beats d8?) | Roster Elo (head) |
+|---|---|---|---|---|
+| `models/dist_lin.txt` | linear / linear | 260 | 161.3 / 0.4240 (yes) | 1036 (d6/nb200k), 694 (d4) |
+| `models/dist_mlp_s1001.txt` | mlp(128,64) / mlp(32) | 29,154 | 147.9 / 0.4087 (yes) | 643 (d4) |
+| `models/dist_mlp_s2002.txt` | mlp(128,64) / mlp(32) | 29,154 | 150.0 / 0.4110 (yes) | 640 (d4) |
+| `models/dist_mlp_wide.txt` | mlp(256,128) / mlp(64) | 74,690 | 146.2 / 0.4079 (yes) | 767 (d4) |
+
+All four beat the calibrated depth-8/2M-node oracle baseline (MAE 191.3,
+NLL 0.4498) on both required metrics -- theory 34, confirmed. The sigma
+(volatility) head is weaker: predicted sigma correlates with measured
+position volatility at only 0.12-0.29 (Pearson) across configs -- theory 35,
+weakly supported, not confirmed. Playing-strength Elo diverges from the
+prediction-quality ranking (theory 27, reconfirmed here): `dist_lin` beats
+both smaller MLP configs in actual play despite losing to them on
+prediction. Full numbers, the exploratory sweeps that shaped this recipe,
+and caveats: the results doc above.
+
 ## Worked example: the MLP value agent
 
 A concrete learned agent end to end, so the pieces above (model type, features,
