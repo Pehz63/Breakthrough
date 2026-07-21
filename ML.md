@@ -260,22 +260,40 @@ exploratory sweep documented in
 [position-oracle-results-1](plans/position-oracle-results-1-lazy-popping-simon.md),
 which found lr 0.01 beat the original 0.02 default).
 
-| Model | mu / sigma heads | Parameters | Oracle-verdict MAE / NLL (beats d8?) | Roster Elo (head) |
-|---|---|---|---|---|
-| `models/dist_lin.txt` | linear / linear | 260 | 161.3 / 0.4240 (yes) | 1036 (d6/nb200k), 694 (d4) |
-| `models/dist_mlp_s1001.txt` | mlp(128,64) / mlp(32) | 29,154 | 147.9 / 0.4087 (yes) | 643 (d4) |
-| `models/dist_mlp_s2002.txt` | mlp(128,64) / mlp(32) | 29,154 | 150.0 / 0.4110 (yes) | 640 (d4) |
-| `models/dist_mlp_wide.txt` | mlp(256,128) / mlp(64) | 74,690 | 146.2 / 0.4079 (yes) | 767 (d4) |
+| Model | mu / sigma heads | Parameters | Oracle-verdict MAE / NLL (beats d8?) |
+|---|---|---|---|
+| `models/dist_lin.txt` | linear / linear | 260 | 161.3 / 0.4240 (yes) |
+| `models/dist_mlp_s1001.txt` | mlp(128,64) / mlp(32) | 29,154 | 147.9 / 0.4087 (yes) |
+| `models/dist_mlp_s2002.txt` | mlp(128,64) / mlp(32) | 29,154 | 150.0 / 0.4110 (yes) |
+| `models/dist_mlp_wide.txt` | mlp(256,128) / mlp(64) | 74,690 | 146.2 / 0.4079 (yes) |
 
 All four beat the calibrated depth-8/2M-node oracle baseline (MAE 191.3,
 NLL 0.4498) on both required metrics -- theory 34, confirmed. The sigma
 (volatility) head is weaker: predicted sigma correlates with measured
 position volatility at only 0.12-0.29 (Pearson) across configs -- theory 35,
-weakly supported, not confirmed. Playing-strength Elo diverges from the
-prediction-quality ranking (theory 27, reconfirmed here): `dist_lin` beats
-both smaller MLP configs in actual play despite losing to them on
-prediction. Full numbers, the exploratory sweeps that shaped this recipe,
-and caveats: the results doc above.
+weakly supported, not confirmed.
+
+**Roster Elo by search head** (2026-07-21 fit; d8/nb2m oracle 1151+/-12,
+reigning champion 1131+/-13, in the same fit -- never compare these numbers
+against a different fit):
+
+| Model | d2 | d4 | d6/nb200k |
+|---|---|---|---|
+| dist_lin | 594+/-16 | 694+/-15 | **1031+/-16** |
+| dist_mlp_s1001 | 509+/-17 | 667+/-15 | 974+/-16 |
+| dist_mlp_s2002 | 716+/-15 | 648+/-15 | 967+/-16 |
+| dist_mlp_wide | 454+/-18 | 768+/-15 | 931+/-16 |
+
+Playing-strength Elo diverges from the prediction-quality ranking (theory
+27, reconfirmed here): `dist_lin` beats all three MLP configs in actual
+play at d6 despite losing to them on prediction, and none of the four beat
+the reigning champion or oracle -- the developer's own expectation going in
+was that a d6 MLP would be the new champion; it was not, and that result is
+reported as-is rather than softened. A further open, unexplained wrinkle:
+`dist_mlp_wide` is the strongest MLP at d4 (768) but the WEAKEST at d6
+(931), a reversal not seen in the other two MLP configs. Full numbers, the
+exploratory sweeps that shaped this recipe, and caveats: the results doc
+above.
 
 ## Worked example: the MLP value agent
 

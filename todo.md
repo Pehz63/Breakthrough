@@ -498,17 +498,14 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   dist-value, `plans/position-oracle-plan-1-lazy-popping-simon.md`): each position's measured
   mu IS the Elo gap at which expected score = 0.5 (sign flipped), and the pipeline adds the
   volatility SD on top. Theories 34 and 35 track the oracle-prediction and sigma claims
-- Rate the 3 mlp dist variants (`dist_mlp_s1001`/`s2002`/`s79 dist_mlp_wide`, slots 77-79) at
-  the d6/nb200k head, not just d4 -- developer expects a d6 MLP to be the new champion.
-  `dist_lin` already reached Elo 1036 at d6/nb200k (rank 20/89) at d4-incremental speed; the
-  MLPs are full-scan (no accumulator yet, see the incrementalize item below), but a real
-  single-game measurement this session (`ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059)@1` vs
-  itself, 83 plies) came in at 224.99s total, ~2.7s/move average -- notably cheaper than the
-  ~9.2s/move a naive depth-scaling extrapolation predicted, so a full pooled rating run is
-  plausibly much less than the earlier ~35-40 CPU-hour estimate. Get a real few-game average
-  before committing to a full run. `mlp_wide` is the best oracle-verdict predictor (MAE 146.2)
-  and already leads the d4-only MLP comparison (767), so it is the most likely of the three to
-  actually threaten the champion once given real search depth `[Now]`
+- ~~Rate the 3 mlp dist variants at the d6/nb200k head, not just d4 -- developer expects a d6
+  MLP to be the new champion~~ Done 2026-07-21, plus d2 added for all 4 models (full d2/d4/d6
+  coverage). Result: the expectation did NOT hold. `dist_lin@d6` (1031) stays the strongest
+  dist-model agent; all three MLPs at d6 (974/967/931) lose to it in play despite beating it on
+  prediction (theory 27, reconfirmed a fourth time) -- none of the four beat the champion (1131)
+  or oracle (1151) in this fit. Also surfaced an unexplained reversal: `dist_mlp_wide` is the
+  best MLP at d4 (768) but the worst at d6 (931). Full table:
+  `plans/position-oracle-results-1-lazy-popping-simon.md`, `ML.md`'s shipped-models section.
 - Explore new agent types built from the mu/sigma distribution instead of just mu-as-eval:
   (a) SAMPLE a value from N(mu, sigma) at each leaf instead of using mu directly -- a
   genuinely new stochasticity source (the model's own learned uncertainty) distinct from the

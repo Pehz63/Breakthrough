@@ -784,11 +784,14 @@ outcome-prediction loss (better offline calibration) does not translate to highe
 agent Elo. The two can diverge outright: a higher-capacity model that fits the
 outcome labels better can play worse.
 
-**Status:** Promising / observed, now seen in a second, unrelated model
-family: the position-oracle dist model (theory 34) shows the same divergence
--- two MLP configs beat the linear config on prediction quality (MAE
-147.9-150.0 vs 161.3) but LOSE to it in actual play at matched depth (Elo
-643-640 vs 694). See
+**Status:** Promising / observed, now seen repeatedly in a second, unrelated
+model family: the position-oracle dist model (theory 34) shows the same
+divergence at every search depth measured. At d4, two of three MLP configs
+lost to linear in play despite beating it on prediction; once all three MLP
+configs were also rated at d6/nb200k, ALL THREE lost to linear in play
+(Elo 974/967/931 vs linear's 1031) while still beating it on prediction
+(MAE 147.9-150.0 vs 161.3) -- the developer's own expectation that a d6 MLP
+would become the new champion did not hold. See
 [position-oracle-results-1](../plans/position-oracle-results-1-lazy-popping-simon.md).
 Mechanism there not yet investigated; flagged as future work.
 

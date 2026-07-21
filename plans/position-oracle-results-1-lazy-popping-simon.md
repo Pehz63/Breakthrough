@@ -150,25 +150,48 @@ do not let the headline mu win imply theory 35 is equally well-supported.
 model built for playing strength does not automatically track this
 project's specific "Elo-gap-at-coin-flip" quantity.
 
-### Playing-strength Elo (full-roster refit, this fit: oracle 1151, champion 1144)
+### Playing-strength Elo
 
-| Agent | Head | Elo | Games | Rank/89 |
-|---|---|---|---|---|
-| dist_lin | d6/nb200k | 1036 | 704 | 20 |
-| dist_mlp_wide | d4 | 767 | 704 | 106 |
-| dist_lin | d4 | 694 | 704 | 135 |
-| dist_mlp_s1001 | d4 | 643 | 704 | 151 |
-| dist_mlp_s2002 | d4 | 640 | 704 | 154 |
+First measurement (d4 only, 2026-07-21 fit: oracle 1151, champion 1144):
+`dist_lin` reached 1036 at d6/nb200k, and among the d4-only comparison
+`dist_mlp_wide` (767) led the three MLP configs, ahead of `dist_lin` (694)
+which in turn beat `dist_mlp_s1001` (643) and `dist_mlp_s2002` (640).
 
-**A direct, clean confirmation of theory 27 in a new model family:**
-`dist_lin` (694) beats both `dist_mlp_s1001` (643) and `dist_mlp_s2002` (640)
-in actual play at identical depth, despite those two MLP configs clearly
-beating linear on the oracle-verdict prediction task (147.9-150.0 MAE vs
-161.3). Lower prediction error did not translate to higher playing Elo here
-either. `dist_mlp_wide` is the exception -- it leads on both axes -- so the
-divergence is not universal, but it is real for two of the three MLP
-configs. Per the champion-hygiene standing rule: this is a single fresh
-refit, not compared in absolute terms to any other fit's numbers.
+**Superseded same day by a second, later fit** once the developer asked for
+full d2/d4/d6 coverage on all four models (oracle 1151+/-12, champion
+1131+/-13, in that same later fit -- the two fits are NOT compared against
+each other in absolute terms, only the later one is current):
+
+| Model | d2 | d4 | d6/nb200k |
+|---|---|---|---|
+| dist_lin | 594+/-16 | 694+/-15 | **1031+/-16** |
+| dist_mlp_s1001 | 509+/-17 | 667+/-15 | 974+/-16 |
+| dist_mlp_s2002 | 716+/-15 | 648+/-15 | 967+/-16 |
+| dist_mlp_wide | 454+/-18 | 768+/-15 | 931+/-16 |
+
+**The developer's own expectation going in was that a d6 MLP would become
+the new champion. It did not.** None of the three MLP configs at d6 beat
+`dist_lin` at d6 (1031), let alone the champion (1131) or oracle (1151).
+`dist_lin@d6` remains the strongest dist-model agent measured -- a real,
+competitive agent, not a champion.
+
+**Theory 27, reconfirmed a fourth time:** at every depth, all three MLP
+configs beat `dist_lin` on the oracle-verdict prediction task (147.9-150.0
+MAE vs 161.3), yet at d6 `dist_lin` beats all three of them in actual play.
+Lower prediction error did not translate to higher playing Elo anywhere in
+this table.
+
+**An unexplained wrinkle, reported as an open observation, not a conclusion:**
+`dist_mlp_wide` is the BEST of the three MLP configs at d4 (768) but the
+WORST at d6 (931) -- a rank reversal within the MLP family that the other
+two configs do not show (`dist_mlp_s1001` and `dist_mlp_s2002` keep a
+consistent relative order across d4 and d6). No mechanism is proposed here;
+flagged in Future Work. `dist_mlp_s2002`'s d2 result (716, clearly the best
+of the four at that depth despite being unremarkable at d4/d6) is a second
+unexplained outlier in the same table.
+
+Per the champion-hygiene standing rule: all numbers above are from a single
+fit each, never compared in absolute terms to any other fit's numbers.
 
 ## Implementation differences from the plan
 
@@ -258,6 +281,17 @@ refit, not compared in absolute terms to any other fit's numbers.
 
 ## Future Work
 
+- **`dist_mlp_wide`'s d4-to-d6 rank reversal is unexplained.** It is the
+  strongest MLP config at d4 (768) and the weakest at d6 (931), while
+  `dist_mlp_s1001`/`dist_mlp_s2002` keep a consistent relative order across
+  both depths. No mechanism proposed. Would need controlled follow-up (e.g.
+  more seeds per depth to rule out simple noise, then inspecting whether
+  wide's larger capacity interacts badly with deeper alpha-beta pruning /
+  move ordering somehow) before treating it as more than an observation.
+- **`dist_mlp_s2002`'s d2 result (716) is a similarly unexplained outlier** --
+  clearly the best of the four models at that depth despite being
+  unremarkable at d4 and d6. Possibly just seed noise at a shallow, high-
+  variance depth; untested.
 - **Sigma head quality is weak (Pearson 0.12-0.29, Spearman down to 0.02)
   and untouched by this session's tuning** -- the hyperparameter sweep found
   the lrSigma/lr ratio axis flat, meaning the sweep never found a setting
