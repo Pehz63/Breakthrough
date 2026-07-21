@@ -4,7 +4,8 @@
 // calls getSettings(), playerMove(), or printBoard(). Instead it:
 //   - reads the global board[col][row] each frame to render,
 //   - drives human moves from mouse clicks via tryMove*/playMove*,
-//   - drives AI moves with a single moveWhite()/moveBlack() call per turn,
+//   - drives AI moves with a single moveWhite()/moveBlack() call per turn, run
+//     on a background thread (native) so the window stays responsive while it thinks,
 //   - detects wins by scanning the goal rows + piece counts (robust regardless
 //     of which engine path made the move).
 //
@@ -17,7 +18,8 @@
 //   APP STATE
 //   PACING STATE
 //   HELPERS              SetStatus / CheckWinner / LogMove / DiffMove / SearchArg
-//   GAME FLOW            AfterMove / StartGame / ApplyAIMove / HandleHumanClick
+//   AI WORKER + VIEW     SyncView (render snapshot) / background-thread search
+//   GAME FLOW            AfterMove / StartGame / Launch+FinalizeAIMove / HandleHumanClick
 //   UPDATE               per-frame state machine
 //   LAYOUT COMPUTE       ComputeLayout
 //   BOARD RENDERING      DrawPiece / DrawBoard
@@ -48,6 +50,9 @@
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
+#else
+#include <thread>
+#include <atomic>
 #endif
 
 // ============================================================
@@ -129,6 +134,50 @@ static PlayerConfig g_white;
 static PlayerConfig g_black;
 static int          g_turn   = White;   // whose move it is
 static int          g_winner = None;
+
+// ============================================================
+// AI WORKER + RENDER VIEW
+// ============================================================
+// The AI search runs on a background thread (native only) so the window keeps
+// redrawing and stays responsive while it thinks, instead of freezing inside
+// moveWhite()/moveBlack(). The search mutates the engine globals (board and the
+// piece counts, via simulate/unsimulate) while it runs, so the renderer must not
+// read those globals mid-search. Instead the draw code reads a snapshot -- the
+// "view" -- that only the main thread writes (via SyncView), taken before the
+// worker launches (pre-move position stays on screen) and refreshed after it
+// finishes (post-move position revealed). The web build has no pthreads here, so
+// it keeps the synchronous path (the worker runs inline and the window still
+// stalls during the search).
+static char g_viewBoard[SIZE][SIZE];
+static int  g_viewWCount = 0;
+static int  g_viewBCount = 0;
+static char g_aiPrev[SIZE][SIZE];    // board before the in-flight AI move, for DiffMove
+
+// Copy the live engine globals into the view the renderer reads. Main thread only.
+static void SyncView() {
+    std::memcpy(g_viewBoard, board, sizeof(g_viewBoard));
+    g_viewWCount = g_whiteCount;
+    g_viewBCount = g_blackCount;
+}
+
+#if !defined(PLATFORM_WEB)
+static std::thread       g_aiThread;
+static std::atomic<bool> g_aiDone{ false };   // worker -> main: search finished
+static bool              g_aiRunning = false; // main-thread-only: a worker is live
+#endif
+
+// If an AI worker is in flight, block until it finishes and clear the flags.
+// Used before any main-thread action that reloads or mutates the engine globals
+// (New Game, program exit) so it cannot race the search.
+static void JoinAiIfRunning() {
+#if !defined(PLATFORM_WEB)
+    if (g_aiRunning) {
+        g_aiThread.join();
+        g_aiRunning = false;
+        g_aiDone.store(false, std::memory_order_release);
+    }
+#endif
+}
 
 // ============================================================
 // PACING STATE
@@ -307,10 +356,11 @@ static int SearchArg(const PlayerConfig &c) {
 }
 
 // ============================================================
-// GAME FLOW -- AfterMove / StartGame / ApplyAIMove / HandleHumanClick
+// GAME FLOW -- AfterMove / StartGame / Launch+FinalizeAIMove / HandleHumanClick
 // ============================================================
 // Advance to the next turn / state after a move has been applied.
 static void AfterMove() {
+    SyncView();  // the move (human or AI) is applied to the globals: refresh the view
     g_hasSel = false;
     g_winner = CheckWinner();
     if (g_winner != None) { g_state = AppState::GameOver; return; }
@@ -326,6 +376,7 @@ static void AfterMove() {
 }
 
 static void StartGame() {
+    JoinAiIfRunning();  // never reload the board out from under a running search
     if (!reloadBoard(g_boardFile)) {
         SetStatus("Could not load board file. Check the path.");
         return;
@@ -342,31 +393,72 @@ static void StartGame() {
     g_evalB = EvalReadout{};
     g_editWhiteType = g_editBlackType = g_editBoardFile = false;
 
+    SyncView();  // render the freshly loaded position
+
     int t = g_white.type;
     g_state = (t == Human) ? AppState::WaitingForHuman : AppState::WaitingBeforeAI;
     TakeSnapshot();
     SetStatus("Game started. White to move.");
 }
 
-static void ApplyAIMove() {
-    char prev[SIZE][SIZE];
-    std::memcpy(prev, board, sizeof(prev));
+// Config the in-flight worker reads. Snapshotted from g_white/g_black at launch
+// so the still-interactive options panel cannot mutate the mover's settings out
+// from under the running search.
+static PlayerConfig g_aiCfg;
+static int          g_aiSide = White;
+
+// The heavy search itself. Runs on the worker thread (native) or inline (web).
+// Mutates the engine globals (board, counts, g_downEval*); the renderer stays on
+// the pre-move view until FinalizeAIMove() syncs the result back.
+static void AiWorker() {
+    if (g_aiSide == White) {
+        moveWhite(g_aiCfg.type, SearchArg(g_aiCfg), g_aiCfg.evaluator, g_aiCfg.evalParams, g_aiCfg.opener);
+    } else {
+        moveBlack(g_aiCfg.type, SearchArg(g_aiCfg), g_aiCfg.evaluator, g_aiCfg.evalParams, g_aiCfg.opener);
+    }
+#if !defined(PLATFORM_WEB)
+    g_aiDone.store(true, std::memory_order_release);
+#endif
+}
+
+// Kick off the AI move. Captures what the finalizer needs from the pre-move
+// position (board snapshot for the move diff, immediate eval readout), freezes
+// that position into the view, then launches the search: on a background thread
+// natively, or inline on web.
+static void LaunchAIMove() {
+    std::memcpy(g_aiPrev, board, sizeof(g_aiPrev));
 
     PlayerConfig &cfg = (g_turn == White) ? g_white : g_black;
     EvalReadout  &ev  = (g_turn == White) ? g_evalW : g_evalB;
     bool isMM = (cfg.type == MiniMax);
 
-    // Snapshot the immediate eval before the move; read the downstream value after.
+    // Immediate static eval must be read now, before the search touches the board.
     if (g_showEval) {
         ev.imm = immediateEvalForDisplay(isMM, cfg.evaluator, cfg.evalParams);
         ev.hasImm = true;
     }
 
-    if (g_turn == White) {
-        moveWhite(g_white.type, SearchArg(g_white), g_white.evaluator, g_white.evalParams, g_white.opener);
-    } else {
-        moveBlack(g_black.type, SearchArg(g_black), g_black.evaluator, g_black.evalParams, g_black.opener);
-    }
+    SyncView();  // keep the pre-move position on screen while the search runs
+
+    // Freeze the mover's side + config so the live panel can't race the worker.
+    g_aiSide = g_turn;
+    g_aiCfg  = cfg;
+
+#if !defined(PLATFORM_WEB)
+    g_aiDone.store(false, std::memory_order_release);
+    g_aiRunning = true;
+    g_aiThread = std::thread(AiWorker);
+#else
+    AiWorker();  // synchronous: no pthreads on this web build
+#endif
+}
+
+// Complete a finished AI move: record the downstream eval, log the move by
+// diffing against the pre-move snapshot, reveal the new position, then advance
+// the turn. Runs on the main thread after the worker has joined.
+static void FinalizeAIMove() {
+    EvalReadout &ev = (g_turn == White) ? g_evalW : g_evalB;
+    bool isMM = ((g_turn == White) ? g_white.type : g_black.type) == MiniMax;
 
     if (g_showEval && isMM) {
         ev.down = (g_turn == White) ? g_downEvalWhite : g_downEvalBlack;
@@ -376,7 +468,9 @@ static void ApplyAIMove() {
     }
 
     int x1, y1, x2;
-    if (DiffMove(prev, g_turn, x1, y1, x2)) LogMove(g_turn, x1, y1, x2);
+    if (DiffMove(g_aiPrev, g_turn, x1, y1, x2)) LogMove(g_turn, x1, y1, x2);
+
+    AfterMove();  // refreshes the view to the post-move position and advances the turn
 }
 
 // Handle a board click while waiting for a human move.
@@ -469,13 +563,27 @@ static void Update() {
             double need = (!mu.aiSlow && g_delay2s) ? 2.0 : 0.0;
             if (g_aiTimer >= need) go = true;
         }
-        if (go) g_state = AppState::ComputingAI;
+        if (go) {
+            g_state = AppState::ComputingAI;
+            g_stepRequested = false;
+            LaunchAIMove();   // starts the search (background thread on native)
+        }
     }
 
+    // While computing, the search runs off the render thread (native), so we only
+    // finalize once the worker signals done -- the window keeps redrawing the
+    // pre-move view in the meantime. On web the worker already ran inline, so this
+    // finalizes immediately.
     if (g_state == AppState::ComputingAI) {
-        ApplyAIMove();
-        g_stepRequested = false;
-        AfterMove();
+#if !defined(PLATFORM_WEB)
+        if (g_aiDone.load(std::memory_order_acquire)) {
+            g_aiThread.join();
+            g_aiRunning = false;
+            FinalizeAIMove();
+        }
+#else
+        FinalizeAIMove();
+#endif
     }
 }
 
@@ -530,7 +638,7 @@ static void DrawBoard() {
             Color sq = ((x + by) % 2 == 0) ? COL_DARK : COL_LIGHT;
             DrawRectangle(px, py, g_cell, g_cell, sq);
 
-            char who = board[x][by];
+            char who = g_viewBoard[x][by];   // snapshot, safe while the AI worker runs
             if (who == WHITE || who == BLACK)
                 DrawPiece(px + g_cell / 2, py + g_cell / 2, who);
         }
@@ -1004,8 +1112,8 @@ static void DrawPieceCounts() {
     // squares. Orientation: White starts on the low rows and moves up (its pieces
     // sit at the bottom of the screen); Black sits at the top.
     int bx = g_boardX + g_boardPx + 8;
-    DrawCountBadge(bx, g_boardY,                  BLACK, g_blackCount);  // Black's side (top)
-    DrawCountBadge(bx, g_boardY + g_boardPx - 26, WHITE, g_whiteCount);  // White's side (bottom)
+    DrawCountBadge(bx, g_boardY,                  BLACK, g_viewBCount);  // Black's side (top)
+    DrawCountBadge(bx, g_boardY + g_boardPx - 26, WHITE, g_viewWCount);  // White's side (bottom)
 
     // Eval readouts under each badge (Black just below the top badge, White above
     // the bottom badge so the two never collide on a short board).
@@ -1085,6 +1193,7 @@ int main() {
 #else
     SetTargetFPS(60);
     while (!WindowShouldClose()) UpdateDrawFrame();
+    JoinAiIfRunning();  // don't tear down while a search thread is still live
 #endif
 
     CloseWindow();

@@ -24,6 +24,12 @@ Priority tags: `[Now]` = active focus, `[Next]` = queued up, `[Later]` = valuabl
 - Best moves list or recommendation arrow `[Later]`
 - GUI: play against a named saved agent `[Next]`
 - GUI: agent-vs-agent ladder / leaderboard view `[Later]`
+- ~~GUI hangs while an AI is thinking. Move the AI computation off the render thread (separate
+  worker/shard), or at minimum render the move just played before starting to compute the
+  reply, so the board updates instead of freezing `[Next]`~~ Done: the native build now runs
+  the AI search on a background `std::thread` and renders from a main-thread view snapshot, so
+  the window stays responsive (measured 0 freezes over 12s of depth-12 AI-vs-AI vs a fully
+  frozen synchronous control). See `plans/gui-ai-thread-results-1-quiet-heron.md`.
 
 ## Pondering / 1v1 Performance
 - Run the side-bar evaluator's minimax at iterative deepening with no node or depth limit

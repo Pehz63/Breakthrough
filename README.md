@@ -159,7 +159,10 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
 - **MiniMax depth:** the Depth control (the Number+bar design) lets you type an
   exact depth, step it with +/-, or drag its bar (which tops out at 25, though the
   typed/stepped value can go higher). Large depths get very slow. The default depth
-  is 8.
+  is 8. The AI's search runs on a background thread (native build), so the window
+  stays responsive (resize, panel, buttons) while it thinks. The board shows the
+  position before the move until the search finishes, then updates to the move
+  played. The web build runs the search inline, so a deep search still stalls it.
 - The game starts automatically when the GUI opens using the default board and
   matchup. To change the board file, type a new path in the **Board** box and press
   **New Game** to apply it.
