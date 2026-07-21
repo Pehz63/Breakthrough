@@ -65,8 +65,8 @@ on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
 # give the hill climber (tools/hill_climb.ps1) non-deterministic opponents. Random-move
 # dilution dil(rP) plays a fully random move P% of the time; stochastic depth dilution
 # dil(rP,dN) instead plays a shallower depth-N search P% of the time (plausible-but-weaker).
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1        # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1        # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r14)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1
@@ -77,9 +77,9 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r52)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r75)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1     # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1     # benched 2026-07-21: exact Elo tie with dil(r60,d4)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1     # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d3)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1

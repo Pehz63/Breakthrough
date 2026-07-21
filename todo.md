@@ -206,7 +206,12 @@ against the same seams.
 - Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
   instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
   hidden terms cancel/zero out (e.g. ReLU gating so unchanged regions contribute a constant), the
-  way the heuristic `g_evalPos` already does a true neighbor-local delta. `[Later]`
+  way the heuristic `g_evalPos` already does a true neighbor-local delta. Promoted to top
+  priority (developer, 2026-07-21): the position-oracle campaign measured the real full-scan
+  cost directly -- 218x-573x slower per move than the linear model's incremental path at d4,
+  scaling with hidden width (`dist_mlp_wide`'s 256/128 heads cost the most). This is the
+  concrete blocker on rating the mlp dist variants at real search depth and on using one as the
+  GUI's live evaluator. `[Now]`
   - ~~Substrate shipped: sparse piece-square value features (v2, 129 binary inputs) plus the
     `g_mlAcc` scalar accumulator, updated by 2-3 weight adds per make/unmake and read at the
     leaf by `mlLeafScore`. A linear v2 model is an incremental PST with zero approximation
@@ -226,12 +231,50 @@ against the same seams.
     clamping cheapens the chosen lines on top. Training needs the Python track (a custom
     three-head loss is beyond the C++ SGD in `ml_train.cpp`); inference plugs into the same
     `g_mlAcc`-style accumulator seams shipped above.
+- Position-oracle MLP variant (developer, 2026-07-21): a lighter-weight version of the sparsity
+  idea directly above, scoped to the dist model specifically rather than a new joint
+  value+policy architecture -- add a sparsity penalty (L1 on weights, or a penalty on the
+  fraction of ReLU units NOT clamped to 0) to `dist-value`'s loss, so the trained mu/sigma
+  heads naturally have more zero weights and more dead ReLU units. Directly reduces the
+  incrementalization work above once it exists (fewer nonzero paths to touch per move) and may
+  also cut the current FULL-SCAN cost on its own (skip zero-weight multiplies even without an
+  accumulator) `[Later]`
+- Position-oracle MLP variant, more left-right symmetry (developer, 2026-07-21): either double
+  each training batch with mirrored copies of each board, tie mirror-pair weights together, or
+  add a symmetry-forcing loss term. Developer's own prediction going in: this will NOT do as
+  well Elo-wise on this specific pool, and that prediction is well-grounded -- theories 23/30/32
+  found the pool has a real, exploitable left-file tie-break bias, and mirror-symmetrizing a
+  linear outcome-trained model already cost real Elo (theory 30) rather than being a free
+  variance cut. Interesting BECAUSE it is expected to fail on playing strength: this is a
+  chance to test whether the same left-bias-is-real-signal finding holds for a model trained to
+  PREDICT position strength rather than to play well, or whether prediction quality and
+  playing strength diverge again here too (see theory 27, freshly reconfirmed by this
+  campaign). Concrete design already proposed and unbuilt for the general case: theory 32's
+  5-way unflipped/flipped/averaged/left-onto-both/right-onto-both comparison, reusable for the
+  dist model's mu head with `mlv2MirrorIndex` `[Later]`
 
 ## Models (policy head: board + move -> score / move-rater)
 - ~~Linear move-rater **(P1)**~~
 - MLP policy `[Later]`
 - Transformer policy `[Dream]`
 - Softmax / temperature sampling over move scores (for exploration + diverse self-play) `[Now]`
+- Repurpose the position-oracle's labeled data for a policy signal (developer question,
+  2026-07-21: "is that just the same thing?"). Answer: not quite, but three real, distinct
+  paths exist, in order of how much new work each needs: (1) NOTHING new to build -- the dist
+  model's mu head already scores positions, and running it through the existing Greedy explorer
+  (1-ply argmax over an evaluator) or AlphaBeta already turns "which move leads to the
+  highest-mu resulting position" into a policy for free, this is just using the model the way
+  every other value model already gets used, not a new signal; (2) a genuinely NEW signal:
+  instrument the labeler to record which move each ladder agent actually played from a labeled
+  position (currently `rankLabel` plays to conclusion and keeps only the outcome, discarding
+  the move), then train a move-rater on (position, move actually played by a HIGH-Elo ladder
+  rung, weighted by the position's own measured mu/sigma) -- this is a real new dataset the
+  raw store cannot currently produce without a labeler change, distinct from a value model's
+  1-ply lookahead; (3) policy distillation -- train a fast direct move-scorer to mimic what
+  "argmax over the dist model's mu across every legal move" would pick, without paying for the
+  per-move mu evaluation at inference time. (2) is the interesting new-signal answer to the
+  question as posed; (1) and (3) are real but are repackaging the existing model, not a new
+  learning signal `[Later]`
 
 ## Models (difficulty head: board -> how hard is this position)
 - Blunder labeling by branch replay: play a game between two strong deterministic
@@ -455,13 +498,30 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   dist-value, `plans/position-oracle-plan-1-lazy-popping-simon.md`): each position's measured
   mu IS the Elo gap at which expected score = 0.5 (sign flipped), and the pipeline adds the
   volatility SD on top. Theories 34 and 35 track the oracle-prediction and sigma claims
-- Position-oracle follow-ups (after the first campaign's results doc): activate --elo-se
-  (rating-SE variance is plumbed, off by default); an adaptive second labeling pass (per
-  position, add pairings whose gap centers on -mu_hat from the first labels, where sigma is
-  best identified); relabel-free retrain after each future ratings refit (rerun labelfit +
-  dist-value on the same raw stores, documented in ML.md); sigma as a search-time signal
-  (e.g. prefer high-sigma lines when behind); rate the mlp dist variants at the d6/nb200k
-  head once a faster mlp leaf exists (currently d4-only, full-scan cost) `[Next]`
+- Rate the 3 mlp dist variants (`dist_mlp_s1001`/`s2002`/`s79 dist_mlp_wide`, slots 77-79) at
+  the d6/nb200k head, not just d4 -- developer expects a d6 MLP to be the new champion.
+  `dist_lin` already reached Elo 1036 at d6/nb200k (rank 20/89) at d4-incremental speed; the
+  MLPs are full-scan (no accumulator yet, see the incrementalize item below), but a real
+  single-game measurement this session (`ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059)@1` vs
+  itself, 83 plies) came in at 224.99s total, ~2.7s/move average -- notably cheaper than the
+  ~9.2s/move a naive depth-scaling extrapolation predicted, so a full pooled rating run is
+  plausibly much less than the earlier ~35-40 CPU-hour estimate. Get a real few-game average
+  before committing to a full run. `mlp_wide` is the best oracle-verdict predictor (MAE 146.2)
+  and already leads the d4-only MLP comparison (767), so it is the most likely of the three to
+  actually threaten the champion once given real search depth `[Now]`
+- Explore new agent types built from the mu/sigma distribution instead of just mu-as-eval:
+  (a) SAMPLE a value from N(mu, sigma) at each leaf instead of using mu directly -- a
+  genuinely new stochasticity source (the model's own learned uncertainty) distinct from the
+  dilution/jitter mechanisms already in the ladder; (b) mean +/- k*sigma variants (an
+  "optimistic" agent that scores mu+sigma, a "cautious" one at mu-sigma) -- ties directly to
+  the sigma-as-search-time-signal idea two lines up (prefer high-sigma/high-upside lines when
+  behind is exactly a mu+sigma-style leaf score). Needs a new accessor or explorer variant
+  since `mlValueScore`/`mlLeafScore` currently read mu only (`mlValueScoreDist` already
+  exposes both mu and sigma, so the plumbing exists, just not wired into move choice) `[Now]`
+- Activate --elo-se (rating-SE variance is plumbed, off by default); an adaptive second
+  labeling pass (per position, add pairings whose gap centers on -mu_hat from the first
+  labels, where sigma is best identified); relabel-free retrain after each future ratings
+  refit (rerun labelfit + dist-value on the same raw stores, documented in ML.md) `[Next]`
 - Position-oracle input-feature alternatives (developer question 2026-07-20, feature v2's
   129 raw piece-square bits are not the only reasonable encoding). Test candidates on the
   CHEAP linear model first via the same log-triplet position-count-sweep discipline used to
@@ -632,3 +692,28 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   evaluator overhaul (`posWeightsActive` in `evalBeginSearch`, covering all sum-local
   weights): ladder v2->v3 at w0,l0 measured -0.5 to -3.6% (was +18 to +35%). See
   `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md`.
+
+## GUI
+- Add MLP models to the GUI (developer, 2026-07-21). `DrawPlayerConfig` generates its controls
+  from the evaluator registry the same way the console's `getEvaluatorSettings` does (root
+  `CLAUDE.md` Architecture Notes), so this is likely a model-slot-picker generalization rather
+  than new UI machinery -- needs checking `gui/main_gui.cpp` for whatever currently limits
+  LearnedValue selection to linear models specifically `[Now]`
+- Set a dist MLP (`dist_mlp_wide` once incrementalized, or any dist model meanwhile) as the
+  GUI's default on-screen board-state evaluator `[Now]`
+- Give the on-screen board-state evaluator iterative deepening: currently (needs confirming
+  against `gui/main_gui.cpp`) it looks like a static immediate leaf eval; make it a live,
+  progressively-deepening background search the way a chess GUI's analysis panel updates as it
+  thinks, rather than a single flat number `[Now]`
+- Overhaul the GUI's player/agent configuration to match the console and `rank.exe`'s
+  modularity: instead of the GUI's own more limited config path, let the user type a full
+  canonical agent ID directly (a text box parsed via the same `rankAgentFromId` every other
+  tool already uses), so any agent expressible on the command line is playable/watchable in
+  the GUI without a dedicated UI control per axis `[Now]`
+- Sharding to evaluate multiple lines at once in the GUI without freezing it (a multi-PV-style
+  analysis view). Real architectural tension to resolve first: the engine's board/eval state is
+  global (root `CLAUDE.md` Architecture Notes), which is exactly why every other parallel
+  workload in this project (rank.exe, tournaments) shards across separate OS processes rather
+  than threads. A GUI analysis panel showing several lines at once likely needs the same
+  process-per-line approach with results streamed back to the GUI process, not an in-process
+  thread pool over the current global-state engine `[Now]`
