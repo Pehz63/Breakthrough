@@ -66,10 +66,34 @@ per-node cost = us/move / nodes/move (fixed depth, so node counts match):
 So the first-layer accumulator removes ~44% of per-node cost for the widest head. This
 matches the honest pre-work estimate (~2x for a head where the first layer is ~half the
 forward pass; the shortfall vs 2x is the per-make column-update overhead plus the STM +
-tail costs). It does NOT approach the linear v2 accumulator (still far cheaper), because
-the layers past the first ReLU are irreducible for a fixed architecture -- exactly as the
-plan stated. At `nb200k` this still leaves the wide MLP at ~4 s/move at d6 (200k nodes x
-~20 us), so d6 rating remains expensive, just ~1.78x less so.
+tail costs).
+
+### Sparse leaf-tail forward (second-layer optimization, shipped same session)
+
+Prompted by the dead-ReLU finding below, `MLPModel::forwardFromHidden` was changed to sum
+each remaining layer only over its NONZERO inputs. ReLU zeros ~90% of the first-hidden
+units, and a zero activation contributes exactly nothing downstream, so this is
+**bit-identical** to the dense loop (the equivalence tests pass unchanged) and just skips
+~90% of the dominant second-layer matmul. Same benchmark, wide head:
+
+| build | us/node (d4) | vs full-scan |
+|---|---|---|
+| full-scan | 36.1 | 1.0x |
+| + first-layer accumulator (dense tail) | 20.2 | 1.78x |
+| **+ sparse leaf-tail** | **2.84** | **12.7x** |
+
+The sparse tail is a further **7.1x** on top of the first-layer accumulator, realizing
+(and slightly exceeding) the ~8-9x churn ceiling below. At `nb200k` the wide MLP now costs
+~0.57 s/move at d6 (200k x ~2.84 us), down from ~7.2 s full-scan -- d6 rating is now
+genuinely affordable. Why the per-leaf sparse forward was chosen over the literal
+cross-move delta-accumulator (the toy-example mechanism): for these ~90%-dead heads an
+op-count shows the delta approach is both slower (it pays an update AND an undo every
+make, and the side-to-move bit flips every ply, perturbing many units) and more complex
+(H2-dim reversible accumulator state); recomputing the already-sparse tail per leaf wins.
+The delta-accumulator would only pay off if the second layer were much wider than the
+live-unit count. (Node counts differ slightly across the three runs because the timed
+benchmark averages over whichever position subset fits its ms budget, not because the
+eval changed -- the sparse tail is bit-identical.)
 
 ### Dead-ReLU / activation churn -- the measurement that flipped the prior
 
@@ -164,13 +188,11 @@ test, this is an end-to-end sanity confirmation.) Color split: dist_mlp_wide 1-5
 
 ## Future Work
 
-- **Sparse leaf-tail forward (cheap, do first).** In `MLPModel::forwardFromHidden`, skip
-  first-hidden units whose activation is 0 when computing the second layer. The churn
-  measurement shows ~90% are dead per position, so the dominant `H x H2` second-layer
-  matmul shrinks ~10x. Exact (zero contributes zero), a few lines, no accumulator state.
-  Tethered to: the 90%-dead measurement above; would confirm the ~8-9x ceiling is
-  realizable without incremental second-layer machinery. This is the single highest-value
-  follow-up and directly speeds the d6 rating.
+- **Sparse leaf-tail forward -- SHIPPED same session** (see the speed section above): the
+  ~8-9x ceiling was realizable; measured 7.1x on top of the first-layer accumulator
+  (2.84 us/node, 12.7x vs full-scan) for the wide head, bit-identical. d6 rating is now
+  affordable (~0.57 s/move at nb200k), so a fuller multi-seed d6 campaign is no longer
+  compute-gated if a future head warrants it.
 - **Second-accumulated-layer (dead-ReLU delta).** Maintain the second-layer
   pre-activations as reversible accumulator state and propagate only the deltas of
   first-hidden units whose activation changed (~12% per move). Payoff `H / churn` ~= 8x.

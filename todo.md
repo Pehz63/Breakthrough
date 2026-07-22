@@ -225,28 +225,33 @@ against the same seams.
     leaf by `mlLeafScore`. A linear v2 model is an incremental PST with zero approximation
     (~9x lower cost per node than the v1 full-scan learned leaf). The NNUE step is widening
     the scalar to a vector and adding hidden layers on the same seams.~~
-  - **Sparse leaf-tail forward (highest-value follow-up, do first).** The `mlp-sparsity`
-    measurement (shipped this session) found the dist MLP heads are ~90% dead-ReLU per
-    position with only ~10-12% activation churn per move (theory 36) -- NOT the dense
-    ~50%-active heads the plan assumed. So skipping the dead first-hidden units when computing
-    the second layer in `MLPModel::forwardFromHidden` shrinks the dominant `H x H2` matmul
-    ~10x, exact (zero contributes zero), a few lines, no new accumulator state. This is the
-    cheap way to realize theory 36's ~8-9x ceiling and would directly make a full d6 MLP
-    campaign affordable. `[Now]`
-  - **Second-accumulated-layer (dead-ReLU delta).** Maintain the second-layer pre-activations
-    as reversible accumulator state and propagate only the ~12%/move changed-activation
-    deltas (payoff `H/churn` ~= 8x). More make/unmake bookkeeping than the sparse-tail
-    forward, which likely captures most of the win -- measure the sparse tail first. Exact by
-    ReLU piecewise linearity. Side-to-move handling matters (it flips every ply); the
-    churn number above holds STM fixed, so a real design handles STM as a separate rank-1
-    perturbation. `[Later]`
-  - **Sparsity-training penalty** (`dist-value` L1 / non-clamped-fraction loss): could push
-    dead fraction even higher, but the heads are ALREADY ~90% sparse without it (theory 36),
-    so this is now lower priority than the sparse-tail forward. `[Later]`
+  - ~~**Sparse leaf-tail forward.** The `mlp-sparsity` measurement found the dist MLP heads
+    are ~90% dead-ReLU per position with only ~10-12% activation churn per move (theory
+    36) -- NOT the dense ~50%-active heads the plan assumed.~~ Shipped same session:
+    `MLPModel::forwardFromHidden` sums each remaining layer only over its nonzero inputs,
+    bit-identical (adding `0*w` never changes a float sum), skipping ~90% of the dominant
+    second-layer matmul. Measured 7.1x on top of the first-layer accumulator (2.84 us/node,
+    **12.7x vs full-scan** for the wide head), meeting theory 36's predicted ~8-9x ceiling.
+    d6/nb200k is now affordable for the wide head (~0.57 s/move, down from ~7.2 s). `[done]`
+  - **Second-accumulated-layer (dead-ReLU delta).** Superseded by the sparse leaf-tail
+    forward above for these heads: an op-count showed the delta approach is both slower here
+    (it pays an update AND an undo every make, and the side-to-move bit flips every ply,
+    perturbing many units, so the "changed" set isn't much smaller than the live set) and
+    more complex (H2-dim reversible accumulator state) than just recomputing the
+    already-sparse tail per leaf. Would only be worth it if the second layer were much wider
+    than the live-unit count, or for a head where per-move churn (not just static sparsity)
+    is the bottleneck. `[Dream]`
+  - **Sparsity-training penalty** (`dist-value` L1 / non-clamped-fraction loss): now lower
+    priority still -- the sparse leaf-tail forward already captures the ~90%-sparse heads'
+    speed win without changing training at all. Would only matter if a future architecture
+    trains denser. `[Later]`
   - **NNUE-shaped head** (`129 -> 512 -> 8 -> 1`: wide first layer, tiny rest): with the first
-    layer accumulated and the tail sparse, this could be both cheaper per node and
-    higher-capacity than the current 256/128. A training + rating arm once the sparse tail
-    lands. `[Later]`
+    layer accumulated and the tail now sparse-aware, this could be both cheaper per node and
+    higher-capacity than the current 256/128. A training + rating arm. `[Next]`
+  - **Full multi-seed 32-game d6 campaign for the dist MLPs**, now that d6 is affordable
+    (~0.57 s/move for the wide head): re-confirm the existing 720-game standings (dist_lin
+    1031 > MLPs 974/967/931) hold at tighter error bars, now that cost is no longer a
+    constraint on games/pair. `[Next]`
 - Joint value + policy + next-value model trained to minimize its own recomputation `[Later]`
   - With ReLU units, a hidden unit that remains clamped at 0 before and after a move contributes
     no changed downstream value (equivalently, the derivative through the ReLU pre-activation is

@@ -325,10 +325,12 @@ evaluator, explorer) connect into one picture.
   with the MLP. The model is a position evaluator, not a move-output policy; the
   agent searches and evaluates. The MLP mu head is now scored with an NNUE-style
   first-hidden accumulator (the vector generalization of the linear v2 `g_mlAcc`):
-  the first layer's pre-activations are maintained incrementally across make/unmake
-  and only the (small) remaining layers run per leaf. This cut per-node cost ~1.78x
-  for the widest head (256/128) at fixed depth; the deeper layers past the first
-  ReLU are still recomputed each leaf, which is the ~2x ceiling for these widths.
+  the first layer's pre-activations are maintained incrementally across make/unmake,
+  and the remaining layers run per leaf but sum only over their NONZERO inputs
+  (`MLPModel::forwardFromHidden`; ReLU zeros ~90% of the first-hidden units, so this
+  is bit-identical yet ~10x cheaper on the second-layer matmul). Combined, per-node
+  cost for the widest head (256/128) dropped 12.7x vs the old full scan (36.1 ->
+  2.84 us/node at fixed depth), making the d6/nb200k head affordable (~0.57 s/move).
   See `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`.
 - **Training = supervised value regression on outcomes.** `selfplay-supervised
   --model-type mlp --residual-skip -1 --from-data <replay>`, where `<replay>` is a

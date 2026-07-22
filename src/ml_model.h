@@ -135,6 +135,7 @@ struct MLPModel : public Model {
     // (single-threaded engine, so a mutable per-model buffer is safe).
     mutable std::vector<std::vector<float> > act;   // act[0..L]; act[0] = input
     mutable std::vector<std::vector<float> > pre;   // pre[1..L] pre-activations
+    mutable std::vector<int> nzScratch;             // reused nonzero-activation index list (sparse leaf tail)
 
     // hidden = list of hidden-layer widths (empty => degenerates to a linear map).
     MLPModel(int head, int featVersion, int featCount, float scale, const std::vector<int>& hidden);
@@ -152,9 +153,12 @@ struct MLPModel : public Model {
     // Leaf tail for the NNUE-style incremental path (ml_eval.cpp): given the first
     // hidden layer's pre-activations (length sizes[1], maintained incrementally by
     // the make/unmake accumulator), apply ReLU and run the remaining layers,
-    // returning the output logit. Uses the same scratch/math as computeForward so
-    // the two agree exactly for a given pre1. Requires a genuine hidden layer
-    // (sizes.size() >= 3, i.e. sizes[1] is hidden, not the linear output).
+    // returning the output logit. Bit-identical to computeForward for a given pre1,
+    // but sums each layer only over its NONZERO inputs (ReLU zeros ~90% of the dist
+    // heads' first-hidden units, and a zero contributes exactly nothing downstream),
+    // so the dominant second-layer matmul shrinks with the activation sparsity.
+    // Requires a genuine hidden layer (sizes.size() >= 3, i.e. sizes[1] is hidden,
+    // not the linear output).
     float forwardFromHidden(const float* pre1) const;
 
     // Break weight symmetry before training (zero-init hidden layers can't learn).

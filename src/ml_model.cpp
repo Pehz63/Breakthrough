@@ -172,18 +172,27 @@ float MLPModel::forwardFromHidden(const float* pre1) const {
         pre[1][j] = pre1[j];
         act[1][j] = (pre1[j] > 0.0f) ? pre1[j] : 0.0f;
     }
-    // Run the remaining layers exactly as computeForward does (k = 1..L-1): ReLU on
-    // hidden layers, linear on the final output.
+    // Run the remaining layers (k = 1..L-1): ReLU on hidden layers, linear output.
+    // ReLU zeros most first-hidden units (~90% for the trained dist heads), and a
+    // zero activation contributes exactly nothing to any downstream pre-activation,
+    // so gather the layer's nonzero inputs once and sum only over those. This is
+    // bit-identical to the dense loop (adding 0*w never changes a float sum) -- a
+    // pure speed win when the layer input is sparse, which is exactly the case here
+    // (the "skip dead/constant hidden units" idea, applied per leaf).
     for (int k = 1; k < L; k++) {
         int in = sizes[k], out = sizes[k+1];
         const std::vector<float>& Wk = W[k];
         const std::vector<float>& Bk = B[k];
         const float* a = act[k].data();
         bool hidden = (k + 1 < L);
+        nzScratch.clear();
+        for (int i = 0; i < in; i++) if (a[i] != 0.0f) nzScratch.push_back(i);
+        int nnz = (int)nzScratch.size();
+        const int* nz = nzScratch.data();
         for (int j = 0; j < out; j++) {
             const float* wrow = &Wk[(size_t)j * in];
             float z = Bk[j];
-            for (int i = 0; i < in; i++) z += wrow[i] * a[i];
+            for (int t = 0; t < nnz; t++) { int i = nz[t]; z += wrow[i] * a[i]; }
             pre[k+1][j] = z;
             act[k+1][j] = hidden ? (z > 0.0f ? z : 0.0f) : z;
         }
