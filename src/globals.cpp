@@ -31,6 +31,9 @@ int g_evalLevel = 3;   // benchmark-only leaf-generation selector (see globals.h
 double g_mlAcc = 0.0;
 bool g_mlIncremental = false;
 const float* g_mlWeights = nullptr;
+int g_mlAccDim = 0;                        // 0 = scalar/linear path; >0 = MLP first-hidden width
+double* g_mlAccVec = nullptr;              // length-g_mlAccDim layer-0 pre-activation accumulator
+const float* g_mlL0ByInput = nullptr;      // input-major layer-0 weights (idx*g_mlAccDim + unit)
 int g_downEvalWhite = 0;
 int g_downEvalBlack = 0;
 unsigned long long g_nodeBudget = 0;      // 0 = unlimited

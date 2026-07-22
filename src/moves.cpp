@@ -3,6 +3,7 @@
 #include "ai_minimax.h"
 #include "ai_eval.h"
 #include "ml_features.h"   // mlSqW/mlSqB piece-square indices for the g_mlAcc updates
+#include "ml_eval.h"       // mlAccAddColumn/mlAccSubColumn for the MLP vector-accumulator path
 
 // ============================================================
 // MOVE DISPATCH -- moveWhite / moveBlack
@@ -299,8 +300,13 @@ bool simulateMoveWhite(int moveX1, int moveY, int moveX2) { //Simulates the give
         if (isCapture) g_noiseAcc -= noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY+1);
     }
     if (g_mlIncremental) {
-        g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY+1)] - g_mlWeights[mlSqW(moveX1, moveY)];
-        if (isCapture) g_mlAcc -= g_mlWeights[mlSqB(moveX2, moveY+1)];
+        if (g_mlAccDim) {   // MLP vector accumulator: source off, dest on, capture off
+            mlAccAddColumn(mlSqW(moveX2, moveY+1)); mlAccSubColumn(mlSqW(moveX1, moveY));
+            if (isCapture) mlAccSubColumn(mlSqB(moveX2, moveY+1));
+        } else {            // linear scalar accumulator
+            g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY+1)] - g_mlWeights[mlSqW(moveX1, moveY)];
+            if (isCapture) g_mlAcc -= g_mlWeights[mlSqB(moveX2, moveY+1)];
+        }
     }
     return isCapture;
 }
@@ -331,8 +337,13 @@ bool simulateMoveBlack(int moveX1, int moveY, int moveX2) { //Simulates the give
         if (isCapture) g_noiseAcc -= noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY-1);
     }
     if (g_mlIncremental) {
-        g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY-1)] - g_mlWeights[mlSqB(moveX1, moveY)];
-        if (isCapture) g_mlAcc -= g_mlWeights[mlSqW(moveX2, moveY-1)];
+        if (g_mlAccDim) {   // MLP vector accumulator: source off, dest on, capture off
+            mlAccAddColumn(mlSqB(moveX2, moveY-1)); mlAccSubColumn(mlSqB(moveX1, moveY));
+            if (isCapture) mlAccSubColumn(mlSqW(moveX2, moveY-1));
+        } else {            // linear scalar accumulator
+            g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY-1)] - g_mlWeights[mlSqB(moveX1, moveY)];
+            if (isCapture) g_mlAcc -= g_mlWeights[mlSqW(moveX2, moveY-1)];
+        }
     }
     return isCapture;
 }
@@ -359,8 +370,13 @@ void unsimulateMoveWhite(int moveX1, int moveY, int moveX2, bool isCapture) { //
         if (isCapture) g_noiseAcc += noiseHashRaw(g_noiseSeed, BLACK, moveX2, moveY+1);
     }
     if (g_mlIncremental) {
-        g_mlAcc += g_mlWeights[mlSqW(moveX1, moveY)] - g_mlWeights[mlSqW(moveX2, moveY+1)];
-        if (isCapture) g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY+1)];
+        if (g_mlAccDim) {   // MLP vector accumulator: reverse of the make
+            mlAccAddColumn(mlSqW(moveX1, moveY)); mlAccSubColumn(mlSqW(moveX2, moveY+1));
+            if (isCapture) mlAccAddColumn(mlSqB(moveX2, moveY+1));
+        } else {            // linear scalar accumulator
+            g_mlAcc += g_mlWeights[mlSqW(moveX1, moveY)] - g_mlWeights[mlSqW(moveX2, moveY+1)];
+            if (isCapture) g_mlAcc += g_mlWeights[mlSqB(moveX2, moveY+1)];
+        }
     }
     return;
 }
@@ -388,8 +404,13 @@ void unsimulateMoveBlack(int moveX1, int moveY, int moveX2, bool isCapture) { //
         if (isCapture) g_noiseAcc += noiseHashRaw(g_noiseSeed, WHITE, moveX2, moveY-1);
     }
     if (g_mlIncremental) {
-        g_mlAcc += g_mlWeights[mlSqB(moveX1, moveY)] - g_mlWeights[mlSqB(moveX2, moveY-1)];
-        if (isCapture) g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY-1)];
+        if (g_mlAccDim) {   // MLP vector accumulator: reverse of the make
+            mlAccAddColumn(mlSqB(moveX1, moveY)); mlAccSubColumn(mlSqB(moveX2, moveY-1));
+            if (isCapture) mlAccAddColumn(mlSqW(moveX2, moveY-1));
+        } else {            // linear scalar accumulator
+            g_mlAcc += g_mlWeights[mlSqB(moveX1, moveY)] - g_mlWeights[mlSqB(moveX2, moveY-1)];
+            if (isCapture) g_mlAcc += g_mlWeights[mlSqW(moveX2, moveY-1)];
+        }
     }
     return;
 }

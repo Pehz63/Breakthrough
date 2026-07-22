@@ -284,6 +284,16 @@ against a different fit):
 | dist_mlp_s2002 | 716+/-15 | 648+/-15 | 967+/-16 |
 | dist_mlp_wide | 454+/-18 | 768+/-15 | 931+/-16 |
 
+These MLP mu heads are now scored incrementally in search (NNUE-style
+first-hidden accumulator, shipped 2026-07-22, `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`),
+~1.78x cheaper per node for the wide head. The incremental agent has the
+same canonical ID (content-hash based) and eval-equivalent output, so the
+Elo numbers above carry over unchanged -- the optimization is pure speed.
+A measurement taken during that work found these heads are ~90% dead-ReLU
+per position with only ~12% activation churn per move, so a further
+sparse-tail / second-accumulated-layer optimization has an ~8-9x ceiling on
+top (filed as future work).
+
 Playing-strength Elo diverges from the prediction-quality ranking (theory
 27, reconfirmed here): `dist_lin` beats all three MLP configs in actual
 play at d6 despite losing to them on prediction, and none of the four beat
@@ -313,9 +323,13 @@ evaluator, explorer) connect into one picture.
   `ab(d6,tt,ord,nb200k)@1.learned(<hash>)@1`: alpha-beta minimax at depth 6 with a
   200000-node budget, transposition table + move ordering, scoring leaf positions
   with the MLP. The model is a position evaluator, not a move-output policy; the
-  agent searches and evaluates. The MLP is full-scan (not incrementally updatable
-  like a linear v2 model), so a deeper search costs more per node -- the NNUE step
-  in the value-head roadmap addresses that.
+  agent searches and evaluates. The MLP mu head is now scored with an NNUE-style
+  first-hidden accumulator (the vector generalization of the linear v2 `g_mlAcc`):
+  the first layer's pre-activations are maintained incrementally across make/unmake
+  and only the (small) remaining layers run per leaf. This cut per-node cost ~1.78x
+  for the widest head (256/128) at fixed depth; the deeper layers past the first
+  ReLU are still recomputed each leaf, which is the ~2x ceiling for these widths.
+  See `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`.
 - **Training = supervised value regression on outcomes.** `selfplay-supervised
   --model-type mlp --residual-skip -1 --from-data <replay>`, where `<replay>` is a
   `rank.exe extract` sample of the rated pool's stored match history

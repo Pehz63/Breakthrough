@@ -286,9 +286,11 @@ move changes only 2 or 3 of those inputs, the engine keeps the model's output in
 running accumulator during search, updated by a few weight additions per make/unmake
 instead of a rescan, the same pattern the heuristic evaluators use for their
 positional term. This drops the learned leaf's cost per node by roughly 9x (measured
-with `train.exe speed`, which benchmarks both layouts side by side). The v2 route is
-the substrate for future NNUE-style models: widen the scalar accumulator to a vector
-and add hidden layers. Train one with:
+with `train.exe speed`, which benchmarks both layouts side by side). The same route
+now also carries NNUE-style MLP value heads: the scalar accumulator is widened to a
+vector for the first hidden layer, maintained across make/unmake, with only the
+remaining layers run per leaf (measured ~1.78x per node for a 256/128 head). Train a
+linear one with:
 
 ```powershell
 .\tools\run_train.ps1 selfplay-supervised --out models/pst_value --feature-version 2 --games 250 --epochs 6

@@ -229,6 +229,86 @@ static void mlWalk(const LinearModel* m, int slot, const int* params, int color,
     }
 }
 
+// From-scratch reference for the MLP vector accumulator g_mlAccVec: the first
+// hidden layer's pre-activations B[0][j] + first-layer weights of the occupied
+// piece-squares (side-to-move excluded, it is applied at read time). W[0] is
+// output-major (W[0][j*in + idx]).
+static void mlAccVecFull(const MLPModel* mu, std::vector<double>& out) {
+    int H = mu->sizes[1];
+    int in0 = mu->sizes[0];
+    const std::vector<float>& W0 = mu->W[0];
+    const std::vector<float>& B0 = mu->B[0];
+    out.assign(H, 0.0);
+    for (int j = 0; j < H; j++) out[j] = B0[j];
+    for (int y = 0; y < SIZE; y++)
+        for (int x = 0; x < SIZE; x++) {
+            char c = board[x][y];
+            int idx = -1;
+            if (c == WHITE)      idx = mlSqW(x, y);
+            else if (c == BLACK) idx = mlSqB(x, y);
+            if (idx < 0) continue;
+            for (int j = 0; j < H; j++) out[j] += W0[(size_t)j * in0 + idx];
+        }
+}
+
+// MLP analog of mlWalkCheck: the incremental vector accumulator vs a from-scratch
+// recompute, and the incremental leaf vs the full-scan mlValueScore. The leaf
+// tolerance is 2 (vs 1 for the linear path): the accumulator sums layer-0 weights
+// in double while the full scan sums in float, and that ~1e-5 pre-activation
+// difference propagates continuously (ReLU is continuous) through the tail layers.
+static int g_mlpWalkAccMismatch = 0;
+static int g_mlpWalkLeafMismatch = 0;
+static void mlpWalkCheck(const MLPModel* mu, int slot, const int* params) {
+    std::vector<double> ref; mlAccVecFull(mu, ref);
+    double maxd = 0.0;
+    for (int j = 0; j < (int)ref.size(); j++) {
+        double dd = std::fabs(g_mlAccVec[j] - ref[j]);
+        if (dd > maxd) maxd = dd;
+    }
+    if (maxd > 1e-4) g_mlpWalkAccMismatch++;
+    int lvIdx = evalIdx("LearnedValue");
+    for (int t = 0; t < 2; t++) {
+        int turn = (t == 0) ? White : Black;
+        long long inc  = evalLeaf(turn, lvIdx, params);
+        long long full = mlValueScore(turn, slot);
+        if (inc - full > 2 || full - inc > 2) g_mlpWalkLeafMismatch++;
+    }
+}
+static void mlpWalk(const MLPModel* mu, int slot, const int* params, int color, int depth) {
+    mlpWalkCheck(mu, slot, params);
+    if (depth <= 0) return;
+    std::vector<double> ref;
+    if (color == White) {
+        for (int y = 0; y < SIZE-1; y++)
+            for (int x = 0; x < SIZE; x++) {
+                if (board[x][y] != WHITE) continue;
+                for (int z = x-1; z <= x+1; z++) {
+                    if (!tryMoveQuickWhite(x, y, z)) continue;
+                    bool cap = simulateMoveWhite(x, y, z);
+                    mlpWalk(mu, slot, params, Black, depth-1);
+                    unsimulateMoveWhite(x, y, z, cap);
+                    mlAccVecFull(mu, ref);
+                    for (int j = 0; j < (int)ref.size(); j++)
+                        if (std::fabs(g_mlAccVec[j] - ref[j]) > 1e-4) { g_mlpWalkAccMismatch++; break; }
+                }
+            }
+    } else {
+        for (int y = 1; y < SIZE; y++)
+            for (int x = 0; x < SIZE; x++) {
+                if (board[x][y] != BLACK) continue;
+                for (int z = x-1; z <= x+1; z++) {
+                    if (!tryMoveQuickBlack(x, y, z)) continue;
+                    bool cap = simulateMoveBlack(x, y, z);
+                    mlpWalk(mu, slot, params, White, depth-1);
+                    unsimulateMoveBlack(x, y, z, cap);
+                    mlAccVecFull(mu, ref);
+                    for (int j = 0; j < (int)ref.size(); j++)
+                        if (std::fabs(g_mlAccVec[j] - ref[j]) > 1e-4) { g_mlpWalkAccMismatch++; break; }
+                }
+            }
+    }
+}
+
 TEST_CASE("value features v2 - sparse piece-square layout") {
     clearBoard();
     board[0][0] = WHITE; board[3][4] = WHITE; board[7][7] = BLACK; board[2][5] = BLACK;
@@ -550,21 +630,26 @@ TEST_CASE("Residual+linear v2: incremental leaf matches full recompute over a wa
     mlClearSlots();
 }
 
-TEST_CASE("Residual+MLP v2: incremental stays off, full-scan leaf is used") {
+TEST_CASE("Residual+MLP v2: incremental vector leaf matches full recompute over a walk") {
     int lvIdx = evalIdx("LearnedValue");
     int params[MAX_EVAL_PARAMS] = { 0 };
     srand(11);
-    std::vector<int> hidden; hidden.push_back(8);
+    std::vector<int> hidden; hidden.push_back(16); hidden.push_back(8);   // two hidden layers
     MLPModel* inner = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
     inner->initRandom();
     ResidualModel* res = new ResidualModel(0.3f, 2, inner);
-    mlSetModel(0, res);
+    mlSetModel(0, res);   // slot owns res + inner; `inner` pointer stays valid for mlAccVecFull
 
     REQUIRE(reloadBoard("boards\\board1.txt") == true);
     evalBeginSearch(lvIdx, params);
-    REQUIRE(g_mlIncremental == false);                 // MLP inner has no linear accumulator
-    REQUIRE(evalLeaf(White, lvIdx, params) == mlValueScore(White, 0));   // fallback == full scan
+    REQUIRE(g_mlIncremental);                           // MLP inner -> vector accumulator on
+    REQUIRE(g_mlAccDim == 16);                          // first-hidden width
+    g_mlpWalkAccMismatch = 0; g_mlpWalkLeafMismatch = 0;
+    mlpWalk(inner, 0, params, White, 2);               // leaf compares evalLeaf vs mlValueScore (both include the skip)
     evalEndSearch();
+    REQUIRE(g_mlpWalkAccMismatch == 0);
+    REQUIRE(g_mlpWalkLeafMismatch == 0);
+    REQUIRE(g_mlAccDim == 0);                           // cleared on end
     int s = mlValueScore(White, 0);
     REQUIRE(s < WhiteWin - 1024);
     REQUIRE(s > BlackWin + 1024);
@@ -963,21 +1048,49 @@ TEST_CASE("dist-value + dist-eval - synthetic end-to-end (position-oracle Stage 
                      "build\\dist_raw.jsonl", 10, 2, 4000) == 0);
 }
 
-TEST_CASE("Dist+MLP mu: incremental stays off, full-scan leaf is used") {
+TEST_CASE("Dist+MLP mu: incremental vector leaf matches full recompute over a walk") {
     int lvIdx = evalIdx("LearnedValue");
     int params[MAX_EVAL_PARAMS] = { 0 };
     srand(17);
-    std::vector<int> hidden(1, 8);
+    std::vector<int> hidden; hidden.push_back(16); hidden.push_back(8);   // two hidden layers, like the real dist MLPs
     MLPModel* mu = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
     mu->initRandom();
     LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
     DistModel* d = new DistModel(mu, sh);
-    mlSetModel(0, d);
+    mlSetModel(0, d);   // slot owns d + heads; `mu` pointer stays valid for mlAccVecFull
 
-    REQUIRE(reloadBoard("boards\\board1.txt") == true);
-    evalBeginSearch(lvIdx, params);
-    REQUIRE(g_mlIncremental == false);                 // MLP mu head has no linear accumulator
-    REQUIRE(evalLeaf(White, lvIdx, params) == mlValueScore(White, 0));   // fallback == full scan
-    evalEndSearch();
+    // Two SECTIONs, mirroring the linear walk: a crafted edge-capture position and
+    // the dense standard board, both walked over real make/unmake.
+    SECTION("dense standard board1") {
+        REQUIRE(reloadBoard("boards\\board1.txt") == true);
+        evalBeginSearch(lvIdx, params);
+        REQUIRE(g_mlIncremental);                       // MLP mu head -> vector accumulator on
+        REQUIRE(g_mlAccDim == 16);
+        std::vector<double> ref; mlAccVecFull(mu, ref);
+        for (int j = 0; j < 16; j++) REQUIRE(g_mlAccVec[j] == Approx(ref[j]).margin(1e-6));
+        g_mlpWalkAccMismatch = 0; g_mlpWalkLeafMismatch = 0;
+        mlpWalk(mu, 0, params, White, 2);
+        mlpWalk(mu, 0, params, Black, 2);
+        evalEndSearch();
+        REQUIRE(g_mlpWalkAccMismatch == 0);
+        REQUIRE(g_mlpWalkLeafMismatch == 0);
+        REQUIRE(g_mlAccDim == 0);
+    }
+    SECTION("crafted captures near both edges") {
+        // No end-row pieces and a non-residual dist head (skipW == 0), so the stale
+        // g_chipDiff after a manual layout does not affect the leaf, matching the
+        // linear crafted walk above.
+        clearBoard();
+        board[0][3] = WHITE; board[1][4] = BLACK; board[7][4] = WHITE; board[6][3] = BLACK;
+        board[3][3] = WHITE; board[4][4] = BLACK;
+        evalBeginSearch(lvIdx, params);
+        REQUIRE(g_mlIncremental);
+        g_mlpWalkAccMismatch = 0; g_mlpWalkLeafMismatch = 0;
+        mlpWalk(mu, 0, params, White, 3);
+        mlpWalk(mu, 0, params, Black, 3);
+        evalEndSearch();
+        REQUIRE(g_mlpWalkAccMismatch == 0);
+        REQUIRE(g_mlpWalkLeafMismatch == 0);
+    }
     mlClearSlots();
 }

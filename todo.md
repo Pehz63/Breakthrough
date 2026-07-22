@@ -203,20 +203,44 @@ against the same seams.
   calibration. All measurable with the existing stratified-loss printout + the generalized
   `sweep_pst_v2.ps1` groups. `[Next]`
 - Transformer value model (squares as tokens) -- teacher / label generator only, not in-search `[Dream]`
-- Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
-  instead of the whole forward pass. Explore encouraging fewer recalculations per move by having
-  hidden terms cancel/zero out (e.g. ReLU gating so unchanged regions contribute a constant), the
-  way the heuristic `g_evalPos` already does a true neighbor-local delta. Promoted to top
-  priority (developer, 2026-07-21): the position-oracle campaign measured the real full-scan
-  cost directly -- 218x-573x slower per move than the linear model's incremental path at d4,
-  scaling with hidden width (`dist_mlp_wide`'s 256/128 heads cost the most). This is the
-  concrete blocker on rating the mlp dist variants at real search depth and on using one as the
-  GUI's live evaluator. `[Now]`
+- ~~Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
+  instead of the whole forward pass.~~ Shipped 2026-07-22 as the NNUE-style first-hidden
+  accumulator for an MLP mu head (`g_mlAccDim`/`g_mlAccVec`/`g_mlL0ByInput`; the vector
+  generalization of `g_mlAcc`). The first layer is maintained across make/unmake; only the
+  remaining layers run per leaf. Measured **1.78x** per-node speedup for the wide head
+  (256/128) at fixed depth (36.1 -> 20.2 us/node at d4), bounded by the first-layer share as
+  predicted; the layers past the first ReLU are irreducible for a fixed architecture. The d6
+  MLP rating was NOT actually blocked (it was already done last session, 720+ games/agent:
+  dist_lin 1031 > MLPs 974/967/931, all below the champion -- theory 27 holds); the
+  incremental agent is the same identity + eval-equivalent, so those numbers carry over.
+  See `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`. `[done]`
   - ~~Substrate shipped: sparse piece-square value features (v2, 129 binary inputs) plus the
     `g_mlAcc` scalar accumulator, updated by 2-3 weight adds per make/unmake and read at the
     leaf by `mlLeafScore`. A linear v2 model is an incremental PST with zero approximation
     (~9x lower cost per node than the v1 full-scan learned leaf). The NNUE step is widening
     the scalar to a vector and adding hidden layers on the same seams.~~
+  - **Sparse leaf-tail forward (highest-value follow-up, do first).** The `mlp-sparsity`
+    measurement (shipped this session) found the dist MLP heads are ~90% dead-ReLU per
+    position with only ~10-12% activation churn per move (theory 36) -- NOT the dense
+    ~50%-active heads the plan assumed. So skipping the dead first-hidden units when computing
+    the second layer in `MLPModel::forwardFromHidden` shrinks the dominant `H x H2` matmul
+    ~10x, exact (zero contributes zero), a few lines, no new accumulator state. This is the
+    cheap way to realize theory 36's ~8-9x ceiling and would directly make a full d6 MLP
+    campaign affordable. `[Now]`
+  - **Second-accumulated-layer (dead-ReLU delta).** Maintain the second-layer pre-activations
+    as reversible accumulator state and propagate only the ~12%/move changed-activation
+    deltas (payoff `H/churn` ~= 8x). More make/unmake bookkeeping than the sparse-tail
+    forward, which likely captures most of the win -- measure the sparse tail first. Exact by
+    ReLU piecewise linearity. Side-to-move handling matters (it flips every ply); the
+    churn number above holds STM fixed, so a real design handles STM as a separate rank-1
+    perturbation. `[Later]`
+  - **Sparsity-training penalty** (`dist-value` L1 / non-clamped-fraction loss): could push
+    dead fraction even higher, but the heads are ALREADY ~90% sparse without it (theory 36),
+    so this is now lower priority than the sparse-tail forward. `[Later]`
+  - **NNUE-shaped head** (`129 -> 512 -> 8 -> 1`: wide first layer, tiny rest): with the first
+    layer accumulated and the tail sparse, this could be both cheaper per node and
+    higher-capacity than the current 256/128. A training + rating arm once the sparse tail
+    lands. `[Later]`
 - Joint value + policy + next-value model trained to minimize its own recomputation `[Later]`
   - With ReLU units, a hidden unit that remains clamped at 0 before and after a move contributes
     no changed downstream value (equivalently, the derivative through the ReLU pre-activation is

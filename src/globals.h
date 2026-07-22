@@ -101,6 +101,25 @@ extern double g_mlAcc;
 extern bool g_mlIncremental;
 extern const float* g_mlWeights;
 
+// NNUE-style vector accumulator for an MLP mu head (feature version 2). When the
+// LearnedValue slot holds an MLP (or a DistModel/Residual wrapping one), the scalar
+// g_mlAcc above is replaced by a per-first-hidden-unit accumulator of the layer-0
+// pre-activations, and only the (small) remaining layers run at each leaf:
+//   g_mlAccDim     first-hidden width H; 0 = the scalar/linear path above is active,
+//                  >0 = MLP vector path with this many units
+//   g_mlAccVec     length-H accumulator: B[0][j] + sum of layer-0 weights of the
+//                  occupied piece-squares (side-to-move EXCLUDED, applied at read
+//                  time), doubles so add/subtract drift stays negligible
+//   g_mlL0ByInput  layer-0 weights stored INPUT-major ([MLV2_FEATURES][H], i.e.
+//                  g_mlL0ByInput[idx*H + j]) so a touched input idx is a contiguous
+//                  length-H column add/subtract; column idx == MLV2_STM is the
+//                  side-to-move column, added only at leaf read
+// g_mlAccVec / g_mlL0ByInput point into std::vector buffers owned by ml_eval.cpp,
+// resized once per search by mlIncrementalBegin (never on the make/unmake hot path).
+extern int g_mlAccDim;
+extern double* g_mlAccVec;
+extern const float* g_mlL0ByInput;
+
 // Last minimax best-line ("predicted downstream") evaluations, white-centric.
 // Set by miniMaxWhite/Black from the root alpha/beta; surfaced by the UIs.
 extern int g_downEvalWhite;

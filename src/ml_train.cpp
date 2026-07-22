@@ -2274,6 +2274,117 @@ int scoreBoards(const string& modelPath, const string& posFile,
     return 0;
 }
 
+// ---- mlp-sparsity: dead-ReLU / activation-churn measurement ----
+
+// First hidden layer's post-ReLU activations for feature vector x (recomputed from
+// scratch, independent of the search accumulator).
+static void mlpAct1(const MLPModel* mp, const float* x, std::vector<float>& act1) {
+    int H = mp->sizes[1];
+    int in0 = mp->sizes[0];
+    const std::vector<float>& W0 = mp->W[0];
+    const std::vector<float>& B0 = mp->B[0];
+    act1.assign(H, 0.0f);
+    for (int j = 0; j < H; j++) {
+        const float* wrow = &W0[(size_t)j * in0];
+        float z = B0[j];
+        for (int i = 0; i < in0; i++) z += wrow[i] * x[i];
+        act1[j] = (z > 0.0f) ? z : 0.0f;
+    }
+}
+
+int mlpSparsity(const string& modelPath, const string& poolFile, int maxPositions) {
+    Model* m = loadModel(modelPath);
+    if (!m) { cout << "ERROR: cannot load " << modelPath << "\n"; return 1; }
+    MLPModel* mp = dynamic_cast<MLPModel*>(m);
+    if (!mp) { if (DistModel* dm = dynamic_cast<DistModel*>(m)) mp = dynamic_cast<MLPModel*>(dm->muHead); }
+    if (!mp || mp->featureVersion() != 2 || (int)mp->sizes.size() < 3) {
+        cout << "ERROR: " << modelPath << " has no v2 MLP mu head with a hidden layer\n";
+        delete m; return 1;
+    }
+    int H = mp->sizes[1];
+    std::ifstream f(poolFile.c_str());
+    if (!f.is_open()) { cout << "ERROR: cannot open " << poolFile << "\n"; delete m; return 1; }
+
+    long long nPos = 0, nMoves = 0;
+    double sumDead = 0.0, sumChanged = 0.0;
+    const int NB = 10;
+    long long hist[NB] = { 0 };
+    std::vector<float> a0, a1;
+    float feat[MLV2_FEATURES];
+    string line;
+    while (nPos < maxPositions && std::getline(f, line)) {
+        string enc;
+        if (!jsonStr(line, "enc", enc)) continue;
+        int stm = White;
+        if (!decodePositionEnc(enc, stm)) continue;
+        mlExtractValueFeaturesV2(stm, feat);
+        mlpAct1(mp, feat, a0);
+        int dead = 0;
+        for (int j = 0; j < H; j++) if (a0[j] == 0.0f) dead++;
+        sumDead += dead; nPos++;
+
+        // Board-only activation churn: evaluate each child board as if it were still
+        // the parent's turn (mlExtractValueFeaturesV2 piece-square bits are color-
+        // absolute; passing `stm` gives the child board with the parent's STM bit).
+        if (stm == White) {
+            for (int y = 0; y < SIZE-1; y++)
+                for (int x = 0; x < SIZE; x++) {
+                    if (board[x][y] != WHITE) continue;
+                    for (int z = x-1; z <= x+1; z++) {
+                        if (!tryMoveQuickWhite(x, y, z)) continue;
+                        bool cap = simulateMoveWhite(x, y, z);
+                        mlExtractValueFeaturesV2(stm, feat);
+                        mlpAct1(mp, feat, a1);
+                        int chg = 0;
+                        for (int j = 0; j < H; j++) if (std::fabs(a1[j] - a0[j]) > 1e-6f) chg++;
+                        sumChanged += chg; nMoves++;
+                        int b = (int)((double)chg / H * NB); if (b >= NB) b = NB - 1; hist[b]++;
+                        unsimulateMoveWhite(x, y, z, cap);
+                    }
+                }
+        } else {
+            for (int y = 1; y < SIZE; y++)
+                for (int x = 0; x < SIZE; x++) {
+                    if (board[x][y] != BLACK) continue;
+                    for (int z = x-1; z <= x+1; z++) {
+                        if (!tryMoveQuickBlack(x, y, z)) continue;
+                        bool cap = simulateMoveBlack(x, y, z);
+                        mlExtractValueFeaturesV2(stm, feat);
+                        mlpAct1(mp, feat, a1);
+                        int chg = 0;
+                        for (int j = 0; j < H; j++) if (std::fabs(a1[j] - a0[j]) > 1e-6f) chg++;
+                        sumChanged += chg; nMoves++;
+                        int b = (int)((double)chg / H * NB); if (b >= NB) b = NB - 1; hist[b]++;
+                        unsimulateMoveBlack(x, y, z, cap);
+                    }
+                }
+        }
+    }
+    delete m;
+    if (nPos == 0) { cout << "ERROR: no positions read from " << poolFile << "\n"; return 1; }
+
+    double meanDead = sumDead / nPos;
+    double meanChanged = nMoves ? sumChanged / nMoves : 0.0;
+    cout << "MLP sparsity / activation churn: " << modelPath << "\n";
+    cout << "  first-hidden width H  = " << H << "\n";
+    cout << "  positions sampled     = " << nPos << "\n";
+    cout << "  moves sampled         = " << nMoves << "\n";
+    cout << "  static dead ReLU      = mean " << meanDead << " of " << H
+         << "  (" << (100.0 * meanDead / H) << "%)   [units with relu(z)==0 per position]\n";
+    cout << "  activation churn/move = mean " << meanChanged << " of " << H
+         << "  (" << (100.0 * meanChanged / H) << "%)   [board-only, side-to-move held fixed]\n";
+    if (meanChanged > 0)
+        cout << "  2nd-layer delta ceiling = H / churn = " << ((double)H / meanChanged) << "x\n";
+    cout << "  churn histogram (fraction of H changed per move):\n";
+    for (int b = 0; b < NB; b++) {
+        char buf[96];
+        double frac = nMoves ? (100.0 * hist[b] / nMoves) : 0.0;
+        snprintf(buf, sizeof(buf), "    [%.1f-%.1f) %6.2f%%  (%lld)", (double)b / NB, (double)(b + 1) / NB, frac, hist[b]);
+        cout << buf << "\n";
+    }
+    return 0;
+}
+
 // ---- dist-eval: the oracle-comparison success criterion ----
 
 struct LabelRowT { string hex; double mu, sd; string flags; };

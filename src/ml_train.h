@@ -161,6 +161,18 @@ int distEval(const string& modelPath, const string& labelsEval,
              const string& rawTrain, int calibN = 800, int oracleDepth = 8,
              unsigned long long oracleBudget = 2000000ULL);
 
+// Measure an MLP value head's first-hidden-layer sparsity and per-move activation
+// churn, to quantify how much a future second-accumulated-layer (dead-ReLU delta)
+// optimization could save. Loads modelPath (a DistModel's mu head, or a bare MLP
+// value head), samples up to maxPositions from poolFile (JSONL "enc" positions),
+// and reports: (a) static dead-ReLU fraction (units with relu(z)==0 per position),
+// and (b) per-move activation churn -- the mean number of first-hidden units whose
+// activation changes across a legal move, with side-to-move HELD FIXED so only the
+// board move's effect is measured (side-to-move is a separate, cheaply-handled
+// perturbation; the shipped first-layer accumulator already applies it at read
+// time). The second-layer delta's speedup ceiling is H / churn. Returns 0 on success.
+int mlpSparsity(const string& modelPath, const string& poolFile, int maxPositions);
+
 // Imitation policy (behavioral cloning): a teacher (AlphaBeta + selectable evaluator)
 // plays both sides; its chosen move is the positive label; fit a linear move-rater.
 int trainImitationPolicy(const string& outFile, const string& boardFile, int games,
