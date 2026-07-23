@@ -164,6 +164,33 @@ float MLPModel::forward(const float* x, int m) const {
     return computeForward(x, m);
 }
 
+float MLPModel::forwardFromHidden(const float* pre1) const {
+    int L = (int)sizes.size() - 1;
+    // Seed the first hidden layer from the externally-computed pre-activations:
+    // act[1] = ReLU(pre1). pre[1] mirrors it for scratch consistency with computeForward.
+    for (int j = 0; j < sizes[1]; j++) {
+        pre[1][j] = pre1[j];
+        act[1][j] = (pre1[j] > 0.0f) ? pre1[j] : 0.0f;
+    }
+    // Run the remaining layers exactly as computeForward does (k = 1..L-1): ReLU on
+    // hidden layers, linear on the final output.
+    for (int k = 1; k < L; k++) {
+        int in = sizes[k], out = sizes[k+1];
+        const std::vector<float>& Wk = W[k];
+        const std::vector<float>& Bk = B[k];
+        const float* a = act[k].data();
+        bool hidden = (k + 1 < L);
+        for (int j = 0; j < out; j++) {
+            const float* wrow = &Wk[(size_t)j * in];
+            float z = Bk[j];
+            for (int i = 0; i < in; i++) z += wrow[i] * a[i];
+            pre[k+1][j] = z;
+            act[k+1][j] = hidden ? (z > 0.0f ? z : 0.0f) : z;
+        }
+    }
+    return act[L][0];
+}
+
 float MLPModel::trainStep(const float* x, int m, float target, float lr, float l2, float offset) {
     float out = computeForward(x, m);       // fills act[]/pre[]
     float z = out + offset;

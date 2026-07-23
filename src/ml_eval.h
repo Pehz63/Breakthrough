@@ -46,15 +46,33 @@ bool mlValueScoreDist(int turnColor, int slot, double& muElo, double& sdElo);
 
 // ---- Incremental ML value path (sparse piece-square models, feature v2) ----
 // mlIncrementalBegin: if the model in `slot` is a value head over the v2 sparse
-// piece-square features, seed g_mlAcc (bias + occupied piece-square weights, one
-// board scan), latch g_mlWeights, and return true. Returns false (and leaves the
-// globals cleared) for any other model, so callers fall back to the full-scan
-// path. mlIncrementalEnd clears the state. mlLeafScore reads the maintained
-// accumulator at a search leaf: near-win shortcut, then
-// tanh(acc + stmW*turn) * out_scale, clamped exactly like mlValueScore.
+// piece-square features, seed the accumulator and return true; returns false (and
+// leaves the globals cleared) for any other model, so callers fall back to the
+// full-scan path. Two accumulator modes, disambiguated by g_mlAccDim:
+//   - Linear mu head (g_mlAccDim == 0): the scalar g_mlAcc = bias + occupied
+//     piece-square weights, read as tanh(acc + skip*chipDiff + stmW*turn)*scale.
+//   - MLP mu head (g_mlAccDim == H > 0): the NNUE-style vector g_mlAccVec holds the
+//     H first-hidden pre-activations (B[0] + occupied columns); mlLeafScore adds the
+//     side-to-move column, applies ReLU, and runs the remaining layers via
+//     MLPModel::forwardFromHidden.
+// A DistModel is unwrapped to its mu head and a ResidualModel to its inner first,
+// so a dist/residual wrapper over either a linear or MLP head is handled.
+// mlIncrementalEnd clears all of it.
 bool mlIncrementalBegin(int slot);
 void mlIncrementalEnd();
 int  mlLeafScore(int turnColor);
+
+// Add / subtract input `idx`'s layer-0 weight column into the MLP vector
+// accumulator (g_mlAccVec, length g_mlAccDim). Called by the make/unmake hooks in
+// moves.cpp for the MLP path; inline so the hot loop stays a contiguous AXPY.
+inline void mlAccAddColumn(int idx) {
+    const float* col = g_mlL0ByInput + (size_t)idx * g_mlAccDim;
+    for (int j = 0; j < g_mlAccDim; j++) g_mlAccVec[j] += col[j];
+}
+inline void mlAccSubColumn(int idx) {
+    const float* col = g_mlL0ByInput + (size_t)idx * g_mlAccDim;
+    for (int j = 0; j < g_mlAccDim; j++) g_mlAccVec[j] -= col[j];
+}
 
 // Score each move in moves[0..n) for `side` with the policy model in `slot`,
 // writing raw scores to scoresOut[] (may be null). Returns the index of the

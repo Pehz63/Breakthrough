@@ -149,6 +149,14 @@ struct MLPModel : public Model {
     float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override;
     void gradStep(const float* x, int m, float gOut, float lr, float l2) override;
 
+    // Leaf tail for the NNUE-style incremental path (ml_eval.cpp): given the first
+    // hidden layer's pre-activations (length sizes[1], maintained incrementally by
+    // the make/unmake accumulator), apply ReLU and run the remaining layers,
+    // returning the output logit. Uses the same scratch/math as computeForward so
+    // the two agree exactly for a given pre1. Requires a genuine hidden layer
+    // (sizes.size() >= 3, i.e. sizes[1] is hidden, not the linear output).
+    float forwardFromHidden(const float* pre1) const;
+
     // Break weight symmetry before training (zero-init hidden layers can't learn).
     // Uses rand(), so seed with srand() first for reproducibility.
     void initRandom();

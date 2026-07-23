@@ -249,6 +249,62 @@ analysis surfaces. Playing strength is a separate measurement from
 prediction quality (theory 27): the dist models' roster Elo is recorded but
 is not the oracle claim.
 
+### Shipped models (2026-07-21 campaign)
+
+Four dist models trained on the full labeled store (22,788 train positions,
+950,884 raw rows; 700 held-out eval positions, 296,800 raw rows). Inputs:
+feature v2, 129 binary piece-square features (as above). Training: `train.exe
+dist-value`, primary raw-BCE mode, lr 0.01, lr-sigma 0.002, l2 1e-6,
+val-split 0.1, early-stop (these hyperparameters were chosen from an
+exploratory sweep documented in
+[position-oracle-results-1](plans/position-oracle-results-1-lazy-popping-simon.md),
+which found lr 0.01 beat the original 0.02 default).
+
+| Model | mu / sigma heads | Parameters | Oracle-verdict MAE / NLL (beats d8?) |
+|---|---|---|---|
+| `models/dist_lin.txt` | linear / linear | 260 | 161.3 / 0.4240 (yes) |
+| `models/dist_mlp_s1001.txt` | mlp(128,64) / mlp(32) | 29,154 | 147.9 / 0.4087 (yes) |
+| `models/dist_mlp_s2002.txt` | mlp(128,64) / mlp(32) | 29,154 | 150.0 / 0.4110 (yes) |
+| `models/dist_mlp_wide.txt` | mlp(256,128) / mlp(64) | 74,690 | 146.2 / 0.4079 (yes) |
+
+All four beat the calibrated depth-8/2M-node oracle baseline (MAE 191.3,
+NLL 0.4498) on both required metrics -- theory 34, confirmed. The sigma
+(volatility) head is weaker: predicted sigma correlates with measured
+position volatility at only 0.12-0.29 (Pearson) across configs -- theory 35,
+weakly supported, not confirmed.
+
+**Roster Elo by search head** (2026-07-21 fit; d8/nb2m oracle 1151+/-12,
+reigning champion 1131+/-13, in the same fit -- never compare these numbers
+against a different fit):
+
+| Model | d2 | d4 | d6/nb200k |
+|---|---|---|---|
+| dist_lin | 594+/-16 | 694+/-15 | **1031+/-16** |
+| dist_mlp_s1001 | 509+/-17 | 667+/-15 | 974+/-16 |
+| dist_mlp_s2002 | 716+/-15 | 648+/-15 | 967+/-16 |
+| dist_mlp_wide | 454+/-18 | 768+/-15 | 931+/-16 |
+
+These MLP mu heads are now scored incrementally in search (NNUE-style
+first-hidden accumulator, shipped 2026-07-22, `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`),
+~1.78x cheaper per node for the wide head. The incremental agent has the
+same canonical ID (content-hash based) and eval-equivalent output, so the
+Elo numbers above carry over unchanged -- the optimization is pure speed.
+A measurement taken during that work found these heads are ~90% dead-ReLU
+per position with only ~12% activation churn per move, so a further
+sparse-tail / second-accumulated-layer optimization has an ~8-9x ceiling on
+top (filed as future work).
+
+Playing-strength Elo diverges from the prediction-quality ranking (theory
+27, reconfirmed here): `dist_lin` beats all three MLP configs in actual
+play at d6 despite losing to them on prediction, and none of the four beat
+the reigning champion or oracle -- the developer's own expectation going in
+was that a d6 MLP would be the new champion; it was not, and that result is
+reported as-is rather than softened. A further open, unexplained wrinkle:
+`dist_mlp_wide` is the strongest MLP at d4 (768) but the WEAKEST at d6
+(931), a reversal not seen in the other two MLP configs. Full numbers, the
+exploratory sweeps that shaped this recipe, and caveats: the results doc
+above.
+
 ## Worked example: the MLP value agent
 
 A concrete learned agent end to end, so the pieces above (model type, features,
@@ -267,9 +323,13 @@ evaluator, explorer) connect into one picture.
   `ab(d6,tt,ord,nb200k)@1.learned(<hash>)@1`: alpha-beta minimax at depth 6 with a
   200000-node budget, transposition table + move ordering, scoring leaf positions
   with the MLP. The model is a position evaluator, not a move-output policy; the
-  agent searches and evaluates. The MLP is full-scan (not incrementally updatable
-  like a linear v2 model), so a deeper search costs more per node -- the NNUE step
-  in the value-head roadmap addresses that.
+  agent searches and evaluates. The MLP mu head is now scored with an NNUE-style
+  first-hidden accumulator (the vector generalization of the linear v2 `g_mlAcc`):
+  the first layer's pre-activations are maintained incrementally across make/unmake
+  and only the (small) remaining layers run per leaf. This cut per-node cost ~1.78x
+  for the widest head (256/128) at fixed depth; the deeper layers past the first
+  ReLU are still recomputed each leaf, which is the ~2x ceiling for these widths.
+  See `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`.
 - **Training = supervised value regression on outcomes.** `selfplay-supervised
   --model-type mlp --residual-skip -1 --from-data <replay>`, where `<replay>` is a
   `rank.exe extract` sample of the rated pool's stored match history

@@ -146,6 +146,8 @@ static void usage() {
     cout << "  train.exe dist-eval --model models/dist_value.txt --labels-eval ... --raw-eval ...\n";
     cout << "      --pool-eval ... --labels-train ... --raw-train ... --ratings ... --calib 800\n";
     cout << "      --oracle-depth 8 --oracle-nb 2000000   (the beat-the-oracle verdict)\n";
+    cout << "  train.exe mlp-sparsity --model models/dist_mlp_wide.txt --pool <pool jsonl> --max-positions 500\n";
+    cout << "      (first-hidden dead-ReLU + per-move activation churn; 2nd-layer delta ceiling)\n";
     cout << "\nTournament options:\n";
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
@@ -245,6 +247,10 @@ int main(int argc, char** argv) {
                          getOpt(argc, argv, "--pos", ""),
                          getOpt(argc, argv, "--boards", ""),
                          stm[0]);
+    } else if (cmd == "mlp-sparsity") {
+        rc = mlpSparsity(getOpt(argc, argv, "--model", "models/dist_mlp_wide.txt"),
+                         getOpt(argc, argv, "--pool", "data/labels/pool_eval.jsonl"),
+                         getInt(argc, argv, "--max-positions", 500));
     } else if (cmd == "dist-eval") {
         rc = distEval(getOpt(argc, argv, "--model", "models/dist_value.txt"),
                       getOpt(argc, argv, "--labels-eval", "data/labels/labels_eval.jsonl"),
