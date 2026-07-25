@@ -78,8 +78,11 @@ adding one agent O(N) games. Each game records per-side wall ms, process-CPU ms
 (GetProcessTimes deltas, honest under parallel contention), node totals, effective
 depth, plies, and end piece counts. Ratings are an anchored Bradley-Terry MM refit
 (anchor = Elo 0, 0.5 virtual games prior per played pair, Fisher standard errors);
-`rate` writes `ranking/ratings.tsv` + `ranking/games.tsv` (per-game export) +
-`ranking/report.md` (W-L split by color, avg plies, end-piece margin, cpu/move,
+`rate` writes `ranking/ratings.tsv` (the full historical fit, every agent ever rated
+including retired `gone` rows) + `ranking/standings.tsv` (**the file to read for current
+standings**: the same fit filtered to active agents and grouped by search head, so a
+retired identity or a mixed-head comparison cannot slip into a claim) + `ranking/games.tsv`
+(per-game export) + `ranking/report.md` (W-L split by color, avg plies, end-piece margin, cpu/move,
 `eff` = Elo / log2(1 + cpu_us/move), and an Elo-vs-CPU pareto-frontier table). Learned
 agents embed an 8-hex model-file content hash in the ID and roster load hard-errors on
 a mismatch (a retrain is a new identity). Full internals (ID codec, store row format,
@@ -126,7 +129,7 @@ is well-resolved and the climber has non-deterministic opponents.
 
 | Dir | Purpose |
 |---|---|
-| `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), `matches.jsonl` (append-only ID-keyed match history, committed, the never-recomputed asset), and generated `ratings.tsv` + `games.tsv` + `report.md`. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored. |
+| `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), `matches.jsonl` (append-only ID-keyed match history, committed, the never-recomputed asset), and generated `ratings.tsv` (full historical fit, includes retired agents) + `standings.tsv` (**read this one for current standings**: active agents only, grouped by search head) + `games.tsv` + `report.md`. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored. |
 | `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
 | `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |
 | `data/labels/` | Position-oracle campaign home: committed pools (`pool_train/eval.jsonl`), ladder specs, fitted labels (`labels_train/eval.jsonl`), raw-store `.meta.json` sidecars (the frozen rung-id mapping), `ratings_snapshot.tsv` (the study's fixed Elo basis), and `study.csv` (the resume ledger). The raw stores themselves (`raw_train/eval.jsonl`, ~hundreds of MB, the durable asset that re-labels under any future ratings fit) are gitignored -- back them up outside git. `dry/` and `logs/` are scratch. |

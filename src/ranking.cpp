@@ -1441,6 +1441,60 @@ static void writeRatingsTsv(const RankFit& fit, const std::vector<int>& order,
     }
 }
 
+// CURRENT STANDINGS: the comparison-safe view of the same fit.
+//
+// ratings.tsv holds EVERY agent ever rated, including retired ones ("gone":
+// superseded @N code versions frozen at whatever game count they had when they
+// left the roster). Quoting a retired row as current strength, or comparing
+// agents across different search heads, are the two ways a standings claim goes
+// wrong -- an agent is search + evaluator, so a row is only comparable to rows
+// with the SAME head. This file removes both traps: active agents only, and a
+// head column to group by, so "same search, different evaluator" is a filter
+// rather than a judgement call.
+static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
+                              const std::map<string, AgentAgg>& agg,
+                              const std::map<string, string>& state) {
+    std::ofstream f("ranking/standings.tsv");
+    if (!f.is_open()) return;
+    f << "# Current standings: active roster only, from the same fit as ratings.tsv.\n"
+      << "# Compare Elo only WITHIN one head and WITHIN this file (never across fits).\n"
+      << "# Retired ('gone') agents are excluded by design; see ratings.tsv for the full history.\n";
+    f << "head\telo\tpm\tgames\tcpu_ms_move\tactive\tevaluator\tid\n";
+    // Group by search head (the ID up to its first '.'), heads ordered by their
+    // strongest member, agents within a head by Elo -- the order a reader wants.
+    std::vector<string> heads;
+    std::map<string, double> headBest;
+    for (size_t r = 0; r < order.size(); r++) {
+        int i = order[r];
+        const string& id = fit.ids[i];
+        string st = stateFor(state, id);
+        if (st != "on" && st != "anchor") continue;
+        string head = id.substr(0, id.find('.'));
+        if (!headBest.count(head)) { heads.push_back(head); headBest[head] = fit.elo[i]; }
+        else if (fit.elo[i] > headBest[head]) headBest[head] = fit.elo[i];
+    }
+    for (size_t h = 0; h + 1 < heads.size(); h++)
+        for (size_t k = 0; k + 1 < heads.size() - h; k++)
+            if (headBest[heads[k]] < headBest[heads[k+1]]) std::swap(heads[k], heads[k+1]);
+    for (size_t h = 0; h < heads.size(); h++) {
+        for (size_t r = 0; r < order.size(); r++) {
+            int i = order[r];
+            const string& id = fit.ids[i];
+            string st = stateFor(state, id);
+            if (st != "on" && st != "anchor") continue;
+            size_t dot = id.find('.');
+            string head = id.substr(0, dot);
+            if (head != heads[h]) continue;
+            string ev = (dot == string::npos) ? string("-") : id.substr(dot + 1);
+            const AgentAgg& a = aggFor(agg, id);
+            double cpu = cpuMsPerMove(a);
+            f << head << "\t" << roundElo(fit.elo[i]) << "\t" << roundElo(fit.se[i]) << "\t"
+              << a.games << "\t" << (cpu >= 0.0 ? fmtN(cpu, 3) : string("")) << "\t"
+              << st << "\t" << ev << "\t" << id << "\n";
+        }
+    }
+}
+
 // Machine-readable per-game export (one row per stored game, empty = unrecorded).
 static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
     std::ofstream f("ranking/games.tsv");
@@ -1727,6 +1781,7 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
 
     ensureDir("ranking");
     writeRatingsTsv(fit, order, agg, state);
+    writeStandingsTsv(fit, order, agg, state);
     writeGamesTsv(rows);
     writeReportMd(fit, order, agg, state, roster, pairs, board, storeFile, rows.size(), anchorId);
     printConsoleTable(fit, order, agg, state);
@@ -1738,7 +1793,8 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
     }
     if (unrated)
         cout << unrated << " roster agent(s) have no games yet (see report.md); run 'rank.exe play'\n";
-    cout << "wrote ranking/ratings.tsv, ranking/games.tsv and ranking/report.md\n";
+    cout << "wrote ranking/ratings.tsv, ranking/standings.tsv (active only, by head),"
+            " ranking/games.tsv and ranking/report.md\n";
     return 0;
 }
 

@@ -1,6 +1,6 @@
 # Agent ranking report
 
-Generated 2026-07-25T10:18:55Z. Board `boards/board1.txt`. 101958 games from `ranking/matches.jsonl`, 307 rated agents.
+Generated 2026-07-25T23:48:35Z. Board `boards/board1.txt`. 101958 games from `ranking/matches.jsonl`, 307 rated agents.
 
 Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, anchor `rand@1` = Elo 0. `+/-` is one standard error. `cpu/mv` is per-move process CPU time in ms (contention-safe, valid in parallel runs). `eff` = Elo / log2(1 + cpu_us/move), the Elo bought per doubling of per-move compute. `wall/mv` prefers serial games; `*` marks a fallback that includes contended parallel moves. `margin` is the average end-of-game piece lead (own minus opponent). `~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000).
 

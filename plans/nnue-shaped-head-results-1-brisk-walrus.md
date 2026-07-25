@@ -228,6 +228,15 @@ us/node); the wide shape's payoff is gated on a vectorized read.
 - Swapping models into `models/pst_value.txt` for the A/B backs up and restores the
   original file; verify `git status` shows `models/pst_value.txt` unmodified before
   committing.
+- Every Elo above is an `active = on` row at the stated search head, read from
+  `ranking/standings.tsv` (added this session). Do NOT read standings from
+  `ranking/ratings.tsv`: it is the full historical fit and also contains retired
+  agents (`gone`, superseded `@N` code versions frozen at old game counts). Mixing
+  those in produced a real error while writing this doc -- a retired `classic` row
+  reads 1081 where its live identity is 990, which momentarily made the
+  hill-climbed Advanced agent look worse than classic when at a matched head it is
+  better (1036 vs 1009). Same trap for search heads: `ab(d6,tt,ord,nb200k)` and
+  `ab(d6,ord,nb200k)` are different agents and their Elos are not interchangeable.
 - The `ranking/ratings.tsv` `cpu_ms_move` column is NOT a valid cross-head speed
   comparison. Each agent's cpu is averaged over its whole game history: the existing
   dist MLP agents (s77/s78/s79) accumulated most of their games last session on
