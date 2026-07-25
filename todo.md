@@ -245,9 +245,28 @@ against the same seams.
     priority still -- the sparse leaf-tail forward already captures the ~90%-sparse heads'
     speed win without changing training at all. Would only matter if a future architecture
     trains denser. `[Later]`
-  - **NNUE-shaped head** (`129 -> 512 -> 8 -> 1`: wide first layer, tiny rest): with the first
-    layer accumulated and the tail now sparse-aware, this could be both cheaper per node and
-    higher-capacity than the current 256/128. A training + rating arm. `[Next]`
+  - ~~**NNUE-shaped head** (`129 -> 512 -> 8 -> 1`: wide first layer, tiny rest): train + rate.~~
+    Trained (6 seeds) and measured 2026-07-25. Prediction is neutral (held-out MAE 143.5 /
+    NLL 0.408, matching the wide head) and Elo lands in the MLP band (6 seeds 908-1037, mean
+    ~973, top seeds reach dist_lin 1038, 2026-07-25 refit), but the EFFICIENCY premise
+    FAILED: at 2.47 us/node it is ~2x SLOWER per node than the 128/64 head (1.24) and only
+    ~13% faster than wide (2.86). Root cause: once the accumulator makes the first-layer
+    UPDATE free, the leaf still READs + ReLUs all H first-hidden pre-activations (O(H) scalar
+    work), now the dominant leaf cost, and the NNUE shape has the LARGEST H. The ~17x-cheaper
+    tail (MACs) was never the bottleneck (theory 37). The shape is not wrong, it is blocked on
+    the vectorized read below. See `plans/nnue-shaped-head-results-1-brisk-walrus.md`. `[done]`
+  - **Vectorized (SIMD) leaf read for wide first layers.** `forwardFromHidden`'s dominant cost
+    is the O(H) scalar walk over all H first-hidden units (add the side-to-move column, apply
+    ReLU, find nonzeros): ~2.2 of the NNUE head's 2.47 us/node, NOT the tail. Read + ReLU the
+    accumulator in SIMD blocks (AVX2 = 8 floats/instruction, AVX-512 = 16) to cut that term
+    ~4-8x, after which the tiny tail dominates and the wide-first / tiny-rest shape finally
+    wins. This is exactly how real NNUE engines afford 512-1024-wide first layers: int16 +
+    SIMD accumulator reads. Cheapest first: (1) build with `/arch:AVX2` and shape the
+    pre1+ReLU loop for compiler auto-vectorization (keeps floats, ~4x, near-zero code); (2)
+    explicit `__m256` intrinsics, and for the tiny-H2 tail try a DENSE vectorized pass instead
+    of the scalar sparse-gather (the gather is hard to vectorize and may lose when H2 is tiny);
+    (3) int16 quantization for maximum throughput (bigger change, breaks bit-identicality).
+    Gates the NNUE-shaped head above being a real speed win. `[Next]`
   - **Full multi-seed 32-game d6 campaign for the dist MLPs**, now that d6 is affordable
     (~0.57 s/move for the wide head): re-confirm the existing 720-game standings (dist_lin
     1031 > MLPs 974/967/931) hold at tighter error bars, now that cost is no longer a

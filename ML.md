@@ -284,15 +284,28 @@ against a different fit):
 | dist_mlp_s2002 | 716+/-15 | 648+/-15 | 967+/-16 |
 | dist_mlp_wide | 454+/-18 | 768+/-15 | 931+/-16 |
 
-These MLP mu heads are now scored incrementally in search (NNUE-style
-first-hidden accumulator, shipped 2026-07-22, `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`),
-~1.78x cheaper per node for the wide head. The incremental agent has the
-same canonical ID (content-hash based) and eval-equivalent output, so the
-Elo numbers above carry over unchanged -- the optimization is pure speed.
-A measurement taken during that work found these heads are ~90% dead-ReLU
-per position with only ~12% activation churn per move, so a further
-sparse-tail / second-accumulated-layer optimization has an ~8-9x ceiling on
-top (filed as future work).
+These MLP mu heads are scored incrementally in search: an NNUE-style
+first-hidden accumulator plus a bit-identical sparse leaf-tail forward
+(shipped 2026-07-22, `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`),
+together 12.7x cheaper per node for the wide head vs the full scan (2.84
+us/node). The incremental agent has the same canonical ID (content-hash
+based) and eval-equivalent output, so the Elo numbers above carry over
+unchanged -- the optimization is pure speed. A measurement during that work
+found these heads are ~90% dead-ReLU per position with only ~10-12%
+activation churn per move (theory 36).
+
+**NNUE-shaped head (2026-07-25, `plans/nnue-shaped-head-results-1-brisk-walrus.md`).**
+A follow-up trained a wide-first-layer / tiny-rest mu head (`129 -> 512 -> 8
+-> 1`, `--mu-hidden "512,8"`, 6 seeds) to move capacity into the accumulated
+(free) first layer. It predicts as well as the wide head (held-out MAE 143.5
+/ NLL 0.408) and its Elo lands in the MLP band (6 seeds 908-1037, mean ~973,
+top seeds reach dist_lin, in a separate 2026-07-25 refit -- not comparable to
+the table above), but it is NOT a speed win: at 2.47 us/node it is ~2x slower
+than the standard 128,64 head (1.24), because the leaf must still read + ReLU
+all H first-hidden units (O(H)) even though their update is free, and the
+widest H maximizes that floor. The efficient shape for the current scalar
+leaf is a NARROW first layer; the wide shape is gated on a vectorized (SIMD)
+leaf read (theory 37, filed as future work).
 
 Playing-strength Elo diverges from the prediction-quality ranking (theory
 27, reconfirmed here): `dist_lin` beats all three MLP configs in actual

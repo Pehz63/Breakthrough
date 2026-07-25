@@ -391,15 +391,14 @@ function Phase-Rate {
         if ($hash -eq "") { Write-Error "rate: no model hash for slot $slot in rank.exe check output"; exit 1 }
         # The "learned" chooser's own codec version is @1 (src/ranking.cpp
         # g_rkChoosers[]), independent of the classic() head's @2 seen elsewhere.
-        if ($slot -eq 76) {
-            # The linear variant keeps the incremental leaf: both standard heads.
-            $lines += "on ab(d4)@1.learned(s$slot,$hash)@1"
-            $lines += "on ab(d6,tt,ord,nb200k)@1.learned(s$slot,$hash)@1"
-        } else {
-            # MLP mu heads full-scan every leaf; a d6/nb200k head would cost
-            # seconds per move, so the mlp variants rate at the d4 head only.
-            $lines += "on ab(d4)@1.learned(s$slot,$hash)@1"
-        }
+        # Every dist mu head (linear or MLP, feature v2) is incrementally scored
+        # in search: the NNUE-style first-layer accumulator plus the bit-identical
+        # sparse leaf-tail forward (plans/nnue-incremental-mlp-results-1-crystalline-taco.md)
+        # made a d6/nb200k MLP leaf affordable, so the historical "MLP rates at d4
+        # only, full-scan d6 costs seconds per move" restriction no longer applies.
+        # Rate every variant at both standard heads.
+        $lines += "on ab(d4)@1.learned(s$slot,$hash)@1"
+        $lines += "on ab(d6,tt,ord,nb200k)@1.learned(s$slot,$hash)@1"
     }
     $roster = Get-Content "ranking/roster.txt" -Raw
     foreach ($l in $lines) {

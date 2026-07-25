@@ -1,11 +1,11 @@
 ---
 name: incremental-mlp-and-sparsity
-description: "Shipped NNUE-style incremental MLP mu head + bit-identical sparse leaf-tail forward, 12.7x total for the wide head"
+description: "Incremental MLP mu head + sparse leaf-tail (12.7x wide head); NNUE-shaped-head follow-up FAILED on speed (O(H) leaf read is the floor)"
 metadata: 
   node_type: memory
   type: project
   originSessionId: 9b2197c9-c8a4-4a00-98c2-319283f178f1
-  modified: 2026-07-22T11:03:50.030Z
+  modified: 2026-07-25T00:00:00.000Z
 ---
 
 2026-07-22: shipped the NNUE-style first-hidden accumulator for MLP `dist` mu heads
@@ -36,3 +36,18 @@ ID + eval-equivalent output, so those numbers carry over; both changes are pure 
 full multi-seed 32-game d6 re-confirmation is now affordable and filed as `[Next]` in
 todo.md, not yet run. See [[position-oracle-campaign]] and
 `plans/nnue-incremental-mlp-results-1-crystalline-taco.md`.
+
+**2026-07-25 follow-up -- NNUE-shaped head (`129 -> 512 -> 8 -> 1`, `--mu-hidden "512,8"`),
+6 seeds: prediction-neutral but the efficiency premise FAILED (theory 37).** Idea was to
+move capacity into the accumulated (free) first layer so the tail collapses. Prediction is
+as good as the wide head (held-out MAE 143.5 / NLL 0.408) and Elo lands in the MLP band
+(6 seeds 908-1037, mean ~973, top seeds reach dist_lin 1038). But it is ~2x SLOWER per node
+than the standard 128,64 head: **2.47 us/node vs 1.24 (std) vs 2.86 (wide)**. Root cause:
+the accumulator makes the first-layer UPDATE free, but the leaf still READs + ReLUs all H
+first-hidden pre-activations (O(H) scalar, side-to-move column added at the leaf), which is
+now the dominant leaf cost -- and the NNUE shape has the LARGEST H. The ~17x-cheaper tail
+(MACs) was never the bottleneck. **Lesson: for a scalar leaf, the efficient shape is a
+NARROW first layer, not a wide one; a wide first layer only pays with a vectorized (SIMD)
+leaf read** (how real NNUE affords wide layers: int16 + SIMD accumulator reads). The
+vectorized read is filed `[Next]`. No engine code change (config-only training). See
+`plans/nnue-shaped-head-results-1-brisk-walrus.md`.

@@ -171,3 +171,18 @@ on ab(d6,tt,ord,nb200k)@1.learned(s78,2fa21eda)@1
 on ab(d2)@1.learned(s79,18f19059)@1
 on ab(d4)@1.learned(s79,18f19059)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059)@1
+
+# NNUE-shaped dist mu heads (129->512->8->1), 6 seeds, slots 110-115.
+# Efficiency negative result (2.47 us/node, ~2x standard head); rated for completeness.
+on ab(d4)@1.learned(s110,1466db6c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s110,1466db6c)@1
+on ab(d4)@1.learned(s111,78ef6974)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1
+on ab(d4)@1.learned(s112,baa2951a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s112,baa2951a)@1
+on ab(d4)@1.learned(s113,e3cc8b4e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e)@1
+on ab(d4)@1.learned(s114,316257e9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s114,316257e9)@1
+on ab(d4)@1.learned(s115,21d7e638)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638)@1
