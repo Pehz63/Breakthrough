@@ -4,6 +4,19 @@
 #include <sstream>
 #include <iomanip>
 
+#if defined(__AVX2__)
+#include <immintrin.h>
+// Horizontal sum of an 8-lane float vector. Used by the vectorized leaf tail.
+static inline float hsum256(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    lo = _mm_add_ps(lo, hi);                 // 4 partial sums
+    lo = _mm_add_ps(lo, _mm_movehl_ps(lo, lo));
+    lo = _mm_add_ss(lo, _mm_shuffle_ps(lo, lo, 1));
+    return _mm_cvtss_f32(lo);
+}
+#endif
+
 static inline float sigmoidf(float z) {
     if (z >= 0) { float e = expf(-z); return 1.0f / (1.0f + e); }
     float e = expf(z); return e / (1.0f + e);
@@ -166,6 +179,62 @@ float MLPModel::forward(const float* x, int m) const {
 
 float MLPModel::forwardFromHidden(const float* pre1) const {
     int L = (int)sizes.size() - 1;
+#if defined(__AVX2__)
+    // AVX2 leaf: the dominant cost of a wide first layer is the O(H) read of the
+    // accumulated pre-activations, not the tail MACs. The scalar path's nonzero
+    // gather (below) is a data-dependent compaction the compiler cannot vectorize
+    // and it dominates. Here instead: (1) ReLU pre1 -> act[1] with a vector max
+    // (skip the dead pre[] scratch writes), then (2) run each remaining layer as a
+    // DENSE AVX2 FMA matmul (no gather). Doing the ~90% zero MACs is cheaper than
+    // the branchy gather because 8 MACs ride one FMA. NOT bit-identical to the
+    // scalar path (SIMD reduction order + FMA contraction differ), but within the
+    // leaf's existing float-vs-double tolerance -- the equivalence test bounds it.
+    {
+        const int H1 = sizes[1];
+        float* a1 = act[1].data();
+        const __m256 zero = _mm256_setzero_ps();
+        int j = 0;
+        for (; j + 8 <= H1; j += 8)
+            _mm256_storeu_ps(a1 + j, _mm256_max_ps(zero, _mm256_loadu_ps(pre1 + j)));
+        for (; j < H1; j++) a1[j] = (pre1[j] > 0.0f) ? pre1[j] : 0.0f;
+    }
+    for (int k = 1; k < L; k++) {
+        int in = sizes[k], out = sizes[k+1];
+        const float* Wk = W[k].data();
+        const float* Bk = B[k].data();
+        const float* a = act[k].data();
+        float* ao = act[k+1].data();
+        bool hidden = (k + 1 < L);
+        // Tail cost is (dense) in*out/8 FMAs vs (sparse) in gather + nnz*out MACs.
+        // Dense wins only for a narrow output layer (the NNUE-shaped head, out ~ 8);
+        // for a wide output (e.g. 128) the ~90% zero MACs outweigh the gather, so
+        // fall back to the sparse gather there. Crossover measured between 64 and 128.
+        if (out <= 32) {
+            for (int j = 0; j < out; j++) {
+                const float* wrow = Wk + (size_t)j * in;
+                __m256 acc = _mm256_setzero_ps();
+                int i = 0;
+                for (; i + 8 <= in; i += 8)
+                    acc = _mm256_fmadd_ps(_mm256_loadu_ps(wrow + i), _mm256_loadu_ps(a + i), acc);
+                float z = Bk[j] + hsum256(acc);
+                for (; i < in; i++) z += wrow[i] * a[i];
+                ao[j] = hidden ? (z > 0.0f ? z : 0.0f) : z;
+            }
+        } else {
+            nzScratch.clear();
+            for (int i = 0; i < in; i++) if (a[i] != 0.0f) nzScratch.push_back(i);
+            int nnz = (int)nzScratch.size();
+            const int* nz = nzScratch.data();
+            for (int j = 0; j < out; j++) {
+                const float* wrow = Wk + (size_t)j * in;
+                float z = Bk[j];
+                for (int t = 0; t < nnz; t++) { int i = nz[t]; z += wrow[i] * a[i]; }
+                ao[j] = hidden ? (z > 0.0f ? z : 0.0f) : z;
+            }
+        }
+    }
+    return act[L][0];
+#else
     // Seed the first hidden layer from the externally-computed pre-activations:
     // act[1] = ReLU(pre1). pre[1] mirrors it for scratch consistency with computeForward.
     for (int j = 0; j < sizes[1]; j++) {
@@ -198,6 +267,7 @@ float MLPModel::forwardFromHidden(const float* pre1) const {
         }
     }
     return act[L][0];
+#endif
 }
 
 float MLPModel::trainStep(const float* x, int m, float target, float lr, float l2, float offset) {

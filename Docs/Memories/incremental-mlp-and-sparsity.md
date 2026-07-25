@@ -48,6 +48,14 @@ first-hidden pre-activations (O(H) scalar, side-to-move column added at the leaf
 now the dominant leaf cost -- and the NNUE shape has the LARGEST H. The ~17x-cheaper tail
 (MACs) was never the bottleneck. **Lesson: for a scalar leaf, the efficient shape is a
 NARROW first layer, not a wide one; a wide first layer only pays with a vectorized (SIMD)
-leaf read** (how real NNUE affords wide layers: int16 + SIMD accumulator reads). The
-vectorized read is filed `[Next]`. No engine code change (config-only training). See
+leaf read**. UPDATE 2026-07-25: the vectorized read was IMPLEMENTED (AVX2 intrinsics:
+vectorized double accumulator read + dense-FMA tail gated to narrow output, scalar path
+preserved under `#else`, opt-in via `/arch:AVX2`, all 2002 tests pass). It is a real
+~1.2-1.3x leaf speedup for EVERY shape (std 1.24 -> 1.00, NNUE 2.47 -> 1.89, wide 2.86 ->
+2.43 us/node) but a CONSTANT factor, so it does NOT flip the ranking: NNUE-wide stays
+~1.9x slower than the narrow standard head. Real NNUE affords wide first layers only
+because its domain is strength-unsaturated (width buys accuracy); here it does not, so the
+narrow-first-layer conclusion stands even against a vectorized read (theory 37). Note the
+`/arch:AVX2`-flag-only build gave just ~10% (the branchy nonzero-gather + mixed
+double/float read do not auto-vectorize -- explicit intrinsics were needed). See
 `plans/nnue-shaped-head-results-1-brisk-walrus.md`.

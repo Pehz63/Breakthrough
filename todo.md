@@ -255,18 +255,25 @@ against the same seams.
     work), now the dominant leaf cost, and the NNUE shape has the LARGEST H. The ~17x-cheaper
     tail (MACs) was never the bottleneck (theory 37). The shape is not wrong, it is blocked on
     the vectorized read below. See `plans/nnue-shaped-head-results-1-brisk-walrus.md`. `[done]`
-  - **Vectorized (SIMD) leaf read for wide first layers.** `forwardFromHidden`'s dominant cost
-    is the O(H) scalar walk over all H first-hidden units (add the side-to-move column, apply
-    ReLU, find nonzeros): ~2.2 of the NNUE head's 2.47 us/node, NOT the tail. Read + ReLU the
-    accumulator in SIMD blocks (AVX2 = 8 floats/instruction, AVX-512 = 16) to cut that term
-    ~4-8x, after which the tiny tail dominates and the wide-first / tiny-rest shape finally
-    wins. This is exactly how real NNUE engines afford 512-1024-wide first layers: int16 +
-    SIMD accumulator reads. Cheapest first: (1) build with `/arch:AVX2` and shape the
-    pre1+ReLU loop for compiler auto-vectorization (keeps floats, ~4x, near-zero code); (2)
-    explicit `__m256` intrinsics, and for the tiny-H2 tail try a DENSE vectorized pass instead
-    of the scalar sparse-gather (the gather is hard to vectorize and may lose when H2 is tiny);
-    (3) int16 quantization for maximum throughput (bigger change, breaks bit-identicality).
-    Gates the NNUE-shaped head above being a real speed win. `[Next]`
+  - ~~**Vectorized (SIMD) leaf read for wide first layers.**~~ DONE 2026-07-25. AVX2 intrinsics
+    added under `#if defined(__AVX2__)` (scalar path preserved under `#else`): vectorized double
+    accumulator read + ReLU (`ml_eval.cpp` / `ml_model.cpp`) and a dense-FMA tail gated to
+    small output width (out <= 32; sparse gather kept for wide H2, which a uniform dense tail
+    regressed). Measured (us/node, d4): std 1.24 -> 1.00 (1.24x), NNUE 2.47 -> 1.89 (1.31x),
+    wide 2.86 -> 2.43 (1.18x); all 2002 tests pass under the AVX2 build. KEY finding: a real
+    ~1.2-1.3x leaf speedup for EVERY shape, but a constant factor that does NOT change the
+    ranking, so NNUE-wide stays ~1.9x slower than the narrow standard head. The
+    `/arch:AVX2`-flag-only build (no code) gave just ~10% (the branchy gather + mixed
+    double/float read do not auto-vectorize). The vectorized path is opt-in via `/arch:AVX2`;
+    both paths are in-tree. `[done]`
+  - **Set `/arch:AVX2` as the native-build baseline?** Would realize the general ~1.2x leaf
+    speedup in production (helps the standard head we would actually use). Requires an AVX2 CPU
+    (~2013+) for the shipped native binaries; not the web/WASM build. A one-line flag add per
+    native build script + a portability note. Developer decision. `[Next]`
+  - **int16 quantization of the accumulator.** The full NNUE throughput recipe (32 int16 per
+    AVX-512 register vs 16 floats), but it multiplies SIMD lanes by a constant too, so it will
+    not change the shape ranking either -- only worth it for the general leaf speedup, and it
+    breaks bit-identicality and needs a retrain or post-training calibration. `[Later]`
   - **Full multi-seed 32-game d6 campaign for the dist MLPs**, now that d6 is affordable
     (~0.57 s/move for the wide head): re-confirm the existing 720-game standings (dist_lin
     1031 > MLPs 974/967/931) hold at tighter error bars, now that cost is no longer a

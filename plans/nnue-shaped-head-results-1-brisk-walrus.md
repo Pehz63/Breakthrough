@@ -150,6 +150,53 @@ int16 with SIMD (an AVX-512 register holds 32 int16, clipped-ReLU is a vector
 min/max), so the O(H) read is ~8-16x cheaper per unit. Our `forwardFromHidden`
 reads scalar floats. Without a vectorized read, a wide first layer is a net loss.
 
+## Follow-up: vectorized (SIMD) leaf read (implemented + measured)
+
+The O(H) leaf read was the whole bottleneck, so we implemented it. AVX2 intrinsics
+were added under `#if defined(__AVX2__)` (scalar path preserved unchanged under
+`#else`): the pre1 accumulator read vectorized 8 units at a time reading the double
+accumulator (`ml_eval.cpp mlLeafScore`), a vectorized ReLU, and the tail as a dense
+AVX2-FMA matmul that skips the branchy nonzero-gather (`ml_model.cpp
+forwardFromHidden`). Correctness: all 2002 test assertions pass under the AVX2
+build within the leaf's existing tolerance (the dense tail + FMA contraction +
+SIMD reduction order make it approximate, not bit-identical, like the rest of the
+incremental leaf).
+
+Two measured lessons:
+
+1. **The `/arch:AVX2` build flag alone (no code) gave only ~10%.** The compiler
+   cannot vectorize the data-dependent nonzero-gather or the mixed double/float
+   pre1 read, which are the dominant terms. Explicit intrinsics were required.
+2. **A uniform dense tail regressed the wide head** (2.86 -> 3.686 us/node): for a
+   wide output layer (H2=128) doing all the ~90% zero MACs densely costs more than
+   the sparse gather. Gating dense-vs-sparse on output width (dense for out <= 32,
+   sparse otherwise) fixed it.
+
+Final AVX2 speed A/B (us/node, d4, gated tail):
+
+| head | scalar | AVX2 | speedup |
+|---|---|---|---|
+| standard (128,64) | 1.24 | 1.00 | 1.24x |
+| NNUE (512,8) | 2.47 | 1.89 | 1.31x |
+| wide (256,128) | 2.86 | 2.43 | 1.18x |
+
+**Verdict: vectorization does NOT flip the shape ranking.** It is a real general
+leaf speedup (~1.2-1.3x for every shape, and it helps the standard head we would
+actually use, dropping it to 1.00 us/node), but it is a roughly constant factor
+across shapes, so NNUE-wide (1.89) stays ~1.9x slower than the standard head
+(1.00). Vectorization makes the wide first layer more affordable in absolute
+terms but never cheaper than a vectorized narrow head, because the O(H) read
+scales with first-layer width for everyone. Since width buys no strength here
+(saturated prediction, wash Elo), the wide shape stays dominated. Real NNUE
+affords wide first layers because in a strength-unsaturated domain the width buys
+accuracy; that condition does not hold for this task.
+
+The vectorized path is opt-in via `/arch:AVX2` (both paths are in-tree; the scalar
+default is unchanged, so existing builds are unaffected). Realizing it in
+production means adding `/arch:AVX2` to the native build scripts, which sets an
+AVX2-CPU baseline (~2013+); left as a deliberate developer decision, not flipped
+unilaterally.
+
 ## Theory-log impact
 
 Theory 36 (dead-ReLU sparsity enables large speedup) is refined, not refuted: the
@@ -190,12 +237,13 @@ us/node); the wide shape's payoff is gated on a vectorized read.
 
 ## Future Work
 
-- **Vectorized (SIMD) leaf read [Next, filed in todo.md].** The direct unlock: read
-  + ReLU the accumulator in AVX2/AVX-512 blocks so the O(H) term drops ~4-8x, after
-  which the tiny tail dominates and the wide-first / tiny-rest shape wins. Cheapest
-  first step is `/arch:AVX2` + an auto-vectorizable pre1+ReLU loop. This is the
-  experiment that would confirm-or-refute whether the NNUE shape is a speed win once
-  the read is not scalar. Without it, this session's negative result stands.
+- ~~**Vectorized (SIMD) leaf read.**~~ DONE this session (see the follow-up section
+  above). It was implemented in AVX2 intrinsics and measured: a real ~1.2-1.3x leaf
+  speedup for every shape, but a constant factor that does not change the ranking, so
+  the NNUE-wide shape stays ~1.9x slower than the standard head. The negative shape
+  verdict stands, now confirmed against a vectorized read rather than assumed. Remaining
+  sub-item: decide whether to set `/arch:AVX2` as the native-build baseline to realize
+  the general ~1.2x leaf speedup in production (requires an AVX2 CPU).
 - **int16 quantization** of the accumulator for the full NNUE throughput recipe.
   Tethered to the vectorized-read conclusion: quantization multiplies SIMD lanes
   (32 int16 per AVX-512 register vs 16 floats) but breaks the bit-identical property

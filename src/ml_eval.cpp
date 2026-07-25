@@ -1,6 +1,9 @@
 #include "ml_eval.h"
 #include "ai_eval.h"
 #include <cmath>
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 // ============================================================
 // MODEL SLOTS
@@ -215,7 +218,21 @@ int mlLeafScore(int turnColor) {
         float pre1[ML_ACC_MAX];
         const float* stmCol = g_mlL0ByInput + (size_t)MLV2_STM * g_mlAccDim;
         double s = (turnColor == White) ? 1.0 : -1.0;
-        for (int j = 0; j < g_mlAccDim; j++)
+        int H = g_mlAccDim, j = 0;
+#if defined(__AVX2__)
+        // Vectorize the O(H) accumulator read: pre1 = (float)(accVec + s*stmCol),
+        // reading the double accumulator 8 units at a time (4 doubles per register).
+        const __m256d vs = _mm256_set1_pd(s);
+        for (; j + 8 <= H; j += 8) {
+            __m256d a0 = _mm256_loadu_pd(g_mlAccVec + j);
+            __m256d a1 = _mm256_loadu_pd(g_mlAccVec + j + 4);
+            a0 = _mm256_fmadd_pd(vs, _mm256_cvtps_pd(_mm_loadu_ps(stmCol + j)),     a0);
+            a1 = _mm256_fmadd_pd(vs, _mm256_cvtps_pd(_mm_loadu_ps(stmCol + j + 4)), a1);
+            _mm_storeu_ps(pre1 + j,     _mm256_cvtpd_ps(a0));
+            _mm_storeu_ps(pre1 + j + 4, _mm256_cvtpd_ps(a1));
+        }
+#endif
+        for (; j < H; j++)
             pre1[j] = (float)(g_mlAccVec[j] + s * stmCol[j]);
         double out = g_mlMlp->forwardFromHidden(pre1) + (double)g_mlSkipW * g_chipDiff;
         return mlSquashToEval(out, g_mlOutScale);
