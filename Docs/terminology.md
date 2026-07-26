@@ -31,8 +31,8 @@ an agent ID such as `classic(t1,c4,w0,l0)`), added to the leaf score as
 having the move. `train.exe turn-swing` calibrates it by measuring the
 1-ply white-centric eval swing between sides.
 *"The champion's turn weight is 1, against a chip weight of 4."*
-**Read the turn weight with care: it is usually inert.** It depends only on
-the side to move, never on the board, so in a fixed-depth search every leaf
+Read the turn weight with care, because it is usually inert: it depends only
+on the side to move, never on the board, so in a fixed-depth search every leaf
 is at the same ply parity and receives the *same constant*, and a constant
 added to every leaf cannot change any min/max comparison. It becomes live
 only when leaves sit at mixed ply parity, which in this engine means
@@ -172,6 +172,27 @@ iteration's root moves explored.
 *"A search that finished depth 5 and got through half of depth 6's root
 moves before hitting budget has effective depth 5.5."*
 
+**Quiescence (`qs`)** -- a captures-only search extension past a true depth
+leaf, so the search does not stop in the middle of an exchange and misread
+the material. It makes leaves sit at mixed ply depths, which is what turns
+the otherwise inert turn weight live.
+*"With quiescence on, a depth-1 search resolves the exchange a plain leaf
+would have scored as a free capture."*
+
+**Aspiration window (`asp`)** -- seeding the root search with a narrow
+alpha-beta window around the previous iteration's score, re-searching wider
+only if the value falls outside it.
+*"An aspiration window costs nothing when the score is stable and forces a
+re-search when it is not."*
+
+**us/node (per-node cost)** -- microseconds of search time divided by nodes
+visited, the cost of one leaf evaluation. It is the speed metric that
+survives comparison across evaluators, because a stronger evaluator changes
+how many nodes get pruned and so changes us/move for reasons unrelated to
+leaf cost.
+*"The two heads differ by 2x in us/node even though their us/move looks
+similar, because their node counts differ."*
+
 **Win decay** -- reducing a forced-win score by 1 per ply deeper it is
 found, so the search prefers the fastest forced win among several.
 *"Win decay is why the search picks a 3-move forced win over an equally
@@ -202,6 +223,55 @@ an evaluator, side, or sweep candidate can point at, so many models can be
 loaded and compared within one process.
 *"Slots 3 and up hold sweep candidates like `models/sweep/slot7.txt`, while
 slots 0-2 are the fixed value/policy/PST slot conventions."*
+
+**Distributional (dist) model, mu head, sigma head** -- a model that predicts
+a position's strength as a distribution rather than a point: a `mu` head for
+the mean advantage (in logits, convertible to Elo) and a `sigma` head for its
+volatility. Search reads only mu, so only mu needs to be fast.
+*"The dist model's mu head says White is 140 Elo better, with a sigma saying
+that estimate is not very stable."*
+
+**Accumulator (NNUE-style)** -- search-resident state holding a model's
+first-layer pre-activations, updated by the two or three inputs a move
+changes instead of recomputed from scratch, and reversed on unmake. It makes
+the first layer's UPDATE nearly free.
+*"With the accumulator the first layer costs three column adds per move
+instead of a full matrix multiply per leaf."*
+
+**Leaf update vs leaf read** -- the two halves of an incremental
+evaluation, and a distinction worth keeping separate because optimizing one
+does not help the other. The *update* is the per-move maintenance the
+accumulator makes cheap; the *read* is what every leaf must still do to turn
+that state into a score, which for a hidden layer of width H is O(H) work
+regardless of how cheap the update got.
+*"Widening the first layer kept the update free but made the leaf read the
+dominant cost."*
+
+**Dead ReLU / activation churn** -- how sparse a hidden layer is. A unit is
+dead at a position if its post-ReLU activation is zero (this project's dist
+heads are roughly 90-96% dead); churn is the fraction of units whose
+activation changes across one move.
+*"At 96% dead only about 18 of 512 units feed the next layer."*
+
+**Sparse leaf-tail forward** -- evaluating the layers past the first over
+only the nonzero activations. Because a zero activation contributes nothing
+to any downstream sum, this is bit-identical to the dense computation.
+*"The sparse leaf tail skipped 90% of the second-layer multiply-accumulates
+without changing a single score."*
+
+**Bit-identical** -- an optimization whose output is exactly, bit-for-bit,
+what the unoptimized code produced, so no test or rating can change. Weaker
+guarantees (reordered floating-point sums, fused multiply-add, SIMD
+reductions) are *approximate* and must say so.
+*"Skipping zero terms is bit-identical; vectorizing the sum is not, though
+the difference is far below one eval point."*
+
+**Seed replica / seed-noise band** -- retraining one recipe under several
+random seeds to measure how much of an Elo difference is just training
+noise. In this project that band is roughly 50-150 Elo, so a single seed's
+result is never a conclusion.
+*"Six seed replicas of the same recipe spanned 129 Elo, which is why one
+model beating another by 40 proves nothing."*
 
 **Teacher** -- the agent (usually a search) whose evaluations or move
 choices generate the labels for a training run; recorded as provenance in
@@ -240,10 +310,72 @@ per-module code versions), used as the permanent key in the match store.
 *"`ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1` is a canonical ID for a
 depth-6 alpha-beta agent using the Classic evaluator."*
 
+**Search head (head)** -- the leading segment of a canonical ID: the explorer
+and its search settings, e.g. `ab(d6,tt,ord,nb200k)` (alpha-beta, depth 6,
+transposition table, move ordering, 200k node budget). Because an agent is
+core + loadout on top of a head, agents at different heads are different
+players and their Elos are not interchangeable. Every strength comparison
+fixes ONE head and says which.
+*"`ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` differ only in the
+transposition table, but they are still two different agents."*
+
 **Roster** -- the hand-edited list of agents (`ranking/roster.txt`) active
 in the persistent Elo pool, each marked anchor/on/off.
 *"Adding an agent to the roster and running `rank.exe run` schedules only
 its missing games against the rest of the pool."*
+
+**Active / off / retired ("gone")** -- an agent's roster state in a ratings
+table. `on` is on the live roster, `off` is temporarily disabled, `gone` is
+retired: an identity no longer rostered, usually a superseded `@N` code
+version, frozen at whatever games it had when it left. A retired row's Elo is
+history, not current strength, so it is never quoted as an agent's rating.
+*"That 1081 was a retired row; the live identity of the same agent rates
+990."*
+
+**Ratings vs standings** -- `ranking/ratings.tsv` is the full historical fit
+(every agent ever rated, retired ones included, all heads mixed together);
+`ranking/standings.tsv` is the same fit filtered to active agents and grouped
+by head. Standings is what a current-strength claim reads.
+*"Read standings.tsv for who is strongest today, ratings.tsv when you need
+the whole history."*
+
+**Effective evaluator (`eff_evaluator`)** -- the standings column showing an
+evaluator with parameters that cannot affect play elided, currently the turn
+weight when the head has no quiescence. Cores are compared on this; the
+`evaluator` and `id` columns keep the exact canonical spelling.
+*"As an effective evaluator the climbed agent is `adv(c77,...)`, so its
+pinned `t20` never enters the comparison."*
+
+**Refit / anchored refit** -- recomputing every agent's Elo from the whole
+match store at once, with the anchor pinned at 0. Because the Bradley-Terry
+prior compresses the scale as the pool grows, ratings are comparable only
+within a single refit, never across two.
+*"Both numbers come from the same anchored refit, so their gap is
+meaningful."*
+
+**Games per pair** -- how many games each pair of agents has actually played,
+the resolution of a comparison. Roughly 8 per pair screens; a top-of-table
+claim needs at least 32, since 8-per-pair reads have twice inverted at 32.
+*"At 8 games per pair these four are indistinguishable; resolving their order
+needs a boost to 32."*
+
+**Provisional** -- an agent whose games do not connect to the anchor through
+the pool, so its rating floats relative to its own component rather than the
+anchored scale. Marked `~` in the report.
+*"A brand-new agent that has only played other new agents comes out
+provisional until it plays into the main pool."*
+
+**Screening vs certification** -- a gauntlet screens (cheap, one candidate vs
+a frozen pool, enough to rank candidates against each other); a full-roster
+anchored refit certifies (the instrument any published claim must use).
+*"The sweep screened 40 cells; only the best two were certified."*
+
+**Target class vs reference class** -- target-class agents compete for the
+throne; reference-class agents are deliberately excluded from it, currently
+the d8/nb2m oracle because it runs at ten times the node budget. The
+exclusions are named in `ranking/CHAMPION.md`.
+*"The oracle outrates the champion, but it is reference class, so the throne
+is unaffected."*
 
 **Anchor** -- the single roster agent pinned at Elo 0, against which every
 other rating is relative.

@@ -45,6 +45,37 @@ executing them. Before running training or ranking studies that only invoke
 scripts (`rank.exe` runs, sweeps, `train_vs_champion.ps1`, etc.), read
 `tools/CLAUDE.md` explicitly first.
 
+## Vocabulary
+
+Use these terms exactly, in chat and in docs. This is the short list: each one
+has already been misused in a way that produced a wrong statement. The full
+glossary (67 terms, each with an example sentence) is `Docs/terminology.md`,
+which is NOT force-loaded, so read it before writing a doc or a strength claim.
+
+- **head** (search head) = the leading ID segment, the explorer and its search
+  settings (`ab(d6,tt,ord,nb200k)`). An agent is a core + loadout on a head, so
+  different heads are different players. Fix ONE head per comparison and say
+  which. Give full canonical IDs, not abbreviations.
+- **active / retired ("gone")** = an agent's roster state. A retired row is a
+  superseded identity frozen at old game counts, so its Elo is history, never
+  current strength. Read `ranking/standings.tsv` (active only, grouped by head)
+  for standings, not `ranking/ratings.tsv` (the full historical fit).
+- **core** = evaluator + search, the thing under study. **loadout** = the
+  optional add-ons it wears (book, `qs`, `tt`, `ord`, `asp`, dilution), readable
+  off the ID. An agent is **bare** (empty loadout) or **equipped**; a comparison
+  is **loadout-matched** when both wear the same items. **lift** = the Elo one
+  item adds to one core, and it does not transfer between cores. Never compare a
+  bare core to an equipped one and call it an evaluator result.
+- **turn weight** (`t`) = inert at fixed depth: it shifts every leaf by the same
+  constant and reorders nothing unless leaves sit at mixed ply parity (`qs`, or
+  `part`). Two IDs differing only in `t` are the same player. Compare cores on
+  standings' `eff_evaluator` column, which elides it.
+- **us/node** = per-leaf cost, the speed number that survives comparison across
+  evaluators. us/move confounds leaf cost with how much the evaluator prunes.
+- **seed-noise band** = 50-150 Elo between seed replicas of one recipe, so a
+  single seed's result is never a conclusion. Check any margin against the error
+  bars before calling it real.
+
 ## Standing Instructions
 
 - **Commit at natural checkpoints, without waiting to be asked.** After finishing a task or functional change (normally as the last step of the "After every functional change" workflow below, once the results doc and other updates are in place), create the commit yourself. Review `git status`/`git diff` first and never stage or commit anything that looks like a secret. **Never run `git push`** without explicit developer instruction given in that session; a prior commit approval does not carry forward to pushing.
