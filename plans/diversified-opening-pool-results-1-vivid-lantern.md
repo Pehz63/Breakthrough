@@ -31,9 +31,11 @@ artifacts are now named after the store, so `matches_open.jsonl` writes
 `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. The
 default store keeps its historical unsuffixed names, so nothing existing moved.
 
-**`ranking/roster_open.txt`**, 14 agents each wearing `.opener(rand,4)@1` (4 of the
-agent's OWN half-moves, so 8 plies of random play), plus `rand@1` as anchor, which
-needs no opener because it already plays randomly.
+**`ranking/roster_open.txt`**, initially 14 agents each wearing `.opener(rand,4)@1`
+(4 of the agent's OWN half-moves, so 8 plies of random play), plus `rand@1` as anchor,
+which needs no opener because it already plays randomly. Later grown to 20 rated
+agents by the dist architecture ladder below, which is the final state and the fit
+every number in the ladder section comes from.
 
 ## Why a separate pool, and why no book agents
 
@@ -98,10 +100,14 @@ samples should:
 Converging, not converged. Rank churn halved on the last step. 32 games/pair is a
 reasonable working point for this pool but a top-of-table claim would want more.
 
-## Standings, diversified pool, 32 games/pair
+## Standings, diversified pool, 32 games/pair -- 14-agent stage (SUPERSEDED)
 
-One fit. These Elo values are NOT comparable to the fixed-start pool's: different
-instrument, different agent set, different Bradley-Terry prior.
+This is the fit as it stood BEFORE the dist architecture ladder was added. It is kept
+because the stability curve above was measured against it, but the 20-agent fit in the
+ladder section below is the current one. Adding six agents changed the fit, so these
+two tables must never be read against each other, and neither is comparable to the
+fixed-start pool's: different instrument, different agent set, different
+Bradley-Terry prior.
 
 | Elo | Head | Agent (all wear `.opener(rand,4)@1`) |
 |---|---|---|
@@ -128,8 +134,10 @@ s111 gap clears 2 SE. The top four are inside one error bar of each other.
 different head (`ab(d6,ord,nb200k)`, no TT), so that is a pooled comparison and not
 an evaluator result.
 
-## Did learned models collapse under diversified openings?
+## Did learned models collapse under diversified openings? (14-agent stage)
 
+Superseded in part by the ladder section below, which rates eight dist models rather
+than one. The conclusion here about the replay-trained LINEAR models still stands.
 The earlier pairwise finding (s111 going 62% -> 25% against the champion) suggested
 learned models might be train-distribution dependent, since they learn from
 standard-start games while a material counter is opening-agnostic by construction.
@@ -155,6 +163,110 @@ outrated in the fixed-start pool. Its fixed-start comparison was only n=8 so the
 "change" column overstates the contrast, but the diversified number stands on its own
 32 games. Whether this is specific to the distributional mu/sigma head or to that one
 seed is untested: only one dist agent is in the pool.
+
+## Follow-up: the dist architecture ladder (20 agents, 6080 games)
+
+Developer question: why does `learned(s111,78ef6974)` rate last among the d6
+contenders, is it overtrained, or too wide or thin in a layer? Answered by adding
+the rest of the dist family so architecture and seed could be separated.
+
+**First, `s111` is the NNUE-shaped head from theory 37**: `mu_layers = 129,512,8,1`,
+a 512-wide first layer into an 8-unit bottleneck, `s_layers = 129,64,1`.
+
+**Second, the premise was wrong.** `slot76` is ALSO a dist model (`type=dist`,
+`mu_type=linear`, no hidden layer) and it is the strongest agent at that head. The
+question was never "do dist models generalise badly".
+
+**Third, `s111` is the LUCKY seed of its architecture, not a poor one.** With four
+seeds rated, `129,512,8,1` spans 986 to 1128 at +/- 16 each, a 142-Elo range, and
+`s111` is the top of it. Its architecture's mean is 1034. Filed as theory 40.
+
+### Diversified pool, 32 games/pair, one fit, head `ab(d6,tt,ord,nb200k)@1`
+
+| Elo | Architecture | Agent |
+|---|---|---|
+| 1215 +/- 16 | dist, linear mu | `learned(s76,ef183148)@1` |
+| 1178 +/- 16 | learned linear | `learned(s6,eac8ab99)@1` |
+| **1166 +/- 16** | **chip counter** | **`classic(t1,c4,w0,l0)@2`** |
+| 1164 +/- 16 | learned linear | `learned(s98,5801570e)@1` |
+| 1136 +/- 16 | learned linear | `learned(s3,68364898)@1` |
+| 1128 +/- 16 | dist `129,512,8,1` | `learned(s111,78ef6974)@1` |
+| 1096 +/- 16 | dist `129,128,64,1` | `learned(s77,ddaa5090)@1` |
+| 1081 +/- 16 | dist `129,128,64,1` | `learned(s78,2fa21eda)@1` |
+| 1027 +/- 16 | dist `129,512,8,1` | `learned(s113,e3cc8b4e)@1` |
+| 1025 +/- 16 | dist `129,256,128,1` | `learned(s79,18f19059)@1` |
+| 993 +/- 16 | dist `129,512,8,1` | `learned(s115,21d7e638)@1` |
+| 986 +/- 16 | dist `129,512,8,1` | `learned(s110,1466db6c)@1` |
+
+Outside that head: the d8 oracle 1399 (reference), the hill-climbed
+`adv(t20,c77,...)` 1249 at `ab(d6,ord,nb200k)`, and `learned(s98,...)` + quiescence
+1181 at `ab(d6,tt,ord,qs,nb200k)`.
+
+### Grouped by architecture
+
+| Architecture | Seeds | Mean Elo | Range |
+|---|---|---|---|
+| dist, linear mu | 1 | 1215 | -- |
+| learned linear (replay-trained) | 3 | 1159 | 1136-1178 |
+| chip counter (reference point) | 1 | 1166 | -- |
+| dist `129,128,64,1` | 2 | 1088 | 1081-1096 |
+| dist `129,512,8,1` | 4 | 1034 | 986-1128 |
+| dist `129,256,128,1` | 1 | 1025 | -- |
+
+**Every hidden-layer dist model rates below a plain material counter. Both linear
+families rate at or above it.** Filed as theory 39, untested hypothesis.
+
+It is NOT the 8-unit bottleneck specifically: `129,256,128,1` has no bottleneck and
+sits at 1025, level with `129,512,8,1`'s 1034. The pattern tracks having hidden
+layers at all, not their shape.
+
+### Win rate against the chip counter, same head, fit-independent
+
+| Model | Architecture | Fixed start | Diversified |
+|---|---|---|---|
+| s76 | dist linear | 53% (n=32) | 41% (n=32) |
+| s6 | learned linear | 38% (n=32) | 59% (n=32) |
+| s98 | learned linear | 72% (n=32) | 66% (n=32) |
+| s3 | learned linear | 69% (n=32) | 69% (n=32) |
+| s77 | dist 128,64 | 38% (n=8) | 34% (n=32) |
+| s78 | dist 128,64 | 50% (n=8) | 31% (n=32) |
+| s79 | dist 256,128 | 25% (n=8) | 25% (n=32) |
+| s110 | dist 512,8 | 50% (n=8) | 31% (n=32) |
+| s111 | dist 512,8 | 50% (n=8) | 25% (n=32) |
+| s113 | dist 512,8 | 62% (n=8) | 19% (n=32) |
+| s115 | dist 512,8 | 75% (n=8) | 31% (n=32) |
+
+The fixed-start column for every dist MLP is an 8-game fill, which this project's
+hygiene rule 2 says never to conclude from, so the apparent swings are not evidence.
+What IS evidence is the diversified column on its own: at n=32 each, every dist MLP
+scores 19-34% against a material counter while the linear learned models score
+59-69%.
+
+### On the overfitting hypothesis
+
+Theory 37 measured this architecture's held-out prediction as neutral (MAE 143.5 /
+NLL 0.40795 versus the wide head's 146.2 / 0.4079), so it is not overfit to the
+training SAMPLE. Those held-out positions came from `posgen` sampling standard-start
+games, so they cannot see distribution-level overfit, which is what theory 39
+proposes. In-distribution discrimination is also intact: mu spread on the
+standard-start eval pool is 86-113 SD across all seven architectures tested, with the
+NNUE-shaped seeds mid-pack, so nothing is collapsed in-distribution.
+
+The direct test, NOT run: build a position pool from the diversified games with
+`rank.exe posgen --in ranking/matches_open.jsonl` and compare each model's mu spread
+on that pool against its spread on the standard pool. A within-model comparison, so
+it needs no labels. Started, then stopped to give the rating run full CPU, and left
+undone by the scoping decision below.
+
+### Scope note
+
+The developer scoped this deliberately (2026-07-26): the session was after major Elo
+swings and opener effects in general, not rigour on the architecture-by-opener
+intersection. Two seeds of `129,512,8,1` (`s112`, `s114`) are benched in
+`ranking/roster_open.txt` rather than rated, and no additional seeds were trained for
+the `128,64` and `256,128` rungs, which is why those rungs have 2 and 1 seed against
+theory 40's measured 142-Elo seed spread. Theory 39 is therefore filed as an
+observation to explore in a later session, not as a result.
 
 ## Caveats
 

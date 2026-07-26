@@ -5,17 +5,23 @@
 #   t shifts every leaf by one constant at fixed depth, so it reorders nothing there.
 #   Compare cores on eff_evaluator; 'evaluator' and 'id' keep the exact canonical form.
 head	elo	pm	games	cpu_ms_move	active	eff_evaluator	evaluator	id
-ab(d8,tt,ord,nb2m)@1	1405	24	416	157.277	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-ab(d6,ord,nb200k)@1	1250	20	416	34.087	on	adv(c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1	adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1	ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1
-ab(d6,tt,ord,qs,nb200k)@1	1240	20	416	19.128	on	learned(s98,5801570e)@1.opener(rand,4)@1	learned(s98,5801570e)@1.opener(rand,4)@1	ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1235	20	416	19.866	on	learned(s76,ef183148)@1.opener(rand,4)@1	learned(s76,ef183148)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1211	20	416	17.183	on	learned(s6,eac8ab99)@1.opener(rand,4)@1	learned(s6,eac8ab99)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1190	20	416	17.453	on	learned(s98,5801570e)@1.opener(rand,4)@1	learned(s98,5801570e)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1186	20	416	17.712	on	learned(s3,68364898)@1.opener(rand,4)@1	learned(s3,68364898)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1178	20	416	10.721	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1125	20	416	348.561	on	learned(s111,78ef6974)@1.opener(rand,4)@1	learned(s111,78ef6974)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	1003	21	416	7.553	on	classic(c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1
-ab(d6,tt,ord,nb200k)@1	369	58	416	4.055	on	classic(c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1
-ab(d4)@1	996	22	416	0.252	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d4)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-ab(d2)@1	817	28	416	0.015	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d2)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-rand@1	0	88	416	0.000	anchor	-	-	rand@1
+ab(d8,tt,ord,nb2m)@1	1399	21	608	165.973	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+ab(d6,ord,nb200k)@1	1249	17	608	34.620	on	adv(c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1	adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1	ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1215	16	608	21.710	on	learned(s76,ef183148)@1.opener(rand,4)@1	learned(s76,ef183148)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1178	16	608	18.472	on	learned(s6,eac8ab99)@1.opener(rand,4)@1	learned(s6,eac8ab99)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1166	16	608	11.589	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1164	16	608	18.710	on	learned(s98,5801570e)@1.opener(rand,4)@1	learned(s98,5801570e)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1136	16	608	18.913	on	learned(s3,68364898)@1.opener(rand,4)@1	learned(s3,68364898)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1128	16	608	369.905	on	learned(s111,78ef6974)@1.opener(rand,4)@1	learned(s111,78ef6974)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1096	16	608	169.950	on	learned(s77,ddaa5090)@1.opener(rand,4)@1	learned(s77,ddaa5090)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s77,ddaa5090)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1081	16	608	177.308	on	learned(s78,2fa21eda)@1.opener(rand,4)@1	learned(s78,2fa21eda)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s78,2fa21eda)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1027	16	608	401.585	on	learned(s113,e3cc8b4e)@1.opener(rand,4)@1	learned(s113,e3cc8b4e)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	1025	16	608	414.179	on	learned(s79,18f19059)@1.opener(rand,4)@1	learned(s79,18f19059)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	993	16	608	401.735	on	learned(s115,21d7e638)@1.opener(rand,4)@1	learned(s115,21d7e638)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	986	16	608	399.474	on	learned(s110,1466db6c)@1.opener(rand,4)@1	learned(s110,1466db6c)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.learned(s110,1466db6c)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	903	18	608	7.957	on	classic(c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1
+ab(d6,tt,ord,nb200k)@1	323	50	608	4.246	on	classic(c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1
+ab(d6,tt,ord,qs,nb200k)@1	1181	16	608	20.513	on	learned(s98,5801570e)@1.opener(rand,4)@1	learned(s98,5801570e)@1.opener(rand,4)@1	ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
+ab(d4)@1	991	16	608	0.281	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d4)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+ab(d2)@1	842	19	608	0.010	on	classic(c4,w0,l0)@2.opener(rand,4)@1	classic(t1,c4,w0,l0)@2.opener(rand,4)@1	ab(d2)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+rand@1	0	77	608	0.000	anchor	-	-	rand@1
