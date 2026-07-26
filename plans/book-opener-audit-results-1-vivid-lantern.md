@@ -126,6 +126,14 @@ Read from `ranking/standings.tsv`, all rows active, one head
 So yes for one core and one book (+124), and no for everything else. Both foreign-
 book numbers are inside their error bars.
 
+Defect 3 applies to these Elo figures too, and was not applied when they were first
+quoted. The Bradley-Terry fit treats every stored row as independent, so the
+printed `pm` is understated by roughly 1.5x. The +124 is about 8 combined standard
+errors as printed and about 5.3 after inflating both bars, so it survives. The +23
+for s98 + book1 is about 1.4 SE as printed and about 0.9 after inflation, so it was
+never a separation either way. These are read from the fit dated 2026-07-25, and
+per the cross-fit rule they may only be compared with each other.
+
 **The docs did not follow hygiene, in three specific places.** All are now
 corrected in `Docs/theories.md`.
 
@@ -305,12 +313,67 @@ value model on diversified-opening self-play and re-running the same comparison.
    plays every game from one position, with a seed that does nothing, cannot
    distinguish "found a good line once" from "is stronger".
 
+## Hygiene audit of this document's own numbers
+
+Run after the fact, against the same rules this document is enforcing on others.
+Three checks passed, two found problems.
+
+**Passed. The distinct-game definition is not an artifact of the fields chosen.**
+The 0.438 median was recomputed under five definitions of "same game". Colour +
+plies + result + both node totals (used above) gives 0.438, adding end piece
+counts gives 0.438, node totals alone give 0.438, and the weaker plies + result
+alone gives 0.312. The one definition that returns 1.000 is the one that adds
+wall-clock `wms`/`bms`, which is timing jitter rather than game content and is
+therefore the wrong field to include. The measure is robust.
+
+**Passed. `open8` really does produce independent games.** This was assumed when
+the study was run and verified only afterwards, which is the wrong order. The test:
+the champion versus bare classic at 16 games, seeds 1-4. At `--open-plies 0` all
+four seeds return an identical 9-7, confirming seed inertness. At `--open-plies 8`
+they return 8-8, 9-7, 11-5, 8-8. The seed is live and the games are distinct.
+
+**Problem 1: `open8` does not eliminate cross-game TT state, only seed inertness.**
+`pairgen` does not call `ttClear()` between games either, so a single 64-game
+process still accumulates TT state across its own games. Measured by splitting the
+same 64 games into four 16-game processes:
+
+| Pair (`--open-plies 8`) | One 64-game process | Four 16-game processes |
+|---|---|---|
+| s98 bare vs classic | 42-22 (66%) | 45-19 (70%) |
+| s98 + own book4 vs classic | 38-26 (59%) | 39-25 (61%) |
+| champion vs bare classic | 25-39 (39%) | 36-28 (56%) |
+
+The effect is 2-4pp for the s98 pair and **17pp** for the champion pair, so it is
+not uniform and cannot be corrected with a single constant. Every `open8` number
+in the tables above was measured as one process and carries this. The s98, s3, and
+`adv` conclusions are unaffected because the own-book gap (-7pp, -5pp, +6pp) moves
+by 2pp under the split. The champion-versus-classic `open8` probe is the least
+reliable number produced this session and should be read as a range of roughly
+39-56%, not a point. It does not carry any conclusion on its own: the four-core
+table does.
+
+**Problem 2: the fixed-start lift figures are computed from degenerate samples.**
+The +31pp / +38pp / +12pp / 0pp own-book lifts are differences of `open0` cells,
+and an `open0` cell for a deterministic pair is 2 effective games however many rows
+it contains. They are reported because the collapse from them is the finding, but
+they are not measurements of anything and no error bar should be attached to them.
+The 0pp for the `adv` core is the exception worth trusting, because it follows from
+the construction (a self-mined book cannot deviate from a reproducible brain) and
+not from the sample.
+
 ## Caveats on these numbers
 
-- `open8` results are genuine independent games. `open0` results are not: for a
-  deterministic pair the effective sample is 2, one game per colour, and the
-  apparent spread across a 32-game batch is TT pollution ordering. Both are
-  reported so the contrast is visible, but only `open8` carries statistics.
+- `open8` results are genuine independent games, subject to problem 1 above.
+  `open0` results are not: for a deterministic pair the effective sample is 2, one
+  game per colour, and the apparent spread across a 32-game batch is TT pollution
+  ordering. Both are reported so the contrast is visible, but only `open8` carries
+  statistics.
+- The four core blocks are NOT comparable to each other. They sit at two different
+  heads (`adv` at `ab(d6,ord,nb200k)@1`, the rest at `ab(d6,tt,ord,nb200k)@1`) and
+  play two different opponents (s98's target is bare classic, the others' is the
+  champion), because each core was matched to the target its own book was mined
+  from. Only the within-block bare / own / borrowed comparison is valid. Reading
+  down a column across blocks is the mixed-head error this document is about.
 - The `open8` comparisons are 64 games (16 for the s111 dist core, whose leaf
   costs 370 ms/move). A 6pp difference at n=64 is well under 1 SE. Where a book
   reads a few points above or below bare under `open8`, that is a null, not a
@@ -322,8 +385,9 @@ value model on diversified-opening self-play and re-running the same comparison.
   NOT in `ranking/roster.txt`: adding deterministic booked identities would add
   stored rows without adding distinct games.
 - `--open-plies 8` is one arbitrary diversification depth. The champion-versus-
-  classic probe was also run at 4 (35-29, 55%) and behaves monotonically, but no
-  sweep over K was done.
+  classic probe was also run at 4 (35-29, 55%). No sweep over K was done, and the
+  three points do not behave monotonically, so nothing here says how the effect
+  scales with K.
 - The 8-game fills that produced books 5 and 6 are below this project's own
   32-games-per-pair threshold for any conclusion, which is why the s3 and s111
   bare-versus-champion results below are flagged for boosting rather than acted

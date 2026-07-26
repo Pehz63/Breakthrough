@@ -175,9 +175,17 @@ identical agents and board: eight separate 8-game processes each returned exactl
 9. To get a real sample from a deterministic pair, vary the START POSITION, not
    the seed. `rank.exe pairgen --open-plies K --open-side both` plays K uniform
    random half-moves first, which makes `rand()` live and each seed a genuinely
-   different game. The main rating path (`rank.exe play` / `run`) has no such
+   different game. Verified: the champion versus bare classic at 16 games returns
+   an identical 9-7 for seeds 1-4 at `--open-plies 0`, and 8-8 / 9-7 / 11-5 / 8-8
+   at `--open-plies 8`. The main rating path (`rank.exe play` / `run`) has no such
    flag, so every rated game in the store to date began from the same standard
    position.
+   **This fixes seed inertness but NOT cross-game TT state.** `pairgen` does not
+   call `ttClear()` between games either, so one long process still accumulates TT
+   state across its own games. Splitting the same 64 games into four 16-game
+   processes moved a booked pair by 17pp (25-39 -> 36-28) while moving an unbooked
+   pair by only 4pp. Report the process split used, prefer several short processes
+   over one long one, and treat a single-process figure as a range.
 10. Always report the colour split. Between near-identical deterministic agents the
    first-move advantage decides the game outright (32-0 as White, 1-31 as Black in
    the control above), so an aggregate near 50% can hide a pair with no skill

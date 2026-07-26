@@ -690,10 +690,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
      to "strength across openings", and it is the standard fix in engine testing. It also
      invalidates comparison against the existing store, so it needs a new board tag or a
      fresh store rather than mixing rows.
+     **Option 1 alone is not sufficient.** Measured 2026-07-26: `--open-plies` makes the
+     seed live but leaves cross-game TT state intact, and splitting the same 64
+     diversified games into four 16-game processes moved a booked pair by 17pp. Options
+     1 and 2 are one change, not alternatives.
   2. Add `ttClear()` per game in `playOneGame` for reproducibility, which is the
-     `--reset-state` repair theory 14 and theory 19 both ask for. Note this makes the
-     problem WORSE for sample size (it removes the only current diversity source) and so
-     is only useful combined with option 1.
+     `--reset-state` repair theory 14 and theory 19 both ask for. On its own it makes
+     sample size WORSE (it removes the only current diversity source), so it must land
+     together with option 1, which supplies real diversity to replace it.
   3. Report effective sample size instead of fixing it: have `rank.exe rate` emit a
      distinct-trajectory count per pair and an effective-n column, so a reader can see
      that a 32-game pair is 2 games. Cheapest, and worth doing regardless of 1 and 2.
