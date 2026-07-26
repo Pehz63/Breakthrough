@@ -1,5 +1,18 @@
 # Persistent Agent Elo-Ranking System (rank.exe)
 
+> **[ELO HYGIENE UNVERIFIED - flagged 2026-07-25]** The Elo comparisons in this
+> document predate the ranking-claim hygiene rules and may be mistaken. Two
+> defects were found in this project's Elo reporting: numbers were read from
+> `ranking/ratings.tsv`, which mixes RETIRED agents (`active = gone`, superseded
+> `@N` identities frozen at old game counts) in with live ones; and agents were
+> sometimes compared across different SEARCH HEADS, which are different agents
+> whose Elos are not interchangeable. Any finding here that was accepted or
+> refuted on an Elo comparison, including any comparison against the champion,
+> may therefore be wrong and needs re-evaluation against `ranking/standings.tsv`
+> (active only, grouped by head) within a single fit. Full explanation:
+> `Docs/benchmarking.md`, "Elo comparison hygiene". Tracked in `todo.md`; remove
+> this banner once this document's numbers have been re-verified.
+
 ## Context
 
 The existing tournament (`train.exe tournament-*`) recomputes Elo from scratch every run from one transient results file, has no per-pair match history, mean-centers ratings at 1500 with no anchor (which is why weak agents drift to negative Elo), defines agents only in C++ code (`buildTournamentRoster`), and prints one line per shard at the end. The user wants a new, separate ranking system that:

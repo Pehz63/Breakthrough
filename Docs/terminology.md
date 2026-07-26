@@ -25,6 +25,26 @@ example the match-row field `plies`, or `report.md`'s "avg plies" column).
 each ply.
 *"It's White's turn again after Black's capture."*
 
+**Turn weight (tempo weight)** -- the evaluator parameter `p[0]` (the `t` in
+an agent ID such as `classic(t1,c4,w0,l0)`), added to the leaf score as
+`+t` when White is to move and `-t` when Black is. It prices the value of
+having the move. `train.exe turn-swing` calibrates it by measuring the
+1-ply white-centric eval swing between sides.
+*"The champion's turn weight is 1, against a chip weight of 4."*
+**Read the turn weight with care: it is usually inert.** It depends only on
+the side to move, never on the board, so in a fixed-depth search every leaf
+is at the same ply parity and receives the *same constant*, and a constant
+added to every leaf cannot change any min/max comparison. It becomes live
+only when leaves sit at mixed ply parity, which in this engine means
+quiescence (`qs`) is on, or `keepPartial` retains a cut iteration. It also
+still shows up in displayed evaluations (`SHOW_EVAL`). Consequence: for a
+bare fixed-depth agent, two IDs differing only in `t` describe agents that
+play identically, and a ratio involving `t` (for example "chip/turn")
+carries no meaning. The hill climber pins `t` rather than searching it, so
+its `t` value is a script default, not a result.
+*"Both agents are `ab(d6,ord,nb200k)` with no quiescence, so their differing
+turn weights of 20 and 1 have no effect on the moves either one plays."*
+
 **Wall** -- a structural-eval bonus for two same-color pieces that sit
 orthogonally adjacent to each other, horizontally, so they can defend one
 another.
@@ -234,6 +254,37 @@ relative to it."*
 O(N) games, without touching the rest of the pool's ratings.
 *"A gauntlet run is how the hill climber cheaply scores each candidate
 eval-weight mix."*
+
+**Core** -- the part of an agent that decides moves on its own merits: the
+evaluator (or policy model) plus its search. What is being studied when a
+new model or weight mix is trained.
+*"Both agents share the classic core; they differ only in loadout."*
+
+**Loadout** -- the set of optional, core-independent components an agent
+wears on top of its core: an opening book or other opener, quiescence,
+transposition table, move ordering, aspiration windows, dilution. Each
+appears as an optional segment in the canonical ID, so an agent's loadout is
+readable off its ID.
+*"The champion's loadout is a single item, `.opener(book,2)`."*
+
+**Bare / equipped** -- an agent with an empty loadout is *bare*; one wearing
+any loadout item is *equipped*. Preferred over "vanilla/modded" (a loadout
+adds to a core rather than modifying it) and over "basic/featured" ("feature"
+already means an ML input feature in this project, e.g. `MLV2_FEATURES`).
+*"Comparing a bare learned evaluator against an equipped chip counter
+measures the loadout, not the evaluator."*
+
+**Loadout-matched** -- a comparison in which both agents wear the same
+loadout, so the Elo difference is attributable to the core. The complement of
+fixing the search head: head fixed + loadout matched isolates the evaluator.
+*"Bare-vs-bare and equipped-vs-equipped are both loadout-matched; bare-vs-
+equipped is not."*
+
+**Lift** -- the Elo a single loadout item adds to a given core, measured as
+the same core with and without it, at one head in one fit. Lift is
+core-specific and need not transfer.
+*"The self-mined book's lift on the classic core is +124 Elo (990 bare ->
+1114 equipped), while the same core gains nothing from a foreign book."*
 
 **Champion** -- the top-rated agent from the last full tournament rating,
 written to `agents/champion.txt`; the reigning opponent the vs-champion

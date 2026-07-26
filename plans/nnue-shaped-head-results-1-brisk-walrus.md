@@ -1,5 +1,18 @@
 # NNUE-shaped dist head (129 -> 512 -> 8 -> 1): results
 
+> **[ELO HYGIENE UNVERIFIED - flagged 2026-07-25]** The Elo comparisons in this
+> document predate the ranking-claim hygiene rules and may be mistaken. Two
+> defects were found in this project's Elo reporting: numbers were read from
+> `ranking/ratings.tsv`, which mixes RETIRED agents (`active = gone`, superseded
+> `@N` identities frozen at old game counts) in with live ones; and agents were
+> sometimes compared across different SEARCH HEADS, which are different agents
+> whose Elos are not interchangeable. Any finding here that was accepted or
+> refuted on an Elo comparison, including any comparison against the champion,
+> may therefore be wrong and needs re-evaluation against `ranking/standings.tsv`
+> (active only, grouped by head) within a single fit. Full explanation:
+> `Docs/benchmarking.md`, "Elo comparison hygiene". Tracked in `todo.md`; remove
+> this banner once this document's numbers have been re-verified.
+
 Companion results doc. This work was conversation-driven (no separate plan-mode
 file to archive): after shipping the incremental MLP accumulator + sparse
 leaf-tail forward

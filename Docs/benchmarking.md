@@ -71,6 +71,55 @@ than trusting 8-games/pair separations. The reigning champion is declared in
 `ranking/CHAMPION.md` (the single source of truth other docs point at), and
 the certification procedure is a standing instruction in `CLAUDE.md`.
 
+### Elo comparison hygiene: retired rows and search heads (2026-07-25)
+
+Two defects were found in this project's own Elo reporting on 2026-07-25. Both
+produce plausible-looking numbers, so neither is self-announcing. Documents
+written before that date carry an UNVERIFIED banner pointing here.
+
+**Defect 1: retired agents quoted as current strength.** `ranking/ratings.tsv`
+is the full historical fit and contains every agent ever rated, including
+retired ones. Its `active` column distinguishes them: `on` (live roster), `off`
+(disabled), `gone` (retired), `anchor`. A `gone` row is a superseded identity,
+typically an older `@N` code version whose behavior differs from the live one,
+frozen at whatever game count it had when it left the roster (often 196-504
+games against a then-smaller pool). Its Elo is not that agent's current
+strength. Measured instance: a retired `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,
+w0,l0)@1` row reads **1081** while its live `@2` identity reads **990**, a
+91-Elo phantom gap. Quoting the retired row made a hill-climbed Advanced agent
+look *worse* than plain classic when at a matched head it is slightly *better*.
+
+**Defect 2: comparing across search heads.** An agent is search + evaluator.
+`ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` differ in whether a transposition
+table is on; `ab(d8,tt,ord,nb2m)` is a different depth AND a 10x node budget.
+Their Elos are not interchangeable, so a table mixing heads is not an evaluator
+comparison even though every row looks alike.
+
+**The rules** (also standing instructions in `CLAUDE.md`, ranking-claim hygiene
+(5) and (6)):
+
+1. Read current standings from `ranking/standings.tsv`, not `ratings.tsv`. It is
+   written from the same fit by `rank.exe rate`, filtered to active agents and
+   grouped by search head, so both defects are excluded by construction.
+2. Fix ONE search head per comparison and state it explicitly in the table.
+3. Give full canonical agent IDs, not abbreviations, so the head is visible.
+4. Still obey the cross-fit rule above: compare order and error bands within one
+   fit only.
+5. Check the margin against the error bars before calling a difference real. A
+   27-Elo gap at +/-11 and +/-10 is about 1.8 combined standard errors, which is
+   not a clean separation.
+6. Compare cores on `standings.tsv`'s `eff_evaluator` column, which elides the
+   turn weight `t` when the search cannot act on it (no `qs`, no `part`). At a
+   fixed depth `t` adds one constant to every leaf and reorders nothing, so two
+   agents differing only in `t` play identically and any ratio involving `t` is
+   meaningless. See `Docs/terminology.md`, "Turn weight".
+7. Match the LOADOUT, not just the head. An agent is a core plus a loadout (book,
+   quiescence, TT, ordering, aspiration, dilution). The reigning champion is a
+   `classic` core wearing one book worth +124 Elo on that core, so comparing it
+   against a bare learned agent measures the loadout rather than the evaluator.
+   Report bare-vs-bare, the per-item lift, and equipped-vs-equipped separately
+   (`Docs/terminology.md`: core, loadout, bare/equipped, loadout-matched, lift).
+
 ## Pick the right metric first
 
 | Metric | What it answers | When to use |

@@ -1451,6 +1451,30 @@ static void writeRatingsTsv(const RankFit& fit, const std::vector<int>& order,
 // with the SAME head. This file removes both traps: active agents only, and a
 // head column to group by, so "same search, different evaluator" is a filter
 // rather than a judgement call.
+// Drop the turn weight from an evaluator segment when the search cannot act on
+// it. `evalLeaf` adds +t/-t purely by side to move, so at a fixed depth every
+// leaf shares one ply parity and receives the same constant -- which shifts all
+// subtree values equally and reorders nothing. Turn only becomes live at mixed
+// leaf parity: quiescence (`qs`) or a retained cut iteration (`part`). Printing
+// the inert value invites false comparisons (a "chip/turn ratio" means nothing
+// when t does not affect play), so the standings show an effective evaluator
+// with t elided. The canonical ID is NEVER rewritten -- it is the permanent
+// match-store key -- so this is presentation only.
+static string effectiveEvaluator(const string& head, const string& ev) {
+    if (head.find(",qs") != string::npos || head.find(",part") != string::npos)
+        return ev;                       // turn is live; show it
+    size_t op = ev.find("(t");
+    if (op == string::npos) return ev;   // no turn weight (e.g. learned(...))
+    size_t i = op + 2;
+    if (i < ev.size() && ev[i] == '-') i++;
+    size_t d0 = i;
+    while (i < ev.size() && ev[i] >= '0' && ev[i] <= '9') i++;
+    if (i == d0) return ev;              // "(t" not followed by a number
+    if (i < ev.size() && ev[i] == ',') i++;   // swallow the separator too
+    else if (i < ev.size() && ev[i] == ')') return ev;  // t is the only weight; keep it
+    return ev.substr(0, op + 1) + ev.substr(i);
+}
+
 static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
                               const std::map<string, AgentAgg>& agg,
                               const std::map<string, string>& state) {
@@ -1458,8 +1482,11 @@ static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
     if (!f.is_open()) return;
     f << "# Current standings: active roster only, from the same fit as ratings.tsv.\n"
       << "# Compare Elo only WITHIN one head and WITHIN this file (never across fits).\n"
-      << "# Retired ('gone') agents are excluded by design; see ratings.tsv for the full history.\n";
-    f << "head\telo\tpm\tgames\tcpu_ms_move\tactive\tevaluator\tid\n";
+      << "# Retired ('gone') agents are excluded by design; see ratings.tsv for the full history.\n"
+      << "# eff_evaluator elides the turn weight t when the search cannot act on it (no qs/part):\n"
+      << "#   t shifts every leaf by one constant at fixed depth, so it reorders nothing there.\n"
+      << "#   Compare cores on eff_evaluator; 'evaluator' and 'id' keep the exact canonical form.\n";
+    f << "head\telo\tpm\tgames\tcpu_ms_move\tactive\teff_evaluator\tevaluator\tid\n";
     // Group by search head (the ID up to its first '.'), heads ordered by their
     // strongest member, agents within a head by Elo -- the order a reader wants.
     std::vector<string> heads;
@@ -1490,7 +1517,7 @@ static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
             double cpu = cpuMsPerMove(a);
             f << head << "\t" << roundElo(fit.elo[i]) << "\t" << roundElo(fit.se[i]) << "\t"
               << a.games << "\t" << (cpu >= 0.0 ? fmtN(cpu, 3) : string("")) << "\t"
-              << st << "\t" << ev << "\t" << id << "\n";
+              << st << "\t" << effectiveEvaluator(head, ev) << "\t" << ev << "\t" << id << "\n";
         }
     }
 }
@@ -1534,6 +1561,15 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
     f << "# Agent ranking report\n\n";
     f << "Generated " << nowUtc() << ". Board `" << board << "`. "
       << nRows << " games from `" << storeFile << "`, " << fit.ids.size() << " rated agents.\n\n";
+    // This report lists EVERY rated agent, retired ones included. Two ways a claim
+    // taken from it goes wrong (see Docs/benchmarking.md, "Elo comparison hygiene").
+    f << "> **Reading this table:** it lists every agent ever rated, including RETIRED ones "
+      << "(marked `(retired)`; superseded `@N` identities frozen at old game counts -- their Elo "
+      << "is not current strength). It also spans different SEARCH HEADS, and an agent is "
+      << "search + evaluator, so `ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` are different "
+      << "agents whose Elos are not interchangeable. For a current-standings comparison read "
+      << "`ranking/standings.tsv` (active only, grouped by head) instead, fix ONE head, and "
+      << "compare only within this one fit. Full rules: `Docs/benchmarking.md`.\n\n";
     f << "Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, "
       << "anchor `" << anchorId << "` = Elo 0. `+/-` is one standard error. "
       << "`cpu/mv` is per-move process CPU time in ms (contention-safe, valid in parallel runs). "

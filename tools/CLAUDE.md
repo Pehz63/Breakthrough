@@ -81,7 +81,10 @@ depth, plies, and end piece counts. Ratings are an anchored Bradley-Terry MM ref
 `rate` writes `ranking/ratings.tsv` (the full historical fit, every agent ever rated
 including retired `gone` rows) + `ranking/standings.tsv` (**the file to read for current
 standings**: the same fit filtered to active agents and grouped by search head, so a
-retired identity or a mixed-head comparison cannot slip into a claim) + `ranking/games.tsv`
+retired identity or a mixed-head comparison cannot slip into a claim; its `eff_evaluator`
+column also elides the turn weight `t` when the search cannot act on it (no `qs`/`part`),
+since at fixed depth `t` shifts every leaf by one constant and reorders nothing -- compare
+cores on `eff_evaluator`, while `evaluator`/`id` keep the exact canonical form) + `ranking/games.tsv`
 (per-game export) + `ranking/report.md` (W-L split by color, avg plies, end-piece margin, cpu/move,
 `eff` = Elo / log2(1 + cpu_us/move), and an Elo-vs-CPU pareto-frontier table). Learned
 agents embed an 8-hex model-file content hash in the ID and roster load hard-errors on

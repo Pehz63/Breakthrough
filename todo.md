@@ -670,6 +670,30 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   dilution-quality question, deliberately deferred to its own session `[Later]`
 
 ## Elo / Tournaments
+- **Re-evaluate every Elo claim under the new comparison hygiene, then clear its banner. `[Now]`**
+  On 2026-07-25 two defects were found in this project's Elo reporting: (a) numbers read
+  from `ranking/ratings.tsv` mixed RETIRED agents (`active = gone`, superseded `@N`
+  identities frozen at old game counts) in with live ones, and (b) agents were compared
+  across different SEARCH HEADS, which are different agents. Measured instance: a retired
+  `classic` row reads 1081 where its live identity reads 990, a 91-Elo phantom gap that
+  inverted one conclusion. Fixes shipped the same day: `rank.exe rate` now writes
+  `ranking/standings.tsv` (active only, grouped by head), `CLAUDE.md` gained ranking-claim
+  hygiene rules (5) and (6), and `Docs/benchmarking.md` has the full explanation under
+  "Elo comparison hygiene".
+  **37 documents were flagged with an `[ELO HYGIENE UNVERIFIED]` banner** (all Elo-citing
+  files in `plans/`, plus `ML.md`, `Docs/agents.md`, `Docs/axioms.md`, `Docs/theories.md`,
+  `ranking/CHAMPION.md`). For each one: re-check its numbers against `standings.tsv` within
+  a single fit at a fixed head, confirm or correct each finding it accepted or refuted,
+  then delete that document's banner. A finding that flips must also be corrected in
+  `Docs/theories.md` and, if it touches the throne, in `ranking/CHAMPION.md`.
+  Suggested order (highest claim density / most load-bearing first):
+  1. `ranking/CHAMPION.md` (the throne declaration itself)
+  2. `Docs/theories.md` (the theory ledger other docs cite)
+  3. `ML.md` (the shipped-models tables)
+  4. `plans/dethrone-champion-results-*` (5 docs, all champion-relative claims)
+  5. `plans/position-oracle-results-1`, `plans/heuristic-eval-overhaul-results-1`,
+     `plans/bounded-jitter-results-1`, `plans/vs-champion-training-results-1`
+  6. the remainder of `plans/`
 - ~~Round-robin + Elo rating **(P1)**~~
 - ~~Checkpoints saved + manifest (JSON + Markdown) **(P1)**~~
 - ~~Parallel (process-sharded) depth-laddered round-robin with per-move timing + champion export~~
@@ -678,6 +702,29 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Gauntlet vs fixed anchors~~ (rank.exe gauntlet: one candidate vs the frozen pool, O(N) games)
 - ~~BayesElo-style rating with uncertainty~~ (rank.exe: anchored Bradley-Terry MLE + Fisher standard errors)
 - ~~Persistent incremental Elo ranking (rank.exe: canonical agent IDs, editable roster with on/off toggles, append-only match store, anchored BT refit, per-agent head-to-head reports)~~
+- **Loadout-parity study: stop comparing bare cores against an equipped champion. `[Next]`**
+  The reigning champion is a `classic` core wearing one loadout item (`.opener(book,2)`),
+  and that item is worth **+124 Elo** on that core (990 bare -> 1114 equipped, 2026-07-25
+  fit, head `ab(d6,tt,ord,nb200k)`). Every learned/dist/hill-climbed agent it has been
+  measured against is **bare**, so those comparisons have been reading the loadout, not
+  the core. Report all three numbers instead of one: (1) **bare vs bare** (the honest core
+  comparison), (2) the **lift** of each loadout item on each core (same core, with and
+  without), and (3) **equipped vs equipped** (best achievable build of each core). See
+  `Docs/terminology.md` for core / loadout / bare / equipped / loadout-matched / lift.
+  **Critical implementation constraint, already established:** books are NOT portable
+  across cores. Theory 14 was refuted in its naive foreign-book form and theory 33
+  confirmed the self-mined form -- a book must be mined from the WEARER'S OWN wins.
+  Current-fit evidence at the same head: classic + its own book2 = 1114 (**+124**), classic
+  + the foreign book1 = 982 (**-8**), s98 + book1 = 1066 (+23 on the core the book was
+  mined against). So do NOT hand the champion's `book2` to a learned agent and call it a
+  fair build. Mine each core its own book via `rank.exe bookgen` from that agent's own
+  wins, give it a fresh slot (book files are immutable and not hashed into the ID), and
+  rate the equipped identity separately.
+  Loadout items to sweep per core, each already an ID-level toggle: own-mined opening book,
+  quiescence (`qs`), transposition table (`tt`), move ordering (`ord`), aspiration window
+  (`asp`). Expected payoff beyond fairness: if lifts are roughly additive, the strongest
+  agent is the best core wearing every positive-lift item, which no one has actually built
+  yet -- the champion wears exactly one.
 - Standing project loop: on every new agent, check whether it lowers the current #1's
   Elo, by outrating it outright or by countering its specific build (see the
   adversarial counter-agent idea above). Treat "dethrone the champion" as the

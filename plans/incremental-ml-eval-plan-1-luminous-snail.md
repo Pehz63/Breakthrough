@@ -1,5 +1,18 @@
 # Incremental ML Eval: Sparse Piece-Square Plumbing + Joint-Objective TODO Entry
 
+> **[ELO HYGIENE UNVERIFIED - flagged 2026-07-25]** The Elo comparisons in this
+> document predate the ranking-claim hygiene rules and may be mistaken. Two
+> defects were found in this project's Elo reporting: numbers were read from
+> `ranking/ratings.tsv`, which mixes RETIRED agents (`active = gone`, superseded
+> `@N` identities frozen at old game counts) in with live ones; and agents were
+> sometimes compared across different SEARCH HEADS, which are different agents
+> whose Elos are not interchangeable. Any finding here that was accepted or
+> refuted on an Elo comparison, including any comparison against the champion,
+> may therefore be wrong and needs re-evaluation against `ranking/standings.tsv`
+> (active only, grouped by head) within a single fit. Full explanation:
+> `Docs/benchmarking.md`, "Elo comparison hygiene". Tracked in `todo.md`; remove
+> this banner once this document's numbers have been re-verified.
+
 ## Context
 
 The developer wants to work on incrementalizing an ML model (the `[Later]` item in todo.md's value-model list). Exploration showed the existing linear value model cannot be incrementalized: its 30 features are dense board-wide aggregates (rank counts, phalanx/defended/threat counts, furthest-pawn maxima, and mobility via two full `generateMoves` calls), with no square-to-feature locality. `LearnedValue` is registered `incremental=false` and runs the full scan at every leaf.

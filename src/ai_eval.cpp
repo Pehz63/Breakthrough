@@ -614,6 +614,14 @@ int evalLeaf(int turnColor, int evaluator, const int* p) {
         }
         race = raceTermContrib(p[ADV_RACE], maxW, minB);
     }
+    // Tempo term. NOTE: this depends only on the side to move, never on the
+    // board, so in a FIXED-DEPTH search every leaf shares one ply parity and
+    // receives the same constant -- and a constant added to every leaf shifts
+    // every subtree value equally, changing no min/max comparison. The turn
+    // weight is therefore INERT for move selection unless leaves sit at mixed
+    // ply parity (quiescence on, or keepPartial retaining a cut iteration).
+    // It still affects displayed evals. Win sentinels return above this line,
+    // so they never receive it. See Docs/terminology.md, "Turn weight".
     int turnTerm = (turnColor == White) ? p[0] : -p[0];
     int pos = g_evalIncremental ? g_evalPos
             : evalPosFull(p, g_evaluators[evaluator].paramCount);
