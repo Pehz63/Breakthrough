@@ -1,0 +1,15 @@
+rank	elo	pm	games	wins	losses	white_wins	white_losses	black_wins	black_losses	avg_plies	ms_move	cpu_ms_move	nodes_move	eff	active	id
+1	1405	24	416	350	66	184	24	166	42	49.7	171.101	157.277	524840	81	on	ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+2	1250	20	416	285	131	140	68	145	63	54.2	38.537	34.087	102045	83	on	ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1
+3	1240	20	416	280	136	147	61	133	75	55.8	21.231	19.128	65325	87	on	ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
+4	1235	20	416	278	138	147	61	131	77	57.5	21.824	19.866	67318	87	on	ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1.opener(rand,4)@1
+5	1211	20	416	266	150	140	68	126	82	58.0	19.108	17.183	59462	86	on	ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1.opener(rand,4)@1
+6	1190	20	416	256	160	132	76	124	84	56.8	19.342	17.453	59899	84	on	ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
+7	1186	20	416	254	162	133	75	121	87	57.2	19.540	17.712	59878	84	on	ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(rand,4)@1
+8	1178	20	416	250	166	130	78	120	88	51.5	12.088	10.721	32583	88	on	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+9	1125	20	416	224	192	117	91	107	101	58.9	390.216	348.561	77491	61	on	ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1.opener(rand,4)@1
+10	1003	21	416	168	248	85	123	83	125	49.4	8.644	7.553	23827	78	on	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1
+11	996	22	416	165	251	81	127	84	124	46.8	0.305	0.252	4266	125	on	ab(d4)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+12	817	28	416	103	313	51	157	52	156	46.8	0.010	0.015	106	206	on	ab(d2)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+13	369	58	416	32	384	15	193	17	191	35.0	4.708	4.055	13388	31	on	ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1
+14	0	88	416	1	415	0	208	1	207	27.2	0.001	0.000	0	-	anchor	rand@1

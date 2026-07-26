@@ -117,11 +117,12 @@ int main(int argc, char** argv) {
     } else if (cmd == "play") {
         rc = rankPlay(roster, store, getOpt(argc, argv, "--out", store.c_str()),
                       games, getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
-                      seed, board);
+                      seed, board, hasFlag(argc, argv, "--paired-openings"));
     } else if (cmd == "rate") {
         rc = rankRate(roster, store, board);
     } else if (cmd == "run") {
-        rc = rankPlay(roster, store, store, games, 0, 1, seed, board);
+        rc = rankPlay(roster, store, store, games, 0, 1, seed, board,
+                      hasFlag(argc, argv, "--paired-openings"));
         if (rc == 0) rc = rankRate(roster, store, board);
     } else if (cmd == "history") {
         rc = rankHistory(store, getOpt(argc, argv, "--agent", ""),

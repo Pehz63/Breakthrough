@@ -92,6 +92,42 @@ a mismatch (a retrain is a new identity). Full internals (ID codec, store row fo
 scheduler, BT fit, every subcommand, slot conventions): `src/CLAUDE.md`'s
 `ranking.cpp` entry.
 
+### Two rating pools
+
+The ranker now maintains two independent pools. They answer different questions and
+their Elo scales are NOT comparable (different fits, different priors).
+
+| | Fixed-start pool | Diversified pool |
+|---|---|---|
+| Roster | `ranking/roster.txt` (116 agents) | `ranking/roster_open.txt` (14 agents) |
+| Store | `ranking/matches.jsonl` | `ranking/matches_open.jsonl` |
+| Outputs | `ratings.tsv`, `standings.tsv`, ... | `ratings_open.tsv`, `standings_open.tsv`, ... |
+| Every game starts from | `boards/board1.txt` | a random position 8 plies in |
+| Books | meaningful, this is where they live | inert, so no book agents |
+| Distinct games / stored rows | median **0.438**, min 0.062 | median **1.000**, min 1.000 |
+| Answers | "strength at the standard start" | "strength across openings" |
+
+Run the diversified pool with `-Store` (NOT `--in`/`--out`, which the driver owns):
+
+```powershell
+.	oolsun_rank.ps1 -Workers 12 -Store ranking/matches_open.jsonl --roster ranking/roster_open.txt --games 32 --paired-openings
+```
+
+**`--paired-openings`** is what makes this pool worth having. The scheduler emits each
+pair as colour-swapped couples, and the flag gives both games of a couple ONE seed
+derived from the canonically ordered pair. The random opener draws its moves from
+`rand()` and no brain is consulted during the opener window, so an identical `rand()`
+stream produces an identical opening line: the couple plays the SAME position with the
+colours reversed. Agents are compared on how they recover from equal ground rather
+than on which of them drew the kinder start. The flag is inert for agents that consume
+no `rand()`, so it cannot change a deterministic fixed-start pool.
+
+Measured payoff: error bars scale as `1/sqrt(n)` (median pm 53, 38, 28, 20 at 4, 8, 16,
+32 games/pair), which is the signature of genuinely independent samples and is exactly
+what the fixed-start pool does not do (`Docs/benchmarking.md`, defect 3). Rank-order
+stability across those fills: Spearman rho 0.974, 0.969, 0.987, with 6, 6, then 3 of 14
+agents changing rank. Converging at 32, not converged.
+
 The **hill climber** (`tools/hill_climb.ps1`) optimizes the Advanced weight mix at a
 fixed depth using `gauntlet` as fitness: 13 climbed weights (chip, wall, column,
 forward, support, center, mobility, hole, control, open, race, overext, noise), turn
@@ -170,6 +206,7 @@ its 16 wins collapse to about 7 distinct games, while `book4` is large (519 entr
 | Dir | Purpose |
 |---|---|
 | `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), `matches.jsonl` (append-only ID-keyed match history, committed, the never-recomputed asset), and generated `ratings.tsv` (full historical fit, includes retired agents) + `standings.tsv` (**read this one for current standings**: active agents only, grouped by search head) + `games.tsv` + `report.md`. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored. |
+| `ranking/` (2nd pool) | **Diversified-opening pool**, a self-contained second instrument added 2026-07-26: `roster_open.txt` (14 agents, each wearing `.opener(rand,4)@1`), `matches_open.jsonl` (its own store, never mixed with `matches.jsonl`), and generated `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. Rating outputs are named after the store, so `matches<X>.jsonl` writes `ratings<X>.tsv` and so on, and the default store keeps the historical unsuffixed names. |
 | `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
 | `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |
 | `data/labels/` | Position-oracle campaign home: committed pools (`pool_train/eval.jsonl`), ladder specs, fitted labels (`labels_train/eval.jsonl`), raw-store `.meta.json` sidecars (the frozen rung-id mapping), `ratings_snapshot.tsv` (the study's fixed Elo basis), and `study.csv` (the resume ledger). The raw stores themselves (`raw_train/eval.jsonl`, ~hundreds of MB, the durable asset that re-labels under any future ratings fit) are gitignored -- back them up outside git. `dry/` and `logs/` are scratch. |

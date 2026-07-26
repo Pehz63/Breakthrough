@@ -907,9 +907,29 @@ static unsigned gameSeed(const string& w, const string& b, long long ordinal, un
     return (unsigned)(fnv1a64(k.data(), k.size(), 1469598103934665603ULL) & 0xffffffffULL);
 }
 
+// Paired-opening seed: both games of a colour-swapped couple get ONE seed, derived
+// from the canonically ordered pair so it does not change when the colours swap.
+// The random opener (`.opener(rand,K)`) draws its moves from rand(), and during the
+// opener window neither brain is consulted, so an identical rand() stream produces
+// an identical opening line in both games. The couple therefore plays the SAME
+// opening position with the colours reversed, which cancels that opening's inherent
+// bias: the pair is compared on how each side recovers from equal ground rather than
+// on which of them drew the kinder random start. Standard variance reduction in
+// engine testing. Inert for agents that consume no rand() (no opener, no dilution),
+// so enabling it cannot change a deterministic fixed-start pool.
+static unsigned coupleSeed(const string& a, const string& b, long long couple, unsigned runSeed) {
+    const string& lo = (a < b) ? a : b;
+    const string& hi = (a < b) ? b : a;
+    std::ostringstream s;
+    s << lo << "|" << hi << "|c" << couple << "|" << runSeed;
+    string k = s.str();
+    return (unsigned)(fnv1a64(k.data(), k.size(), 1469598103934665603ULL) & 0xffffffffULL);
+}
+
 std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
-                                          int gamesPerPair, unsigned runSeed) {
+                                          int gamesPerPair, unsigned runSeed,
+                                          bool pairedOpenings) {
     std::vector<RankPendingGame> out;
     std::vector<string> ids;
     for (size_t i = 0; i < roster.size(); i++)
@@ -939,7 +959,10 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                 RankPendingGame g;
                 if (pendAW >= pendBW) { g.w = a; g.b = b; pendAW--; }
                 else                  { g.w = b; g.b = a; pendBW--; }
-                g.seed = gameSeed(g.w, g.b, ordinal, runSeed);
+                // Emission order alternates a-White / b-White, so ordinals 2k and
+                // 2k+1 are one colour-swapped couple and share a couple index.
+                g.seed = pairedOpenings ? coupleSeed(a, b, ordinal / 2, runSeed)
+                                        : gameSeed(g.w, g.b, ordinal, runSeed);
                 ordinal++;
                 out.push_back(g);
             }
@@ -1207,7 +1230,8 @@ static bool loadModelSlots(const std::vector<const RankAgent*>& agents, string& 
 // PLAY
 // ============================================================
 int rankPlay(const string& rosterFile, const string& storeFile, const string& outFile,
-             int gamesPerPair, int shard, int ofK, unsigned runSeed, const string& board) {
+             int gamesPerPair, int shard, int ofK, unsigned runSeed, const string& board,
+             bool pairedOpenings) {
     std::vector<RankAgent> roster;
     string err;
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
@@ -1219,13 +1243,14 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     rankLoadMatches(storeFile, board, store, skipped);
     if (skipped) cout << "WARNING: skipped " << skipped << " malformed line(s) in " << storeFile << "\n";
 
-    std::vector<RankPendingGame> pending = rankSchedule(roster, store, gamesPerPair, runSeed);
+    std::vector<RankPendingGame> pending = rankSchedule(roster, store, gamesPerPair, runSeed, pairedOpenings);
     int nActive = 0;
     for (size_t i = 0; i < roster.size(); i++) if (roster[i].active) nActive++;
 
     string pre = (ofK > 1) ? ("[s" + std::to_string(shard) + "] ") : string("");
     cout << pre << "rank: " << nActive << " active agents, " << pending.size()
          << " pending games (target " << gamesPerPair << "/pair)";
+    if (pairedOpenings) cout << ", paired openings";
     if (ofK > 1) cout << ", shard " << shard << "/" << ofK;
     cout << "\n" << flush;
     if (pending.empty()) {
@@ -1415,10 +1440,29 @@ static void printConsoleTable(const RankFit& fit, const std::vector<int>& order,
     cout << "\n";
 }
 
+// Rating outputs are named after the match store, so a second pool can be rated
+// without clobbering the first. "ranking/matches.jsonl" -> ranking/ratings.tsv (the
+// historical names, unchanged); "ranking/matches_open.jsonl" -> ranking/ratings_open.tsv,
+// standings_open.tsv, games_open.tsv, report_open.md.
+static string g_outSuffix;
+
+static void setOutSuffixFromStore(const string& storeFile) {
+    g_outSuffix.clear();
+    size_t slash = storeFile.find_last_of("/\\");
+    string base = (slash == string::npos) ? storeFile : storeFile.substr(slash + 1);
+    size_t dot = base.find('.');
+    if (dot != string::npos) base = base.substr(0, dot);
+    if (base.size() > 7 && base.compare(0, 7, "matches") == 0) g_outSuffix = base.substr(7);
+}
+
+static string outPath(const char* stem, const char* ext) {
+    return string("ranking/") + stem + g_outSuffix + ext;
+}
+
 static void writeRatingsTsv(const RankFit& fit, const std::vector<int>& order,
                             const std::map<string, AgentAgg>& agg,
                             const std::map<string, string>& state) {
-    std::ofstream f("ranking/ratings.tsv");
+    std::ofstream f(outPath("ratings", ".tsv").c_str());
     if (!f.is_open()) return;
     f << "rank\telo\tpm\tgames\twins\tlosses\twhite_wins\twhite_losses\tblack_wins\tblack_losses\t"
       << "avg_plies\tms_move\tcpu_ms_move\tnodes_move\teff\tactive\tid\n";
@@ -1478,7 +1522,7 @@ static string effectiveEvaluator(const string& head, const string& ev) {
 static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
                               const std::map<string, AgentAgg>& agg,
                               const std::map<string, string>& state) {
-    std::ofstream f("ranking/standings.tsv");
+    std::ofstream f(outPath("standings", ".tsv").c_str());
     if (!f.is_open()) return;
     f << "# Current standings: active roster only, from the same fit as ratings.tsv.\n"
       << "# Compare Elo only WITHIN one head and WITHIN this file (never across fits).\n"
@@ -1524,7 +1568,7 @@ static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
 
 // Machine-readable per-game export (one row per stored game, empty = unrecorded).
 static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
-    std::ofstream f("ranking/games.tsv");
+    std::ofstream f(outPath("games", ".tsv").c_str());
     if (!f.is_open()) return;
     f << "ts\trun\tboard\twhite\tblack\tresult\tplies\twpc\tbpc\twms\tbms\twcpu\tbcpu\t"
       << "wmv\tbmv\twnod\tbnod\twed\tbed\twsn\tbsn\tseed\tpar\n";
@@ -1551,7 +1595,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                           const std::map<std::pair<string,string>, PairAgg>& pairs,
                           const string& board, const string& storeFile,
                           size_t nRows, const string& anchorId) {
-    std::ofstream f("ranking/report.md");
+    std::ofstream f(outPath("report", ".md").c_str());
     if (!f.is_open()) return;
 
     std::map<string, double> eloBy;
@@ -1771,6 +1815,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
 }
 
 int rankRate(const string& rosterFile, const string& storeFile, const string& board) {
+    setOutSuffixFromStore(storeFile);
     std::vector<RankAgent> roster;
     string err;
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
@@ -1829,8 +1874,9 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
     }
     if (unrated)
         cout << unrated << " roster agent(s) have no games yet (see report.md); run 'rank.exe play'\n";
-    cout << "wrote ranking/ratings.tsv, ranking/standings.tsv (active only, by head),"
-            " ranking/games.tsv and ranking/report.md\n";
+    cout << "wrote " << outPath("ratings", ".tsv") << ", " << outPath("standings", ".tsv")
+         << " (active only, by head), " << outPath("games", ".tsv") << " and "
+         << outPath("report", ".md") << "\n";
     return 0;
 }
 

@@ -114,9 +114,14 @@ bool rankLoadMatches(const std::string& file, const std::string& board,
 // the store already holds. Deterministic: agents sorted by ID, per-game seeds
 // derived from (whiteId, blackId, pairOrdinal, runSeed), so any shard split or
 // scheduling order reproduces identical games.
+// pairedOpenings: give both games of a colour-swapped couple ONE seed (derived from
+// the canonically ordered pair), so agents wearing the same `.opener(rand,K)` play
+// the SAME random opening with colours reversed. Compares recovery from equal
+// ground instead of opening luck. Inert when neither side consumes rand().
 std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
-                                          int gamesPerPair, unsigned runSeed);
+                                          int gamesPerPair, unsigned runSeed,
+                                          bool pairedOpenings = false);
 
 // ---- Rating ----
 // Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with a
@@ -133,7 +138,7 @@ int rankCheck(const std::string& rosterFile, const std::string& storeFile,
               int gamesPerPair, const std::string& board);
 int rankPlay(const std::string& rosterFile, const std::string& storeFile,
              const std::string& outFile, int gamesPerPair, int shard, int ofK,
-             unsigned runSeed, const std::string& board);
+             unsigned runSeed, const std::string& board, bool pairedOpenings = false);
 int rankRate(const std::string& rosterFile, const std::string& storeFile,
              const std::string& board);
 int rankHistory(const std::string& storeFile, const std::string& agentQuery,

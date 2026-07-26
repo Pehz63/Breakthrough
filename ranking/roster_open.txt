@@ -1,0 +1,70 @@
+# Diversified-opening roster (2026-07-26). A SECOND, self-contained pool.
+#
+# Store:   ranking/matches_open.jsonl   (never mixed with ranking/matches.jsonl)
+# Outputs: ranking/ratings_open.tsv, standings_open.tsv, games_open.tsv, report_open.md
+# Run:     rank.exe play --roster ranking/roster_open.txt --in ranking/matches_open.jsonl \
+#                       --out ranking/matches_open.jsonl --games 4 --paired-openings
+#          rank.exe rate --roster ranking/roster_open.txt --in ranking/matches_open.jsonl
+#
+# WHY A SEPARATE POOL. Every agent here wears `.opener(rand,4)`: its first 4 OWN
+# half-moves are uniform-random, so a game starts from a random position 8 plies in.
+# That only measures strength fairly when BOTH sides randomize. Mixing these agents
+# into ranking/roster.txt would pair them against 116 agents that do not, which is
+# the asymmetric `--open-side a` condition the opener-bias study showed swings a
+# matchup from 65% to 40%. So the diversified agents live here, and their games live
+# in their own store.
+#
+# PAIRED OPENINGS. Run with --paired-openings. The scheduler emits each pair as
+# colour-swapped couples, and that flag gives both games of a couple ONE seed derived
+# from the canonically ordered pair. The random opener draws from rand() and no brain
+# is consulted during the opener window, so an identical rand() stream yields an
+# identical opening line. The couple therefore plays the SAME position with colours
+# reversed. Agents are compared on how they recover from equal ground, not on which
+# of them drew the kinder start. Without this flag the pool still works but carries
+# opening luck as pure variance.
+#
+# NO BOOK AGENTS. A book is keyed on exact position hashes, so after a random opening
+# it never fires and a book agent is identical to its bare core (theory 38). Books are
+# a fixed-start phenomenon and stay in the main pool, which is where they mean
+# something. See todo.md for the open question of whether a book could instead be
+# mined to RECOVER from bad random openings.
+#
+# SELECTION. One strongest representative per evaluator family, plus the scale.
+# Elo values in comments are from the 2026-07-26 main-pool fit and are there only to
+# say why each agent was picked. They are NOT comparable to anything this pool
+# produces: different instrument, different fit.
+
+anchor  rand@1                                                  # already plays randomly, needs no opener
+
+# --- Learned value models (v2 sparse piece-square linear), strongest per lineage ---
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1.opener(rand,4)@1    # 1077, strongest bookless target-class
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1.opener(rand,4)@1     # 1073
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(rand,4)@1     # 1063, replay-trained lineage
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1    # 1040, the deposed champion's core
+
+# --- Distributional (dist) model: the NNUE-style mu/sigma head, strongest seed ---
+# 370 ms/move, by far the most expensive agent here.
+on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1.opener(rand,4)@1   # 1037 in the pre-boost fit
+
+# --- Hand-written evaluators ---
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1     # 965, the basic chip counter.
+        # Material-only, so it is the natural CONTROL: it has no opening-specific
+        # knowledge to lose. If learned models fall further than this under random
+        # openings, that is evidence of train-distribution dependence.
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(rand,4)@1   # 1018, hill-climbed Advanced
+
+# --- Loadout probe: quiescence. Random openings produce sharper, more tactical
+# positions than the standard start, so qs may be worth more here than its +6 in the
+# main pool. This is the one loadout comparison the pool can make cheaply.
+on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1.opener(rand,4)@1
+
+# --- Reference class (excluded from any throne, per ranking/CHAMPION.md) ---
+on      ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1       # the d8/nb2m oracle
+
+# --- Scale spread. Elo needs resolved rungs between the anchor and the contenders,
+# and the dilution agents are genuinely stochastic, which also gives the fit some
+# pairs that are not deterministic.
+on      ab(d2)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1.opener(rand,4)@1

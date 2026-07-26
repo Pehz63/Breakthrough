@@ -670,7 +670,40 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   dilution-quality question, deliberately deferred to its own session `[Later]`
 
 ## Elo / Tournaments
-- **Give the rating path real sample diversity. `[Now]`**
+- ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
+  pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
+  each wearing `.opener(rand,4)@1`, played with `rank.exe ... --paired-openings` into
+  `ranking/matches_open.jsonl`. Result: **median distinct-trajectory ratio 1.000, min
+  1.000** across all 91 pairs (the fixed-start pool is 0.438 median, 0.062 min), and
+  error bars scale as 1/sqrt(n) exactly as independent samples should (median pm 53 ->
+  38 -> 28 -> 20 at 4 -> 8 -> 16 -> 32 games/pair). Defect 3 does not exist in this
+  pool. Rank-order stability across fills: Spearman rho 0.974 (4->8), 0.969 (8->16),
+  0.987 (16->32), with agents changing rank 6, 6, then 3 of 14. Converging but not
+  converged at 32.
+  Remaining sub-items: option 3 below (an effective-n column in `rank.exe rate`) is
+  still worth doing for the FIXED-START pool, which keeps its defect. Option 2
+  (`ttClear()` per game) is also still open and is what would make the fixed-start
+  pool reproducible.
+- **Can a book be mined to RECOVER from bad random openings? `[Next]`**
+  Developer question, 2026-07-26. In the diversified pool a book is inert, because it
+  is keyed on exact position hashes that a random opening never reaches, so book
+  agents were left out. But that assumes a book mined the way `bookgen` mines them:
+  from the standard start, forward. The interesting variant is a book keyed on
+  positions that arise AFTER a random opening, mined from games the owner won from a
+  bad start. That is a different artifact and a different claim: not "replay my best
+  line" but "here is the refutation once I am already worse". If it works it is a
+  genuinely transferable skill rather than the memorization theory 38 found. Test:
+  mine from `ranking/matches_open.jsonl` (which now has 2912 diversified games) with
+  `--plies` covering the post-opening window, roster the result, and see whether it
+  beats its own bare core in the diversified pool. Cheap, the games already exist.
+- **Grow the diversified pool. `[Next]`**
+  Currently 14 agents, chosen as one strongest representative per evaluator family
+  plus the scale (see the header of `ranking/roster_open.txt` for the selection rule).
+  Candidates to add: more seed replicas per recipe so the training-seed-noise band is
+  visible inside this pool, the remaining `adv` hill-climb finds, and a second dist
+  seed (only `learned(s111,...)` is in). Also decide whether `.opener(rand,4)` is the
+  right depth: 4 own half-moves means 8 plies of random play, never swept.
+- **Give the rating path real sample diversity (original entry, superseded above).**
   Found 2026-07-26 (`plans/book-opener-audit-results-1-vivid-lantern.md`, defect 3 in
   `Docs/benchmarking.md`). `rankSchedule` seeds every game, but `rand()` is only consumed
   by dilution and random-move agents, so for a pair with no `dil(...)` and no `rand`

@@ -1,6 +1,6 @@
 # Agent ranking report
 
-Generated 2026-07-26T19:38:10Z. Board `boards/board1.txt`. 123854 games from `ranking/matches.jsonl`, 320 rated agents.
+Generated 2026-07-26T21:43:28Z. Board `boards/board1.txt`. 123854 games from `ranking/matches.jsonl`, 320 rated agents.
 
 > **Reading this table:** it lists every agent ever rated, including RETIRED ones (marked `(retired)`; superseded `@N` identities frozen at old game counts -- their Elo is not current strength). It also spans different SEARCH HEADS, and an agent is search + evaluator, so `ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` are different agents whose Elos are not interchangeable. For a current-standings comparison read `ranking/standings.tsv` (active only, grouped by head) instead, fix ONE head, and compare only within this one fit. Full rules: `Docs/benchmarking.md`.
 
