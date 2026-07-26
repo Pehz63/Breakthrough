@@ -126,7 +126,27 @@ is well-resolved and the climber has non-deterministic opponents.
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
 | `train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `ensemble`, `imitate`, `dist-value`, `score`, `dist-eval`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, selfplay-supervised's `--model-type linear|mlp` + `--mlp-hidden "32"|"32,16"` + `--residual-skip <f>` (0 off / >0 fixed / <0 auto-calibrate the frozen chip skip), ensemble's `--models <comma-list>` + `--mirror 0|1` + `--out`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |
 | `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `history`, `gauntlet`, `extract`, `bookgen`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
-| bookgen (subcommand) | Mine an opening/refutation book from stored games between two agents. Replays every stored `--a` vs `--b` game, keeps positions + the move `--a` played (first `--plies` half-moves) from A's WINS only, writes `models/book<N>.txt` (a `#` provenance header + `<positionKey hex16> <sx> <sy> <dx>` lines). The `book` opener (`src/ai_random.cpp` `g_openers[]`) plays those replies via `.opener(book,<N>)@1`. First use: the s98 refutation book (dethrone plan phase 2, `plans/dethrone-champion-results-3-wiggly-mitten.md`). The book file is NOT hashed into the agent ID (unlike `learned()` models), so treat a book slot as immutable and give a regenerated book a new slot number. |
+| bookgen (subcommand) | Mine an opening/refutation book from stored games between two agents. Replays every stored `--a` vs `--b` game, keeps positions + the move `--a` played (first `--plies` half-moves) from A's WINS only, writes `models/book<N>.txt` (a `#` provenance header + `<positionKey hex16> <sx> <sy> <dx>` lines). The `book` opener (`src/ai_random.cpp` `g_openers[]`) plays those replies via `.opener(book,<N>)@1`. First use: the s98 refutation book (dethrone plan phase 2, `plans/dethrone-champion-results-3-wiggly-mitten.md`). The book file is NOT hashed into the agent ID (unlike `learned()` models), so treat a book slot as immutable and give a regenerated book a new slot number. **Read `plans/book-opener-audit-results-1-vivid-lantern.md` (theory 38) before quoting any book Elo:** a book is a memorized line keyed by position hash, so its measured lift only holds while the opponent reproduces its previous replies, and it collapses under `pairgen --open-plies`. |
+
+**Mined books.** Slot numbers are immutable; a regenerated book gets a new slot.
+
+| Slot | Line owner (`--a`) | Target (`--b`) | Entries | Kept replays |
+|---|---|---|---|---|
+| `models/book1.txt` | `ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2` (oracle) | `learned(s98,5801570e)` | 553 | 29 of 32 |
+| `models/book2.txt` | `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` | `learned(s98,5801570e)` | 134 | 7 of 32 |
+| `models/book3.txt` | `ab(d6,ord,nb200k)@1.adv(t20,c77,...)@1` (hill-climbed) | champion (`classic@2.opener(book,2)`) | 24 | 16 of 32 |
+| `models/book4.txt` | `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1` | `classic(t1,c4,w0,l0)@2` | 519 | 25 of 32 |
+| `models/book5.txt` | `ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1` (dist MLP) | champion | 145 | 6 of 8 |
+| `models/book6.txt` | `ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1` | champion | 162 | 7 of 8 |
+
+Books 3-6 were mined for the loadout-parity study and are deliberately NOT in
+`ranking/roster.txt`: they are measured with `pairgen` instead, because adding
+deterministic booked identities to the main roster adds stored rows without adding
+distinct games (`Docs/benchmarking.md`, defect 3). Book size tracks the mining
+pair's diversity, not its skill: book3 is tiny (24 entries, 0 replay drift) because
+its no-TT head is fully deterministic and its 16 wins collapse to about 7 distinct
+games, while book4 is large (519 entries, 12 drifted) because the `tt` head's
+cross-game state makes its 25 wins genuinely varied.
 
 ## Artifact directories (repo root)
 

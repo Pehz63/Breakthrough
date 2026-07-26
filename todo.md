@@ -670,6 +670,40 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   dilution-quality question, deliberately deferred to its own session `[Later]`
 
 ## Elo / Tournaments
+- **Give the rating path real sample diversity. `[Now]`**
+  Found 2026-07-26 (`plans/book-opener-audit-results-1-vivid-lantern.md`, defect 3 in
+  `Docs/benchmarking.md`). `rankSchedule` seeds every game, but `rand()` is only consumed
+  by dilution and random-move agents, so for a pair with no `dil(...)` and no `rand`
+  opener the seed is inert and every game with the same colour assignment is
+  byte-identical. `playOneGame` also never calls `ttClear()`, so for a `tt` head the sole
+  source of variation is which games ran earlier in the same process. Measured: median
+  distinct-trajectory ratio 0.438 across 190 pairs with >= 16 games, worst cases 32 games
+  yielding 2 distinct games (all `ab(d6,ord,nb200k)`, the no-TT head). A null control of
+  two identical deterministic agents went 32-0 as White and 1-31 as Black over 64 games.
+  Consequence: `pm` in `ratings.tsv` / `standings.tsv` is understated by roughly 1.5x for
+  a typical pair and much more for deterministic ones.
+  Options, to be decided before the next certification refit:
+  1. Add `--open-plies K` / `--open-side` to `rank.exe play` and `run` (the plumbing
+     already exists in `playoutCapture`, only the CLI and `rankPlay` signature are
+     missing). K random opening half-moves make `rand()` live, so each seed is a real
+     game. This changes what the ladder measures, from "strength at the standard start"
+     to "strength across openings", and it is the standard fix in engine testing. It also
+     invalidates comparison against the existing store, so it needs a new board tag or a
+     fresh store rather than mixing rows.
+  2. Add `ttClear()` per game in `playOneGame` for reproducibility, which is the
+     `--reset-state` repair theory 14 and theory 19 both ask for. Note this makes the
+     problem WORSE for sample size (it removes the only current diversity source) and so
+     is only useful combined with option 1.
+  3. Report effective sample size instead of fixing it: have `rank.exe rate` emit a
+     distinct-trajectory count per pair and an effective-n column, so a reader can see
+     that a 32-game pair is 2 games. Cheapest, and worth doing regardless of 1 and 2.
+- **Re-certify the champion under the corrected instrument. `[Now]`**
+  `ranking/CHAMPION.md` now carries a CERTIFICATION UNDER CHALLENGE note. The 2026-07-18
+  certification rests on a 24-0 run that does not reproduce (fresh runs of the same pair
+  give 5-3 and 34-30). Blocked on the diversity item above, since re-running on the
+  current instrument would reproduce the same defect. When it runs, also boost
+  `learned(s3,68364898)` and `learned(s111,78ef6974)` to 32 games/pair against the
+  champion: they went 8-0 and 7-1 in 8-game fills.
 - **Re-evaluate every Elo claim under the new comparison hygiene, then clear its banner. `[Now]`**
   On 2026-07-25 two defects were found in this project's Elo reporting: (a) numbers read
   from `ranking/ratings.tsv` mixed RETIRED agents (`active = gone`, superseded `@N`
@@ -679,7 +713,11 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   inverted one conclusion. Fixes shipped the same day: `rank.exe rate` now writes
   `ranking/standings.tsv` (active only, grouped by head), `CLAUDE.md` gained ranking-claim
   hygiene rules (5) and (6), and `Docs/benchmarking.md` has the full explanation under
-  "Elo comparison hygiene".
+  "Elo comparison hygiene". A third defect was added 2026-07-26: nominal stored games are
+  not distinct games (see the diversity item above), so every re-check below must also
+  count distinct trajectories before trusting a record or an error bar.
+  Progress: `Docs/theories.md` theories 14 and 33 corrected 2026-07-26, and
+  `ranking/CHAMPION.md` flagged. Banners stay until the whole document is re-verified.
   **37 documents were flagged with an `[ELO HYGIENE UNVERIFIED]` banner** (all Elo-citing
   files in `plans/`, plus `ML.md`, `Docs/agents.md`, `Docs/axioms.md`, `Docs/theories.md`,
   `ranking/CHAMPION.md`). For each one: re-check its numbers against `standings.tsv` within

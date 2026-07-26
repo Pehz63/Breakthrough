@@ -71,11 +71,12 @@ than trusting 8-games/pair separations. The reigning champion is declared in
 `ranking/CHAMPION.md` (the single source of truth other docs point at), and
 the certification procedure is a standing instruction in `CLAUDE.md`.
 
-### Elo comparison hygiene: retired rows and search heads (2026-07-25)
+### Elo comparison hygiene: retired rows, search heads, sample size (2026-07-25)
 
-Two defects were found in this project's own Elo reporting on 2026-07-25. Both
-produce plausible-looking numbers, so neither is self-announcing. Documents
-written before that date carry an UNVERIFIED banner pointing here.
+Three defects were found in this project's own Elo reporting, defects 1 and 2 on
+2026-07-25 and defect 3 on 2026-07-26. All produce plausible-looking numbers, so
+none is self-announcing. Documents written before those dates carry an UNVERIFIED
+banner pointing here.
 
 **Defect 1: retired agents quoted as current strength.** `ranking/ratings.tsv`
 is the full historical fit and contains every agent ever rated, including
@@ -94,6 +95,54 @@ look *worse* than plain classic when at a matched head it is slightly *better*.
 table is on; `ab(d8,tt,ord,nb2m)` is a different depth AND a 10x node budget.
 Their Elos are not interchangeable, so a table mixing heads is not an evaluator
 comparison even though every row looks alike.
+
+**Defect 3: nominal games are not independent games.** The "32 games per pair"
+certification rule counts rows in the match store, not distinct games. For a pair
+of DETERMINISTIC agents the two are very different numbers.
+
+`rankSchedule` gives every game a self-contained seed (`gameSeed`), but `rand()`
+is only ever consumed by dilution and by random-move agents. A pair with no
+`dil(...)` segment and no `rand` opener consumes no randomness at all, so the
+seed is inert and every game with the same colour assignment is byte-identical.
+`playOneGame` also does not call `ttClear()` between games (unlike the pairgen
+replay path and the posgen ladder, which both do), so for a `tt` head the only
+residual variation is cross-game transposition-table state, that is, which games
+happened to run earlier in the same process. That is theory 19 mechanism b acting
+as the instrument's entire source of sample diversity.
+
+Measured across `ranking/games.tsv`, counting distinct game trajectories per pair
+(a trajectory is colour assignment + ply count + result + both node totals, which
+node counts make effectively unique):
+
+- 190 pairs have >= 16 stored games. Median ratio of distinct trajectories to
+  games played is **0.438**, so a nominal 32-game pair is typically about 14
+  distinct games.
+- Worst cases are 32 games yielding **2** distinct trajectories. All of them are
+  `ab(d6,ord,nb200k)` pairs, the head with no TT and therefore no cross-game
+  state at all: one game as White, one as Black, each replayed 16 times.
+- The collapse is instrument-wide, not caused by any one loadout item. Mean
+  diversity is 0.574 for pairs with no book and 0.529 for pairs where one side
+  wears a book, with identical 0.438 medians.
+
+Null control, two identical deterministic agents at the standard start (`classic`
+wearing a nonexistent book slot versus bare `classic`, 64 games): A won **32-0 as
+White and 1-31 as Black**. The result is decided by colour, not by skill, and 64
+rows carry the information of 2 games.
+
+Consequence for reported error bars: the Bradley-Terry fit treats every stored row
+as an independent trial, so `pm` in `ratings.tsv` and `standings.tsv` is
+understated by roughly `sqrt(1/0.438)`, about 1.5x, for a typical pair, and far
+more for the deterministic no-TT pairs. A margin that looks like 2 standard errors
+may be under 1.
+
+Worked instance, the reigning champion's own certification. `...classic(t1,c4,w0,
+l0)@2.opener(book,2)@1` versus its bare self at the same head reads 29-3 (91%) in
+the store. That splits into run `20260718T175325Z` at **5-3 of 8** and run
+`20260718T175433Z` at **24-0 of 24**. Fresh reproduction on 2026-07-26 with
+identical agents and board: eight separate 8-game processes each returned exactly
+**5-3** (all eight seeds identical, confirming seed inertness), and a single
+64-game process returned **34-30 (53%)**. Same code, same agents, same start:
+53% to 100% purely from cross-game TT state.
 
 **The rules** (also standing instructions in `CLAUDE.md`, ranking-claim hygiene
 (5) and (6)):
@@ -119,6 +168,20 @@ comparison even though every row looks alike.
    against a bare learned agent measures the loadout rather than the evaluator.
    Report bare-vs-bare, the per-item lift, and equipped-vs-equipped separately
    (`Docs/terminology.md`: core, loadout, bare/equipped, loadout-matched, lift).
+8. Count DISTINCT games, not stored rows, before quoting a record or trusting an
+   error bar. For a deterministic pair the effective sample size is 2, one game
+   per colour, however many rows the store holds. Report both numbers when a
+   record is load-bearing, as in "25-7 nominal, 8-4 on 12 distinct games".
+9. To get a real sample from a deterministic pair, vary the START POSITION, not
+   the seed. `rank.exe pairgen --open-plies K --open-side both` plays K uniform
+   random half-moves first, which makes `rand()` live and each seed a genuinely
+   different game. The main rating path (`rank.exe play` / `run`) has no such
+   flag, so every rated game in the store to date began from the same standard
+   position.
+10. Always report the colour split. Between near-identical deterministic agents the
+   first-move advantage decides the game outright (32-0 as White, 1-31 as Black in
+   the control above), so an aggregate near 50% can hide a pair with no skill
+   difference at all rather than an even match.
 
 ## Pick the right metric first
 

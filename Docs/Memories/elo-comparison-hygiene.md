@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 9b2197c9-c8a4-4a00-98c2-319283f178f1
-  modified: 2026-07-26T05:02:26.656Z
+  modified: 2026-07-26T12:42:29.047Z
 ---
 
 2026-07-25: three defects were found in how this project compares agent Elo. All three
@@ -40,7 +40,11 @@ canonical ID), **bare/equipped**, **loadout-matched**, **lift** (Elo one item ad
 core). Chosen over "vanilla/modded" (a loadout adds to a core, it does not modify it) and
 over "basic/featured" ("feature" already means an ML input feature here).
 
-**Books are NOT portable across cores** (theory 14 refuted in the foreign-book form,
-theory 33 confirmed the self-mined form): classic + its OWN book = +124, classic + a
-foreign book = -8. So a loadout-parity study must mine each core its own book via
-`rank.exe bookgen`, never hand over the champion's. See [[strength-benchmarking-instrument]].
+**Book lift, corrected 2026-07-26.** In the fit, classic + its OWN book reads +124 and
+classic + a foreign book reads -8, which was originally read as "books are not portable
+across cores." That reading is REFUTED in both directions, see
+[[book-opener-and-sample-size]]: at the fixed start a BORROWED book beat a self-mined one
+(32-0 vs 16-16 for the hill-climbed `adv` core), and the whole effect collapses under
+`pairgen --open-plies`. The +124 is real in the fit but is a fixed-start artifact, not
+transferable strength, so it is also not a valid "loadout item worth +124 Elo" to match
+against. See [[strength-benchmarking-instrument]].

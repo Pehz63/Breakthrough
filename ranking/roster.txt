@@ -132,7 +132,14 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 # same brain, so there is no handoff mismatch: in-book, it plays exactly what
 # it would have chosen anyway; out-of-book, it just plays normally. Tests
 # whether this out-performs both the bookless baseline (9-23 vs s98) and the
-# oracle-book variant (7-25, worse than bookless).
+# oracle-book variant (7-25).
+# AUDIT 2026-07-26 (theory 38, plans/book-opener-audit-results-1-vivid-lantern.md):
+# the oracle-book variant was NOT worse than bookless, that was an artifact of
+# quoting nominal rows (7-25 is 4-10 on 14 distinct games vs bookless 9-23 on a
+# genuine 32). More importantly, a book is a memorized line keyed by position
+# hash with no response tree, so its lift only holds while the opponent repeats
+# its mined replies. Under pairgen --open-plies 8 every book effect measured in
+# this project collapses to noise. Do not quote a book Elo as strength.
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
 
 # Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the

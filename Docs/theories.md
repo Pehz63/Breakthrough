@@ -111,6 +111,7 @@ theories out of a single stray entry into their own subsection.
 | 35 | Position volatility (sigma) is identified by the flatness of the win-prob vs Elo-gap curve and the learned sigma head predicts conversion reliability on held-out positions | Weakly supported: sigma-vs-measured-sd correlation only 0.02-0.29 across configs; real but far weaker than theory 34's mu result | Model & Evaluator Design | developer framing 2026-07-18 (advantage is a range, not a point) | [position-oracle-results-1](../plans/position-oracle-results-1-lazy-popping-simon.md) |
 | 36 | The dist MLP heads' first-hidden ReLU activations are sparse enough that a sparse leaf-tail forward (skip dead units) or a second-accumulated-layer delta yields a large additional speedup on top of the first-layer accumulator | Confirmed: static dead-ReLU ~90% and per-move activation churn ~10-12% across all 3 heads (predicted ceiling ~8-9x); the bit-identical sparse leaf-tail forward realized 7.1x on top of the first-layer accumulator (2.84 us/node, 12.7x vs full-scan for the wide head), meeting the predicted ceiling. Refuted the plan's prior assumption of dense (~50%-active) heads | Efficiency & Speed | this session's mlp-sparsity measurement, 2026-07-22 | [nnue-incremental-mlp-results-1](../plans/nnue-incremental-mlp-results-1-crystalline-taco.md) |
 | 37 | An NNUE-shaped dist mu head (wide first layer, tiny rest, `129 -> 512 -> 8 -> 1`) is both cheaper per leaf and at least as strong as a balanced MLP, because the accumulated first layer is free and the tiny tail collapses | Refuted on efficiency, wash on strength: prediction is neutral (held-out MAE 143.5 / NLL 0.408, == the wide head) and Elo is in the MLP band (6 seeds 908-1037, mean ~973, top seeds reach dist_lin 1038), but at 2.47 us/node it is ~2x SLOWER than the standard 128,64 head (1.24). Once the accumulator frees the first-layer UPDATE, the leaf still READs + ReLUs all H first-hidden pre-activations (O(H) scalar), which the widest H maximizes; the ~17x-cheaper tail was never the bottleneck. The "gated on a vectorized read" escape was TESTED and refuted: an AVX2-intrinsic leaf read (vectorized double accumulator read + dense-FMA tail) gives a real ~1.2-1.3x speedup for EVERY shape (std 1.24 -> 1.00, NNUE 2.47 -> 1.89, wide 2.86 -> 2.43 us/node) but as a constant factor it does not change the ranking, so NNUE-wide stays ~1.9x slower than the narrow standard head. Real NNUE affords wide first layers only because its domain is strength-unsaturated (width buys accuracy); here it does not | Efficiency & Speed | this session's design discussion + speed A/B + AVX2 implementation, 2026-07-25 | [nnue-shaped-head-results-1](../plans/nnue-shaped-head-results-1-brisk-walrus.md) |
+| 38 | An opening book's measured Elo lift is not transferable strength but an artifact of always starting from the same position: it holds only while the opponent reproduces the replies it made when the book was mined, so it should collapse once the opening is diversified | Confirmed. The `book` opener is keyed on `positionKey(sideToMove)` alone, so it is opponent-blind at lookup but opponent-dependent in value: the standard start always matches, and with no response tree the book keeps firing only while the opponent repeats its previous replies. Four cores were given self-mined books (`models/book3..6.txt`) and measured against their mining target at the fixed start and under `pairgen --open-plies 8`. Own-book lift at the fixed start is +31pp (s98, 69 -> 100%), +38pp (s111 dist, 62 -> 100%), +12pp (s3, 69 -> 81%), and exactly 0pp for the no-TT hill-climbed `adv(t20,c77,...)` core. Under diversified openings every gain is gone: the own-book column moves -41pp, -50pp, -33pp, and measured against each core's own diversified bare baseline the own book is worth -7pp (s98), -5pp (s3), +6pp (`adv`), +25pp (s111, n=16 only) -- the well-powered cells are nulls. Bare s98 is the strongest s98 loadout once openings vary. Two corollaries. (a) A self-mined book is a NO-OP for a fully deterministic agent by construction, since in-book it replays what its own brain would have chosen anyway, which is why the no-TT `adv` core gains nothing and why three cells land on exactly 100% (32-0, 32-0, 16-0). (b) "Books are core-specific" is not a rule: own beat borrowed for 3 of 4 cores at the fixed start, but for the `adv` core the BORROWED champion book won by 50pp (100% vs 50%) | Gameplay Performance & Dethroning the Champion | developer question, 2026-07-26 | [book-opener-audit-results-1-vivid-lantern](../plans/book-opener-audit-results-1-vivid-lantern.md) |
 | L1 | Grounding an LLM in Breakthrough fundamentals/patterns (in-context or fine-tuned) improves theory generation and code quality | Open / untested | Other > LLM-Assisted Development | this session's conversation | -- |
 
 ## Breakthrough Theories
@@ -219,10 +220,22 @@ reset-state reproducibility + a book that stays in book to the win.
 s98 champion; the `book` opener replayed them from two brains, measured at 32
 games/pair on the full-roster instrument. s98+book rated 1059 +/- 14 vs plain
 s98's 1075 +/- 13 and went 14-18 in the direct pair; chip-counter+book rated
-967 +/- 13 vs 983 +/- 12 bookless and went 7-25 against s98 -- WORSE than the
-bookless chip counter's 0.28 against the very target the book was mined to
-beat. Both book agents also went 3-29 / 20-12 vs the oracle (the 20-12 is the
-oracle facing its own replayed positions, a curiosity, not a dethrone).
+967 +/- 13 vs 983 +/- 12 bookless and went 7-25 against s98. Both book agents
+also went 3-29 / 20-12 vs the oracle (the 20-12 is the oracle facing its own
+replayed positions, a curiosity, not a dethrone).
+
+**Correction 2026-07-26.** This entry originally read the foreign book as making
+agents WORSE than bookless. That direction is not supported and the refutation
+should be read as a null, not a harm. Under the hygiene rules
+(`Docs/benchmarking.md`): 7-25 nominal is 4-10 (29%) on 14 distinct games against
+bare classic's 9-23 (28%) on a genuine 32, so the two are indistinguishable. The
+Elo deltas are likewise inside their error bars, and in the current fit one of them
+has flipped sign: `learned(s98,...).opener(book,1)` now reads 1066 +/- 12 against
+bare s98's 1043 +/- 11 (+23, about 1.4 combined SE), where the original fit read
+-16. Neither reading is a separation. The theory is still refuted, because it
+predicted a book would let a d6 agent BEAT the champion and no version of the
+numbers shows a gain, but "the foreign book gave no measurable lift" is the claim
+the evidence supports.
 
 **Notes:** Two premises failed, and both are the durable lesson. (1) The
 "deterministic" target is not reproducibly deterministic ACROSS RUNS:
@@ -382,7 +395,10 @@ wearer are the same brain, so there is no handoff mismatch. In-book, it plays
 exactly what it would have chosen anyway; out-of-book, it reverts to its own
 normal search, never a foreign, badly-fitting position.
 
-**Status:** Confirmed as a major result. Dethroned the reigning champion.
+**Status:** Unresolved (downgraded 2026-07-26 from "Confirmed as a major result").
+It did dethrone the reigning champion on the instrument as it stood, but see the
+correction at the end of this entry: the headline records do not reproduce, and
+one of them was read off the wrong search head.
 
 **Origin:** developer's hypothesis in conversation, 2026-07-18, directly
 targeting theory 14's identified brain-portability failure mode.
@@ -421,7 +437,31 @@ deterministic, shared-tie-break-convention pool. Related: theories 14 (the
 premise this repairs), 19 (the blocking artifact for premise 1, still open),
 23 (the shared tie-break convention the pool-specific reading would invoke).
 
-### Training Data & Recipes
+**Correction 2026-07-26 (status downgraded to Unresolved).** Re-audited under the
+hygiene rules in `Docs/benchmarking.md`. Three of the four numbers above do not
+survive, and the pool-specific reading of the open scrutiny question is now the
+better-supported one. See theory 38 for the mechanism and
+[book-opener-audit-results-1-vivid-lantern.md](../plans/book-opener-audit-results-1-vivid-lantern.md).
+
+- "**32-0 against its own bookless self**" is wrong: that record belongs to
+  `ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2`, a DIFFERENT head (no TT), which is
+  defect 2. Against its actual bookless self at the shared `ab(d6,tt,ord,nb200k)`
+  head the store reads 29-3, and that decomposes into run `20260718T175325Z` at
+  5-3 of 8 and run `20260718T175433Z` at 24-0 of 24.
+- The pair is deterministic, so those 32 rows are not 32 games (defect 3). Fresh
+  reproduction: eight separate 8-game processes each returned exactly 5-3, and one
+  64-game process returned 34-30 (53%). The 91% that the certification rests on is
+  the top of a 53%-100% range produced by cross-game TT state alone.
+- "25-7 (78%) against s98" is 8-4 (67%) on 12 distinct games; "27-5 (84%) against
+  the oracle" is 12-2 (86%) on 14 distinct games.
+- The theory-14 book was NOT "WORSE" than bookless: 7-25 nominal is 4-10 (29%) on
+  14 distinct games, against bare classic's 9-23 (28%) on a genuine 32.
+
+What does survive is the contrast that motivated the theory: bare classic scores
+28% against s98 over 32 genuinely distinct games, and the self-booked version
+scores 67% over 12. The self-mined book does something real at the fixed start.
+What is refuted is its size, its reproducibility, and the "generalizes to any
+opponent" reading.
 
 Theories about what data a training run should use and how, independent of
 any specific opponent -- data sourcing, dilution schedules, and how much

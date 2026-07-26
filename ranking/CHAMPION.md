@@ -31,6 +31,21 @@ the fit date.
   `ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2` -- the d8/nb2m oracle, 1159
   +/- 13 in the same fit at 10x the node budget. Developer ruling 2026-07-16:
   deeper-at-same-budget and bigger-budget heads are reference, not targets.
+- **CERTIFICATION UNDER CHALLENGE (2026-07-26).** The book audit
+  (`plans/book-opener-audit-results-1-vivid-lantern.md`, theory 38) found that
+  this certification rests on a record that does not reproduce. Against its own
+  bookless self at this same head the store reads 29-3, which decomposes into one
+  run at 5-3 of 8 and one at 24-0 of 24. Re-running the identical pair on
+  2026-07-26 gave exactly 5-3 in each of eight separate 8-game processes and 34-30
+  (53%) in one 64-game process. The pair is deterministic, so the seed is inert and
+  the whole 53%-100% spread comes from cross-game transposition-table state
+  (`Docs/benchmarking.md`, defect 3). Its 25-7 over s98 is 8-4 on 12 distinct
+  games. The throne is NOT vacated here, because no challenger has been certified
+  against it under the corrected instrument, but this Elo should not be quoted as a
+  settled margin. Two further items for the next certification: `learned(s3,
+  68364898)` went 8-0 and `learned(s111,78ef6974)` went 7-1 against this champion
+  in 8-game fills, which is exactly the "boost to 32 games/pair before concluding"
+  situation in methodology note 2 below.
 - **OPEN SCRUTINY FLAG -- read before treating this as settled.** This
   champion is the classic chip counter (this project's very first agent
   family) riding a 134-entry hard-coded book of its own past wins
@@ -84,7 +99,7 @@ the fit date.
 | 2026-07-17 | s98 + quiescence (`ab(d6,tt,ord,qs,nb200k)...learned(s98)`) | pooled tie (1073 vs 1074), champion won the pair 23-9 | `plans/dethrone-champion-results-2-wiggly-mitten.md` |
 | 2026-07-17 | chip counter + quiescence | 1002 +/- 14, not close | `plans/dethrone-champion-results-2-wiggly-mitten.md` |
 | 2026-07-17 | s98 + oracle refutation book (`.opener(book,1)`) | 1059 +/- 14 (below plain s98), champion won the pair 18-14 | `plans/dethrone-champion-results-3-wiggly-mitten.md` |
-| 2026-07-17 | chip counter + oracle refutation book | 967 +/- 13, went 7-25 vs the champion (worse than bookless) | `plans/dethrone-champion-results-3-wiggly-mitten.md` |
+| 2026-07-17 | chip counter + oracle refutation book | 967 +/- 13, went 7-25 vs the champion; the original "worse than bookless" reading is withdrawn (7-25 is 4-10 on 14 distinct games vs bookless 9-23 on a genuine 32) | `plans/dethrone-champion-results-3-wiggly-mitten.md` |
 | 2026-07-17 | 6-seed mirror-symmetrized weight ensemble of the champion's recipe (slot9) | 924 +/- 12, -155 vs the champion | `plans/dethrone-champion-results-4-wiggly-mitten.md` |
 | 2026-07-17 | mirror-symmetrized champion weights (slot10) | 944 +/- 12, mirroring alone cost 135 Elo | `plans/dethrone-champion-results-4-wiggly-mitten.md` |
 | 2026-07-18 | classic + self-mined book (`.opener(book,2)`) vs s98 | **DETHRONED s98**: 1145 +/- 13 vs 1074 +/- 12, head-to-head 25-7 | `plans/dethrone-champion-results-5-wiggly-mitten.md` |
