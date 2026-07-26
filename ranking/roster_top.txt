@@ -36,3 +36,33 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7)@1
 
 # Self-mined book challenger (theory 31, 2026-07-18).
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
+
+# Book-loadout cohort (2026-07-26, plans/book-opener-audit-results-1-vivid-lantern.md).
+# Everything here rated within ~60 Elo of the champion in the 8-games/pair
+# full-roster fit, so the top cannot be called without boosting these pairs.
+# Membership rule: target-class agents >= 1030 in that fit, plus the bare cores
+# their book lifts are measured against.
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,11)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,10)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,2)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(book,2)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1
+# The borrowed-book Advanced agent: went 32-0 vs the champion in pairwise play
+# but rated BELOW its own bare self on the full roster, so this pair most needs
+# the extra games.
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,2)@1
+
+# Remaining rungs of the two book-DEPTH ladders, added after the first boost.
+# Reason: boosting only part of a ladder leaves it at mixed precision (1592 rows
+# vs 920), and a ladder read across unequal game counts is not a depth result.
+# All eight rungs of both ladders must sit at 32 games/pair to be comparable.
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,7)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,8)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,9)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,12)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(book,6)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1

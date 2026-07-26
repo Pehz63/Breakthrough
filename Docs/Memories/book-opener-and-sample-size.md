@@ -51,4 +51,18 @@ CERTIFICATION UNDER CHALLENGE note. Fix before re-certifying: add `--open-plies`
 `rank.exe play`/`run` (plumbing already in `playoutCapture`, only the CLI is missing), and
 tag diversified games separately so they never mix with fixed-start rows.
 
+**Pooled full-roster refit, 2026-07-26 (the instrument that counts).** The pairwise
+records above answer "beats the mined opponent", NOT "is stronger". 13 book agents were
+rostered, played to 8 games/pair over 116 agents, boosted to 32/pair, refit.
+**THE THRONE CHANGED:** `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,11)@1`
+1122 +/- 10 dethroned `...classic(t1,c4,w0,l0)@2.opener(book,2)@1` (now 1075 +/- 9) by 3.5
+SE, tied with its own 6-ply rung book10 (1110 +/- 10). Three lessons: (a) the 8-games/pair
+fill INVERTED on boosting (old champ 1090 vs book11 1067, then 1075 vs 1122), third time
+in this project, never conclude from 8-game fills. (b) a pairwise sweep can be
+ANTI-predictive -- `adv(t20,c77,...)+book2` went 32-0 vs the champion pairwise but rates
+1033 +/- 9 vs its own bare 1018 +/- 9, and that core's OWN book costs it 107 Elo. (c) book DEPTH (varied for the first time, 6/16/30/60 ply) has NO consistent direction:
+classic +54/+45/+71/+110, s98 +70/+82/+9/+55, with an unexplained 73-Elo dip at the s98
+30-ply rung. Book entry count does not predict Elo. Six of the top eight target-class
+agents now wear a book, so "are book agents champion-eligible" is a live developer call.
+
 Full write-up: `plans/book-opener-audit-results-1-vivid-lantern.md`.

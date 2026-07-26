@@ -701,13 +701,31 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   3. Report effective sample size instead of fixing it: have `rank.exe rate` emit a
      distinct-trajectory count per pair and an effective-n column, so a reader can see
      that a 32-game pair is 2 games. Cheapest, and worth doing regardless of 1 and 2.
-- **Re-certify the champion under the corrected instrument. `[Now]`**
-  `ranking/CHAMPION.md` now carries a CERTIFICATION UNDER CHALLENGE note. The 2026-07-18
-  certification rests on a 24-0 run that does not reproduce (fresh runs of the same pair
-  give 5-3 and 34-30). Blocked on the diversity item above, since re-running on the
-  current instrument would reproduce the same defect. When it runs, also boost
-  `learned(s3,68364898)` and `learned(s111,78ef6974)` to 32 games/pair against the
-  champion: they went 8-0 and 7-1 in 8-game fills.
+- ~~**Re-certify the champion under the corrected instrument.**~~ Done 2026-07-26.
+  13 book agents were added to `ranking/roster.txt`, played to 8 games/pair over the
+  116-agent roster, boosted to 32 games/pair via a refreshed `ranking/roster_top.txt`,
+  and refit on the full roster. **The throne changed:**
+  `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,11)@1` at 1122 +/- 10
+  dethroned `...classic(t1,c4,w0,l0)@2.opener(book,2)@1`, now 1075 +/- 9, by 3.5
+  combined SE. It is statistically tied with the 6-ply rung of its own ladder
+  (`book,10`, 1110 +/- 10). `ranking/CHAMPION.md` updated and its UNVERIFIED banner
+  cleared. The 8-games/pair fill had the OLD champion first at 1090 with book11 at
+  1067, so the top inverted on boosting for the third time in this project.
+- **Decide whether book agents are champion-eligible. `[Now]`**
+  Six of the top eight target-class agents now wear a book, and theory 38 shows a book
+  is a memorized line whose lift collapses under opening diversification. The standing
+  question from 2026-07-18 is now load-bearing rather than academic: keep one throne,
+  or split into a bookless track plus a book/counter track? The strongest BOOKLESS
+  target-class agent is `ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1` at 1077 +/- 9
+  in the 2026-07-26 fit. Developer call.
+- **Explain the 30-ply book depth rung. `[Next]`**
+  Book depth was varied for the first time (6/16/30/60 ply, `models/book7..12`). On the
+  `classic` core the lift rises with depth (+54, +45, +71, +110 over bare). On the `s98`
+  core it does not (+70, +82, +9, +55), and the 30-ply rung sits 73 Elo below its 16-ply
+  neighbour at +/- 10 each, far outside the bars. Untested hypothesis: handing off to
+  the brain mid-middlegame is worse than handing off early or carrying to the endgame.
+  Test by mining intermediate depths (20, 24, 36, 44) on the same pair and looking for a
+  trough, and by instrumenting `openerBook` with a per-game in-book ply counter.
 - **Re-evaluate every Elo claim under the new comparison hygiene, then clear its banner. `[Now]`**
   On 2026-07-25 two defects were found in this project's Elo reporting: (a) numbers read
   from `ranking/ratings.tsv` mixed RETIRED agents (`active = gone`, superseded `@N`

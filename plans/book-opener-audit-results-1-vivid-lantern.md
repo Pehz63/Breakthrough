@@ -3,8 +3,9 @@
 Session 2026-07-26. Not driven by a prior plan document, so there is no paired
 plan file: the work started from a developer question ("how does the book work,
 does it depend on the agent or the evaluator, what does it work best against, did
-it improve Elo, do the docs follow comparison hygiene") and expanded into an audit
-plus four new mined books.
+it improve Elo, do the docs follow comparison hygiene") and expanded into an audit,
+ten new mined books, thirteen new roster agents, a full-roster refit, and a change
+of champion.
 
 ## What the book actually is
 
@@ -79,11 +80,17 @@ are identical at 0.438 either way. The cause is determinism.
 bare `classic`, 64 games: **A won 32-0 as White and 1-31 as Black.** The result is
 decided by colour, not skill. 64 stored rows carry the information of 2 games.
 
-**Consequence for every error bar in the project.** The Bradley-Terry fit treats
-each stored row as an independent trial, so `pm` in `ratings.tsv` and
-`standings.tsv` is understated by roughly `sqrt(1/0.438)`, about 1.5x, for a
-typical pair, and far more for the deterministic no-TT pairs. A margin that reads
-as 2 standard errors may be under 1.
+**Consequence for error bars.** The Bradley-Terry fit treats each stored row as an
+independent trial, so `pm` is understated wherever rows are not games. **Scope
+correction, added after the pooled run:** the 0.438 median above is over pairs with
+>= 16 games, which is a biased subset -- those are exactly the boosted top
+contenders, which are the deterministic ones. Measured per AGENT across the whole
+116-agent roster, median pair diversity is **1.00**, because most roster opponents
+carry `dil(...)` and do consume randomness. So the defect is not a uniform 1.5x
+inflation everywhere. It is concentrated precisely on the deterministic contender
+pairs, which is where certification claims are made and therefore where it does the
+most damage. Agent-level ratios for the book cohort run 0.46 to 0.83, worst at the
+no-TT head.
 
 ## The champion's certification does not reproduce
 
@@ -102,6 +109,10 @@ agents, board, and code:
 All eight fresh shards returned exactly 5-3, which independently confirms seed
 inertness. The spread from 53% to 100% comes entirely from cross-game TT state.
 The certification rests on the 24-0 run, the top of that range.
+
+**Resolution.** Rather than re-run the old instrument, the pooled section below
+adds 13 book agents to the roster, boosts the contenders to 32 games/pair, and
+refits. This champion lost the throne in that refit.
 
 Two further corrections to the certification's supporting numbers:
 
@@ -292,6 +303,99 @@ drawn from standard-start games, so uniformly random openings are out of
 distribution for them while a material counter is opening-agnostic by
 construction. Nothing here tests that mechanism. It would be tested by training a
 value model on diversified-opening self-play and re-running the same comparison.
+
+## Pooled Elo on the full roster (2026-07-26 refit) -- the instrument that counts
+
+The pairwise records above answer "does this book beat the opponent it was mined
+against". They do NOT answer "is this agent stronger", and one of them is actively
+misleading (see the `adv` row below). Elo needs the full roster, so 13 book agents
+were added to `ranking/roster.txt`, played to 8 games/pair against all 116 active
+agents, then boosted to 32 games/pair among contenders via a refreshed
+`ranking/roster_top.txt`, then refit on the full roster.
+
+Two axes were varied. **Book DEPTH had never been varied before**: every book in
+the project was mined at `--plies 60`. `models/book7,8,9` re-mine the champion's
+own source pair at 6/16/30 ply, and `models/book10,11,12` do the same for s98.
+
+All rows below are one fit, one head per block, active agents only, every agent at
+1760-1800 stored rows.
+
+### Head `ab(d6,tt,ord,nb200k)@1`, core `classic(t1,c4,w0,l0)@2`
+
+| Loadout | Book source | Depth | Entries | Elo | vs bare |
+|---|---|---|---|---|---|
+| bare | -- | -- | -- | 965 +/- 9 | -- |
+| `opener(book,7)` | own, vs s98 | 6 ply | 13 | 1019 +/- 9 | +54 |
+| `opener(book,8)` | own, vs s98 | 16 ply | 38 | 1010 +/- 9 | +45 |
+| `opener(book,9)` | own, vs s98 | 30 ply | 73 | 1036 +/- 9 | +71 |
+| `opener(book,2)` | own, vs s98 | 60 ply | 134 | 1075 +/- 9 | **+110** |
+| `opener(book,4)` | BORROWED from s98 | 60 ply | 519 | 1035 +/- 9 | +70 |
+| `opener(book,1)` | FOREIGN (d8 oracle) | 60 ply | 553 | 953 +/- 9 | -12 |
+
+### Head `ab(d6,tt,ord,nb200k)@1`, core `learned(s98,5801570e)@1`
+
+| Loadout | Book source | Depth | Entries | Elo | vs bare |
+|---|---|---|---|---|---|
+| bare | -- | -- | -- | 1040 +/- 9 | -- |
+| `opener(book,10)` | own, vs classic | 6 ply | 41 | 1110 +/- 10 | +70 |
+| `opener(book,11)` | own, vs classic | 16 ply | 134 | **1122 +/- 10** | **+82** |
+| `opener(book,12)` | own, vs classic | 30 ply | 279 | 1049 +/- 9 | +9 |
+| `opener(book,4)` | own, vs classic | 60 ply | 519 | 1095 +/- 10 | +55 |
+| `opener(book,2)` | BORROWED from classic | 60 ply | 134 | 1092 +/- 10 | +52 |
+| `opener(book,1)` | FOREIGN (d8 oracle) | 60 ply | 553 | 1064 +/- 9 | +24 |
+
+### Heads `ab(d6,tt,ord,nb200k)@1` and `ab(d6,ord,nb200k)@1`, two more cores
+
+| Core (head) | bare | + own 60-ply book | + BORROWED `book,2` |
+|---|---|---|---|
+| `learned(s3,68364898)@1` (`d6,tt,ord,nb200k`) | 1063 +/- 9 | 1030 +/- 9 (**-33**) | 1064 +/- 9 (+1) |
+| `adv(t20,c77,...)@1` (`d6,ord,nb200k`) | 1018 +/- 9 | 911 +/- 9 (**-107**) | 1033 +/- 9 (+15) |
+
+### What the pooled fit says that the pairwise records did not
+
+1. **The throne changed.** `learned(s98,5801570e)@1.opener(book,11)@1` at 1122
+   +/- 10 dethroned `classic(t1,c4,w0,l0)@2.opener(book,2)@1`, now 1075 +/- 9, by
+   3.5 combined SE. It is statistically TIED with the 6-ply rung of its own ladder
+   (`book,10`, 1110 +/- 10, 0.8 SE). `ranking/CHAMPION.md` is updated.
+2. **The 8-games/pair fill inverted on boosting, for the third time in this
+   project.** Before the boost the old champion led at 1090 with book11 at 1067.
+   After, book11 leads 1122 to 1075. A 53-Elo move on an agent whose printed bar
+   was +/- 15. This is the concrete argument for hygiene rule 2 and it is why the
+   preliminary table produced mid-session should not have been read as an answer.
+3. **A pairwise sweep can be anti-predictive of pooled strength.**
+   `adv(t20,c77,...)@1.opener(book,2)@1` went **32-0 against the champion** in
+   pairwise play. On the roster it rates 1033 +/- 9 against its own bare self's
+   1018 +/- 9, a 1.2 SE nothing. It memorized one opponent's line and gained
+   nothing general. Meanwhile that core's OWN book costs it **107 Elo**.
+4. **"Books are core-specific" is refuted.** Own beats borrowed for `classic`
+   (+110 vs +70), ties for `s98` (+55 vs +52, 0.2 SE), and LOSES for `s3` (-33 vs
+   +1) and `adv` (-107 vs +15). A self-mined book is not reliably better than a
+   borrowed one, and on two of four cores it is actively harmful.
+5. **Book depth has no consistent trend, and one rung is unexplained.** On
+   `classic` the ladder rises with depth (+54, +45, +71, +110). On `s98` it does
+   not (+70, +82, +9, +55). The s98 30-ply rung sits 73 Elo below its 16-ply
+   neighbour at +/- 10 each, far outside the bars. No mechanism has been tested.
+   Do not describe book depth as having a direction until it is.
+6. **Bigger books are not better books.** Across all rows, entry count and Elo are
+   unrelated: the 553-entry oracle book is the worst loadout on `classic` (-12),
+   the 24-entry `adv` self-book is the worst anywhere (-107), and the best is a
+   134-entry book.
+7. **Six of the top eight target-class agents wear a book**, which sharpens the
+   standing developer question about whether book agents should be
+   champion-eligible. The strongest BOOKLESS target-class agent is
+   `learned(s76,ef183148)@1` at 1077 +/- 9.
+
+### Hygiene notes on this table specifically
+
+- One fit, 2026-07-26. Nothing here may be compared with any Elo quoted earlier in
+  this document, which came from the 2026-07-25 fit.
+- Distinct-trajectory ratios run 0.46 to 0.83 per agent. The `adv` rows at the
+  no-TT head are worst (0.46-0.52), so their +/- 9 is the most understated on the
+  page. The -107 survives any plausible inflation; the +15 does not survive at all.
+- The blocks are different heads and different cores. Compare only within a block.
+- Every agent here is deterministic, so boosting to 32 games/pair adds stored rows
+  faster than it adds distinct games. The boost still changed conclusions, which
+  says the 8-game fills were worse, not that 32 is sufficient.
 
 ## Conclusions
 
