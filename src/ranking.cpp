@@ -221,6 +221,73 @@ bool rankEvalCodecComplete(string& err) {
     return true;
 }
 
+// ---- Learned-model architecture descriptor (ID enrichment) ----
+// A `learned()` ID used to read `learned(s111,78ef6974)`, which made every model in
+// the project look alike: only a slot number and a content hash, no hint of whether
+// the evaluator was a 130-parameter linear map or a 71k-parameter MLP. Compared with
+// the heuristic IDs, which spell out every weight, that was unusable in reporting.
+// The ID now carries the architecture, read out of the model file:
+//
+//   learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+//   learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
+//   learned(s98,5801570e,value,lin,129-1,con100)@1
+//
+// Fields after the hash: recipe (`dist` = mu/sigma heads from the position-oracle
+// pipeline, `value` = a plain outcome-trained head), mu head type (`mlp`/`lin`), mu
+// layer shape, an optional `sig<shape>` for the dist sigma head (search never reads
+// it, but it distinguishes training recipes), and `con<N>` = percent connectivity,
+// currently always 100 and reserved for future sparsity.
+//
+// IDENTITY IS STILL (slot, hash). The architecture fields are descriptive: they are
+// derived from the same file the hash covers, so they cannot disagree with it. They
+// are NOT re-validated against the file on parse, which matters because a slot may
+// since have been overwritten by a later model (49 of the 137 historical learned
+// identities in the store are in that state). Those keep their legacy short IDs
+// forever, since their architecture is genuinely unrecoverable.
+static string archDescForSlot(int slot) {
+    static std::map<int, string> cache;
+    std::map<int, string>::iterator c = cache.find(slot);
+    if (c != cache.end()) return c->second;
+    string out;
+    std::ifstream f(slotFile(slot).c_str());
+    if (f.is_open()) {
+        std::map<string, string> kv;
+        string line;
+        while (std::getline(f, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            size_t eq = line.find('=');
+            if (eq == string::npos || eq == 0 || line.size() > 400) continue;
+            string k = line.substr(0, eq), v = line.substr(eq + 1);
+            while (!v.empty() && (v[v.size()-1] == 13 || v[v.size()-1] == 10)) v.erase(v.size()-1);
+            if (!kv.count(k)) kv[k] = v;
+        }
+        string type = kv.count("type") ? kv["type"] : "linear";
+        string feat = kv.count("feature_count") ? kv["feature_count"] : "129";
+        // Dash-separate a comma layer list; a linear head has no stored dims, so its
+        // shape is <features>-1, which is exactly the parameter count the old ID hid.
+        struct L { static string shape(const string& layers, const string& feat) {
+            if (layers.empty()) return feat + "-1";
+            string r = layers;
+            for (size_t i = 0; i < r.size(); i++) if (r[i] == ',') r[i] = '-';
+            return r;
+        } };
+        if (type == "dist") {
+            string mt = kv.count("mu_type") ? kv["mu_type"] : "linear";
+            string st = kv.count("s_type")  ? kv["s_type"]  : "linear";
+            out = "dist," + string(mt == "mlp" ? "mlp" : "lin") + ","
+                + L::shape(kv.count("mu_layers") ? kv["mu_layers"] : "", feat)
+                + ",sig" + L::shape(kv.count("s_layers") ? kv["s_layers"] : "", feat);
+            (void)st;
+        } else {
+            out = "value," + string(type == "mlp" ? "mlp" : "lin") + ","
+                + L::shape(kv.count("layers") ? kv["layers"] : "", feat);
+        }
+        out += ",con100";
+    }
+    cache[slot] = out;
+    return out;
+}
+
 string rankFileHash8(const string& path) {
     std::ifstream f(path.c_str(), std::ios::binary);
     if (!f.is_open()) return "";
@@ -232,6 +299,50 @@ string rankFileHash8(const string& path) {
     snprintf(buf, sizeof(buf), "%016llx", h);
     return string(buf).substr(0, 8);
 }
+
+// Expand a LEGACY `learned(s<slot>,<hash8>)` segment to the rich architecture form,
+// so 90k+ stored rows written before the ID gained architecture fields still match
+// the roster's canonical IDs. Without this the scheduler would see no stored history
+// for any learned agent and replay every game.
+//
+// Only rewrites when the stored hash still matches the CURRENT slot file, because the
+// architecture can only be read from a file that holds that exact model. 49 of the
+// 137 historical learned identities point at slots since overwritten by later models,
+// and those keep their legacy IDs permanently, which is correct: their architecture
+// is unrecoverable, and inventing one would silently merge two different agents.
+// Idempotent, and a no-op for every non-learned ID. Cached: called once per stored row.
+static string canonicalizeLearnedIds(const string& id) {
+    if (id.find(".learned(s") == string::npos) return id;
+    static std::map<string, string> cache;
+    std::map<string, string>::iterator c = cache.find(id);
+    if (c != cache.end()) return c->second;
+    string out = id;
+    size_t pos = 0;
+    while ((pos = out.find(".learned(s", pos)) != string::npos) {
+        size_t open = pos + 9;                      // at "s<slot>..."
+        size_t close = out.find(')', open);
+        if (close == string::npos) break;
+        string inner = out.substr(open + 1, close - open - 1);   // "<slot>,<hash8>[,...]"
+        size_t comma = inner.find(',');
+        if (comma == string::npos || inner.find(',', comma + 1) != string::npos) {
+            pos = close;                            // already rich, or malformed
+            continue;
+        }
+        int slot = atoi(inner.substr(0, comma).c_str());
+        string hash = inner.substr(comma + 1);
+        if (slot >= 0 && slot < ML_SLOTS && rankFileHash8(slotFile(slot)) == hash) {
+            string arch = archDescForSlot(slot);
+            if (!arch.empty()) {
+                out.insert(close, "," + arch);
+                close += arch.size() + 1;
+            }
+        }
+        pos = close;
+    }
+    cache[id] = out;
+    return out;
+}
+
 
 // Canonical budget rendering: multiples of a million get "m", of a thousand "k".
 static string fmtBudget(unsigned long long b) {
@@ -291,8 +402,10 @@ string rankAgentId(const AgentSpec& a) {
                           ? g_evaluators[a.evaluator].name : "";
         const RankEvalCodec* ev = evalCodecByRegName(vname);
         if (ev && ev->letters[0] == '\0') {
+            string arch = archDescForSlot(a.modelSlot);
             s += ".learned(s" + std::to_string(a.modelSlot) + ","
-               + rankFileHash8(slotFile(a.modelSlot)) + ")@" + std::to_string(ev->version);
+               + rankFileHash8(slotFile(a.modelSlot))
+               + (arch.empty() ? "" : "," + arch) + ")@" + std::to_string(ev->version);
         } else if (ev) {
             s += "." + string(ev->idName) + "(";
             int pc = g_evaluators[a.evaluator].paramCount;
@@ -649,11 +762,39 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
                 if (atV >= 1) { err = "linpol carries no module version (its model hash is its identity)"; return false; }
                 haveModel = true;
             }
+            // Two accepted arg forms. LEGACY is (s<slot>,<hash8>). RICH adds the
+            // architecture descriptor: (s<slot>,<hash8>,<recipe>,<mu_type>,<mu_shape>
+            // [,sig<shape>],con<N>). Identity is (slot, hash) in both, so a legacy ID
+            // parses to exactly the same agent and rankAgentId re-emits it in rich
+            // form, which is how the stores' 90k legacy rows canonicalise on read
+            // without being rewritten. The trailing fields are descriptive and are
+            // deliberately NOT re-validated against the model file: a slot may since
+            // have been overwritten, and such an ID must still parse.
             long long sl;
-            if (!parens || args.size() != 2 || args[0].size() < 2 || args[0][0] != 's'
+            bool argsOk = parens && (args.size() == 2 || (args.size() >= 5 && args.size() <= 7));
+            if (!argsOk || args[0].size() < 2 || args[0][0] != 's'
                 || !lenientInt(args[0].substr(1), false, sl) || sl < 0 || sl >= ML_SLOTS) {
-                err = word + " needs (s<slot>,<hash8>) with slot in 0.." + std::to_string(ML_SLOTS-1);
+                err = word + " needs (s<slot>,<hash8>) or (s<slot>,<hash8>,<recipe>,<mu_type>,"
+                      "<mu_shape>[,sig<shape>],con<N>) with slot in 0.."
+                      + std::to_string(ML_SLOTS-1);
                 return false;
+            }
+            if (args.size() > 2) {
+                const string& recipe = args[2];
+                const string& mut    = args[3];
+                if (recipe != "dist" && recipe != "value") {
+                    err = "learned() recipe must be 'dist' or 'value', got '" + recipe + "'";
+                    return false;
+                }
+                if (mut != "mlp" && mut != "lin") {
+                    err = "learned() mu type must be 'mlp' or 'lin', got '" + mut + "'";
+                    return false;
+                }
+                if (args[args.size()-1].compare(0, 3, "con") != 0) {
+                    err = "learned() architecture must end with con<N>, got '"
+                          + args[args.size()-1] + "'";
+                    return false;
+                }
             }
             if (!isHash8(args[1])) {
                 err = "bad model hash '" + args[1] + "' (need 8 lowercase hex chars)";
@@ -750,8 +891,16 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
 
     // Canonical form check: re-emitting must reproduce the input exactly. This
     // also rejects stale module versions, pointing at the current form.
+    //
+    // ONE ALIAS IS ACCEPTED: the LEGACY two-arg `learned(s<slot>,<hash8>)` written
+    // before the ID carried the model architecture. Expanding it yields exactly this
+    // canonical form, so accepting it merges no identities and loses no information,
+    // and it is what lets 90k+ stored rows and any hand-written roster line keep
+    // working. Anything else that fails to round-trip is still an error.
     string canon = rankAgentId(a);
-    if (canon != id) {
+    if (canon != id && canonicalizeLearnedIds(id) == canon) {
+        // Legacy learned id: accept, the caller sees the canonical spec.
+    } else if (canon != id) {
         err = "id is not canonical; use: " + canon;
         return false;
     }
@@ -890,6 +1039,8 @@ bool rankLoadMatches(const string& file, const string& board,
         RankMatchRow m;
         if (!rankParseMatchRow(line, m)) { skipped++; continue; }
         if (!board.empty() && m.board != board) continue;
+        m.w = canonicalizeLearnedIds(m.w);
+        m.b = canonicalizeLearnedIds(m.b);
         out.push_back(m);
     }
     return true;

@@ -31,6 +31,30 @@ static RankAgent parseOk(const string& id) {
     REQUIRE(rankAgentId(a.spec) == id);
     return a;
 }
+// Parse a LEGACY two-arg learned() id (the form written before the ID carried the
+// model architecture) and assert it (a) parses, (b) canonicalises to the rich form
+// by gaining architecture fields derived from the model file, and (c) that the rich
+// form itself round-trips. This is the property that lets 90k+ stored match rows
+// written under the old form keep matching the roster's canonical ids.
+static RankAgent parseOkLegacyLearned(const string& legacyId) {
+    RankAgent a;
+    string err;
+    bool ok = rankAgentFromId(legacyId, a, err);
+    INFO("legacy id: " << legacyId << "  parse error: " << err);
+    REQUIRE(ok);
+    string canon = rankAgentId(a.spec);
+    INFO("legacy: " << legacyId << "  canonical: " << canon);
+    // The rich form is strictly longer and must still carry the slot+hash verbatim.
+    REQUIRE(canon.size() > legacyId.size());
+    REQUIRE(canon.find(legacyId.substr(0, legacyId.rfind(')'))) != string::npos);
+    REQUIRE(canon.find(",con") != string::npos);
+    // And the canonical form round-trips exactly.
+    RankAgent b;
+    string err2;
+    REQUIRE(rankAgentFromId(canon, b, err2));
+    REQUIRE(rankAgentId(b.spec) == canon);
+    return a;
+}
 // Parse an ID, assert clean failure, and return the error message.
 static string parseErr(const string& id) {
     RankAgent a;
@@ -246,7 +270,7 @@ TEST_CASE("ranking id - learned model hashes (when model files exist)") {
     if (hv.empty()) {
         SUCCEED("models/lin_value.txt not present; learned-value id test skipped");
     } else {
-        RankAgent a = parseOk("greedy@1.learned(s0," + hv + ")@1");
+        RankAgent a = parseOkLegacyLearned("greedy@1.learned(s0," + hv + ")@1");
         REQUIRE(a.spec.brain == BRAIN_SEARCH);
         REQUIRE(a.spec.evaluator == rkEvalIdx("LearnedValue"));
         REQUIRE(a.spec.modelSlot == 0);
@@ -284,7 +308,7 @@ TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
 
     string h = rankFileHash8(path);
     REQUIRE_FALSE(h.empty());
-    RankAgent a = parseOk("greedy@1.learned(s" + std::to_string(slot) + "," + h + ")@1");
+    RankAgent a = parseOkLegacyLearned("greedy@1.learned(s" + std::to_string(slot) + "," + h + ")@1");
     REQUIRE(a.spec.brain == BRAIN_SEARCH);
     REQUIRE(a.spec.modelSlot == slot);
 

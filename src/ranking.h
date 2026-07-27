@@ -28,7 +28,14 @@
 //   flag    := "noab" | "tt" | "ord" | "qs" | "part" | "asp" N
 //            | "nb" budget | "tb" N "ms" | "cap" N                (budget: 200k, 2m, raw)
 //   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
-//              | "learned(s" slot "," hash8 ")" ) "@" V           (LearnedValue; hash = weights)
+//              | "learned(s" slot "," hash8 [ "," arch ] ")" ) "@" V   (LearnedValue)
+//   arch    = recipe "," mutype "," shape [ ",sig" shape ] ",con" pct
+//   recipe  = "dist" (mu/sigma heads, position-oracle pipeline) | "value" (outcome-trained)
+//   mutype  = "mlp" | "lin"      shape = dash-separated layer widths, e.g. 129-512-8-1
+//   con<N>  = percent connectivity, currently always con100 (reserved for sparsity)
+//   The arch fields are DESCRIPTIVE: identity is still (slot, hash), and they are
+//   derived from the file that hash covers. The legacy two-arg form is still accepted
+//   and expands to the rich form on parse, so pre-existing match rows keep matching.
 //   linpol  := "linpol(s" slot "," hash8 ")"                      (policy-head model payload, no "@V")
 //   weights := letter int { "," letter int }                      (ALL params, registry order)
 //   dilseg  := "dil(r" pct [ "," "d" N ] ")" "@" V                (r5 = 5% diluted moves;
@@ -39,7 +46,9 @@
 // Examples: rand@1  smart(4)@1  ab(d6)@1.classic(t2,c10,w3,l2)@1
 //           ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@1.dil(r5)@1
 //           ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1
-//           greedy@1.learned(s0,ab12cd34)@1  policy@1.linpol(s1,9f3e21aa)
+//           greedy@1.learned(s0,ab12cd34,value,lin,30-1,con100)@1
+//           ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+//           policy@1.linpol(s1,9f3e21aa)
 
 // A roster entry: the engine-playable spec plus the identity fields that
 // AgentSpec cannot hold (the full canonical ID string, which embeds each

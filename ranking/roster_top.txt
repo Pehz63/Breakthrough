@@ -14,25 +14,25 @@ on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2
 on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2
 on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
 on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1
 on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
 on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1
 
 # Quiescence challengers (dethrone plan phase 1).
 on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
+on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
 
 # Refutation-book challengers (dethrone plan phase 2). Include the oracle here
 # too so the book agents' games against their own line source are well sampled.
 on      ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,1)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,1)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 
 # Symmetrization/ensemble challengers (dethrone plan phase 3).
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
 
 # Self-mined book challenger (theory 31, 2026-07-18).
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
@@ -42,14 +42,14 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
 # full-roster fit, so the top cannot be called without boosting these pairs.
 # Membership rule: target-class agents >= 1030 in that fit, plus the bare cores
 # their book lifts are measured against.
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,11)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,10)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,2)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(book,2)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,11)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,10)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
 # The borrowed-book Advanced agent: went 32-0 vs the champion in pairwise play
 # but rated BELOW its own bare self on the full roster, so this pair most needs
 # the extra games.
@@ -63,6 +63,6 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,7)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,8)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,9)@1
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,12)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1.opener(book,6)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,12)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,6)@1
 on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1
