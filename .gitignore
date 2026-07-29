@@ -104,6 +104,11 @@ data/labels/logs/
 ranking/matches.jsonl.*
 ranking/gauntlet.jsonl
 ranking/climb_*.tsv
+# Pinned-fit outputs (rank.exe rate --pin) are a screening artifact of one study,
+# regenerable from the store, and must never be mistaken for the canonical
+# ratings/standings -- so they are not committed.
+ranking/*_pinned.tsv
+ranking/*_pinned.md
 
 # Training hyperparameter sweeps (tools/sweep_pst.ps1): throwaway model
 # checkpoints + generated report, regenerable by re-running the sweep.

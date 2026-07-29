@@ -52,26 +52,51 @@ conditioned near saturation.
 | Model architecture | Linear v2 PST (129 -> 1, **130 params**) primary; one MLP arm | All 5 current category champions are 130-param linear models. Theory 37 refuted the wide head on speed, theory 39 has MLPs generalising worse across openings, theory 40 measured a 142-Elo MLP seed spread. |
 | Initialisation | Both champion-bootstrapped and from-scratch arms | Developer decision 2026-07-29. Bootstrapped is likeliest to produce a dethroning agent; scratch is the cleaner claim. |
 | Update schedule | Online primary, batched behind a flag | Developer decision 2026-07-29. Online is what the todo item names; the flag lets the study measure whether serialising actually buys anything. |
-| Game count | **Convergence-stopped doubling ladder**, not a fixed budget | See below. |
+| Generator search depth | **d6/nb200k**, the head the cohort is certified at; d4 kept only as a deliberately swept axis | An earlier draft defaulted to d4 purely because it is 17x cheaper. That was never agreed, and it violates the standing "compute is cheap, do not pre-shrink" rule. It also mismatches distributions: TD-Leaf's target IS the search's backed-up value, so a d4 generator produces d4-quality targets for a model certified at d6 (CHAMPION.md rule 5). Rating dominates training cost by ~100x, so training depth buys nothing worth having. The repo's "teacher depth is irrelevant" finding was measured for SUPERVISED training and does not transfer for free. |
+| Game count | **Not an input.** Checkpoint ladder per run, every checkpoint rated | See below. |
+| Rating instrument | Cohort joins the roster (~20% of pool) for a full anchored refit | Developer decision 2026-07-29. Gauntlets screen only (CHAMPION.md rule 1), and this project's record has pairwise/gauntlet order being anti-predictive of pooled Elo. Putting the cohort in the pool also makes the self-play agents play EACH OTHER, which a gauntlet never does. |
 
-## Game count is measured, not assumed
+## Game count is UNKNOWN and must be measured
 
-An earlier draft of this plan asserted 10,000 games/seed. That number had no
-basis and is withdrawn. The relevant measured anchors:
+Two claims were made during planning and both are withdrawn. Recorded here
+because the reasoning that produced them is the failure mode to avoid.
 
-- `models/sweep/scaling.csv` (this repo): single-teacher self-play under the
-  SUPERVISED regime converged at **500 games** (mean screening Elo 489 at 250
-  -> 505 at 500, a +16 gain below the study's own +20 stop rule). The replay
-  arm got *worse* from 4000 (760) to 8000 (693).
-- KnightCap's original TD-Leaf result reached its gain in ~300 games, but
-  online against varied human opponents from a hand-tuned start, and the same
-  work reports self-play TD-Leaf as substantially weaker.
+**Withdrawn claim 1: "about 10,000 games/seed."** Fabricated. No basis in the
+repo or the literature.
 
-Neither transfers cleanly: the repo anchor saturates precisely because a FIXED
-teacher generates a FIXED distribution, which is the assumption TD-Leaf breaks.
-So the study reuses `tools/train_scaling.ps1`'s method instead of a guess -
-double the game count until the mean screening Elo gain over seeds falls below
-a threshold.
+**Withdrawn claim 2: "single-teacher self-play converged at 500 games."** This
+cited `models/sweep/scaling.csv`, but that file cannot support it. The entire
+self-play arm is four rows:
+
+| games | seed 1001 | seed 2002 | mean |
+|---|---|---|---|
+| 250 | 536 | 442 | 489 |
+| 500 | 541 | 469 | 505 |
+
+`train_scaling.ps1` stopped because the +16 mean gain fell under its `-ConvergeElo 20`
+rule. But the seed spread WITHIN a size is 94 Elo (250) and 72 Elo (500), so the
++16 it stopped on is 4-6x smaller than its own noise. Each point is a 4-games/pair
+gauntlet at +/- 29-31, understated ~1.5x by defect 3. And no size above 500 was
+ever tested. **That ladder stopped; it did not converge.** Quoting a stop-rule
+artifact as a measurement is the same error as inventing a number, only harder
+to spot.
+
+The honest position: nothing in this repo or in the literature fixes the game
+count for ONLINE self-play learning, which has never been run here. KnightCap
+reached its gain in ~300 games, but online against varied human opponents from
+a hand-tuned start, and the same work reports self-play TD-Leaf as much weaker.
+
+So the count is not an input. Each run writes checkpoints on a game-count
+ladder (`--ckpt-at`), every checkpoint is rated as its own agent in the pool,
+and the learning curve is an OUTPUT of the study.
+
+## Prior on self-play in this project
+
+Every self-play variant tried here so far has LOST to replay data mined from
+the ranked pool, by roughly 250 Elo (`train_scaling.ps1` phase 1 vs phase 2,
+and `sweep_pst_v2.ps1` group C's 3-generation bootstrap chains). Those were all
+offline and supervised, which is exactly what TD-Leaf changes, but the prior is
+unfavourable and the study should not be designed as though it were not.
 
 ## Measured cost basis
 

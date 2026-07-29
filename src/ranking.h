@@ -2,6 +2,8 @@
 #include "agents.h"
 #include <string>
 #include <vector>
+#include <map>
+#include <set>
 #include <iosfwd>
 
 // ============================================================
@@ -91,6 +93,7 @@ struct RankFit {
     std::vector<double>      elo;
     std::vector<double>      se;           // one standard error, Elo units
     std::vector<char>        provisional;  // 1 = component not connected to the anchor
+    std::vector<char>        pinned;       // 1 = rating was held FIXED (rankFitBTPinned only)
     bool                     anchored;     // false = anchor had no games (mean-1000 fallback)
 };
 
@@ -127,16 +130,32 @@ bool rankLoadMatches(const std::string& file, const std::string& board,
 // the canonically ordered pair), so agents wearing the same `.opener(rand,K)` play
 // the SAME random opening with colours reversed. Compares recovery from equal
 // ground instead of opening luck. Inert when neither side consumes rand().
+// cohort (optional): when non-null, schedule ONLY pairs with at least one member
+// in this set. Lets a new cohort be played into an existing roster without also
+// topping up every roster-vs-roster pair to gamesPerPair -- which at 32/pair on
+// the current store would be ~702,000 games unrelated to the cohort.
 std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
                                           int gamesPerPair, unsigned runSeed,
-                                          bool pairedOpenings = false);
+                                          bool pairedOpenings = false,
+                                          const std::set<std::string>* cohort = nullptr);
 
 // ---- Rating ----
 // Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with a
 // 0.5-virtual-game prior per played pair. Deterministic and order-independent.
 void rankFitBT(const std::vector<RankMatchRow>& rows, const std::string& anchorId,
                RankFit& out);
+// Same MM fit with a SUBSET of ratings HELD FIXED (`pinned`: id -> frozen Elo).
+// Rates a cohort of new agents on the existing roster's scale without letting
+// them move it, so the previous fit's numbers stay comparable for the whole of a
+// study. Uses cohort-vs-cohort games as well as cohort-vs-roster, so it resolves
+// the cohort's internal ordering -- which N separate gauntlets cannot do.
+// SCREENING ONLY: the champions' ratings are inputs here, so a pinned fit can
+// never dethrone one. Certification stays the full unpinned refit
+// (ranking/CHAMPION.md rule 1), run deliberately as a study's last step.
+void rankFitBTPinned(const std::vector<RankMatchRow>& rows,
+                     const std::map<std::string,double>& pinned,
+                     RankFit& out);
 // 1-D MLE for one candidate against fixed opponent Elos (the gauntlet fit).
 // score[i] is the candidate's score (0/0.5/1) in game i vs oppElo[i].
 double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double>& score,
@@ -145,11 +164,16 @@ double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double
 // ---- Subcommand entry points (return a process exit code) ----
 int rankCheck(const std::string& rosterFile, const std::string& storeFile,
               int gamesPerPair, const std::string& board);
+// cohortFile (optional): path to a plain list of agent ids. When given, only
+// pairs touching one of those agents are scheduled (see rankSchedule's `cohort`).
 int rankPlay(const std::string& rosterFile, const std::string& storeFile,
              const std::string& outFile, int gamesPerPair, int shard, int ofK,
-             unsigned runSeed, const std::string& board, bool pairedOpenings = false);
+             unsigned runSeed, const std::string& board, bool pairedOpenings = false,
+             const std::string& cohortFile = "");
+// pinFile (optional): a ratings.tsv / standings.tsv whose agents are held at
+// their listed Elo (rankFitBTPinned) instead of being re-solved. Screening only.
 int rankRate(const std::string& rosterFile, const std::string& storeFile,
-             const std::string& board);
+             const std::string& board, const std::string& pinFile = "");
 int rankHistory(const std::string& storeFile, const std::string& agentQuery,
                 int lastN, const std::string& board);
 int rankGauntlet(const std::string& rosterFile, const std::string& storeFile,

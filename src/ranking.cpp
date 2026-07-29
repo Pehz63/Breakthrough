@@ -1080,7 +1080,8 @@ static unsigned coupleSeed(const string& a, const string& b, long long couple, u
 std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
                                           int gamesPerPair, unsigned runSeed,
-                                          bool pairedOpenings) {
+                                          bool pairedOpenings,
+                                          const std::set<std::string>* cohort) {
     std::vector<RankPendingGame> out;
     std::vector<string> ids;
     for (size_t i = 0; i < roster.size(); i++)
@@ -1095,6 +1096,12 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
         for (size_t j = i + 1; j < ids.size(); j++) {
             const string& a = ids[i];   // lexicographically smaller: White in ceil(G/2)
             const string& b = ids[j];
+            // Cohort mode: only pairs TOUCHING a cohort agent are scheduled, so
+            // rating a new cohort never triggers a full roster-vs-roster refill.
+            // (Measured 2026-07-29: the store holds 27,265 pairs at a median of 6
+            // games, so an unfiltered --games 32 pass would schedule ~702,000
+            // games that have nothing to do with the cohort.)
+            if (cohort && !cohort->count(a) && !cohort->count(b)) continue;
             long long haveAW = 0, haveBW = 0;
             std::map<std::pair<string,string>, long long>::iterator it;
             it = have.find(std::make_pair(a, b));
@@ -1255,6 +1262,155 @@ void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, Ra
     }
 }
 
+// Bradley-Terry MM fit with a SUBSET of agents' ratings HELD FIXED.
+//
+// Purpose: rate a cohort of new agents on the EXISTING roster's Elo scale
+// without letting them perturb it. A normal refit re-solves every rating at
+// once, so adding a cohort shifts the whole table and makes the previous fit's
+// numbers non-comparable (Docs/benchmarking.md, "Elo scale drift across fits").
+// Pinning the roster keeps every existing number valid for the duration of a
+// study, so a cohort's Elo can be read against a stable reference.
+//
+// Better than N independent gauntlets (rankFitSingle) because cohort-vs-cohort
+// games are used too: the fit resolves the cohort's INTERNAL ordering, which is
+// usually the quantity a study actually cares about, and which a per-candidate
+// gauntlet cannot see at all.
+//
+// This is a SCREENING instrument, not a certification one. A pinned fit cannot
+// dethrone anything: the champions' ratings are inputs to it. Certification
+// remains the full unpinned refit (ranking/CHAMPION.md rule 1), which is the
+// deliberate last step after the cohort is chosen.
+//
+// `pinned` maps agent id -> fixed Elo. Ids absent from it are free. Free agents
+// with no game path to any pinned agent are unidentified on the pinned scale and
+// are flagged provisional (centered on their own component mean of 1000).
+void rankFitBTPinned(const std::vector<RankMatchRow>& rows,
+                     const std::map<std::string,double>& pinned,
+                     RankFit& out) {
+    out.ids.clear(); out.elo.clear(); out.se.clear();
+    out.provisional.clear(); out.pinned.clear();
+    out.anchored = false;
+
+    std::map<string,int> idx;
+    for (size_t k = 0; k < rows.size(); k++) {
+        if (rows[k].w == rows[k].b) continue;
+        idx[rows[k].w] = 0;
+        idx[rows[k].b] = 0;
+    }
+    int n = 0;
+    for (std::map<string,int>::iterator it = idx.begin(); it != idx.end(); ++it) it->second = n++;
+    if (n == 0) return;
+
+    std::vector<char> isPin(n, 0);
+    std::vector<double> pinElo(n, 0.0);
+    int nPinned = 0;
+    for (std::map<string,int>::iterator it = idx.begin(); it != idx.end(); ++it) {
+        std::map<std::string,double>::const_iterator p = pinned.find(it->first);
+        if (p != pinned.end()) { isPin[it->second] = 1; pinElo[it->second] = p->second; nPinned++; }
+    }
+    out.anchored = (nPinned > 0);
+
+    typedef std::map<std::pair<int,int>, std::pair<double,double> > PairMap;
+    PairMap agg;
+    for (size_t k = 0; k < rows.size(); k++) {
+        if (rows[k].w == rows[k].b) continue;
+        int wi = idx[rows[k].w], bi = idx[rows[k].b];
+        double sWhite = (rows[k].r == 'W') ? 1.0 : (rows[k].r == 'B') ? 0.0 : 0.5;
+        int i = wi < bi ? wi : bi, j = wi < bi ? bi : wi;
+        double si = (i == wi) ? sWhite : 1.0 - sWhite;
+        std::pair<double,double>& e = agg[std::make_pair(i, j)];
+        e.first += 1.0;
+        e.second += si;
+    }
+    for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+        it->second.first += 0.5;
+        it->second.second += 0.25;
+    }
+
+    std::vector<double> W(n, 0.0);
+    for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+        W[it->first.first]  += it->second.second;
+        W[it->first.second] += it->second.first - it->second.second;
+    }
+
+    // Pinned agents enter at their fixed strength and never move. No geometric
+    // -mean renormalization: the pins ARE the scale (renormalizing would drag
+    // them, which is exactly what pinning exists to prevent).
+    std::vector<double> g(n, 1.0), gn(n, 0.0), denom(n, 0.0);
+    for (int i = 0; i < n; i++) if (isPin[i]) g[i] = std::exp(pinElo[i] / ELO_PER_NAT);
+    for (int pass = 0; pass < 5000; pass++) {
+        std::fill(denom.begin(), denom.end(), 0.0);
+        for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+            int i = it->first.first, j = it->first.second;
+            double d = it->second.first / (g[i] + g[j]);
+            denom[i] += d;
+            denom[j] += d;
+        }
+        double maxd = 0.0;
+        for (int i = 0; i < n; i++) {
+            if (isPin[i]) { gn[i] = g[i]; continue; }
+            gn[i] = (denom[i] > 0.0) ? W[i] / denom[i] : g[i];
+            double d = std::fabs(std::log(gn[i]) - std::log(g[i]));
+            if (d > maxd) maxd = d;
+        }
+        g = gn;
+        if (maxd < 1e-9) break;
+    }
+
+    std::vector<int> parent(n);
+    for (int i = 0; i < n; i++) parent[i] = i;
+    struct UF2 {
+        static int find(std::vector<int>& p, int x) {
+            while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; }
+            return x;
+        }
+    };
+    for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+        int a = UF2::find(parent, it->first.first), b = UF2::find(parent, it->first.second);
+        if (a != b) parent[a] = b;
+    }
+    // Components containing at least one pinned agent are on the pinned scale.
+    std::map<int,char> compHasPin;
+    for (int i = 0; i < n; i++) if (isPin[i]) compHasPin[UF2::find(parent, i)] = 1;
+
+    std::vector<double> elo(n);
+    for (int i = 0; i < n; i++) elo[i] = ELO_PER_NAT * std::log(g[i]);
+
+    // Unidentified components get the usual mean-1000 centering.
+    std::map<int,int> compCount;
+    std::map<int,double> compSum, compShift;
+    for (int i = 0; i < n; i++) {
+        int r = UF2::find(parent, i);
+        compCount[r]++; compSum[r] += elo[i];
+    }
+    for (std::map<int,int>::iterator it = compCount.begin(); it != compCount.end(); ++it) {
+        int r = it->first;
+        compShift[r] = compHasPin.count(r) ? 0.0 : (compSum[r] / it->second - 1000.0);
+    }
+
+    std::vector<double> info(n, 0.0);
+    for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+        int i = it->first.first, j = it->first.second;
+        double p = g[i] / (g[i] + g[j]);
+        double c = it->second.first * p * (1.0 - p);
+        info[i] += c;
+        info[j] += c;
+    }
+
+    out.ids.resize(n); out.elo.resize(n); out.se.resize(n);
+    out.provisional.resize(n); out.pinned.resize(n);
+    for (std::map<string,int>::iterator it = idx.begin(); it != idx.end(); ++it) {
+        int i = it->second;
+        int r = UF2::find(parent, i);
+        out.ids[i] = it->first;
+        out.elo[i] = elo[i] - compShift[r];
+        // A pinned rating is an input, not an estimate, so it carries no error bar.
+        out.se[i]  = isPin[i] ? 0.0 : ((info[i] > 0.0) ? ELO_PER_NAT / std::sqrt(info[i]) : 0.0);
+        out.provisional[i] = (char)(compHasPin.count(r) ? 0 : 1);
+        out.pinned[i] = isPin[i];
+    }
+}
+
 double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double>& score,
                      double& seOut) {
     std::vector<double> e = oppElo, s = score, wgt(score.size(), 1.0);
@@ -1380,12 +1536,69 @@ static bool loadModelSlots(const std::vector<const RankAgent*>& agents, string& 
 // ============================================================
 // PLAY
 // ============================================================
+// Read a plain list of agent ids (one per line, '#' comments, blanks ignored).
+// Used by --cohort to name the agents a play pass should schedule games for.
+static bool loadIdList(const string& path, std::set<std::string>& out, string& err) {
+    std::ifstream f(path.c_str());
+    if (!f) { err = "cannot open " + path; return false; }
+    string line;
+    while (std::getline(f, line)) {
+        size_t a = line.find_first_not_of(" \t\r\n");
+        if (a == string::npos) continue;
+        if (line[a] == '#') continue;
+        size_t b = line.find_last_not_of(" \t\r\n");
+        out.insert(line.substr(a, b - a + 1));
+    }
+    return true;
+}
+
+// Read frozen ratings from a ratings.tsv / standings.tsv produced by an earlier
+// fit: any agent found here is PINNED at that Elo. Both files carry '#' comment
+// banners and a header row; the id is the LAST tab-separated column and the Elo
+// is named by the header, so this reads either layout without being told which.
+static bool loadPinnedRatings(const string& path, std::map<std::string,double>& out, string& err) {
+    std::ifstream f(path.c_str());
+    if (!f) { err = "cannot open " + path; return false; }
+    string line;
+    int eloCol = -1, idCol = -1;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::vector<string> col;
+        size_t start = 0;
+        while (true) {
+            size_t t = line.find('\t', start);
+            col.push_back(line.substr(start, (t == string::npos ? line.size() : t) - start));
+            if (t == string::npos) break;
+            start = t + 1;
+        }
+        if (eloCol < 0) {                       // header row: locate the columns by name
+            for (size_t i = 0; i < col.size(); i++) {
+                if (col[i] == "elo") eloCol = (int)i;
+                if (col[i] == "id")  idCol  = (int)i;
+            }
+            if (eloCol < 0 || idCol < 0) { err = path + ": no 'elo'/'id' header columns"; return false; }
+            continue;
+        }
+        if ((int)col.size() <= eloCol || (int)col.size() <= idCol) continue;
+        if (col[idCol].empty()) continue;
+        out[col[idCol]] = atof(col[eloCol].c_str());
+    }
+    if (out.empty()) { err = path + ": no ratings rows parsed"; return false; }
+    return true;
+}
+
 int rankPlay(const string& rosterFile, const string& storeFile, const string& outFile,
              int gamesPerPair, int shard, int ofK, unsigned runSeed, const string& board,
-             bool pairedOpenings) {
+             bool pairedOpenings, const string& cohortFile) {
     std::vector<RankAgent> roster;
     string err;
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+    std::set<std::string> cohort;
+    if (!cohortFile.empty()) {
+        if (!loadIdList(cohortFile, cohort, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+        cout << "cohort mode: " << cohort.size() << " agent(s) from " << cohortFile
+             << " -- scheduling only pairs that touch one of them\n";
+    }
     if (ofK < 1) ofK = 1;
     if (shard < 0 || shard >= ofK) { cout << "ERROR: --shard must be in [0, --of)\n"; return 1; }
 
@@ -1394,7 +1607,8 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     rankLoadMatches(storeFile, board, store, skipped);
     if (skipped) cout << "WARNING: skipped " << skipped << " malformed line(s) in " << storeFile << "\n";
 
-    std::vector<RankPendingGame> pending = rankSchedule(roster, store, gamesPerPair, runSeed, pairedOpenings);
+    std::vector<RankPendingGame> pending = rankSchedule(roster, store, gamesPerPair, runSeed, pairedOpenings,
+                                                        cohort.empty() ? nullptr : &cohort);
     int nActive = 0;
     for (size_t i = 0; i < roster.size(); i++) if (roster[i].active) nActive++;
 
@@ -1965,7 +2179,8 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
     }
 }
 
-int rankRate(const string& rosterFile, const string& storeFile, const string& board) {
+int rankRate(const string& rosterFile, const string& storeFile, const string& board,
+             const string& pinFile) {
     setOutSuffixFromStore(storeFile);
     std::vector<RankAgent> roster;
     string err;
@@ -1984,10 +2199,27 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
     }
 
     RankFit fit;
-    rankFitBT(rows, anchorId, fit);
-    if (!fit.anchored)
-        cout << "WARNING: anchor " << anchorId
-             << " has no games; ratings centered on mean 1000 instead of anchor = 0\n";
+    if (!pinFile.empty()) {
+        // Screening fit: hold every agent listed in pinFile at its existing Elo
+        // and solve only for the rest. Keeps the reference scale fixed so an
+        // earlier fit's numbers stay comparable for the whole of a study.
+        std::map<std::string,double> pinned;
+        if (!loadPinnedRatings(pinFile, pinned, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+        // A pinned fit is a screening artifact and must never overwrite the
+        // canonical ratings/standings the project quotes from, so it gets its own
+        // "_pinned" output family (same mechanism the second store uses).
+        g_outSuffix += "_pinned";
+        cout << "PINNED FIT: " << pinned.size() << " frozen rating(s) from " << pinFile << ".\n"
+             << "  Screening only -- pinned agents cannot move, so this fit can never\n"
+             << "  dethrone a champion. Certify with a plain 'rate' (no --pin).\n"
+             << "  Writing ranking/*" << g_outSuffix << ".* (canonical files untouched).\n";
+        rankFitBTPinned(rows, pinned, fit);
+    } else {
+        rankFitBT(rows, anchorId, fit);
+        if (!fit.anchored)
+            cout << "WARNING: anchor " << anchorId
+                 << " has no games; ratings centered on mean 1000 instead of anchor = 0\n";
+    }
 
     std::map<string, AgentAgg> agg;
     aggregateAgents(rows, agg);

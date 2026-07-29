@@ -154,7 +154,10 @@ static void usage() {
     cout << "      --depth 4 --lambda 0.7 --lr 0.01 --open-plies 4 --seed 1001\n";
     cout << "  --init <model>      start from these weights ('' = random init from scratch)\n";
     cout << "  --lambda <f>        eligibility decay: 1 = outcome-supervised on PV leaves, 0 = one-step TD\n";
-    cout << "  --depth <n> --node-budget <n>  the self-play agent's search (TT is forced on: the PV walk reads it)\n";
+    cout << "  --depth <n> --node-budget <n>  the self-play agent's search (default d6/nb200k, the head\n";
+    cout << "                      agents are certified at; TT is forced on because the PV walk reads it)\n";
+    cout << "  --ckpt-at \"100,250,500,1000\"  save a checkpoint after exactly these game counts (-> _gN.txt),\n";
+    cout << "                      so the game count is measured by rating each rung, not assumed up front\n";
     cout << "  --open-plies <n>    uniform-random opening plies per side, for position diversity\n";
     cout << "  --explore <f>       per-move chance of a random move (those plies are not trained on)\n";
     cout << "  --batch <n>         1 = strictly online (default); n > 1 applies updates every n games\n";
@@ -311,7 +314,7 @@ int main(int argc, char** argv) {
         c.initModel   = getOpt(argc, argv, "--init", "");
         c.games       = getInt(argc, argv, "--games", c.games);
         c.depth       = getInt(argc, argv, "--depth", c.depth);
-        c.nodeBudget  = (unsigned long long)getDbl(argc, argv, "--node-budget", 0.0);
+        c.nodeBudget  = (unsigned long long)getDbl(argc, argv, "--node-budget", (double)c.nodeBudget);
         c.lambda      = getDbl(argc, argv, "--lambda", c.lambda);
         c.lr          = getDbl(argc, argv, "--lr", c.lr);
         c.l2          = getDbl(argc, argv, "--l2", c.l2);
@@ -322,6 +325,7 @@ int main(int argc, char** argv) {
         c.modelType   = getOpt(argc, argv, "--model-type", c.modelType.c_str());
         c.mlpHidden   = getIntList(argc, argv, "--mlp-hidden");
         c.ckptEvery   = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
+        c.ckptAt      = getIntList(argc, argv, "--ckpt-at");
         c.reportEvery = getInt(argc, argv, "--report-every", c.reportEvery);
         rc = trainTDLeaf(c);
     } else if (cmd == "run-config") {

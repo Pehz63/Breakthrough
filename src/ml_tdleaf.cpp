@@ -12,6 +12,7 @@
 #include <cmath>
 #include <sstream>
 #include <climits>
+#include <algorithm>
 
 // ============================================================
 // TD-LEAF(LAMBDA): GRADIENT CORE
@@ -126,8 +127,13 @@ TDLeafConfig tdLeafDefaults() {
     c.boardFile   = "boards/board1.txt";
     c.initModel   = "";
     c.games       = 500;
-    c.depth       = 4;
-    c.nodeBudget  = 0;
+    // Default to the head the cohort is certified at (CHAMPION.md rule 5). A
+    // TD-Leaf target IS the search's backed-up value, so training against a
+    // shallower search than the one that will be rated is a distribution
+    // mismatch. Training cost is ~100x below rating cost, so a cheaper default
+    // would buy nothing.
+    c.depth       = 6;
+    c.nodeBudget  = 200000;
     c.lambda      = 0.7;
     c.lr          = 0.01;
     c.l2          = 0.0;
@@ -139,6 +145,13 @@ TDLeafConfig tdLeafDefaults() {
     c.ckptEvery   = 0;
     c.reportEvery = 50;
     return c;
+}
+
+// Highest ladder rung, so the run knows when it may stop early.
+static int maxLadderRung(const std::vector<int>& v) {
+    int m = 0;
+    for (size_t i = 0; i < v.size(); i++) if (v[i] > m) m = v[i];
+    return m;
 }
 
 // ============================================================
@@ -225,7 +238,11 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     std::vector<std::vector<float> > leafFeat;
     std::vector<PVStep> steps;
 
-    for (int g = 0; g < cfg.games; g++) {
+    // Run at least as far as the highest ladder rung, so `--ckpt-at` alone is
+    // enough to specify a run and no rung is silently never written.
+    const int totalGames = std::max(cfg.games, maxLadderRung(cfg.ckptAt));
+
+    for (int g = 0; g < totalGames; g++) {
         // Independence: a stale table would make a game's result depend on which
         // games preceded it (the cross-game TT pollution defect fixed elsewhere in
         // this project). Every game starts from a clean table.
@@ -317,7 +334,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         }
 
         if (cfg.reportEvery > 0 && ((g + 1) % cfg.reportEvery == 0)) {
-            cout << "  game " << (g + 1) << "/" << cfg.games
+            cout << "  game " << (g + 1) << "/" << totalGames
                  << "  W-B-D " << wWins << "-" << bWins << "-" << draws
                  << "  trained " << trainedPositions
                  << "  meanPV " << (pvCount ? (double)pvDepthSum / pvCount : 0.0)
@@ -326,6 +343,13 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         }
         if (cfg.ckptEvery > 0 && ((g + 1) % cfg.ckptEvery == 0))
             model->save(cfg.outPath + "_ckpt" + std::to_string(g + 1) + ".txt");
+        for (size_t k = 0; k < cfg.ckptAt.size(); k++)
+            if (cfg.ckptAt[k] == g + 1) {
+                string lp = cfg.outPath + "_g" + std::to_string(g + 1) + ".txt";
+                model->save(lp);
+                cout << "  [ladder] " << (g + 1) << " games -> " << lp << "\n";
+                cout.flush();
+            }
     }
 
     // Flush a partial batch so no game's signal is silently dropped.

@@ -60,6 +60,14 @@ struct TDLeafConfig {
     string modelType;               // "linear" | "mlp"
     std::vector<int> mlpHidden;     // hidden widths when modelType == "mlp"
     int    ckptEvery;               // checkpoint every N games (0 = off)
+    // Game-count ladder: checkpoint after exactly these game counts, written to
+    // outPath + "_gN.txt". This is how the study learns the game count instead of
+    // assuming one -- each rung is rated as its own agent, so the learning curve
+    // is an output rather than an input. Cheaper and better controlled than
+    // separate runs per size: one run's rungs share a training trajectory, so
+    // they differ ONLY in how long it ran. (For the same reason rungs of one run
+    // are NOT independent replicates -- only distinct seeds are.)
+    std::vector<int> ckptAt;
     int    reportEvery;             // progress line every N games (0 = off)
 };
 

@@ -95,6 +95,15 @@ static void usage() {
     cout << "\nExamples:\n";
     cout << "  rank.exe check\n";
     cout << "  rank.exe run --games 8\n";
+    cout << "\nRating a NEW COHORT without disturbing the existing scale:\n";
+    cout << "  rank.exe play --roster <roster+cohort> --cohort <ids.txt> --games 32\n";
+    cout << "      --cohort <file>  schedule ONLY pairs touching a listed agent, so a cohort can be\n";
+    cout << "                       played in without also topping up every roster-vs-roster pair\n";
+    cout << "  rank.exe rate --roster <roster+cohort> --pin ranking/standings.tsv\n";
+    cout << "      --pin <ratings/standings tsv>  hold those agents at their listed Elo and solve only\n";
+    cout << "                       for the rest, so the reference scale stays fixed across a study.\n";
+    cout << "                       SCREENING ONLY: pinned agents cannot move, so a pinned fit can\n";
+    cout << "                       never dethrone a champion. Certify with a plain 'rate' (no --pin).\n";
     cout << "  rank.exe history --agent \"ab(d4\"\n";
     cout << "  rank.exe gauntlet --id \"ab(d5)@1.classic(t1,c4,w0,l0)@1\" --games 4\n";
     cout << "  rank.exe extract --out data/replay_v2.jsonl --feature-version 2 --sample 3000\n";
@@ -117,13 +126,15 @@ int main(int argc, char** argv) {
     } else if (cmd == "play") {
         rc = rankPlay(roster, store, getOpt(argc, argv, "--out", store.c_str()),
                       games, getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
-                      seed, board, hasFlag(argc, argv, "--paired-openings"));
+                      seed, board, hasFlag(argc, argv, "--paired-openings"),
+                      getOpt(argc, argv, "--cohort", ""));
     } else if (cmd == "rate") {
-        rc = rankRate(roster, store, board);
+        rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
     } else if (cmd == "run") {
         rc = rankPlay(roster, store, store, games, 0, 1, seed, board,
-                      hasFlag(argc, argv, "--paired-openings"));
-        if (rc == 0) rc = rankRate(roster, store, board);
+                      hasFlag(argc, argv, "--paired-openings"),
+                      getOpt(argc, argv, "--cohort", ""));
+        if (rc == 0) rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
     } else if (cmd == "history") {
         rc = rankHistory(store, getOpt(argc, argv, "--agent", ""),
                          getInt(argc, argv, "--last", 20), board);

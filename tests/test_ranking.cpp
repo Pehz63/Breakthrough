@@ -1210,3 +1210,114 @@ TEST_CASE("rank labelfit - joins ratings, fits labels, deterministic") {
     REQUIRE(rankLabelFit("build/label_raw_fit.jsonl", pool, "build/label_ratings.tsv",
                          "build/label_labels_se.jsonl", 1, true) == 0);
 }
+
+
+// ============================================================
+// PINNED BRADLEY-TERRY FIT (cohort rating on a frozen roster scale)
+// ============================================================
+
+TEST_CASE("pinned BT fit - pinned ratings are returned exactly unchanged") {
+    // Roster A/B/C pinned at known Elos; a cohort agent X plays into them.
+    srand(4242);
+    std::vector<RankMatchRow> rows;
+    double pAB = 1.0 / (1.0 + pow(10.0, 200.0 / 400.0));
+    double pAC = 1.0 / (1.0 + pow(10.0, 400.0 / 400.0));
+    double pBC = 1.0 / (1.0 + pow(10.0, 200.0 / 400.0));
+    addGames(rows, "A", "B", 200, pAB);
+    addGames(rows, "A", "C", 200, pAC);
+    addGames(rows, "B", "C", 200, pBC);
+    // X is a true 200 (same strength as B).
+    addGames(rows, "X", "A", 200, 1.0 / (1.0 + pow(10.0, -200.0 / 400.0)));
+    addGames(rows, "X", "B", 200, 0.5);
+    addGames(rows, "X", "C", 200, 1.0 / (1.0 + pow(10.0, 200.0 / 400.0)));
+
+    std::map<std::string,double> pin;
+    pin["A"] = 0.0; pin["B"] = 200.0; pin["C"] = 400.0;
+
+    RankFit fit;
+    rankFitBTPinned(rows, pin, fit);
+    int ia = fitIndexOf(fit, "A"), ib = fitIndexOf(fit, "B");
+    int ic = fitIndexOf(fit, "C"), ix = fitIndexOf(fit, "X");
+    REQUIRE(ia >= 0); REQUIRE(ib >= 0); REQUIRE(ic >= 0); REQUIRE(ix >= 0);
+
+    // The whole point: the roster does not move, at all.
+    REQUIRE(fit.elo[ia] == Approx(0.0).margin(1e-9));
+    REQUIRE(fit.elo[ib] == Approx(200.0).margin(1e-9));
+    REQUIRE(fit.elo[ic] == Approx(400.0).margin(1e-9));
+    REQUIRE(fit.pinned[ia]); REQUIRE(fit.pinned[ib]); REQUIRE(fit.pinned[ic]);
+    REQUIRE_FALSE(fit.pinned[ix]);
+
+    // A pinned rating is an input, so it carries no error bar; a fitted one does.
+    REQUIRE(fit.se[ia] == Approx(0.0).margin(1e-12));
+    REQUIRE(fit.se[ix] > 0.0);
+
+    // X is recovered on the pinned scale.
+    REQUIRE(fit.elo[ix] == Approx(200.0).margin(60.0));
+    REQUIRE_FALSE(fit.provisional[ix]);
+}
+
+TEST_CASE("pinned BT fit - a cohort's internal order is resolved by intra-cohort games") {
+    // Two cohort agents that BOTH score identically against the roster, so only
+    // their head-to-head can separate them. A gauntlet (which never plays them
+    // against each other) would call this a tie; the pinned fit must not.
+    srand(99);
+    std::vector<RankMatchRow> rows;
+    std::map<std::string,double> pin;
+    pin["R"] = 1000.0;
+    addGames(rows, "X", "R", 400, 0.5);
+    addGames(rows, "Y", "R", 400, 0.5);
+    addGames(rows, "X", "Y", 400, 1.0 / (1.0 + pow(10.0, -300.0 / 400.0)));  // X clearly stronger
+
+    RankFit fit;
+    rankFitBTPinned(rows, pin, fit);
+    int ir = fitIndexOf(fit, "R"), ix = fitIndexOf(fit, "X"), iy = fitIndexOf(fit, "Y");
+    REQUIRE(fit.elo[ir] == Approx(1000.0).margin(1e-9));   // roster still frozen
+    REQUIRE(fit.elo[ix] > fit.elo[iy]);                    // order resolved
+    REQUIRE(fit.elo[ix] - fit.elo[iy] > 100.0);
+}
+
+TEST_CASE("pinned BT fit - cohort with no path to a pin is provisional") {
+    srand(7);
+    std::vector<RankMatchRow> rows;
+    std::map<std::string,double> pin;
+    pin["R"] = 1000.0;
+    addGames(rows, "R", "S", 100, 0.5);        // connected component
+    addGames(rows, "P", "Q", 100, 0.5);        // island: never meets a pinned agent
+
+    RankFit fit;
+    rankFitBTPinned(rows, pin, fit);
+    REQUIRE_FALSE(fit.provisional[fitIndexOf(fit, "S")]);
+    REQUIRE(fit.provisional[fitIndexOf(fit, "P")]);
+    REQUIRE(fit.provisional[fitIndexOf(fit, "Q")]);
+}
+
+TEST_CASE("pinned BT fit - deterministic and order-independent") {
+    srand(11);
+    std::vector<RankMatchRow> rows;
+    std::map<std::string,double> pin;
+    pin["A"] = 0.0; pin["B"] = 250.0;
+    addGames(rows, "A", "B", 150, 1.0 / (1.0 + pow(10.0, 250.0 / 400.0)));
+    addGames(rows, "X", "A", 150, 0.6);
+    addGames(rows, "X", "B", 150, 0.4);
+
+    RankFit f1, f2;
+    rankFitBTPinned(rows, pin, f1);
+    std::vector<RankMatchRow> shuffled(rows.rbegin(), rows.rend());
+    rankFitBTPinned(shuffled, pin, f2);
+    REQUIRE(f1.ids.size() == f2.ids.size());
+    for (size_t i = 0; i < f1.ids.size(); i++) {
+        REQUIRE(f1.ids[i] == f2.ids[i]);
+        REQUIRE(f1.elo[i] == Approx(f2.elo[i]).margin(1e-9));
+    }
+}
+
+TEST_CASE("pinned BT fit - empty pin set leaves everything provisional") {
+    srand(3);
+    std::vector<RankMatchRow> rows;
+    addGames(rows, "A", "B", 100, 0.5);
+    std::map<std::string,double> pin;   // nothing pinned
+    RankFit fit;
+    rankFitBTPinned(rows, pin, fit);
+    REQUIRE_FALSE(fit.anchored);
+    REQUIRE(fit.provisional[fitIndexOf(fit, "A")]);
+}
