@@ -145,6 +145,31 @@ Findings:
    reduction (weight symmetrization, seed-averaging) is a prerequisite for
    measuring the scaling curve properly; do not trust "self-play plateaus at
    500" beyond d4-screening resolution.
+
+   > **[HINDSIGHT 2026-07-29]** This item was right and was ignored anyway. On
+   > 2026-07-29 the claim "single-teacher self-play converged at 500 games" was
+   > asserted from `models/sweep/scaling.csv` while planning the TD-Leaf study,
+   > without reading this warning first, and had to be withdrawn when the
+   > developer challenged it. Two durable consequences:
+   >
+   > 1. **The finding was promoted out of this doc.** A caveat that lives only
+   >    in a results doc does not travel to where the result gets quoted. The
+   >    same correction now sits in `tools/CLAUDE.md`'s `train_scaling.ps1` row
+   >    and in the script's own header, and is filed as theory 45.
+   > 2. **The exact numbers, since this item gave the spread as a range.** The
+   >    self-play arm is 4 rows: 250 games -> 536 / 442 (mean 489), 500 games ->
+   >    541 / 469 (mean 505). Gain +16 against within-size spreads of 94 and 72
+   >    Elo. **No size above 500 was ever run**, so there is no evidence about
+   >    the curve's shape past 500 in either direction.
+   >
+   > **This result does not transfer to the TD-Leaf study at all**, and not just
+   > because of resolution. It measures a FIXED teacher generating a FIXED
+   > distribution, which is precisely why saturation is expected. An online
+   > bootstrapped learner changes its own generator every game, so the
+   > distribution keeps moving and the saturation argument does not apply.
+   > `tools/tdleaf_study.ps1` therefore rates a checkpoint ladder end to end
+   > (`--ckpt-at`) and treats game count as an output. See
+   > `plans/tdleaf-plan-1-amber-pangolin.md`.
 4. **8000-game replay scored below 4000 (693 vs 760 mean).** Within noise, but
    consistent with dilution of data quality as extraction reaches deeper into
    the store's weaker/older games; Elo-weighted or min-Elo extraction (todo.md)

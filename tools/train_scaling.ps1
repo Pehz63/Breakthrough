@@ -1,7 +1,21 @@
 # train_scaling.ps1 - Data-scaling study for the sparse piece-square (v2) value
 # model, holding fixed everything the 78-candidate sweep showed does not matter
 # (teacher depth = 2, dilution decay 0.3 -> 0.05 over 30 plies, no L2, no
-# bootstrap) and increasing the training-game count until Elo converges.
+# bootstrap) and increasing the training-game count until the -ConvergeElo stop fires.
+#
+# [HINDSIGHT 2026-07-29] The stop below is NOT a convergence detector, and this
+# script's first run did NOT demonstrate convergence. It stopped at 500 games on a
+# +16 mean gain under a 20-Elo threshold, while the seed spread WITHIN a size was
+# 94 Elo (250 games) and 72 Elo (500 games) -- the threshold is smaller than the
+# noise it thresholds, so with 2 seeds it fires at the first rung by construction.
+# No size above 500 was ever tested. Do NOT cite "self-play converges/plateaus at
+# 500 games" (see plans/training-sweep-results-1-luminous-snail.md item 3, and
+# theory 45 in Docs/theories.md). To get a real scaling curve, either raise -Seeds
+# until the seed band sits below -ConvergeElo, or drop the early stop and rate a
+# fixed ladder end to end, as tools/tdleaf_study.ps1 does with train.exe's
+# --ckpt-at. This also does not transfer to ONLINE regimes at all: it measures a
+# FIXED teacher generating a FIXED distribution, which is exactly the assumption
+# an online bootstrapped learner (TD-Leaf) breaks.
 #
 # Phases:
 #   1  Self-play scaling: games double from -StartGames until the mean screening

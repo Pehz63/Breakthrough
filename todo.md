@@ -902,7 +902,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   ceiling. The follow-up scaling study (`tools/train_scaling.ps1`) then showed replay
   training on the grown 46k-game store beats single-teacher self-play by ~250 Elo:
   best model d6 Elo 920, promoted to `models/pst_value.txt`. Redo only after a capacity
-  jump (MLP/NNUE).)
+  jump (MLP/NNUE).
+  **[HINDSIGHT 2026-07-29]** That scaling study's self-play arm did NOT converge and
+  must not be cited as a game-count ceiling. It is 4 rows (250 and 500 games, 2 seeds
+  each) and stopped at 500 on a +16 mean gain under a 20-Elo rule, against within-size
+  seed spreads of 94 and 72 Elo; nothing above 500 was ever run. Theory 45, and
+  `plans/training-sweep-results-1-luminous-snail.md` item 3, which said so at the time.
+  It also says nothing about ONLINE regimes: it measures a fixed teacher making a fixed
+  distribution, which is why it saturates, and is the assumption TD-Leaf breaks.)
 - ~~Gate the incremental heuristic path on nonzero weights: `evalBeginSearch` should
   leave `g_evalIncremental` false when wall == column == forward == 0, because the
   chip-count speed study found the accumulator maintenance is pure overhead there

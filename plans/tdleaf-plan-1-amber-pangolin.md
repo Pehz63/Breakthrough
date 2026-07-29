@@ -65,8 +65,14 @@ because the reasoning that produced them is the failure mode to avoid.
 repo or the literature.
 
 **Withdrawn claim 2: "single-teacher self-play converged at 500 games."** This
-cited `models/sweep/scaling.csv`, but that file cannot support it. The entire
-self-play arm is four rows:
+cited `models/sweep/scaling.csv`, but that file cannot support it. Worse, the
+project had **already** recorded the correct reading:
+`plans/training-sweep-results-1-luminous-snail.md` item 3 (2026-07-24) says the
+stop "triggered on noise, not on convergence" and warns in as many words "do not
+trust 'self-play plateaus at 500'". That warning was never read before the claim
+was made, because none of the places the result is normally quoted from carried
+it. Fixing that is now a standing instruction (`CLAUDE.md`, the `[HINDSIGHT]`
+rule). The entire self-play arm is four rows:
 
 | games | seed 1001 | seed 2002 | mean |
 |---|---|---|---|
@@ -98,20 +104,34 @@ and `sweep_pst_v2.ps1` group C's 3-generation bootstrap chains). Those were all
 offline and supervised, which is exactly what TD-Leaf changes, but the prior is
 unfavourable and the study should not be designed as though it were not.
 
-## Measured cost basis
+## Measured per-game cost
 
-`rank.exe pairgen`, learned-vs-learned, 6 games, single process, wall clock
-including process startup (so d4 is if anything overstated):
+Measured facts only. An earlier draft of this section carried wall-clock
+projections for the whole study; those were removed as noise (`CLAUDE.md`, "Do
+not narrate estimates") and because the first of them was superseded by direct
+measurement of the real thing.
 
-| Head | s/game | Cross-check |
+| What | Result | How |
 |---|---|---|
-| `ab(d6,tt,ord,nb200k)@1` | 1.02 | `standings.tsv` gives 16-19 ms cpu/move; 67 plies x 17 ms = 1.1 s/game. Independent agreement. |
-| `ab(d4,tt,ord)@1` | 0.061 | 17x cheaper |
+| TD-Leaf self-play, d6/nb200k, **PV walk included** | **0.636 s/game** | `train.exe tdleaf`, 20 games, one process |
+| TD-Leaf self-play, d6/nb200k, 500-game run | **0.041 s/game** | same, 500 games (startup amortised) |
+| Under 12-way parallel contention | **~1.27 s/game** | checkpoint timestamps during the cohort study |
+| learned-vs-learned, d6/nb200k, no PV walk | 1.02 s/game | `rank.exe pairgen`, 6 games; cross-checked against `standings.tsv`'s 16-19 ms cpu/move x 67 plies |
+| learned-vs-learned, d4/tt/ord, no PV walk | 0.061 s/game | same |
 
-Worst case if the ladder runs to a 4000-game cap (cumulative 7,750 games/seed):
-**~11 min/seed at d4, ~3.0 h/seed at d6/nb200k**. TD-Leaf's online update
-serialises a seed's games, so wall clock is set by games-per-seed; parallelism
-comes from running seeds and arms concurrently.
+The load-bearing one is the first: **the PV walk is cheap**, which is the whole
+justification for TT-probe extraction over re-searching. The earlier assumption
+that it would add ~40% was itself unverified; it was not measured until the
+implementation existed.
+
+Two structural notes that do matter for planning, as opposed to estimates:
+
+- **Rating dominates training by roughly two orders of magnitude.** Training a
+  500-game cell takes 20 s; one 4-games/pair gauntlet screen of that single
+  model took 7 min 58 s. Design decisions should be made about rating cost, not
+  training cost.
+- **The online update serialises a seed's games.** A single run cannot be
+  sharded; parallelism comes from running seeds and arms concurrently.
 
 ## Success criterion
 
