@@ -181,10 +181,29 @@ is well-resolved and the climber has non-deterministic opponents.
 | `book10` | `learned(s98,...)` (same pair as book4) | `classic@2` | 6 | 41 | 25 of 32 |
 | `book11` | same | same | 16 | 134 | 25 of 32 |
 | `book12` | same | same | 30 | 279 | 25 of 32 |
+| `book13` | `classic@2` (same pair as book2/7-9) | `learned(s98,...)` | 4 | 8 | 7 of 32 |
+| `book14` | same | same | 8 | 18 | 7 of 32 |
+| `book15` | `learned(s98,...)` (same pair as book4/10-12) | `classic@2` | 4 | 22 | 25 of 32 |
+| `book16` | same | same | 8 | 60 | 25 of 32 |
+| `book17` | `learned(s3,68364898)` (same pair as book6) | `classic@2.opener(book,2)@1` | 4 | 10 | 23 of 32 |
+| `book18` | same | same | 8 | 42 | 23 of 32 |
+| `book19` | `ab(d6,ord,nb200k)@1.adv(t20,c77,...)@1` (same pair as book3) | `classic@2.opener(book,2)@1` | 4 | 2 | 16 of 32 |
+| `book20` | same | same | 8 | 4 | 16 of 32 |
 
-`book11` is the reigning champion's book (`ranking/CHAMPION.md`). Books 1-4, 6, 7-12
-are rostered in `ranking/roster.txt`; `book5` is not, because its `learned(s111,...)`
-dist core costs 370 ms/move and would add hours of roster play for one row.
+`book13`-`book16` (2026-07-28) and `book17`-`book20` (2026-07-29) fill the 4-ply
+and 8-ply rungs of the four existing own-book ladders, for the category-champion
+split (`ranking/CHAMPION.md`, "4-book" and "8-book" categories). `book17`/`book18`
+(s3-own) and `book19`/`book20` (adv-own) are mined against the fixed pre-split
+single champion identity (`classic@2.opener(book,2)@1`), the same target book3/
+book6 used, so mining needed no new games. `adv`'s books live at a DIFFERENT
+search head (`ab(d6,ord,nb200k)@1`, no `tt`) so they add Elo diversity to the
+roster but are never category-eligible for the 4-book/8-book titles (one-head
+rule). `book11` was the single-champion era's reigning book until the 2026-07-28
+split; under the new taxonomy (exactly 4-ply and 8-ply) it isn't a member of
+either book category and holds no title, but stays rostered as depth-ladder
+data. Books 1-4, 6, 7-20 are rostered in `ranking/roster.txt`; `book5`
+is not, because its `learned(s111,...)` dist core costs 370 ms/move and would add
+hours of roster play for one row.
 
 Two things measured on the full-roster refit that are easy to get wrong
 (`plans/book-opener-audit-results-1-vivid-lantern.md`, theory 38):

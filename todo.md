@@ -55,9 +55,12 @@ is a registry, so adding one is a single table entry + a function body, and ever
 (UIs, tournaments, docs) picks it up automatically.
 
 **Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
-depth, then at lower compute (deeper-for-cheaper). The reigning champion is
-declared in `ranking/CHAMPION.md` (single source of truth; the numbers below are
-tagged to their fit dates). **The first tier was achieved
+depth, then at lower compute (deeper-for-cheaper). Since 2026-07-28 the throne is
+split into 5 parallel category champions by opener loadout (openless / 4-book /
+8-book / 4-random / 8-random), declared in `ranking/CHAMPION.md` (single source of
+truth; the numbers below are tagged to their fit dates and predate the split, so
+they describe the single-champion era's history, not a current category leader).
+**The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
 after boosting the top pairs to 32 games each and refitting, a learned PST
 (`ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1`, trained on oracle-vs-champion
@@ -744,13 +747,26 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   (`book,10`, 1110 +/- 10). `ranking/CHAMPION.md` updated and its UNVERIFIED banner
   cleared. The 8-games/pair fill had the OLD champion first at 1090 with book11 at
   1067, so the top inverted on boosting for the third time in this project.
-- **Decide whether book agents are champion-eligible. `[Now]`**
-  Six of the top eight target-class agents now wear a book, and theory 38 shows a book
-  is a memorized line whose lift collapses under opening diversification. The standing
-  question from 2026-07-18 is now load-bearing rather than academic: keep one throne,
-  or split into a bookless track plus a book/counter track? The strongest BOOKLESS
-  target-class agent is `ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148)@1` at 1077 +/- 9
-  in the 2026-07-26 fit. Developer call.
+- ~~**Decide whether book agents are champion-eligible.**~~ Resolved 2026-07-28:
+  split rather than pick a side. The single throne is now 5 parallel category
+  champions by opener loadout (openless / 4-book / 8-book / 4-random / 8-random),
+  declared in `ranking/CHAMPION.md`. See that file for the category definitions,
+  the eligibility rule, and each category's current champion.
+- **Boost the category-champion pools to 32 games/pair. `[Next]`**
+  Round 1 (2026-07-28, 24 agents, 116->140 active) and round 2 (2026-07-29, 18
+  more agents incl. `s3`/`adv` own-books at 4/8-ply, 140->158 active) both
+  screened at only 8-11 games/pair, short of this project's own 32-games/pair
+  top-of-table standard (`CLAUDE.md` rule 2). Consequence: only 4-book/8-book
+  clear ~2 combined SE over their runner-up; openless, 4-random, and 8-random
+  are all within about 1 SE of a tie, and growing the roster in round 2 made
+  4-random and 8-random's gaps SMALLER, not larger (`ranking/CHAMPION.md`).
+  None of the 5 declarations should be treated as settled until this is done.
+  Remaining book-category growth candidates: `s4`/`s9`/`s10`/`s94`/`s95`/`s97`/
+  `s99` don't have an established own-book pair yet (would need a fresh
+  bookgen source, unlike `s3`/`adv` which reused book6/book3's existing
+  target); the wide dist-mlp cores (`s77`/`s78`/`s79`/`s110`/`s112`/`s114`/
+  `s115`, 350-1670 ms/move) were deliberately skipped from the random
+  categories for cost, same call as `book5`'s exclusion.
 - **Explain the 30-ply book depth rung. `[Next]`**
   Book depth was varied for the first time (6/16/30/60 ply, `models/book7..12`). On the
   `classic` core the lift rises with depth (+54, +45, +71, +110 over bare). On the `s98`

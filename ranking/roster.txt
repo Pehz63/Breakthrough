@@ -239,3 +239,88 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.ope
 # pairwise play, which is the single result the pooled fit most needs to check.
 on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1
 on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,2)@1
+
+# ---------------------------------------------------------------------------
+# Champion-category cohort (2026-07-28, splits the single throne into 5
+# parallel category champions -- openless / 4-book / 8-book / 4-random /
+# 8-random -- all measured from THIS one roster/fit, see ranking/CHAMPION.md.
+# "4"/"8" are OPENER PLIES. openless needs no new lines here (it is "no
+# .opener() segment", already every bare core above). Deliberately ONE
+# roster: no second incompatible-scale pool, no separate boosting file.
+
+# 4-book / 8-book: new depth rungs on the two existing own-book ladders
+# (classic-own: book7/8/9/2 = 6/16/30/60ply; s98-own: book10/11/12/4 =
+# 6/16/30/60ply). book13-16 mined for free from the same already-stored
+# classic-vs-s98 match history (no new games needed to mine them).
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,13)@1        # classic-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,14)@1        # classic-own, 8-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,15)@1   # s98-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,16)@1   # s98-own, 8-ply
+
+# 4-random / 8-random: every bare target-class core >= ~1000 Elo in the
+# standard-head standings, plus the classic control, each wearing
+# .opener(rand,4)@1 and .opener(rand,8)@1. Same ID text already has history
+# in ranking/roster_open.txt's separate matches_open.jsonl store -- that's a
+# different, incompatible-scale instrument; this builds independent history
+# for these identities in the merged pool.
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # 370ms/move core, cost flag
+on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # NNUE-wide core, cost flag
+on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
+
+# ---------------------------------------------------------------------------
+# Champion-category cohort, round 2 (2026-07-29). More cores per category for
+# Elo diversity, per developer request. Same rule: standard head only, ONE
+# roster/fit, no second pool.
+
+# 4-book / 8-book: extends the own-book ladder to the two other cores that
+# already had an established own-book precedent (book6=s3-own-60ply,
+# book3=adv-own-60ply, both mined vs the pre-split single champion identity
+# ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1, a fixed,
+# already-stored pair). book17/18 (s3-own 4/8-ply) and book19/20 (adv-own
+# 4/8-ply) mined for free from that same stored history, no new games needed
+# to mine. adv is a DIFFERENT search head (ab(d6,ord,nb200k)@1, no tt), so its
+# book19/20 lines add Elo diversity but are NOT category-eligible (one-head
+# rule) -- same treatment as the existing bare/book2/book3 adv rows above.
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,17)@1   # s3-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,18)@1   # s3-own, 8-ply
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,19)@1   # adv-own, 4-ply, off-head (not category-eligible)
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,20)@1   # adv-own, 8-ply, off-head (not category-eligible)
+
+# 4-random / 8-random: the remaining bare target-class value-linear seeds at
+# the standard head not yet covered (s4/s9/s10/s94/s95/s97/s99). Deliberately
+# EXCLUDES the wide dist-mlp cores (s77/s78/s79/s110/s112/s114/s115, all
+# 350-1670 ms/move) -- s111/s113 already probe that architecture family above,
+# and adding the rest would cost hours of roster play for rows that theory 39
+# already predicts will rate low, the same cost-vs-benefit call as book5's
+# exclusion (tools/CLAUDE.md).
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,8)@1

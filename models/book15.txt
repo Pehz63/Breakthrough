@@ -1,0 +1,26 @@
+# book v1 (rank.exe bookgen)
+# a (line owner): ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+# b (target):     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2
+# board boards/board1.txt, max half-moves 4, A-won replays kept 25 of 32 (replay drift vs stored result: 12), entries 22, move conflicts 14
+057d08e0b30e7e61 5 6 4
+07ca8a2252d13997 4 6 3
+17bb51b01af32959 3 6 2
+294cbb219c31ed8f 1 5 1
+2c35cc99a4b1cd89 4 5 3
+4430bd72d7074c92 1 2 0
+457d862610295e42 0 2 1
+4c3457e8e8cdb083 5 6 4
+4d46abff4f0f30fd 2 6 1
+54ce0f10f64711a6 5 1 4
+607f5a8b3e6e3701 4 6 3
+6f430fea2f5bd3cb 3 5 2
+77a0d31600273f2f 4 6 3
+869675f7e14d9062 4 1 3
+a2e9d44ff00269f3 3 5 2
+a76ebdffe471cf4f 4 5 3
+af5c8a61fb7335b2 1 2 1
+afa0970049160822 1 2 1
+b77a63eab8c46b6c 0 1 1
+bbd8d71c34ae4dbd 2 6 1
+dfe033e7a2e9b289 4 6 3
+f4d774568e33b013 2 5 2
