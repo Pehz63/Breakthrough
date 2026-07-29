@@ -200,6 +200,77 @@ w1=...
 `mlValueScore` applies the shared near-win shortcut, then maps the model output
 through `tanh * out_scale` and clamps it strictly inside the `+/-WIN` sentinels.
 
+## TD-Leaf(lambda): the online, bootstrapped value regime
+
+Every other value regime here is **supervised and offline**. A position gets a
+fixed label computed once (the final game outcome, a teacher's eval, or the
+position oracle's fitted Elo gap), and the model is fit to those labels in a
+batch afterwards. TD-Leaf is the exception on both counts: a position's target
+is the model's **own** evaluation of a **later** position, backed up through the
+search, and the weights move while the games are being played.
+
+**Why "Leaf".** A position's usable value is not its static eval, it is the
+minimax value the search returns, and that value IS the static eval of the leaf
+ending the principal variation. So the gradient for position `s_t` is taken at
+`leaf(s_t)`, not at `s_t` (Baxter, Tridgell and Weaver's KnightCap result).
+
+**The update.** For a game with non-terminal positions `s_0 .. s_{N-1}` and
+final white-centric outcome `z` in {0, 0.5, 1}:
+
+1. Search `s_t`, walk to its principal-variation leaf `l_t`.
+2. `p_t = sigmoid(model logit at l_t)`, the model's P(White wins).
+3. TD errors `d_j = p_{j+1} - p_j`, with `p_N := z`.
+4. Eligibility recursion `e_t = d_t + lambda * e_{t+1}` (`e_N = 0`).
+5. Apply `gOut_t = -e_t` at `l_t`'s features via `Model::gradStep`.
+
+Cross-entropy against the lambda-return, not squared error, so
+`dL/d(logit) = p - target` exactly and no `p(1-p)` factor is carried by hand.
+
+**Two closed forms fall out, and both are unit-tested:**
+
+| lambda | `gOut_t` | meaning |
+|---|---|---|
+| 1 | `p_t - z` | **exactly outcome-supervised training on PV leaves** |
+| 0 | `p_t - p_{t+1}` | pure one-step TD |
+
+The `lambda = 1` identity is the bridge to the existing regimes, and it makes a
+clean control: it isolates how much of any gain comes from the bootstrap itself
+rather than from merely training on PV leaves instead of played positions.
+
+**PV leaves come from transposition-table probes** along the played line, not
+from re-searching at decreasing depth. Re-searching costs up to `depth` times
+the node budget per move (about 6x at the `d6/nb200k` head). Nothing in
+`ai_minimax.cpp` changes, because a PV-collection branch in the hot recursion
+would shift us/node for every rated agent and invalidate the ranking
+instrument's cost figures. An always-replace table does lose entries, so the
+walk can stop short, and the run **reports the mean PV depth it reached**
+(measured 3.80 of 4 at d4 and 5.57 of 6 at d6, 7-13% truncated) rather than
+assuming the instrument worked.
+
+```
+train.exe tdleaf --out models/sweep/tdl --init models/pst_value.txt \
+    --ckpt-at "100,250,500,1000,2000" --lambda 0.7 --lr 0.01 \
+    --depth 6 --node-budget 200000 --open-plies 4 --seed 1001
+```
+
+`--init ""` starts from random weights instead of an existing model. `--ckpt-at`
+writes a game-count ladder (`_gN.txt`), because **nothing in this repo or in the
+literature fixes the game count for online self-play learning** - each rung is
+rated as its own agent so the learning curve is an output, not an assumption.
+The generator defaults to `d6/nb200k`, the head agents are certified at: a
+TD-Leaf target IS the search's backed-up value, so training against a shallower
+search than the one being rated is a distribution mismatch.
+
+`DistModel` and `ResidualModel` are unwrapped for the update (neither overrides
+`gradStep`, so stepping the wrapper would silently train nothing) while their
+`forward()` still supplies the value, keeping a frozen residual skip inside `p`
+exactly as search sees it.
+
+Strength is measured by `tools/tdleaf_study.ps1` (see `tools/CLAUDE.md`), not by
+training loss. Standing prior to beat: every offline self-play variant tried in
+this project so far has lost to replay data mined from the ranked pool by
+roughly 250 Elo.
+
 ## Position-strength labels and the dist model (the position oracle)
 
 A pipeline that measures each board position's Elo advantage empirically and

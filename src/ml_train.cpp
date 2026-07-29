@@ -2630,7 +2630,7 @@ const RegimeDef g_regimes[] = {
     { "dist-value",          "Distributional (mu, sigma) position-strength model fit on rated-gap playout outcomes from the label store (rank.exe posgen/label/labelfit)." },
     { "score",               "Score positions with a saved model, ranked by mean White advantage (a dist model prints mean +- SD in Elo)." },
     { "dist-eval",           "Evaluate a dist model against the calibrated d8 oracle, pst_value, and Classic baselines on the held-out eval tier." },
-    { "tdleaf",              "TD-Leaf(lambda) self-play bootstrap of a value model. (future)" },
+    { "tdleaf",              "TD-Leaf(lambda) self-play bootstrap: the target is the model's OWN evaluation of a later position backed up through the search, applied online at the principal-variation leaf. lambda=1 reduces exactly to outcome-supervised training on PV leaves." },
     { "population",          "Other-play tournaments, Elo-tie labeling, multi-condition runs. (future)" },
     { "tournament",          "Round-robin of composed agents; prints an Elo table." },
     { "docs",                "Regenerate the auto-doc tables from the live registries." },

@@ -552,7 +552,14 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
 - Active / hard-example mining: oversample positions where the current model most
   disagrees with the teacher label or with a deeper search, instead of uniform
   sampling `[Later]`
-- TD-Leaf(lambda) self-play bootstrap (value) `[Later]`
+- ~~TD-Leaf(lambda) self-play bootstrap (value)~~ Shipped 2026-07-29 as `src/ml_tdleaf.cpp`
+  + `train.exe tdleaf`. The project's first ONLINE, bootstrapped value regime: the target for a
+  position is the model's own evaluation of a later position backed up through the search, applied
+  at the principal-variation leaf, with weights moving during play. lambda=1 provably reduces to
+  outcome-supervised training on PV leaves (unit-tested closed form). PV leaves come from TT probes
+  along the played line, so `ai_minimax.cpp` is untouched and no rated agent's us/node changes.
+  Strength is UNMEASURED as of this writing -- the 38-agent cohort study (`tools/tdleaf_study.ps1`)
+  is what will answer it. See `plans/tdleaf-plan-1-amber-pangolin.md` `[Now]`
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
   into new agents, add them to the round-robin, drop the weakest, and iterate -- so the

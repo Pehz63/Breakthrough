@@ -22,7 +22,31 @@ Copy-paste forms beyond the root's short list:
 .\tools\opener_bias_study.ps1               # Theory 6: opener-inflation sensitivity sweep + mechanism measure (Layers 1+2)
 .\tools\opener_bias_retrain.ps1             # Theory 6: retrain the oracle arm on asymmetric-opener data (Layer 3; -DryRun for a tiny check)
 .\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2    # climb, then promote winners to the roster
+.\train.exe tdleaf --out models/sweep/tdl --init models/pst_value.txt --ckpt-at "100,250,500,1000,2000" --lambda 0.7 --lr 0.01 --seed 1001
+.\tools\tdleaf_study.ps1 -Workers 12 -Phase all --GamesPerPair 8   # the full TD-Leaf cohort study
+.\rank.exe play --roster ranking/roster_tdleaf.txt --cohort ranking/cohort_tdleaf.txt --games 32
+.\rank.exe rate --roster ranking/roster_tdleaf.txt --pin ranking/standings.tsv   # screen on a FROZEN scale
 ```
+
+**Rating a new cohort without moving the existing scale.** A normal refit
+re-solves every rating at once, so adding a cohort shifts the whole table and
+every number in `ranking/CHAMPION.md` stops being comparable mid-study. Two
+flags avoid that:
+
+- **`play --cohort <id list>`** schedules only pairs touching a listed agent.
+  Without it, a `--games 32` pass also tops up every existing pair: measured
+  2026-07-29 the store holds 27,265 pairs at a median of 6 games, so that is
+  about 702,000 games that have nothing to do with the cohort.
+- **`rate --pin <ratings/standings tsv>`** holds those agents at their listed
+  Elo and solves only for the rest (`rankFitBTPinned`). Uses cohort-vs-cohort
+  games too, so it resolves the cohort's internal order, which per-candidate
+  gauntlets cannot. Writes its own `ranking/*_pinned.*` family (gitignored) and
+  leaves the canonical files untouched.
+
+**A pinned fit is screening, never certification.** The champions' ratings are
+inputs to it, so it can never dethrone one. Certify by choosing which cohort
+agents to keep, appending them to `ranking/roster.txt`, and running a plain
+unpinned `rank.exe run` (`ranking/CHAMPION.md` rule 1).
 
 ## Trainer (`train.exe`)
 
@@ -157,6 +181,7 @@ is well-resolved and the climber has non-deterministic opponents.
 | `opener_bias_study.ps1` | Theory 6 test (`Docs/theories.md`), Layers 1+2: for each promoted challenger (champdil s96, oracle s98) vs the champion, plays the d6 head-to-head under three opener configs -- S (`--open-side both`, the symmetric baseline), C (`--open-side a`, challenger random / champion true policy), P (`--open-side b`, champion random) -- and reads the win tally from each pairgen `.meta.json`, then runs `rank.exe opener-bias` with a learned judge for the mechanism measure. Writes `data/opener_bias/` (gitignored) + `sensitivity_sweep.csv`. First run: champdil 65% (S) -> 40% (C), oracle 58.8% (S) -> 66.2% (C). Results: `plans/opener-bias-results-1-synchronous-stearns.md`. |
 | `opener_bias_retrain.ps1` | Theory 6 test, Layer 3: regenerates the oracle training set with `--open-side a` (only the oracle plays the random opener; the champion plays its own opening) into `data/pg_oracle_champ_asym.jsonl`, retrains the 3-seed oracle cell (`--from-data`), gauntlet-screens at the d4 wrapper, d6-confirms the best, and compares to the symmetric baseline (screen mean 785 / d6 1137). Resumable via `models/sweep/opener_bias_retrain.csv`; archives models to `models/sweep/vsc_oracle-asym_<seed>.txt` (does NOT overwrite the symmetric `vsc_oracle-vs-champ_*.txt` or touch the roster). `-DryRun` for a tiny pipeline check. |
 | `hill_climb.ps1` | Stochastic hill climber over the Advanced eval weight mix (13 weights: c,w,l,f,d,e,m,h,b,o,r,x,n), optimizing Elo at a fixed depth via `rank.exe gauntlet` as the fitness function. Turn pinned at `-Turn` (20), `-NoiseSeed`/`-RaceWin` pinned (1/1), absolute weight values renormalized to sum `-Sum`-`-Turn` (80) so the search varies the mix not the scale and candidates dedupe. Greedy-from-best with `{1,3,5}`-unit simplex steps + occasional drastic chip reset; `-AllowNegative` adds sign-flip mutations and signed resets; id-keyed cache. `-Roster` defaults to `ranking/climb_roster.txt`; `-Promote` appends the top finds to `ranking/roster.txt` and runs a full refit. Logs every candidate to `ranking/climb_adv_<mode>_d<depth>_<stamp>.tsv` (gitignored). |
+| `tdleaf_study.ps1` | TD-Leaf(lambda) self-play study orchestrator (phases: train, roster, play, screen; resumable via `models/sweep/tdleaf_study.csv`). Trains 13 runs into a 38-agent cohort on slots 128..165, one axis at a time around a base config (`init=models/pst_value.txt`, lambda 0.7, lr 0.01, d6/nb200k, 4 random opener plies per side): **A** learning curve + seed band (4 seeds x rungs 100/250/500/1000/2000 = 20 agents), **B** lambda in {0, 1} vs the base's 0.7, **C** from-scratch init, **D** lr in {0.003, 0.03}, **E** a d4 generator-depth control. **The game count is not an input**: `--ckpt-at` writes a rung ladder per run and every rung is rated as its own agent, so the learning curve is an output. Then appends the cohort to `ranking/roster_tdleaf.txt`, writes the id list `ranking/cohort_tdleaf.txt`, plays with `--cohort` (so only pairs touching a cohort agent are scheduled), and screens with `rate --pin ranking/standings.tsv`. **Screening only** -- the pinned fit cannot dethrone anything; certification is a separate, deliberate unpinned refit once the agents to keep are chosen. Rungs of ONE run share a training trajectory and are NOT independent replicates; only distinct seeds are. |
 | `label_study.ps1` | Position-oracle labeling campaign orchestrator (phases: prep, posgen, label-train, label-eval, fit, train, eval, rate), resumable via a CSV ledger of done cells (`data/labels/study.csv`). prep appends + rates the two depth-diluted d8 ladder rungs and freezes `data/labels/ratings_snapshot.tsv` (the study's fixed Elo basis, never overwritten). The label phases chunk positions across `-Workers` rank.exe shards (`--resume --done` exact top-up, shard merge, meta carry) and detect completion from the shard metas' positions_touched; leftover shard files from an interrupted chunk are salvaged into the master (exact-line dedup, sound because deterministic seeds make replayed rows byte-identical) before the chunk relaunches, so a kill at any moment loses nothing already played. train launches the dist configs in parallel (lin + two mlp seeds + a wide mlp); eval runs `train.exe dist-eval` per model; rate wires slots 76..79 into the roster at both standard heads (d4 + d6/nb200k) and refits. (The dist MLP mu heads are incrementally scored since the NNUE-style accumulator + sparse leaf-tail forward shipped, so a d6/nb200k MLP leaf is affordable; the earlier d4-only-for-MLP restriction is gone.) `-DryRun` runs everything on a tiny pool with a d2 ladder in minutes under `data/labels/dry/`. Ladder spec files (`ladder_train.txt`, `ladder_eval.txt`) are written once with the default design and are hand-editable. |
 | `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root). See `gui/CLAUDE.md`. |
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
