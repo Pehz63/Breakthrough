@@ -7,6 +7,7 @@
 #include "choosers.h"
 #include "agents.h"
 #include "ml_train.h"
+#include "ml_tdleaf.h"
 #include "ai_eval.h"
 #include "ranking.h"
 #include "datastore.h"
@@ -1093,4 +1094,125 @@ TEST_CASE("Dist+MLP mu: incremental vector leaf matches full recompute over a wa
         REQUIRE(g_mlpWalkLeafMismatch == 0);
     }
     mlClearSlots();
+}
+
+// ============================================================
+// TD-LEAF(LAMBDA)
+// ============================================================
+// The gradient core is a pure function of the PV-leaf win-probability sequence,
+// so its two closed forms can be asserted exactly (see src/ml_tdleaf.h).
+
+TEST_CASE("tdLeafGradients - lambda=1 reduces to outcome-supervised on PV leaves") {
+    // e_t telescopes to (z - p_t), so gOut_t must equal p_t - z for every t.
+    std::vector<double> p = { 0.5, 0.62, 0.4, 0.71, 0.9 };
+    std::vector<double> g;
+    for (double z : { 0.0, 0.5, 1.0 }) {
+        tdLeafGradients(p, z, 1.0, g);
+        REQUIRE(g.size() == p.size());
+        for (size_t t = 0; t < p.size(); t++)
+            REQUIRE(g[t] == Approx(p[t] - z).margin(1e-12));
+    }
+}
+
+TEST_CASE("tdLeafGradients - lambda=0 is pure one-step TD") {
+    std::vector<double> p = { 0.5, 0.62, 0.4, 0.71 };
+    std::vector<double> g;
+    double z = 1.0;
+    tdLeafGradients(p, z, 0.0, g);
+    for (size_t t = 0; t + 1 < p.size(); t++)
+        REQUIRE(g[t] == Approx(p[t] - p[t+1]).margin(1e-12));
+    REQUIRE(g.back() == Approx(p.back() - z).margin(1e-12));   // last bootstraps off the outcome
+}
+
+TEST_CASE("tdLeafGradients - intermediate lambda matches the explicit sum") {
+    // Independent O(n^2) reference: gOut_t = -sum_{j>=t} lambda^(j-t) * (p_{j+1} - p_j).
+    std::vector<double> p = { 0.31, 0.55, 0.48, 0.66, 0.52, 0.8 };
+    double z = 0.0, lambda = 0.7;
+    std::vector<double> g;
+    tdLeafGradients(p, z, lambda, g);
+    for (size_t t = 0; t < p.size(); t++) {
+        double ref = 0.0, w = 1.0;
+        for (size_t j = t; j < p.size(); j++) {
+            double next = (j + 1 < p.size()) ? p[j+1] : z;
+            ref += w * (next - p[j]);
+            w *= lambda;
+        }
+        REQUIRE(g[t] == Approx(-ref).margin(1e-12));
+    }
+}
+
+TEST_CASE("tdLeafGradients - a flat sequence already at the outcome has zero gradient") {
+    std::vector<double> p(6, 1.0), g;
+    tdLeafGradients(p, 1.0, 0.7, g);
+    for (size_t t = 0; t < g.size(); t++) REQUIRE(g[t] == Approx(0.0).margin(1e-12));
+    REQUIRE(g.size() == 6);
+}
+
+TEST_CASE("tdLeafGradients - empty game is a no-op") {
+    std::vector<double> p, g;
+    tdLeafGradients(p, 1.0, 0.7, g);
+    REQUIRE(g.empty());
+}
+
+TEST_CASE("trainTDLeaf - runs end to end and moves the weights") {
+    // Tiny run: the point is that the loop completes, the PV walk finds leaves,
+    // and the saved model differs from its initialisation.
+    const char* initPath = "models/sweep/tdl_test_init.txt";
+    const char* outBase  = "models/sweep/tdl_test_out";
+    LinearModel seedM(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    for (int i = 0; i < seedM.n; i++) seedM.w[i] = 0.01f * ((i % 7) - 3);
+    seedM.bias = 0.0f;
+    REQUIRE(seedM.save(initPath));
+
+    TDLeafConfig c = tdLeafDefaults();
+    c.outPath = outBase;
+    c.initModel = initPath;
+    c.games = 3;
+    c.depth = 2;
+    c.lambda = 0.7;
+    c.lr = 0.05;
+    c.openPlies = 2;
+    c.seed = 4242;
+    c.reportEvery = 0;
+    REQUIRE(trainTDLeaf(c) == 0);
+
+    Model* out = loadModel(string(outBase) + ".txt");
+    REQUIRE(out != nullptr);
+    REQUIRE(out->featureVersion() == 2);
+    REQUIRE(out->featureCount() == MLV2_FEATURES);
+    LinearModel* lo = dynamic_cast<LinearModel*>(out);
+    REQUIRE(lo != nullptr);
+    double diff = 0.0;
+    for (int i = 0; i < lo->n; i++) diff += fabs(lo->w[i] - seedM.w[i]);
+    REQUIRE(diff > 0.0);                     // training actually applied steps
+    REQUIRE(out->teacher.find("tdleaf(") != string::npos);   // provenance recorded
+    delete out;
+    std::remove(initPath);
+    std::remove((string(outBase) + ".txt").c_str());
+}
+
+TEST_CASE("trainTDLeaf - from-scratch init produces a usable value model") {
+    const char* outBase = "models/sweep/tdl_test_scratch";
+    TDLeafConfig c = tdLeafDefaults();
+    c.outPath = outBase;
+    c.initModel = "";
+    c.games = 2;
+    c.depth = 2;
+    c.openPlies = 2;
+    c.seed = 77;
+    c.reportEvery = 0;
+    REQUIRE(trainTDLeaf(c) == 0);
+
+    Model* out = loadModel(string(outBase) + ".txt");
+    REQUIRE(out != nullptr);
+    REQUIRE(out->head() == HEAD_VALUE);
+    REQUIRE(out->featureVersion() == 2);
+    // The model must be readable by the search path it will be rated through.
+    mlSetModel(0, out);                      // takes ownership; mlClearSlots frees it
+    REQUIRE(reloadBoard("boards/board1.txt") == true);
+    int s = mlValueScore(White, 0);
+    REQUIRE(s > BlackWin);
+    REQUIRE(s < WhiteWin);
+    mlClearSlots();
+    std::remove((string(outBase) + ".txt").c_str());
 }

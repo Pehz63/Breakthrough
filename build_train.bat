@@ -20,7 +20,7 @@ cl tools\train_main.cpp ^
    src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
    src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp ^
-   src\transposition.cpp src\ml_train.cpp ^
+   src\transposition.cpp src\ml_train.cpp src\ml_tdleaf.cpp ^
    /I src /EHsc /O2 /Fo"build\\" /Fe:train.exe
 
 if errorlevel 1 (

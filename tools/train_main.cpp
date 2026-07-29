@@ -10,6 +10,7 @@
 
 #include "globals.h"
 #include "ml_train.h"
+#include "ml_tdleaf.h"
 #include "ml_eval.h"
 #include <cstring>
 #include <cstdlib>
@@ -148,6 +149,16 @@ static void usage() {
     cout << "      --oracle-depth 8 --oracle-nb 2000000   (the beat-the-oracle verdict)\n";
     cout << "  train.exe mlp-sparsity --model models/dist_mlp_wide.txt --pool <pool jsonl> --max-positions 500\n";
     cout << "      (first-hidden dead-ReLU + per-move activation churn; 2nd-layer delta ceiling)\n";
+    cout << "\nTD-Leaf(lambda) self-play bootstrap (online, bootstrapped value training):\n";
+    cout << "  train.exe tdleaf --out models/tdl_s1001 --init models/pst_value.txt --games 500\n";
+    cout << "      --depth 4 --lambda 0.7 --lr 0.01 --open-plies 4 --seed 1001\n";
+    cout << "  --init <model>      start from these weights ('' = random init from scratch)\n";
+    cout << "  --lambda <f>        eligibility decay: 1 = outcome-supervised on PV leaves, 0 = one-step TD\n";
+    cout << "  --depth <n> --node-budget <n>  the self-play agent's search (TT is forced on: the PV walk reads it)\n";
+    cout << "  --open-plies <n>    uniform-random opening plies per side, for position diversity\n";
+    cout << "  --explore <f>       per-move chance of a random move (those plies are not trained on)\n";
+    cout << "  --batch <n>         1 = strictly online (default); n > 1 applies updates every n games\n";
+    cout << "  --model-type linear|mlp --mlp-hidden \"32\"   architecture when starting from scratch\n";
     cout << "\nTournament options:\n";
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
@@ -293,6 +304,26 @@ int main(int argc, char** argv) {
                        getInt(argc, argv, "--wall", 2),
                        getInt(argc, argv, "--col", 2),
                        getInt(argc, argv, "--forward", 0));
+    } else if (cmd == "tdleaf") {
+        TDLeafConfig c = tdLeafDefaults();
+        c.outPath     = getOpt(argc, argv, "--out", c.outPath.c_str());
+        c.boardFile   = board;
+        c.initModel   = getOpt(argc, argv, "--init", "");
+        c.games       = getInt(argc, argv, "--games", c.games);
+        c.depth       = getInt(argc, argv, "--depth", c.depth);
+        c.nodeBudget  = (unsigned long long)getDbl(argc, argv, "--node-budget", 0.0);
+        c.lambda      = getDbl(argc, argv, "--lambda", c.lambda);
+        c.lr          = getDbl(argc, argv, "--lr", c.lr);
+        c.l2          = getDbl(argc, argv, "--l2", c.l2);
+        c.seed        = seed;
+        c.openPlies   = getInt(argc, argv, "--open-plies", c.openPlies);
+        c.explore     = getDbl(argc, argv, "--explore", c.explore);
+        c.batchGames  = getInt(argc, argv, "--batch", c.batchGames);
+        c.modelType   = getOpt(argc, argv, "--model-type", c.modelType.c_str());
+        c.mlpHidden   = getIntList(argc, argv, "--mlp-hidden");
+        c.ckptEvery   = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
+        c.reportEvery = getInt(argc, argv, "--report-every", c.reportEvery);
+        rc = trainTDLeaf(c);
     } else if (cmd == "run-config") {
         const char* rid = getOpt(argc, argv, "--run", nullptr);
         string runId = rid ? string(rid) : makeRunId();
