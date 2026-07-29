@@ -3,7 +3,8 @@
 # (teacher depth = 2, dilution decay 0.3 -> 0.05 over 30 plies, no L2, no
 # bootstrap) and increasing the training-game count until the -ConvergeElo stop fires.
 #
-# [HINDSIGHT 2026-07-29] The stop below is NOT a convergence detector, and this
+# [SELF-PLAY CONVERGENCE UNSUPPORTED - see Docs/corrections.md]
+# The stop below is NOT a convergence detector, and this
 # script's first run did NOT demonstrate convergence. It stopped at 500 games on a
 # +16 mean gain under a 20-Elo threshold, while the seed spread WITHIN a size was
 # 94 Elo (250 games) and 72 Elo (500 games) -- the threshold is smaller than the

@@ -71,8 +71,7 @@ project had **already** recorded the correct reading:
 stop "triggered on noise, not on convergence" and warns in as many words "do not
 trust 'self-play plateaus at 500'". That warning was never read before the claim
 was made, because none of the places the result is normally quoted from carried
-it. Fixing that is now a standing instruction (`CLAUDE.md`, the `[HINDSIGHT]`
-rule). The entire self-play arm is four rows:
+it. Registered as `SELF-PLAY CONVERGENCE UNSUPPORTED` in `Docs/corrections.md`. The entire self-play arm is four rows:
 
 | games | seed 1001 | seed 2002 | mean |
 |---|---|---|---|

@@ -1,5 +1,13 @@
 # PST Training Hyperparameter Sweep: Results
 
+> **[SELF-PLAY CONVERGENCE UNSUPPORTED - flagged 2026-07-29]** Item 3 of the
+> Findings below is correct and is the authoritative reading: this study's
+> self-play arm did NOT converge, and "self-play plateaus at 500 games" must not
+> be cited from it. The arm is 4 rows (250 and 500 games, 2 seeds each) and its
+> stop threshold was smaller than its own seed noise. It also says nothing about
+> ONLINE regimes, which is a separate point. Full entry, including why this
+> banner was needed when item 3 already said so: `Docs/corrections.md`.
+
 > **[ELO HYGIENE UNVERIFIED - flagged 2026-07-25]** The Elo comparisons in this
 > document predate the ranking-claim hygiene rules and may be mistaken. Two
 > defects were found in this project's Elo reporting: numbers were read from
@@ -146,7 +154,8 @@ Findings:
    measuring the scaling curve properly; do not trust "self-play plateaus at
    500" beyond d4-screening resolution.
 
-   > **[HINDSIGHT 2026-07-29]** This item was right and was ignored anyway. On
+   > **[SELF-PLAY CONVERGENCE UNSUPPORTED - flagged 2026-07-29]** This item was
+   > right and was ignored anyway. On
    > 2026-07-29 the claim "single-teacher self-play converged at 500 games" was
    > asserted from `models/sweep/scaling.csv` while planning the TD-Leaf study,
    > without reading this warning first, and had to be withdrawn when the

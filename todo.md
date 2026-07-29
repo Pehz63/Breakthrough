@@ -903,7 +903,8 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   training on the grown 46k-game store beats single-teacher self-play by ~250 Elo:
   best model d6 Elo 920, promoted to `models/pst_value.txt`. Redo only after a capacity
   jump (MLP/NNUE).
-  **[HINDSIGHT 2026-07-29]** That scaling study's self-play arm did NOT converge and
+  **[SELF-PLAY CONVERGENCE UNSUPPORTED - see `Docs/corrections.md`]** That scaling
+  study's self-play arm did NOT converge and
   must not be cited as a game-count ceiling. It is 4 rows (250 and 500 games, 2 seeds
   each) and stopped at 500 on a +16 mean gain under a 20-Elo rule, against within-size
   seed spreads of 94 and 72 Elo; nothing above 500 was ever run. Theory 45, and
