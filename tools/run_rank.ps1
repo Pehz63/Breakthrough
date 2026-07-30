@@ -14,6 +14,16 @@
 # own <store>.<shard> file; those are appended to the store only after every
 # worker exits cleanly, then a single rate pass runs. Do not pass --out or
 # --shard/--of together with -Workers (the driver owns them in that mode).
+#
+# -NoRate stops after the play + merge and skips that rate pass. REQUIRED when
+# playing a cohort into an existing roster, because the automatic rate is
+# UNPINNED and writes ranking/ratings.tsv + standings.tsv: with a study roster
+# passed through, it silently replaces the canonical fit with one that includes
+# the cohort, which is exactly what `rate --pin` exists to avoid. This bit once
+# (2026-07-29, TD-Leaf cohort study) -- note the leading "play" token is ABSORBED
+# by this driver, so `run_rank.ps1 play ...` still rates. Use:
+#   tools/run_rank.ps1 -Workers 12 -NoRate play --roster <r> --cohort <c> --games 8
+#   rank.exe rate --roster <r> --pin ranking/standings.tsv
 
 # PositionalBinding=$false so pass-through tokens like "--games" land in $Args
 # instead of being bound to $Store positionally.
@@ -21,6 +31,7 @@
 param(
     [switch]$Build,
     [int]$Workers = 1,
+    [switch]$NoRate,
     [string]$Store = "ranking/matches.jsonl",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Args
@@ -89,6 +100,12 @@ foreach ($sf in $shardFiles) {
         Get-Content $sf | Add-Content -Path $Store -Encoding Ascii
         Remove-Item $sf -Force
     }
+}
+
+if ($NoRate) {
+    Write-Host "-NoRate: skipping the rate pass (canonical ranking/*.tsv untouched)."
+    Write-Host "  Rate explicitly when ready, e.g. rank.exe rate --pin ranking/standings.tsv"
+    exit 0
 }
 
 & $Exe rate --in $Store @extra

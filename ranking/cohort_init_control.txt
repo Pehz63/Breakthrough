@@ -1,0 +1,1 @@
+ab(d6,tt,ord,nb200k)@1.learned(s2,59815079,value,lin,129-1,con100)@1

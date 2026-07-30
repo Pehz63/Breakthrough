@@ -558,8 +558,26 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   at the principal-variation leaf, with weights moving during play. lambda=1 provably reduces to
   outcome-supervised training on PV leaves (unit-tested closed form). PV leaves come from TT probes
   along the played line, so `ai_minimax.cpp` is untouched and no rated agent's us/node changes.
-  Strength is UNMEASURED as of this writing -- the 38-agent cohort study (`tools/tdleaf_study.ps1`)
-  is what will answer it. See `plans/tdleaf-plan-1-amber-pangolin.md` `[Now]`
+  Strength MEASURED at screening level 2026-07-29 (38-agent cohort, `tools/tdleaf_study.ps1`,
+  pinned fit at 8 games/pair, `plans/tdleaf-results-1-amber-pangolin.md`): peaks at **1051 vs its
+  791 initialisation, +260 Elo**, at the same 130-param linear architecture and head. The
+  lambda=1 control (provably == outcome-supervised on PV leaves) scored 713, BELOW the init, so
+  the gain is specifically the BOOTSTRAP. Game count has an interior optimum ~1000 and declines
+  past it (-36, all 4 seeds same sign). NOT certified: a pinned fit cannot dethrone and 8
+  games/pair is half the standard `[Now]`
+- **Certify the TD-Leaf peak.** Append the top rungs to `ranking/roster.txt`, fill contenders to
+  32 games/pair, run an unpinned refit (`Docs/ranking-workflow.md` Workflow B). Best screening
+  agent is `ab(d6,tt,ord,nb200k)@1.learned(s131,18bfb7a0,value,lin,129-1,con100)@1` (A-base seed
+  1001 at 1000 games) at 1056, vs the pinned openless champion's 1012 `[Now]`
+- Bracket the TD-Leaf game-count peak: the ladder jumps 500/1000/2000 so the optimum is located
+  only within 2x, and the post-peak decline is unexplained. Add 700/1400 rungs + a decayed-lr arm `[Next]`
+- Extend the TD-Leaf from-scratch arm past 2000 games: it was still climbing (+134 from 500->2000)
+  while champ-init had already peaked, and the gap had narrowed from -222 to -103 `[Next]`
+- Re-run the TD-Leaf lr and generator-depth arms at 4+ seeds: both are n=1, so the lr ordering and
+  the d4 == d6 equivalence (theory 44) are suggestive only `[Next]`
+- Run the TD-Leaf batched-update path (`--batch`), implemented but never exercised; the
+  online-vs-batched question is still open `[Next]`
+- Run a TD-Leaf MLP arm: the whole cohort was the 130-param linear model `[Next]`
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
   into new agents, add them to the round-robin, drop the weakest, and iterate -- so the

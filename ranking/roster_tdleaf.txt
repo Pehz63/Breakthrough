@@ -364,3 +364,6 @@ on ab(d6,tt,ord,nb200k)@1.learned(s162,a8bb44c3,value,lin,129-1,con100)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s163,b8ff215f,value,lin,129-1,con100)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s164,db45bc8c,value,lin,129-1,con100)@1
 on ab(d6,tt,ord,nb200k)@1.learned(s165,265a1423,value,lin,129-1,con100)@1
+
+# ---- INIT CONTROL: the model every champ-init TD-Leaf cell started from ----
+on ab(d6,tt,ord,nb200k)@1.learned(s2,59815079,value,lin,129-1,con100)@1

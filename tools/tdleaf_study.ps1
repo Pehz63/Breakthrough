@@ -184,7 +184,12 @@ function BuildRoster {
 # ---- Phase: play ----
 function PlayCohort {
     Write-Host "  playing cohort at $GamesPerPair games/pair, $Workers shards (cohort-filtered)"
-    & (Join-Path $PSScriptRoot "run_rank.ps1") -Workers $Workers play `
+    # -NoRate is REQUIRED. run_rank.ps1 otherwise finishes with an UNPINNED rate
+    # that would overwrite the canonical ranking/ratings.tsv + standings.tsv with
+    # a fit including this cohort -- the exact drift `rate --pin` exists to
+    # prevent. (Learned the hard way 2026-07-29; the generated files had to be
+    # restored from git afterwards.)
+    & (Join-Path $PSScriptRoot "run_rank.ps1") -Workers $Workers -NoRate play `
         --roster $RosterOut --cohort $CohortOut --games $GamesPerPair
 }
 
