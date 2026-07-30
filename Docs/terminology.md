@@ -395,6 +395,15 @@ which a gauntlet (candidate vs frozen pool only) cannot see.
 *"The pinned fit put the cohort's Elo on the same scale as standings.tsv
 without moving a single existing number by more than floating-point noise."*
 
+**Feature version (v1 / v2)** -- the board-to-numbers layout a value model
+trains on. v1 (`MLV_FEATURES`, 30) is dense hand-aggregated features (e.g.
+per-row piece counts). v2 (`MLV2_FEATURES`, 129) is sparse piece-square: one
+binary input per color+square (128) plus a side-to-move flag. Every current
+champion trains on v2, because a move changes only 2-3 of its inputs, which
+is what the incremental search accumulator needs; v1 has no such path and
+falls back to a full rescan per leaf.
+*"A v1 model full-scans at the leaf; a v2 model reads its accumulator."*
+
 **Rung** -- one checkpoint in a game-count ladder (`train.exe ... --ckpt-at`),
 saved and rated as its own agent so the effect of training length is measured
 rather than assumed. Rungs of one training run share a trajectory and are not
