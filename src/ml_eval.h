@@ -16,13 +16,15 @@
 // independently-trained candidates rated together in one process, instead of
 // serially swapping one shared file. The trainer's internal quick-score-vs-random
 // check (see ml_train.cpp) always uses the LAST slot as scratch.
-// Raised 128 -> 256 on 2026-07-29: the slot space was fully allocated (3..80
-// sweep, 81..99 vs-champion, 100..125 scaling, last two trainer scratch) and the
-// TD-Leaf study needs ~40 concurrent slots, since a slot number is part of an
-// agent's canonical identity and every rated agent must be loadable at once.
-// Safe to raise: every use is a bounds check or a generic loop, the array is
-// pointers only, and IDs carry explicit slot numbers so nothing is re-identified.
-#define ML_SLOTS 256
+// Raised 128 -> 256 on 2026-07-29 (round 1: ~40 slots needed), then 256 -> 1024
+// on 2026-07-30: TD-Leaf Pass 2's random-search sweep alone needs 468 concurrent
+// slots (25 draws x up to 6 seeds x 6 checkpoint rungs), since a slot number is
+// part of an agent's canonical identity and every rated agent must be loadable
+// at once; 1024 leaves headroom past that so the next study need not raise this
+// again. Safe to raise: every use is a bounds check or a generic loop, the array
+// is pointers only, and IDs carry explicit slot numbers so nothing is
+// re-identified.
+#define ML_SLOTS 1024
 
 // Best-effort: load the default trained models into their conventional slots
 // (models/lin_value.txt -> slot 0, models/lin_policy.txt -> slot 1) if present, so
