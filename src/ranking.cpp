@@ -1550,6 +1550,16 @@ static bool loadModelSlots(const std::vector<const RankAgent*>& agents, string& 
 // ============================================================
 // Read a plain list of agent ids (one per line, '#' comments, blanks ignored).
 // Used by --cohort to name the agents a play pass should schedule games for.
+//
+// Canonicalized on read for the SAME reason rankLoadMatches canonicalizes every
+// stored row's w/b and rankAgentFromId now returns the canonical form for a
+// legacy learned() id: rankSchedule's cohort filter (`cohort->count(a)`) compares
+// this set against the roster's `ids`, which are always canonical post-fix. A
+// cohort file written in the legacy short form (as BuildRoster-style tooling
+// does) would otherwise never match anything here, silently filtering out every
+// pair and reporting "0 pending" -- not because the schedule is satisfied, but
+// because the cohort set and the roster ids never agreed on a string to compare.
+// Caught 2026-07-30 immediately after fixing the roster side of this exact gap.
 static bool loadIdList(const string& path, std::set<std::string>& out, string& err) {
     std::ifstream f(path.c_str());
     if (!f) { err = "cannot open " + path; return false; }
@@ -1559,7 +1569,7 @@ static bool loadIdList(const string& path, std::set<std::string>& out, string& e
         if (a == string::npos) continue;
         if (line[a] == '#') continue;
         size_t b = line.find_last_not_of(" \t\r\n");
-        out.insert(line.substr(a, b - a + 1));
+        out.insert(canonicalizeLearnedIds(line.substr(a, b - a + 1)));
     }
     return true;
 }

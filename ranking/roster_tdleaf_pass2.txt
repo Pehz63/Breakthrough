@@ -155,14 +155,14 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: models/sweep/slot9.txt accidentally overwritten by a test using an unverified slot number (gitignored, unrecoverable). Historical record + Elo stand as of the last fit; can never play again.
 on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
 on      ab(d4,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+# off   ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: see the s9 note above (slot9.txt unrecoverably overwritten).
 on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
 on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1
 on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1
@@ -312,8 +312,8 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # exclusion (tools/CLAUDE.md).
 on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,4)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1  # RETIRED 2026-07-30: see the s9 note above.
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1  # RETIRED 2026-07-30: see the s9 note above.
 on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,4)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,8)@1
 on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,4)@1

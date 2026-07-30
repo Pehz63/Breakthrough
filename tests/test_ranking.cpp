@@ -392,6 +392,49 @@ TEST_CASE("ranking scheduler - legacy-form roster entry matches a canonical-form
     REQUIRE(afterPending == basePending - 1);
 }
 
+// Companion to the test above: rankSchedule's `cohort` filter is a THIRD place
+// that needs ids in a consistent form. loadIdList (the --cohort file reader,
+// src/ranking.cpp) is file-local and not directly callable from here, but this
+// exercises the exact downstream consequence of it NOT canonicalizing -- caught
+// live 2026-07-30, immediately after the fix above, launching the real study:
+// BuildRoster-style tooling writes the --cohort file in the legacy short form,
+// and before loadIdList canonicalized its own reads, `cohort->count(a)` compared
+// that short-form set against the roster's now-canonical `ids` and matched
+// NOTHING, silently filtering out every pair and reporting "0 pending" for an
+// entirely unplayed 468-agent cohort.
+TEST_CASE("ranking scheduler - cohort filter matches canonical ids, not legacy short forms") {
+    string h = rankFileHash8("models/sweep/slot" + std::to_string(ML_SLOTS - 1) + ".txt");
+    REQUIRE_FALSE(h.empty());   // reuses the model the previous test just saved
+    string legacyId = "greedy@1.learned(s" + std::to_string(ML_SLOTS - 1) + "," + h + ")@1";
+
+    std::istringstream in("anchor rand@1\non " + legacyId + "\n");
+    std::vector<RankAgent> roster;
+    string err;
+    REQUIRE(rankLoadRoster(in, roster, err));
+    for (size_t i = 0; i < roster.size(); i++) roster[i].active = true;
+    string canonId;
+    for (size_t i = 0; i < roster.size(); i++)
+        if (roster[i].id != "rand@1") canonId = roster[i].id;
+    REQUIRE_FALSE(canonId.empty());
+
+    // A cohort set holding the CANONICAL id (what loadIdList produces after the
+    // fix) must select the pair.
+    std::set<string> cohortCanon;
+    cohortCanon.insert(canonId);
+    REQUIRE(rankSchedule(roster, std::vector<RankMatchRow>(), 8, 1, false, &cohortCanon).size() == 8);
+
+    // A cohort set holding only the LEGACY short form (what the file contained,
+    // and what loadIdList would have inserted verbatim before the fix) must NOT
+    // silently select nothing -- this is the exact failure mode caught live.
+    std::set<string> cohortLegacy;
+    cohortLegacy.insert(legacyId);
+    REQUIRE(rankSchedule(roster, std::vector<RankMatchRow>(), 8, 1, false, &cohortLegacy).empty());
+    // (Documents the pre-fix symptom precisely: this REQUIRE would need to be
+    // `.size() == 8` too if loadIdList's canonicalization were ever removed --
+    // its absence here is exactly why the real --cohort file must be
+    // canonicalized on READ, not left to coincidentally already be canonical.)
+}
+
 TEST_CASE("ranking codec - covers every registered evaluator with unique letters") {
     string err;
     bool ok = rankEvalCodecComplete(err);
