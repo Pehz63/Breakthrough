@@ -43,6 +43,15 @@
 void tdLeafGradients(const std::vector<double>& p, double z, double lambda,
                      std::vector<double>& gOut);
 
+// Linear schedule shared by the lr and explore decays below: interpolates from
+// `start` at gameIndex 0 to `floor` at gameIndex >= decayGames, holding at
+// `floor` after. decayGames <= 0 means "off": always returns `start`. Mirrors
+// ml_train.cpp's --gen-random-floor/--gen-random-decay-plies shape (same
+// t = min(1, progress/length) interpolation), indexed by GAMES elapsed in the
+// run rather than plies elapsed in one game, since this decays a hyperparameter
+// over training progress, not an opening's diversity window.
+double tdLeafScheduledValue(double start, double floor, int decayGames, int gameIndex);
+
 struct TDLeafConfig {
     string outPath;                 // model base name; final model at outPath + ".txt"
     string boardFile;               // starting position
@@ -51,14 +60,21 @@ struct TDLeafConfig {
     int    depth;                   // search depth of the self-play agent
     unsigned long long nodeBudget;  // per-move node cap (0 = off)
     double lambda;                  // eligibility decay in [0,1]
-    double lr;                      // SGD step size
+    double lr;                      // SGD step size (schedule start value if lrDecayGames > 0)
+    double lrFloor;                 // lr decays to this by lrDecayGames games (default = lr, i.e. off)
+    int    lrDecayGames;            // 0 = off (constant lr); > 0 = linear decay over this many games
     double l2;                      // weight decay
     unsigned seed;
     int    openPlies;               // uniform-random opening plies per side (diversity)
-    double explore;                 // per-move chance of a random move during play
+    double explore;                 // per-move chance of a random move during play (schedule start if exploreDecayGames > 0)
+    double exploreFloor;            // explore decays to this by exploreDecayGames games (default 0)
+    int    exploreDecayGames;       // 0 = off (constant explore); > 0 = linear decay over this many games
     int    batchGames;              // 1 = strictly online; N > 1 = apply updates every N games
     string modelType;               // "linear" | "mlp"
     std::vector<int> mlpHidden;     // hidden widths when modelType == "mlp"
+    int    featureVersion;          // 1 (dense, 30) | 2 (sparse piece-square, 129). Scratch-init only --
+                                     // ignored (with a warning) when initModel is set, since the loaded
+                                     // model's own feature version governs then.
     int    ckptEvery;               // checkpoint every N games (0 = off)
     // Game-count ladder: checkpoint after exactly these game counts, written to
     // outPath + "_gN.txt". This is how the study learns the game count instead of

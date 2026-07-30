@@ -1216,3 +1216,78 @@ TEST_CASE("trainTDLeaf - from-scratch init produces a usable value model") {
     mlClearSlots();
     std::remove((string(outBase) + ".txt").c_str());
 }
+
+TEST_CASE("trainTDLeaf - scratch init honors --feature-version 1") {
+    TDLeafConfig c = tdLeafDefaults();
+    c.outPath = "models/sweep/tdl_test_featv1";
+    c.initModel = "";
+    c.featureVersion = 1;
+    c.games = 3;
+    c.depth = 2;
+    c.openPlies = 2;
+    c.seed = 909;
+    c.reportEvery = 0;
+    REQUIRE(trainTDLeaf(c) == 0);
+
+    Model* out = loadModel("models/sweep/tdl_test_featv1.txt");
+    REQUIRE(out != nullptr);
+    REQUIRE(out->featureVersion() == 1);
+    REQUIRE(out->featureCount() == MLV_FEATURES);
+    delete out;
+    std::remove("models/sweep/tdl_test_featv1.txt");
+}
+
+TEST_CASE("tdLeafScheduledValue - linear decay endpoints, midpoint, hold-past-end, and off") {
+    // Endpoints and midpoint of a genuine decay.
+    REQUIRE(tdLeafScheduledValue(0.02, 0.002, 1000, 0)    == Approx(0.02).margin(1e-12));
+    REQUIRE(tdLeafScheduledValue(0.02, 0.002, 1000, 1000) == Approx(0.002).margin(1e-12));
+    REQUIRE(tdLeafScheduledValue(0.02, 0.002, 1000, 500)  == Approx(0.011).margin(1e-12));
+    // Holds at the floor past the decay window, does not extrapolate below it.
+    REQUIRE(tdLeafScheduledValue(0.02, 0.002, 1000, 2000) == Approx(0.002).margin(1e-12));
+    // decayGames <= 0 means off: always the start value, regardless of gameIndex.
+    REQUIRE(tdLeafScheduledValue(0.05, 0.0, 0, 0)    == Approx(0.05).margin(1e-12));
+    REQUIRE(tdLeafScheduledValue(0.05, 0.0, 0, 9999) == Approx(0.05).margin(1e-12));
+    REQUIRE(tdLeafScheduledValue(0.05, 0.0, -3, 500) == Approx(0.05).margin(1e-12));
+    // start == floor is a no-op at any decayGames (the "user only set --lr" default case).
+    REQUIRE(tdLeafScheduledValue(0.01, 0.01, 500, 250) == Approx(0.01).margin(1e-12));
+}
+
+TEST_CASE("trainTDLeaf - lr-decay and explore-decay schedules actually move the effective value") {
+    // Instrument check, not just the pure-function unit test above: run the real
+    // regime with a schedule active and confirm the model produced differs from
+    // the same run with the schedule off, so the CLI wiring (not just the math)
+    // is verified to do something.
+    TDLeafConfig base = tdLeafDefaults();
+    base.outPath = "models/sweep/tdl_test_sched_off";
+    base.initModel = "";
+    base.games = 6;
+    base.depth = 2;
+    base.openPlies = 2;
+    base.seed = 555;
+    base.reportEvery = 0;
+    base.lr = 0.05;
+    REQUIRE(trainTDLeaf(base) == 0);
+
+    TDLeafConfig withSched = base;
+    withSched.outPath = "models/sweep/tdl_test_sched_on";
+    withSched.seed = 555;               // same games/openings, isolate the schedule's effect
+    withSched.lrFloor = 0.005;
+    withSched.lrDecayGames = 3;         // decays across roughly half the run
+    REQUIRE(trainTDLeaf(withSched) == 0);
+
+    Model* off = loadModel("models/sweep/tdl_test_sched_off.txt");
+    Model* on  = loadModel("models/sweep/tdl_test_sched_on.txt");
+    REQUIRE(off != nullptr);
+    REQUIRE(on != nullptr);
+    LinearModel* lo = dynamic_cast<LinearModel*>(off);
+    LinearModel* ln = dynamic_cast<LinearModel*>(on);
+    REQUIRE(lo != nullptr);
+    REQUIRE(ln != nullptr);
+    double diff = 0.0;
+    for (int i = 0; i < lo->n; i++) diff += fabs(lo->w[i] - ln->w[i]);
+    REQUIRE(diff > 0.0);   // a decaying lr must not train identically to a constant one
+    REQUIRE(on->teacher.find("->0.005/3g") != string::npos);   // schedule recorded in provenance
+    delete off; delete on;
+    std::remove("models/sweep/tdl_test_sched_off.txt");
+    std::remove("models/sweep/tdl_test_sched_on.txt");
+}

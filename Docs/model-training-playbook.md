@@ -115,6 +115,11 @@ every training run in that study (see `train.exe tdleaf --ckpt-at` as the
 existing mechanism — pass an identical `--ckpt-at` value across every arm's
 invocation).
 
+**Before setting a range for any axis, check `Docs/hyperparameter-log.md`** for
+what's already been tried in this or another regime. A value that's already
+known to be untested (never varied, always left at a default) is informative
+too — it's a candidate axis for the new sweep, not a gap to silently repeat.
+
 ### Design the grid, then stop and show it — before running anything
 
 Once you have a proposed grid (axes, values per axis, seed count, rung list,

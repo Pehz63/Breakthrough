@@ -160,8 +160,14 @@ static void usage() {
     cout << "                      so the game count is measured by rating each rung, not assumed up front\n";
     cout << "  --open-plies <n>    uniform-random opening plies per side, for position diversity\n";
     cout << "  --explore <f>       per-move chance of a random move (those plies are not trained on)\n";
+    cout << "  --lr-floor <f> --lr-decay-games <n>            linearly decay lr from --lr to --lr-floor\n";
+    cout << "                      over that many GAMES (0 = off, default: constant lr)\n";
+    cout << "  --explore-floor <f> --explore-decay-games <n>  linearly decay explore from --explore to\n";
+    cout << "                      --explore-floor over that many GAMES (0 = off, default: constant explore)\n";
     cout << "  --batch <n>         1 = strictly online (default); n > 1 applies updates every n games\n";
     cout << "  --model-type linear|mlp --mlp-hidden \"32\"   architecture when starting from scratch\n";
+    cout << "  --feature-version 1|2  scratch-init only (default 2, sparse); ignored with --init, where\n";
+    cout << "                      the loaded model's own feature version governs\n";
     cout << "\nTournament options:\n";
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
@@ -317,13 +323,18 @@ int main(int argc, char** argv) {
         c.nodeBudget  = (unsigned long long)getDbl(argc, argv, "--node-budget", (double)c.nodeBudget);
         c.lambda      = getDbl(argc, argv, "--lambda", c.lambda);
         c.lr          = getDbl(argc, argv, "--lr", c.lr);
+        c.lrFloor     = getDbl(argc, argv, "--lr-floor", c.lr);   // default = lr (off)
+        c.lrDecayGames = getInt(argc, argv, "--lr-decay-games", 0);
         c.l2          = getDbl(argc, argv, "--l2", c.l2);
         c.seed        = seed;
         c.openPlies   = getInt(argc, argv, "--open-plies", c.openPlies);
         c.explore     = getDbl(argc, argv, "--explore", c.explore);
+        c.exploreFloor = getDbl(argc, argv, "--explore-floor", 0.0);
+        c.exploreDecayGames = getInt(argc, argv, "--explore-decay-games", 0);
         c.batchGames  = getInt(argc, argv, "--batch", c.batchGames);
         c.modelType   = getOpt(argc, argv, "--model-type", c.modelType.c_str());
         c.mlpHidden   = getIntList(argc, argv, "--mlp-hidden");
+        c.featureVersion = getInt(argc, argv, "--feature-version", c.featureVersion);
         c.ckptEvery   = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
         c.ckptAt      = getIntList(argc, argv, "--ckpt-at");
         c.reportEvery = getInt(argc, argv, "--report-every", c.reportEvery);

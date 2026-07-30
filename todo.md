@@ -578,6 +578,12 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
 - Run the TD-Leaf batched-update path (`--batch`), implemented but never exercised; the
   online-vs-batched question is still open `[Next]`
 - Run a TD-Leaf MLP arm: the whole cohort was the 130-param linear model `[Next]`
+- Backfill `Docs/hyperparameter-log.md`: only the `tdleaf` section is populated so far.
+  Transcribe real values (not re-derived from memory) from `plans/training-sweep-results-1-luminous-snail.md`
+  (the 78-candidate sweep's full axis list, `--gen-random`/`--gen-random-floor`/`--gen-random-decay-plies`,
+  `--residual-skip`, `--val-split`), the position-oracle pipeline (posgen/label/labelfit ladder design,
+  `--elo-se`, calibration sample size), and `tools/hill_climb.ps1`'s step-size/reset/flip-probability
+  history in `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md` `[Next]`
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
   into new agents, add them to the round-robin, drop the weakest, and iterate -- so the

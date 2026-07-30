@@ -35,6 +35,12 @@ void tdLeafGradients(const std::vector<double>& p, double z, double lambda,
     }
 }
 
+double tdLeafScheduledValue(double start, double floor, int decayGames, int gameIndex) {
+    if (decayGames <= 0) return start;
+    double t = std::min(1.0, (double)gameIndex / (double)decayGames);
+    return start * (1.0 - t) + floor * t;
+}
+
 // ============================================================
 // SMALL UTILITIES
 // ============================================================
@@ -136,12 +142,17 @@ TDLeafConfig tdLeafDefaults() {
     c.nodeBudget  = 200000;
     c.lambda      = 0.7;
     c.lr          = 0.01;
+    c.lrFloor     = 0.01;   // == lr: off unless lrDecayGames > 0
+    c.lrDecayGames = 0;
     c.l2          = 0.0;
     c.seed        = 1001;
     c.openPlies   = 4;
     c.explore     = 0.0;
+    c.exploreFloor = 0.0;
+    c.exploreDecayGames = 0;
     c.batchGames  = 1;
     c.modelType   = "linear";
+    c.featureVersion = 2;
     c.ckptEvery   = 0;
     c.reportEvery = 50;
     return c;
@@ -172,8 +183,12 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
             delete model; return 1;
         }
         provInit = "init:" + cfg.initModel;
+        if (cfg.featureVersion != 2)
+            cout << "NOTE: --feature-version ignored (" << cfg.initModel
+                 << "'s own feature version governs when --init is set)\n";
     } else {
-        const int featVer = 2, featCount = MLV2_FEATURES;
+        const int featVer = (cfg.featureVersion == 1) ? 1 : 2;
+        const int featCount = (featVer == 1) ? MLV_FEATURES : MLV2_FEATURES;
         if (cfg.modelType == "mlp") {
             std::vector<int> hidden = cfg.mlpHidden;
             if (hidden.empty()) hidden.push_back(32);
@@ -211,12 +226,16 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
 
     {
         std::ostringstream prov;
-        prov << "tdleaf(lambda=" << cfg.lambda << ",lr=" << cfg.lr << ",l2=" << cfg.l2
-             << ",d" << cfg.depth;
+        prov << "tdleaf(lambda=" << cfg.lambda << ",lr=" << cfg.lr;
+        if (cfg.lrDecayGames > 0)
+            prov << "->" << cfg.lrFloor << "/" << cfg.lrDecayGames << "g";
+        prov << ",l2=" << cfg.l2 << ",d" << cfg.depth;
         if (cfg.nodeBudget) prov << ",nb" << cfg.nodeBudget;
         prov << ",games=" << cfg.games << ",batch=" << cfg.batchGames
-             << ",open=" << cfg.openPlies << ",explore=" << cfg.explore
-             << ",seed=" << cfg.seed << ") " << provInit;
+             << ",open=" << cfg.openPlies << ",explore=" << cfg.explore;
+        if (cfg.exploreDecayGames > 0)
+            prov << "->" << cfg.exploreFloor << "/" << cfg.exploreDecayGames << "g";
+        prov << ",seed=" << cfg.seed << ") " << provInit;
         model->teacher = prov.str();
     }
     cout << "TD-Leaf: " << model->teacher << "\n";
@@ -242,12 +261,19 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     // enough to specify a run and no rung is silently never written.
     const int totalGames = std::max(cfg.games, maxLadderRung(cfg.ckptAt));
 
+    // Declared outside the loop so the final partial-batch flush (after the loop
+    // ends) can apply the LAST game's scheduled lr rather than going out of scope.
+    double effLr = cfg.lr, effExplore = cfg.explore;
+
     for (int g = 0; g < totalGames; g++) {
         // Independence: a stale table would make a game's result depend on which
         // games preceded it (the cross-game TT pollution defect fixed elsewhere in
         // this project). Every game starts from a clean table.
         ttClear();
         reloadBoard(cfg.boardFile);
+
+        effLr = tdLeafScheduledValue(cfg.lr, cfg.lrFloor, cfg.lrDecayGames, g);
+        effExplore = tdLeafScheduledValue(cfg.explore, cfg.exploreFloor, cfg.exploreDecayGames, g);
 
         p.clear(); trainable.clear(); leafFeat.clear();
         int victor = None;
@@ -269,7 +295,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
                 // principal variation), and an already-decided root has no
                 // informative leaf. Play them out -- the game must still reach a
                 // real conclusion -- but capture nothing.
-                bool exploreMove = (cfg.explore > 0.0 && frandTD() < cfg.explore);
+                bool exploreMove = (effExplore > 0.0 && frandTD() < effExplore);
                 if (exploreMove || nearWinCheck(side) != 0) {
                     victor = exploreMove
                         ? ((side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack())
@@ -318,7 +344,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
             if (!trainable[t]) continue;
             if (cfg.batchGames <= 1) {
                 head->gradStep(leafFeat[t].data(), featCount, (float)gOut[t],
-                               (float)cfg.lr, (float)cfg.l2);
+                               (float)effLr, (float)cfg.l2);
             } else {
                 batchX.push_back(leafFeat[t]);
                 batchG.push_back(gOut[t]);
@@ -329,7 +355,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         if (cfg.batchGames > 1 && ((g + 1) % cfg.batchGames == 0)) {
             for (size_t i = 0; i < batchX.size(); i++)
                 head->gradStep(batchX[i].data(), featCount, (float)batchG[i],
-                               (float)cfg.lr, (float)cfg.l2);
+                               (float)effLr, (float)cfg.l2);
             batchX.clear(); batchG.clear();
         }
 
@@ -356,7 +382,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     if (cfg.batchGames > 1 && !batchX.empty()) {
         for (size_t i = 0; i < batchX.size(); i++)
             head->gradStep(batchX[i].data(), featCount, (float)batchG[i],
-                           (float)cfg.lr, (float)cfg.l2);
+                           (float)effLr, (float)cfg.l2);
         batchX.clear(); batchG.clear();
     }
 

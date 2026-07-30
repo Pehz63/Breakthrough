@@ -365,10 +365,42 @@ anchored scale. Marked `~` in the report.
 *"A brand-new agent that has only played other new agents comes out
 provisional until it plays into the main pool."*
 
-**Screening vs certification** -- a gauntlet screens (cheap, one candidate vs
-a frozen pool, enough to rank candidates against each other); a full-roster
-anchored refit certifies (the instrument any published claim must use).
+**Screening vs certification** -- a gauntlet or a pinned fit screens (cheap,
+one candidate or a whole cohort vs a frozen reference, enough to rank
+candidates against each other); a full-roster anchored refit certifies (the
+instrument any published claim must use). Neither screening method can move
+or dethrone anything: a gauntlet's opponents and a pinned fit's frozen agents
+are both inputs, not outputs, of that pass.
 *"The sweep screened 40 cells; only the best two were certified."*
+
+**Pair** -- one specific matchup between two named agents; "N games/pair" is
+how many games that one matchup is played. Distinct from a "cohort," which is
+a whole group of agents, not a single matchup.
+*"Every contender pair needs >= 32 games/pair before a top-of-table claim."*
+
+**Cohort** -- a group of new agents rated together against the existing
+roster in one pass, entering the pool as a batch rather than one at a time.
+Given its own roster copy and id list (`ranking/roster_<name>.txt`,
+`ranking/cohort_<name>.txt`) and scheduled with `play --cohort` so its games
+don't also refill the whole existing roster.
+*"The TD-Leaf cohort was 38 agents; screening it meant one pinned fit, not 38
+separate gauntlets."*
+
+**Pinned fit** -- a Bradley-Terry refit where a named subset of agents'
+ratings are held fixed and only the rest are solved for (`rank.exe rate
+--pin`), used to screen a cohort against the existing roster's scale without
+moving it. The other screening instrument, alongside the gauntlet, but able to
+use cohort-vs-cohort games too, so it resolves a cohort's internal order,
+which a gauntlet (candidate vs frozen pool only) cannot see.
+*"The pinned fit put the cohort's Elo on the same scale as standings.tsv
+without moving a single existing number by more than floating-point noise."*
+
+**Rung** -- one checkpoint in a game-count ladder (`train.exe ... --ckpt-at`),
+saved and rated as its own agent so the effect of training length is measured
+rather than assumed. Rungs of one training run share a trajectory and are not
+independent replicates; only distinct seeds are.
+*"The base recipe's rungs peaked at 1000 games and declined by the 2000
+rung."*
 
 **Target class vs reference class** -- target-class agents compete for the
 throne; reference-class agents are deliberately excluded from it, currently
