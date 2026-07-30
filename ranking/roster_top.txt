@@ -31,7 +31,7 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.op
 on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 
 # Symmetrization/ensemble challengers (dethrone plan phase 3).
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: models/sweep/slot9.txt accidentally overwritten (gitignored, unrecoverable). See ranking/roster.txt.
 on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
 
 # Self-mined book challenger (theory 31, 2026-07-18).

@@ -218,7 +218,7 @@ this file's own rule 2 above.
   | 943 +/- 11 | `ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,4)@1` |
   | 934 +/- 11 | `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,4)@1` |
   | 932 +/- 11 | `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1` (control; lift over bare classic 921 = +11) |
-  | 910 +/- 11 | `ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1` (added round 2) |
+  | 910 +/- 11 | `ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1` (added round 2) -- **RETIRED 2026-07-30**: models/sweep/slot9.txt was accidentally overwritten (gitignored, unrecoverable); this rating is historical only, the identity can never play again |
 
 - **Round 2 did not change the leader**, but tightened the gap to the runner-up
   (18 / SE 17.0 in round 1 -> 13 / SE 16.3 now) -- the opposite of what more

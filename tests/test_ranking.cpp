@@ -53,6 +53,16 @@ static RankAgent parseOkLegacyLearned(const string& legacyId) {
     string err2;
     REQUIRE(rankAgentFromId(canon, b, err2));
     REQUIRE(rankAgentId(b.spec) == canon);
+    // The RankAgent's OWN `.id` field -- what rankLoadRoster/rankSchedule actually
+    // read downstream -- must be the canonical form too, not just re-derivable from
+    // .spec. `rankAgentId(a.spec) == canon` alone does NOT prove this: it recomputes
+    // fresh from the spec, so it stays true even if `.id` itself was left as the
+    // short legacy string. That gap let a real bug through 2026-07-30: a legacy-form
+    // roster entry's `.id` stayed short, so rankSchedule's have-map lookups (keyed by
+    // roster ids) never matched a stored row's id (which DOES get expanded on load,
+    // by rankLoadMatches' own canonicalizeLearnedIds() call) -- pending games for
+    // that pair never decreased no matter how many were actually played.
+    REQUIRE(a.id == canon);
     return a;
 }
 // Parse an ID, assert clean failure, and return the error message.
@@ -314,6 +324,72 @@ TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
 
     // A slot beyond ML_SLOTS is rejected, not silently accepted.
     REQUIRE(parseErr("greedy@1.learned(s" + std::to_string(ML_SLOTS) + "," + h + ")@1").find("slot") != string::npos);
+}
+
+// End-to-end regression for the bug fixed 2026-07-30: a roster line written in the
+// LEGACY short learned() form must schedule correctly against stored games recorded
+// under the (post-canonicalization) rich form -- i.e. rankLoadRoster's output id must
+// be usable as a rankSchedule `have`-map key alongside rankLoadMatches' output rows.
+// Isolated live repro that first caught it: a 3-agent, 1-game store where pending
+// stayed at 24 instead of dropping to 23 after a real, correctly stored game.
+TEST_CASE("ranking scheduler - legacy-form roster entry matches a canonical-form stored row") {
+    // Slot 1023 (ML_SLOTS-1): the reserved throwaway-test slot, as far as possible
+    // from any real study's range. A prior version of this test used slot 9, which
+    // (unlike the "sweep slot convention" test's slot 5, genuinely never claimed)
+    // turned out to be an ACTIVE roster agent's real model -- LinearModel::save()
+    // silently overwrote it, and since models/sweep/*.txt is gitignored, the
+    // original weights were unrecoverable (see the retirement note this forced in
+    // ranking/roster.txt, 2026-07-30). Never reuse a low/plausible-looking slot
+    // number for scratch data without checking `grep learned\(s<N>, ranking/roster.txt`
+    // first; use this reserved slot for exactly this purpose instead.
+    const int slot = ML_SLOTS - 1;
+    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    m.bias = 0.2f;
+    for (int i = 0; i < m.n; i++) m.w[i] = 0.02f * i;
+    REQUIRE(m.save(path));
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+
+    string legacyId = "greedy@1.learned(s" + std::to_string(slot) + "," + h + ")@1";
+
+    // Load a roster FILE (istringstream, same code path as rankLoadRosterFile) whose
+    // learned() line uses the legacy short form, exactly as a hand-written or
+    // scripted roster would.
+    std::istringstream in("anchor rand@1\non " + legacyId + "\n");
+    std::vector<RankAgent> roster;
+    string err;
+    REQUIRE(rankLoadRoster(in, roster, err));
+    string canonId;
+    for (size_t i = 0; i < roster.size(); i++)
+        if (roster[i].id != "rand@1") canonId = roster[i].id;
+    REQUIRE_FALSE(canonId.empty());
+    REQUIRE(canonId != legacyId);          // it must have been expanded...
+    REQUIRE(canonId.find(",con") != string::npos);   // ...to the rich form specifically
+    for (size_t i = 0; i < roster.size(); i++) roster[i].active = true;
+
+    // Baseline: no games played yet.
+    long long basePending = (long long)rankSchedule(roster, std::vector<RankMatchRow>(), 8, 1).size();
+    REQUIRE(basePending == 8);   // 1 pair x 8 games/pair
+
+    // One real game, stored under the CANONICAL form -- what rankLoadMatches would
+    // hand back after canonicalizing a raw stored row (legacy or already-rich).
+    std::vector<RankMatchRow> store;
+    RankMatchRow g;
+    g.w = "rand@1"; g.b = canonId; g.r = 'W'; g.plies = 9;
+    g.wms = g.bms = 0; g.wmv = g.bmv = 5; g.wnod = g.bnod = 0; g.seed = 1; g.board = ""; g.par = 1;
+    store.push_back(g);
+
+    long long afterPending = (long long)rankSchedule(roster, store, 8, 1).size();
+    // This is the exact assertion that failed before the fix: afterPending stayed
+    // equal to basePending (8) because the roster's legacy-form id never matched the
+    // store row's canonical-form id in rankSchedule's have-map lookup.
+    REQUIRE(afterPending == basePending - 1);
 }
 
 TEST_CASE("ranking codec - covers every registered evaluator with unique letters") {

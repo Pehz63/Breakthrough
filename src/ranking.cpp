@@ -907,7 +907,19 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     std::strncpy(a.name, id.c_str(), sizeof(a.name) - 1);
     a.name[sizeof(a.name) - 1] = '\0';
     out.spec = a;
-    out.id = id;
+    // `canon`, not the original `id`: a legacy short-form learned() id was just
+    // validated as equivalent to `canon` above, but storing the SHORT form here
+    // silently broke every string-keyed lookup against it downstream. Concretely:
+    // rankLoadMatches expands every STORED match row's w/b through
+    // canonicalizeLearnedIds() (so old rows keep matching an enriched roster), but
+    // a roster loaded via the short form never went through that expansion, so
+    // rankSchedule's `have` map (keyed by the roster's ids) could never match a
+    // stored row's (post-expansion) key -- pending games for that pair silently
+    // never decreased no matter how many games were actually played, and a
+    // resumed/re-run play phase would replay the whole schedule from scratch.
+    // Caught 2026-07-30 isolating a 3-agent, 1-game repro: 24 pending stayed 24
+    // after adding one real, correctly stored game for the pair in question.
+    out.id = canon;
     out.active = false;
     out.anchor = false;
     return true;
