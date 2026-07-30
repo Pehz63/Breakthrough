@@ -1,0 +1,796 @@
+# Agent ranking roster (read by rank.exe; see README "Agent Elo ranking").
+# One agent per line: <state> <id>, where state is anchor, on, or off.
+#   anchor  the Elo-0 reference agent (exactly one line; implicitly active)
+#   on      active: scheduled for games and shown in the main table
+#   off     benched: keeps its identity and stored games, plays no new ones
+# Edit freely. Match history in ranking/matches.jsonl is keyed by the exact id,
+# so toggling on/off never loses games. Every module segment carries its code
+# version as @N (head, evaluator, dil). When a module's CODE changes behavior,
+# bump that module's version constant in src/ranking.cpp: affected agents then
+# need their roster ids updated (check prints the fix) and start fresh history.
+# Run "rank.exe check" to validate this file and print model hashes.
+#
+# The set varies one axis at a time so per-feature Elo deltas are readable.
+
+anchor  rand@1                                                  # UniformRandom, pinned at Elo 0
+
+# Random family: tier ladder around the furthest-N knob.
+on      tiered@1                                                # win/capture/normal tiers
+on      smart(2)@1                                              # tiered, furthest-2 pieces
+on      smart(4)@1
+on      smart(6)@1
+
+# 1-ply greedy: default vs structure-weighted Classic.
+on      greedy@1.classic(t1,c4,w0,l0)@2
+on      greedy@1.classic(t2,c10,w3,l2)@2
+
+# Depth ladder, Classic default weights.
+on      ab(d1)@1.classic(t1,c4,w0,l0)@2
+on      ab(d2)@1.classic(t1,c4,w0,l0)@2
+on      ab(d3)@1.classic(t1,c4,w0,l0)@2
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2
+on      ab(d5)@1.classic(t1,c4,w0,l0)@2
+
+# Eval-weight variants at d4: structure-weighted Classic + the forward ladder.
+on      ab(d4)@1.classic(t2,c10,w3,l2)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@2
+on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@2
+
+# Dilution ladder on ab(d4): Elo vs random-move probability.
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
+on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+
+# Pruning ladder at a fixed 200k-node budget, depth cap 6: from no pruning at
+# all up to TT + ordering + tight aspiration windows. Same compute, more
+# cutoffs = more effective depth = Elo (watch the eff-depth telemetry).
+on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@2             # full minimax floor
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2                  # plain alpha-beta
+on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2               # + transposition table
+on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2              # + move ordering only
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2           # + both
+on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2     # + tight aspiration window
+on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
+
+# Dilution ladder on the budgeted d6 (mirrors the d4 ladder at higher strength).
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
+on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+
+# Dense dilution ladder over the strongest pruned d6, to resolve the top-end ties and to
+# give the hill climber (tools/hill_climb.ps1) non-deterministic opponents. Random-move
+# dilution dil(rP) plays a fully random move P% of the time; stochastic depth dilution
+# dil(rP,dN) instead plays a shallower depth-N search P% of the time (plausible-but-weaker).
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1        # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1        # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r14)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r28)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r52)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r75)@1
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1     # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1     # benched 2026-07-21: exact Elo tie with dil(r60,d4)
+off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1     # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d3)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d4)@1
+
+# off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
+on      ab(d4)@1.exp(t20,c64,w0,l1,f15)@2
+on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
+
+# Best learned model to date: trained on 4000 games REPLAYED from this store's
+# own match history (rank.exe extract, the full diverse agent pool as teachers),
+# d6 gauntlet Elo 920 +/- 28, up from 855 (sweep winner) and 595 (original PST).
+# See plans/training-sweep-results-1-luminous-snail.md. Flip to "on" to fold it
+# into the standing ladder; a retrain of models/pst_value.txt changes the hash.
+# Caveat: trained on the pool's own games and rated against that pool, so part
+# of the number may be style-fit; the held-out-agent probe (todo.md) tests this.
+# off   ab(d6,tt,ord,nb200k)@1.learned(s2,59815079)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1
+on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1
+
+# Quiescence challengers (dethrone plan phase 1): the qs flag spends the d6
+# head's idle node budget on a captures-only stand-pat extension at depth
+# leaves. Same head as the reigning champion s98 otherwise.
+on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+
+# Refutation-book challengers (dethrone plan phase 2): .opener(book,1) plays
+# models/book1.txt (the d8/nb2m oracle's winning replies against s98, mined by
+# rank.exe bookgen) while in book, then hands off to the brain. Against s98 the
+# book replays oracle wins; elsewhere out of book each agent is its plain self.
+# NOTE: the book file is not hashed into the ID (unlike learned models), so
+# models/book1.txt is treated as immutable -- regenerating it under slot 1 would
+# silently change these agents' behavior. A new book gets a new slot number.
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,1)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
+
+# Self-mined book (developer hypothesis 2026-07-18, theory 31): instead of
+# giving classic the ORACLE's winning moves against s98 (book,1 above, which
+# handed foreign foresight to a brain that couldn't use it), models/book2.txt
+# mines CLASSIC's OWN winning moves from the 7 stored games (of 32) where
+# classic itself already beat s98. The book-wearer and the line-owner are the
+# same brain, so there is no handoff mismatch: in-book, it plays exactly what
+# it would have chosen anyway; out-of-book, it just plays normally. Tests
+# whether this out-performs both the bookless baseline (9-23 vs s98) and the
+# oracle-book variant (7-25).
+# AUDIT 2026-07-26 (theory 38, plans/book-opener-audit-results-1-vivid-lantern.md):
+# the oracle-book variant was NOT worse than bookless, that was an artifact of
+# quoting nominal rows (7-25 is 4-10 on 14 distinct games vs bookless 9-23 on a
+# genuine 32). More importantly, a book is a memorized line keyed by position
+# hash with no response tree, so its lift only holds while the opponent repeats
+# its mined replies. Under pairgen --open-plies 8 every book effect measured in
+# this project collapses to noise. Do not quote a book Elo as strength.
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
+
+# Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the
+# todo's weight-symmetrization [Now] item). Slots 3-8 are 6 fresh seed
+# replicas of the champion's exact recipe (pg_oracle_champ.jsonl, 6 epochs,
+# lr 0.05, seeds 1001..6006; slot5/seed 3003 reproduces the champion's
+# weights byte-identically and is NOT rostered -- the champion row already
+# is that policy). slot9 = mirror-symmetrized average of all 6 seeds;
+# slot10 = mirror-symmetrized champion weights alone (separates the
+# symmetrization effect from the ensembling effect). Both standard heads.
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
+on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
+on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1
+on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1
+on ab(d2)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
+on ab(d4)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
+on ab(d2)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d4)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d2)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d4)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
+on ab(d2)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
+
+# NNUE-shaped dist mu heads (129->512->8->1), 6 seeds, slots 110-115.
+# Efficiency negative result (2.47 us/node, ~2x standard head); rated for completeness.
+on ab(d4)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d4)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+
+# ---------------------------------------------------------------------------
+# Book loadout study (2026-07-26, plans/book-opener-audit-results-1-vivid-lantern.md).
+# Purpose: put books on the FULL-ROSTER instrument instead of the pairwise
+# records the audit used, and vary two axes that had never been varied:
+#   (a) book DEPTH -- every book before this was mined at --plies 60. The two
+#       ladders below are the same line-owner/target pair re-mined at 6/16/30,
+#       with the existing 60-ply book as the top rung:
+#         classic-own vs s98:  book7 (6, 13 entries)  book8 (16, 38)
+#                              book9 (30, 73)         book2 (60, 134) = champion
+#         s98-own vs classic:  book10 (6, 41)  book11 (16, 134)
+#                              book12 (30, 279)  book4 (60, 519)
+#   (b) OWN vs BORROWED at matched depth -- each core also wears the other
+#       core's 60-ply book, so "books are core-specific" gets a pooled test.
+# Read the results ONLY from ranking/standings.tsv, one head at a time. Every
+# agent here is deterministic, so its stored rows are NOT distinct games
+# (CLAUDE.md ranking-claim hygiene rule 7, Docs/benchmarking.md defect 3):
+# a nominal 8-games/pair fill is ~2 effective games and the printed pm is
+# understated. Order and large gaps are readable; small gaps are not.
+# The dist core learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100) is deliberately absent: at 370 ms/move
+# it would add hours of roster play for one more row.
+
+# classic core, own-book depth ladder (6/16/30; the 60 rung is the champion above)
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,7)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,8)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,9)@1
+# classic core wearing s98's 60-ply book (borrowed)
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,4)@1
+
+# s98 core, own-book depth ladder (6/16/30/60)
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,10)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,11)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,12)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,4)@1
+# s98 core wearing classic's 60-ply book (borrowed; this is the champion's book)
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,2)@1
+
+# s3 core: own 60-ply book vs the champion's borrowed book
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,6)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,2)@1
+
+# hill-climbed Advanced core (DIFFERENT head, no tt): own vs borrowed.
+# This is the core where the borrowed book beat the own book 32-0 vs 16-16 in
+# pairwise play, which is the single result the pooled fit most needs to check.
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,2)@1
+
+# ---------------------------------------------------------------------------
+# Champion-category cohort (2026-07-28, splits the single throne into 5
+# parallel category champions -- openless / 4-book / 8-book / 4-random /
+# 8-random -- all measured from THIS one roster/fit, see ranking/CHAMPION.md.
+# "4"/"8" are OPENER PLIES. openless needs no new lines here (it is "no
+# .opener() segment", already every bare core above). Deliberately ONE
+# roster: no second incompatible-scale pool, no separate boosting file.
+
+# 4-book / 8-book: new depth rungs on the two existing own-book ladders
+# (classic-own: book7/8/9/2 = 6/16/30/60ply; s98-own: book10/11/12/4 =
+# 6/16/30/60ply). book13-16 mined for free from the same already-stored
+# classic-vs-s98 match history (no new games needed to mine them).
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,13)@1        # classic-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,14)@1        # classic-own, 8-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,15)@1   # s98-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,16)@1   # s98-own, 8-ply
+
+# 4-random / 8-random: every bare target-class core >= ~1000 Elo in the
+# standard-head standings, plus the classic control, each wearing
+# .opener(rand,4)@1 and .opener(rand,8)@1. Same ID text already has history
+# in ranking/roster_open.txt's separate matches_open.jsonl store -- that's a
+# different, incompatible-scale instrument; this builds independent history
+# for these identities in the merged pool.
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # 370ms/move core, cost flag
+on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # NNUE-wide core, cost flag
+on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
+
+# ---------------------------------------------------------------------------
+# Champion-category cohort, round 2 (2026-07-29). More cores per category for
+# Elo diversity, per developer request. Same rule: standard head only, ONE
+# roster/fit, no second pool.
+
+# 4-book / 8-book: extends the own-book ladder to the two other cores that
+# already had an established own-book precedent (book6=s3-own-60ply,
+# book3=adv-own-60ply, both mined vs the pre-split single champion identity
+# ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1, a fixed,
+# already-stored pair). book17/18 (s3-own 4/8-ply) and book19/20 (adv-own
+# 4/8-ply) mined for free from that same stored history, no new games needed
+# to mine. adv is a DIFFERENT search head (ab(d6,ord,nb200k)@1, no tt), so its
+# book19/20 lines add Elo diversity but are NOT category-eligible (one-head
+# rule) -- same treatment as the existing bare/book2/book3 adv rows above.
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,17)@1   # s3-own, 4-ply
+on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,18)@1   # s3-own, 8-ply
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,19)@1   # adv-own, 4-ply, off-head (not category-eligible)
+on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,20)@1   # adv-own, 8-ply, off-head (not category-eligible)
+
+# 4-random / 8-random: the remaining bare target-class value-linear seeds at
+# the standard head not yet covered (s4/s9/s10/s94/s95/s97/s99). Deliberately
+# EXCLUDES the wide dist-mlp cores (s77/s78/s79/s110/s112/s114/s115, all
+# 350-1670 ms/move) -- s111/s113 already probe that architecture family above,
+# and adding the rest would cost hours of roster play for rows that theory 39
+# already predicts will rate low, the same cost-vs-benefit call as book5's
+# exclusion (tools/CLAUDE.md).
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,4)@1
+on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,8)@1
+
+# ---- TD-Leaf Pass 2 cohort (468 agents), added 2026-07-30 ----
+on ab(d6,tt,ord,nb200k)@1.learned(s166,314255f2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s167,78865d90)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s168,8378d548)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s170,d76459aa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s171,10d3530c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s172,0081165a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s173,4b18c47b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s174,f57ac964)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s175,f4ca0554)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s176,bd15831c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s177,1453b83a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s178,209859cd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s179,65391c66)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s180,e779909a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s181,da2955fd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s182,21829e73)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s183,de55e83e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s184,83048f3d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s185,2fc25b4a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s186,1ad92230)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s187,a7f9f32e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s188,fa7de194)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s189,4a6eaf22)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s190,dfec5850)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s191,e1658d7e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s192,fb0016c2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s193,b0a0c3f5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s194,58cc04ed)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s195,62ca2912)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s196,1c40344f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s197,b64cb33b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s198,5b0de98f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s199,0e7252e8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s200,611445a0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s201,c9011df3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s202,8ba4b01e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s203,b9b1c0a9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s204,45baf454)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s205,decec2e3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s206,e6f300a4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s207,a14ffaa1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s208,80054185)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s209,4910086c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s210,8e3fbe00)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s211,68206ff5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s212,143a6aee)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s213,ff09634a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s214,ee30a6d8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s215,41aa1a83)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s216,be872879)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s217,408c5f22)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s218,1b7a51f1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s219,dd943c94)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s220,794c926b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s221,79fd930d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s222,ec34f34c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s223,554615ed)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s224,bacf038c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s225,134d8aaa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s226,4559d5a3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s227,ce017d10)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s228,f3f85cd4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s229,6f4d36ec)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s230,5a2755ad)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s231,3c1c00b3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s232,a3e115d4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s233,2e8daadf)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s234,003fce99)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s235,5c695352)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s236,d389691d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s237,027ca166)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s238,de012953)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s239,498cc87e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s240,d9ce013a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s241,98b35941)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s242,790ddf1b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s243,f83b7628)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s244,b03a9bdd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s245,b2716504)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s246,0f705be8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s247,cd089541)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s248,22e360aa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s249,5a9c8ec7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s250,be92144b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s251,80e2b500)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s252,ff3be65c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s253,3ea8b114)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s254,bb6b1c2c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s255,0afedfb8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s256,f12dc51a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s257,17f5e111)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s258,60d5dc7b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s259,33e1f5ec)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s260,15e3a6da)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s261,52cd70f8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s262,5946d9dc)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s263,08bcb747)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s264,ba85ca36)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s265,ab95e875)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s266,a87056a0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s267,9eb956a4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s268,7b6b3541)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s269,d6e19134)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s270,25021142)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s271,396cb1ad)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s272,89b199f9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s273,2074f5f6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s274,7faa09eb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s275,30d93661)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s276,52e214dd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s277,33cc21ce)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s278,7fe8bc3f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s279,409dc0b3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s280,ccd8ada6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s281,f4387570)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s282,4f31db2d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s283,a1cbc4cf)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s284,56759884)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s285,4d989985)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s286,314310a1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s287,ff4d3740)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s288,5c52f995)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s289,691fe1cf)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s290,95f38ef4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s291,ae2cae4b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s292,0c311139)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s293,9e921b54)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s294,2882c474)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s295,18c68f7f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s296,640e3789)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s297,2653c503)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s298,91d46850)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s299,876a1d86)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s300,7e050c36)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s301,2e5fe634)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s302,db6572a4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s303,784a529d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s304,d997abcd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s305,68bcfad4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s306,b879218e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s307,c9ef6765)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s308,6c81aea1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s309,3b9c0f56)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s310,4a18f1a9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s311,5bb858b3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s312,93a37787)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s313,0d615b5a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s314,f286582c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s315,8ae2fd94)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s316,feabcf41)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s317,7a720c59)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s318,7e094b8b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s319,682ee4f9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s320,736d57d8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s321,4657ad0a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s322,90099fda)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s323,8af7c4f3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s324,7b33210d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s325,0e033f98)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s326,ecbdf8b2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s327,f3601345)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s328,e0a65745)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s329,819bddca)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s330,c8bb05e3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s331,d99924aa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s332,419d1077)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s333,06bdc1f0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s334,27a1d20c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s335,22fd3acb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s336,bf31a5d0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s337,81ded76b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s338,860adcee)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s339,df964e94)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s340,f7574427)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s341,2f635371)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s342,4fd37166)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s343,f67153ea)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s344,0bc648e6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s345,5bb675d7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s346,9f35b572)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s347,76952e2a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s348,eb6440e6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s349,5ee50d5c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s350,2569231e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s351,42d88d8e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s352,fe298be7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s353,600c2155)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s354,4f890dac)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s355,2ce1c30f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s356,f707da4e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s357,c3c9faa7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s358,50326df9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s359,30fca4ce)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s360,a968b528)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s361,3a482d4d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s362,b0edea52)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s363,e5c281ef)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s364,f2caa077)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s365,1970ea77)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s366,c09ad9d9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s367,5deb7060)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s368,cdfe08b2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s369,612a48a8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s370,fcb39fb5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s371,97ffb8b6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s372,adbb2381)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s373,a46aa9a6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s374,8a53f5bb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s375,3cd89b98)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s376,4f0ccd03)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s377,3c34c5fa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s378,d591bb4f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s379,1d4858a1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s380,88c5c2cc)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s381,dc356719)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s382,ecd342f5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s383,578defd4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s384,7e77dd6b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s385,d5c9d323)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s386,2dba22c8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s387,607b64aa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s388,ebbac246)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s389,06d8726e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s390,9a9f639e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s391,685a1403)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s392,8b4d9673)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s393,762be5f1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s394,96516003)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s395,6274d6b4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s396,6c7f10ed)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s397,640dfb3a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s398,dcfd30cd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s399,ced544c3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s400,2aba42d9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s401,92f013df)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s402,aa78d551)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s403,da784ad2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s404,90856b60)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s405,111c40c8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s406,0f097bb3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s407,dc844823)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s408,e12f3a20)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s409,198dbf24)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s410,23412e13)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s411,808b72eb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s412,e883bc4e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s413,6d80960a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s414,cb53121d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s415,19f1968b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s416,a5f0287a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s417,f24b0f53)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s418,e3f47478)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s419,49a87e7d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s420,e7e0f74e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s421,d13121eb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s422,8893b385)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s423,8da788fa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s424,e69014a9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s425,47bb6e90)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s426,714403d6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s427,245068dc)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s428,b85aa809)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s429,6e867666)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s430,361deb9b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s431,fca9f39f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s432,c4d9e52e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s433,2b19f72c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s434,5d268cff)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s435,408d922e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s436,6276a9b0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s437,a170a4c5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s438,53792a64)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s439,e6200bb6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s440,cd7a738f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s441,01db390c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s442,9d4515f8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s443,9cfd41b7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s444,1691efad)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s445,a2b0ac71)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s446,28afbab5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s447,1390aefa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s448,842ef6a2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s449,05072c0c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s450,0d2ff868)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s451,ca29bd6b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s452,52f7adc7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s453,36b0792f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s454,605565b0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s455,c21db26d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s456,9cc86c23)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s457,2a9cd082)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s458,9fb85b93)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s459,642147d2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s460,b6dec165)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s461,ad98a4aa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s462,133aecd1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s463,c7f068bc)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s464,3df10d8a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s465,05ddacb5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s466,3a962e51)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s467,b4edc8c2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s468,b6aeaf80)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s469,cc57e423)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s470,3730bb17)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s471,f0ada367)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s472,66c0968e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s473,d3d3ea14)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s474,0c16a6c2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s475,001e3db7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s476,677e655d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s477,5171b2fc)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s478,8ea81a2f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s479,a97576e5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s480,a64552bb)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s481,92bfa871)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s482,8df8ccef)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s483,adb7f207)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s484,0d6106da)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s485,5c32a736)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s486,3bc9ffcf)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s487,6337bc2b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s488,6bdb8151)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s489,7c5e83a5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s490,0e611b02)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s491,8b5896e2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s492,01ca245e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s493,fb86e303)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s494,8d45a4c0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s495,0527cee1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s496,be01dcbe)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s497,6377d364)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s498,35542f60)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s499,7c686ff3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s500,61158825)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s501,8e1d8f41)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s502,1e6e1902)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s503,b7a385ec)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s504,7d14a7d9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s505,6d5240f0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s506,5956ea8b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s507,1e2cb368)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s508,77afc0e1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s509,3de5b388)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s510,c32ca545)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s511,791051fa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s512,bc116b9b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s513,3038c8ef)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s514,257647a1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s515,a421dece)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s516,dd84e05b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s517,e8330f4f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s518,74868be1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s519,cd1a10ef)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s520,171a9d3c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s521,ef30c99d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s522,c2ae442d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s523,1939d069)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s524,488a58a9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s525,75adb0cd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s526,cfffe017)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s527,d9888a98)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s528,f8259a65)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s529,0631d06a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s530,369d3f4d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s531,748d1c8d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s532,d969777b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s533,26d44cb8)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s534,79e9797c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s535,732143da)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s536,99a9c4a1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s537,5c0f0338)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s538,0f44c075)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s539,ec019190)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s540,b09073c7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s541,5f05dafe)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s542,f9ae3d1b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s543,5c3e9e20)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s544,7675ff3a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s545,3472b179)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s546,458df414)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s547,a6c7ba93)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s548,8fcf323b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s549,6b36a477)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s550,7d827908)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s551,cbd77ec7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s552,a21f9c4d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s553,a44e6ad6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s554,970de74a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s555,b4f80cc1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s556,3dd6a3ce)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s557,581c97df)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s558,d241ebb7)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s559,b0e4db1d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s560,37be84d4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s561,4207ab3c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s562,337aa1c5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s563,5399d9a2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s564,19813d0b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s565,837b2370)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s566,14ad32e5)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s567,a1b482dd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s568,db427918)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s569,4c892781)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s570,3baee3bd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s571,93a2ec16)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s572,e837fce2)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s573,48099f0c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s574,98f86e38)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s575,1b54ded0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s576,5fadcb55)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s577,619c2cfa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s578,8f3b1318)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s579,afcc41ec)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s580,8104a402)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s581,1cb17e5b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s582,5d01fd83)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s583,aebfb8fd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s584,f64126c9)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s585,e37f6895)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s586,89baf29f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s587,f2df3eea)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s588,f281e46b)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s589,e55cd4b6)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s590,5bbabfe3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s591,b01ae718)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s592,84814d37)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s593,1ab7f364)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s594,2d3b824f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s595,d9357c67)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s596,db021e0c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s597,d2003093)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s598,860ad508)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s599,2eb4d5dd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s600,1edd8b6f)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s601,a441d1fa)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s602,68cbb27d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s603,2da121ee)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s604,4d3f9c66)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s605,9d3db033)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s606,e4c659c0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s607,fbdf976a)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s608,a5217d04)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s609,349d1870)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s610,0891e3f4)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s611,4102fc15)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s612,9cc33d63)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s613,4aecb69c)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s614,ba5e7361)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s615,3fd4d063)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s616,16ddb077)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s617,f0807cc1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s618,0791d12e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s619,f14f148e)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s620,dc995cd3)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s621,d9626b88)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s622,091c4e77)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s623,3dab8a16)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s624,1bbff449)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s625,90590abd)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s626,76fc8704)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s627,52c5e2a1)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s628,75b3269d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s629,8e4ad19d)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s630,7bb48fe0)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s631,02e13108)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s632,835e8651)@1
+on ab(d6,tt,ord,nb200k)@1.learned(s633,2c9b5576)@1

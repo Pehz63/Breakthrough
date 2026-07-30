@@ -82,7 +82,16 @@ for ($s = 0; $s -lt $Workers; $s++) {
     if (Test-Path $sf) { Remove-Item $sf -Force }
     $shardFiles += $sf
     $playArgs = @("play", "--shard", $s, "--of", $Workers, "--in", $Store, "--out", $sf) + $extra
-    $procs += Start-Process -FilePath $Exe -ArgumentList $playArgs -NoNewWindow -PassThru
+    # Start-Process -ArgumentList (Windows PowerShell 5.1) does NOT auto-quote array
+    # elements containing spaces -- it joins them with plain spaces into one command
+    # line, so an unquoted path like a project root under "...\Board Games\..." gets
+    # split into multiple argv tokens on the receiving end. Quote any element that
+    # needs it before handing the array to Start-Process. (Caught 2026-07-30: this
+    # cohort's --roster is an absolute path built from $Root, which does contain a
+    # space; an earlier manual invocation with a relative, space-free path happened
+    # not to trigger it.)
+    $quotedArgs = $playArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
+    $procs += Start-Process -FilePath $Exe -ArgumentList $quotedArgs -NoNewWindow -PassThru
 }
 
 Write-Host "Waiting for $($procs.Count) shards..."
