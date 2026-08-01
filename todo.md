@@ -924,14 +924,20 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   corruption is easy to commit by accident since it looks like an ordinary
   modification. Fix by pointing the tests at a scratch manifest path, or by
   having them restore what they overwrote.
-- **Decide whether the retired-agent parts should be committed after all** `[Now]`.
-  They are all under 100 MB now, so the original blocker no longer applies and
-  committing them is possible. Measured cost of leaving them out: a fresh clone
-  rates on rostered games only and gets a *different table* -- Spearman rho
-  0.9555, 156 of 170 agents change rank, largest shift 53 places, mean error bar
-  7.2 -> 11 Elo (2026-08-01). That makes the certified ranking non-reproducible
-  from the repo alone, which cuts against `ranking/CHAMPION.md` rule 1. Either
-  commit the parts, or transfer them out of band and document that requirement.
+- **Decide whether the TD-Leaf screening games should be committed after all**
+  `[Later]`. Currently the only untracked part (457,611 rows / 193 MB, the 9 of
+  25 Pass-2 candidates that were never promoted). `matches.retired_other.*`
+  (59,054 rows / 23 MB) IS tracked, so re-rostering one of those agents needs no
+  file transfer. Measured cost of leaving the TD-Leaf part out: a clone rates
+  without it and gets a different table -- Spearman rho 0.9526, 153 of 170
+  rostered agents change rank, largest shift 54 places, mean error bar 7.2 ->
+  10.2 Elo (2026-08-01). Note this is barely better than dropping *all* retired
+  parts (rho 0.9555), because the TD-Leaf games are 89% of the retired rows and
+  carry nearly all the pairwise connectivity. So the certified ranking is not
+  reproducible from the repo alone, which cuts against `ranking/CHAMPION.md`
+  rule 1: either commit the part (it is 3 files, each under the 100 MB limit and
+  immutable once written), or transfer it out of band and document that as a
+  prerequisite for any certification run.
 - ~~Model file format (text, `type=`/`head=` header) **(P1)**~~
 - ~~Model slots so White/Black can use different models in one process **(P1)**~~
 - ~~Append-only JSONL datastore (runs, models, agents, games, positions, evaluations, labels) **(P1)**~~

@@ -60,7 +60,11 @@ Split of the real store (`--max-mb 90`, `--group tdleaf_self`):
 |---|---|---|---|---|
 | `roster` | 132,769 | 54.8 | 1 | yes |
 | `retired_tdleaf_self` | 457,611 | 193.2 | 3 | no (gitignored) |
-| `retired_other` | 59,054 | 22.6 | 1 | no (gitignored) |
+| `retired_other` | 59,054 | 22.6 | 1 | yes |
+
+`retired_other` is tracked at the developer's direction, so re-rostering one of
+those agents later needs no out-of-band file transfer. Only the TD-Leaf Pass-2
+screening cohort (25 candidates tried, 16 promoted) is left untracked.
 
 696 agents present in the store are no longer in the 175-agent roster, and they
 account for **80% of the bytes**. The roster-only games fit in one file, so no
@@ -87,17 +91,31 @@ range afterwards: **0.19 MB** (`src/ranking.cpp`), down from 270.6 MB. A local
 
 ## The cost of leaving retired parts untracked
 
-This is the number that most qualifies the work. Rating with only the committed
-roster part (what a fresh clone sees) versus the full store, both on the same
-170 active agents:
+This is the number that most qualifies the work. Two clone scenarios were rated
+against the full store, both on the same 170 active agents:
 
-| Measure | Full store | Clone-only |
-|---|---|---|
-| Spearman rho of rank order | - | **0.9555** |
-| Agents whose rank moves | - | **156 of 170** |
-| Largest rank shift | - | **53 places** |
-| Mean error bar (`pm`) | 7.2 | **11** |
-| Games behind the d6 head's top agents | 6,648 | 2,208 |
+| Measure | Full store | Roster only | Roster + `retired_other` (shipped) |
+|---|---|---|---|
+| Store size | 271 MB | 55 MB | 78 MB |
+| Spearman rho of rank order | - | 0.9555 | **0.9526** |
+| Agents whose rank moves | - | 156 of 170 | **153 of 170** |
+| Largest rank shift | - | 53 places | **54 places** |
+| Mean error bar (`pm`) | 7.2 | 11 | **10.2** |
+| Games behind the d6 head's top agents | 6,648 | 2,208 | 2,728 |
+
+**Tracking `retired_other` barely helps.** Adding its 59,054 rows moves rho from
+0.9555 to 0.9526, which is no improvement at all at this precision. The TD-Leaf
+games are 89% of the retired rows and carry nearly all the pairwise
+connectivity, so the reproducibility gap is theirs almost entirely. Keeping
+`retired_other` tracked is worth doing for the option value of re-rostering
+those agents cheaply, not because it restores the ranking.
+
+A note on why this surprises people, recorded because it came up directly: a
+retired agent's games look discardable because the agent is absent from
+`standings.tsv`. But Bradley-Terry fits every rating **jointly**. A game between
+rostered X and retired R is evidence about X, so deleting it degrades X's
+rating, not just R's. That is also why `ratings.tsv` keeps `gone` rows at all:
+they are in the fit, merely filtered out of the standings view.
 
 Concrete inversions: the agent ranked 4th on the full store
 (`ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2`) falls to 43rd; 7th falls

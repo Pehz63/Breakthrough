@@ -106,17 +106,25 @@ ranking/gauntlet.jsonl
 ranking/climb_*.tsv
 
 # The store is split into PARTS by who played each game (`rank.exe split`),
-# listed in the committed ranking/matches.index.txt. Games between rostered
-# agents (matches.roster.*.jsonl) are the durable asset and stay committed.
+# listed in the committed ranking/matches.index.txt. Committed: games between
+# rostered agents (matches.roster.*.jsonl, 132,769 rows / 55 MB) and games
+# touching other retired agents (matches.retired_other.*.jsonl, 59,054 rows /
+# 23 MB), which are kept tracked so re-rostering one of those agents stays an
+# open option.
 #
-# Games touching an agent that was screened and never promoted are kept on disk
-# but NOT committed. There are far more of them than of the games that matter
-# (2026-08-01: 516,665 rows / 216 MB retired vs 132,769 rows / 55 MB rostered),
-# and their only future consumer is a decision to re-roster one of those agents.
-# A part named in the index whose file is absent is skipped rather than being an
-# error, so a fresh clone simply rates without those games. Nothing is deleted:
-# to move a group back into the ratings, restore its file.
-ranking/matches.retired_*.jsonl
+# Only the TD-Leaf Pass-2 screening cohort is untracked: 25 candidates were
+# tried and 16 promoted, and the discarded ones left 457,611 rows / 193 MB, 89%
+# of all retired rows and 71% of the whole store. They stay on disk and nothing
+# is deleted -- restoring the files puts them straight back in the fit.
+#
+# NOTE, because it is easy to assume otherwise: a retired agent's games are not
+# dead weight just because the agent is not in standings.tsv. Bradley-Terry
+# fits every rating jointly, so a game against a retired agent is evidence about
+# the ROSTERED agent that played it. Rating without these parts moves 156 of 170
+# rostered agents and widens the mean error bar from 7.2 to 11 Elo (measured
+# 2026-08-01). The certified ranking therefore needs the untracked parts, which
+# a fresh clone does not have. See plans/store-sharding-results-1-tidy-albatross.md.
+ranking/matches.retired_tdleaf_self.*.jsonl
 
 # Rating outputs, regenerated from the store by `rank.exe rate` (measured
 # 2026-08-01: 19.4 s over 649,434 games) and verified deterministic, so they are
