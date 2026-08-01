@@ -10,8 +10,11 @@
 #include "globals.h"
 #include "ranking.h"
 #include "ml_eval.h"
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#include <utility>
+#include <vector>
 
 static const char* getOpt(int argc, char** argv, const char* key, const char* def) {
     for (int i = 2; i < argc - 1; i++)
@@ -39,6 +42,8 @@ static void usage() {
     cout << "  play       play this shard's pending games, append them to the store\n";
     cout << "  rate       Bradley-Terry refit from the store -> ranking/ratings.tsv + report.md\n";
     cout << "  run        serial play then rate (the everyday command)\n";
+    cout << "  seal       roll the oversized live store tail into immutable sealed shards\n";
+    cout << "  split      group the store into parts by who played each game (dry run unless --apply)\n";
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
@@ -52,7 +57,9 @@ static void usage() {
     cout << "  labelfit   fit per-position (mu, sigma) Elo-advantage labels from a raw label store\n";
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
-    cout << "  --in ranking/matches.jsonl    the append-only match store\n";
+    cout << "  --in ranking/matches.jsonl    the append-only match store (live tail; sealed shards read alongside it)\n";
+    cout << "  --max-mb 48                   seal/split: largest part file to emit\n";
+    cout << "  --group tdleaf_self --apply   split: id substring getting its own bucket, and commit the move\n";
     cout << "  --board boards/board1.txt     starting board (history is kept per board)\n";
     cout << "  --games 8                     target games per pair (play/run/check),\n";
     cout << "                                or games per opponent (gauntlet)\n";
@@ -135,6 +142,57 @@ int main(int argc, char** argv) {
                       hasFlag(argc, argv, "--paired-openings"),
                       getOpt(argc, argv, "--cohort", ""));
         if (rc == 0) rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
+    } else if (cmd == "seal") {
+        string err;
+        long long maxMb = (long long)getInt(argc, argv, "--max-mb", 48);
+        int made = rankSealStore(store, maxMb * 1024 * 1024, err);
+        if (made < 0) { cout << "ERROR: " << err << "\n"; return 1; }
+        if (made == 0) {
+            cout << store << " is under " << maxMb << " MB, nothing to seal\n";
+        } else {
+            cout << "sealed " << made << " shard(s) of at most " << maxMb << " MB; "
+                 << store << " is now the live tail\n";
+        }
+        rc = 0;
+    } else if (cmd == "split") {
+        string err;
+        string group = getOpt(argc, argv, "--group", "tdleaf_self");
+        long long maxMb = (long long)getInt(argc, argv, "--max-mb", 48);
+        bool apply = hasFlag(argc, argv, "--apply");
+        RankSplitStats st;
+        if (rankSplitStore(store, roster, group, maxMb * 1024 * 1024, apply, st, err) != 0) {
+            cout << "ERROR: " << err << "\n";
+            return 1;
+        }
+        const double mb = 1024.0 * 1024.0;
+        cout << (apply ? "SPLIT" : "DRY RUN (pass --apply to perform it)") << "\n";
+        cout << "  roster agents   " << st.rosterAgents << "\n";
+        cout << "  retired agents  " << st.retired.size() << " (in the store, not in the roster)\n";
+        if (st.malformed) cout << "  malformed rows  " << st.malformed << " (kept with the roster part)\n";
+        cout << "\n  bucket                      rows        MB  parts\n";
+        for (size_t i = 0; i < st.buckets.size(); i++) {
+            const RankStoreBucket& bk = st.buckets[i];
+            char buf[256];
+            std::snprintf(buf, sizeof(buf), "  %-24s %9lld %9.1f  %d",
+                          bk.name.c_str(), bk.rows, bk.bytes / mb, (int)bk.parts.size());
+            cout << buf << "\n";
+        }
+        // Ranked by row count: the expensive retirees are what this is for.
+        std::vector<std::pair<long long, string> > byRows;
+        for (std::map<string, long long>::const_iterator it = st.retired.begin();
+             it != st.retired.end(); ++it) byRows.push_back(std::make_pair(it->second, it->first));
+        std::sort(byRows.begin(), byRows.end());
+        std::reverse(byRows.begin(), byRows.end());
+        const size_t show = byRows.size() < 10 ? byRows.size() : 10;
+        if (show) cout << "\n  top retired agents by rows:\n";
+        for (size_t i = 0; i < show; i++)
+            cout << "    " << byRows[i].first << "\t" << byRows[i].second << "\n";
+        if (byRows.size() > show)
+            cout << "    ... and " << (byRows.size() - show) << " more\n";
+        if (apply)
+            cout << "\nwrote " << rankStoreIndexPath(store) << "; every part is still loaded,\n"
+                 << "so ratings are unchanged until a part's line is removed from the index.\n";
+        rc = 0;
     } else if (cmd == "history") {
         rc = rankHistory(store, getOpt(argc, argv, "--agent", ""),
                          getInt(argc, argv, "--last", 20), board);

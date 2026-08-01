@@ -48,6 +48,38 @@ inputs to it, so it can never dethrone one. Certify by choosing which cohort
 agents to keep, appending them to `ranking/roster.txt`, and running a plain
 unpinned `rank.exe run` (`ranking/CHAMPION.md` rule 1).
 
+### Keeping the match store a size a host will accept
+
+The store only grows, so left alone it eventually stops being pushable: GitHub
+rejects any file over 100 MB outright, and a single growing file also deltas
+badly, so every commit re-stores the whole thing. Two subcommands manage it, and
+both are safe to run repeatedly.
+
+```powershell
+.\rank.exe split                      # DRY RUN: what would move where, and how big each group is
+.\rank.exe split --max-mb 90 --apply  # regroup the store into parts + write matches.index.txt
+.\rank.exe seal --max-mb 90           # roll an oversized live tail into sealed shards
+```
+
+`split` groups rows by who played the game into `roster` (both agents in the
+roster), `retired_<group>` (the `--group` substring, default `tdleaf_self`), and
+`retired_other`, capping each part at `--max-mb`. Nothing is deleted and every
+part stays listed in `matches.index.txt`, so **ratings do not change until an
+index line is removed**. That was verified on the real 649,434-game store: after
+the 2026-08-01 split, `ratings.tsv` and `standings.tsv` came back byte-identical
+and `games.tsv` was a confirmed pure reordering.
+
+Two things to know before using it:
+
+- **Removing a group is not free.** An archived row was also evidence about the
+  rostered agent that played in it, so dropping a group moves the Bradley-Terry
+  fit for agents you kept. Delete the index line, refit, and compare standings
+  before deciding the change is acceptable.
+- **`split` rewrites all parts,** so run it before `seal`, and expect a prune to
+  re-commit the roster part. Sealed shards are otherwise immutable, which is the
+  property that keeps the committed history from growing: only the small tail
+  changes between runs.
+
 ## Trainer (`train.exe`)
 
 The modular ML toolchain is a separate binary (does not touch `breakthrough.exe`).
@@ -187,7 +219,7 @@ is well-resolved and the climber has non-deterministic opponents.
 | `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root). See `gui/CLAUDE.md`. |
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
 | `train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `ensemble`, `imitate`, `dist-value`, `score`, `dist-eval`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, selfplay-supervised's `--model-type linear|mlp` + `--mlp-hidden "32"|"32,16"` + `--residual-skip <f>` (0 off / >0 fixed / <0 auto-calibrate the frozen chip skip), ensemble's `--models <comma-list>` + `--mirror 0|1` + `--out`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |
-| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `history`, `gauntlet`, `extract`, `bookgen`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
+| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `seal`, `split`, `history`, `gauntlet`, `extract`, `bookgen`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, seal's `--max-mb`, split's `--group`/`--max-mb`/`--apply` (**dry run unless `--apply`**), extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
 | bookgen (subcommand) | Mine an opening/refutation book from stored games between two agents. Replays every stored `--a` vs `--b` game, keeps positions + the move `--a` played (first `--plies` half-moves) from A's WINS only, writes `models/book<N>.txt` (a `#` provenance header + `<positionKey hex16> <sx> <sy> <dx>` lines). The `book` opener (`src/ai_random.cpp` `g_openers[]`) plays those replies via `.opener(book,<N>)@1`. First use: the s98 refutation book (dethrone plan phase 2, `plans/dethrone-champion-results-3-wiggly-mitten.md`). The book file is NOT hashed into the agent ID (unlike `learned()` models), so treat a book slot as immutable and give a regenerated book a new slot number. **Read `plans/book-opener-audit-results-1-vivid-lantern.md` (theory 38) before quoting any book Elo:** a book is a memorized line keyed by position hash, so its measured lift only holds while the opponent reproduces its previous replies, and it collapses under `pairgen --open-plies`. |
 
 **Mined books.** Slot numbers are immutable, a regenerated book gets a new slot.
@@ -250,7 +282,8 @@ its 16 wins collapse to about 7 distinct games, while `book4` is large (519 entr
 
 | Dir | Purpose |
 |---|---|
-| `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), `matches.jsonl` (append-only ID-keyed match history, committed, the never-recomputed asset), and generated `ratings.tsv` (full historical fit, includes retired agents) + `standings.tsv` (**read this one for current standings**: active agents only, grouped by search head) + `games.tsv` + `report.md`. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored. |
+| `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), and the **match store** (below). The rating outputs `ratings.tsv` (full historical fit, includes retired agents), `standings.tsv` (**read this one for current standings**: active agents only, grouped by search head), `games.tsv` and `report.md` are all **gitignored**: `rank.exe rate` rebuilds them from the store in about 20 seconds (measured 2026-08-01, 649,434 games) and the fit is deterministic, so a fresh clone runs a rate before reading standings. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored too. |
+| `ranking/` (store) | **The match store is a set of PARTS plus a live tail**, not one file. `matches.index.txt` (committed) lists the parts in load order, one filename per line, `#` comments allowed; a listed part whose file is absent is skipped rather than being an error. Writers always append to `matches.jsonl`, the tail, which is loaded last. Parts are grouped by WHO played the game (`rank.exe split`): `matches.roster.NNNN.jsonl` holds games between agents currently in the roster and is **committed**, while `matches.retired_*.jsonl` hold games touching agents that were screened and never promoted and are **gitignored** (kept on disk, never deleted). As of 2026-08-01 that is 132,769 rostered rows / 55 MB against 516,665 retired rows / 216 MB, which is why the split exists: the retired games are 80% of the bytes and their only future consumer is a decision to re-roster one of those agents. To take a group out of the ratings, delete its line from the index; to put it back, restore the line. `rank.exe seal` separately rolls an oversized tail into `matches.NNNN.jsonl` shards (and appends them to the index when one exists). Both cap every part with `--max-mb` so no single file can outgrow what a host accepts (GitHub rejects blobs over 100 MB). |
 | `ranking/` (2nd pool) | **Diversified-opening pool**, a self-contained second instrument added 2026-07-26: `roster_open.txt` (14 agents, each wearing `.opener(rand,4)@1`), `matches_open.jsonl` (its own store, never mixed with `matches.jsonl`), and generated `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. Rating outputs are named after the store, so `matches<X>.jsonl` writes `ratings<X>.tsv` and so on, and the default store keeps the historical unsuffixed names. |
 | `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
 | `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |

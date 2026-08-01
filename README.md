@@ -354,7 +354,7 @@ the full design and the "how to add more" workflow.
 ### Agent Elo ranking (rank.exe)
 
 Unlike the one-off tournament runner above, `rank.exe` maintains a persistent,
-incremental ladder: every game is appended to `ranking/matches.jsonl` and never
+incremental ladder: every game is appended to the match store and never
 overwritten, keyed by a canonical human-readable **agent ID** that
 encodes the whole agent, for example:
 
@@ -389,6 +389,16 @@ one agent to an N-agent pool costs N pairings, and nothing is ever recomputed.
 Ratings are a deterministic **Bradley-Terry maximum-likelihood refit** of the
 full store, anchored so `rand@1` = Elo 0 (an agent rates negative only when it is
 worse than uniform random), with a `+/-` standard error per agent.
+
+The store is a set of **parts** plus a live tail rather than one file, because it
+only grows and a single file eventually passes what a git host will accept.
+`ranking/matches.index.txt` lists the parts in load order and new games still
+append to `ranking/matches.jsonl`. `rank.exe split` groups the parts by who
+played each game, so games involving agents that have left the roster can be set
+aside; `rank.exe seal --max-mb N` rolls an oversized tail into immutable shards.
+The rating outputs (`ratings.tsv`, `standings.tsv`, `games.tsv`, `report.md`) are
+not committed, since `rank.exe rate` rebuilds them from the store in about 20
+seconds. Run a rate before reading standings in a fresh clone.
 
 ```powershell
 .\tools\run_rank.ps1 -Build check        # validate the roster, print model hashes

@@ -1098,12 +1098,23 @@ bool rankParseMatchRow(const string& line, RankMatchRow& out) {
     return true;
 }
 
-bool rankLoadMatches(const string& file, const string& board,
-                     std::vector<RankMatchRow>& out, int& skipped) {
-    out.clear();
-    skipped = 0;
-    std::ifstream f(file.c_str());
-    if (!f.is_open()) return true;   // no store yet = empty history, not an error
+// "ranking/matches.jsonl" + 2 -> "ranking/matches.0002.jsonl". The index is
+// zero-padded so a plain lexicographic listing is also chronological order.
+string rankStoreShardPath(const string& storeFile, int index) {
+    string stem = storeFile;
+    const string ext = ".jsonl";
+    if (stem.size() > ext.size() &&
+        stem.compare(stem.size() - ext.size(), ext.size(), ext) == 0)
+        stem = stem.substr(0, stem.size() - ext.size());
+    std::ostringstream s;
+    s << stem << "." << std::setw(4) << std::setfill('0') << index << ext;
+    return s.str();
+}
+
+// Read one store file into `out`. Shared by the sealed shards and the tail so a
+// row cannot be parsed differently depending on which of the two it lives in.
+static void readMatchStream(std::istream& f, const string& board,
+                            std::vector<RankMatchRow>& out, int& skipped) {
     string line;
     while (std::getline(f, line)) {
         if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
@@ -1115,7 +1126,362 @@ bool rankLoadMatches(const string& file, const string& board,
         m.b = canonicalizeLearnedIds(m.b);
         out.push_back(m);
     }
+}
+
+static string storeStem(const string& storeFile) {
+    const string ext = ".jsonl";
+    if (storeFile.size() > ext.size() &&
+        storeFile.compare(storeFile.size() - ext.size(), ext.size(), ext) == 0)
+        return storeFile.substr(0, storeFile.size() - ext.size());
+    return storeFile;
+}
+
+static string storeDir(const string& storeFile) {
+    size_t slash = storeFile.find_last_of("/\\");
+    return (slash == string::npos) ? string("") : storeFile.substr(0, slash + 1);
+}
+
+string rankStoreIndexPath(const string& storeFile) {
+    return storeStem(storeFile) + ".index.txt";
+}
+
+void rankStoreParts(const string& storeFile, std::vector<string>& out) {
+    out.clear();
+    std::ifstream idx(rankStoreIndexPath(storeFile).c_str());
+    if (idx.is_open()) {
+        const string dir = storeDir(storeFile);
+        string line;
+        while (std::getline(idx, line)) {
+            if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+            line = trimWs(line);
+            if (line.empty() || line[0] == '#') continue;
+            out.push_back(dir + line);
+        }
+    } else {
+        // No index: the contiguous sealed-shard chain, first missing index ends it.
+        for (int n = 1; ; n++) {
+            string p = rankStoreShardPath(storeFile, n);
+            std::ifstream s(p.c_str());
+            if (!s.is_open()) break;
+            out.push_back(p);
+        }
+    }
+    out.push_back(storeFile);   // the live tail is last, even if it does not exist yet
+}
+
+bool rankLoadMatches(const string& file, const string& board,
+                     std::vector<RankMatchRow>& out, int& skipped) {
+    out.clear();
+    skipped = 0;
+    std::vector<string> parts;
+    rankStoreParts(file, parts);
+    for (size_t i = 0; i < parts.size(); i++) {
+        std::ifstream f(parts[i].c_str());
+        // A missing part is not an error: retired-agent parts are deliberately
+        // untracked, so a fresh clone has an index line with no file behind it,
+        // and the tail does not exist until the first game is played.
+        if (!f.is_open()) continue;
+        readMatchStream(f, board, out, skipped);
+    }
     return true;
+}
+
+// Count non-blank lines, the unit the seal verification compares on (blank lines
+// carry no row, so preserving them is not part of the contract).
+static long long countStoreLines(const string& path) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) return 0;
+    long long n = 0;
+    string line;
+    while (std::getline(f, line)) if (!trimWs(line).empty()) n++;
+    return n;
+}
+
+// Rolls one bucket's rows across numbered part files, starting a new part rather
+// than letting any single file pass maxBytes.
+namespace {
+class PartWriter {
+public:
+    PartWriter(const string& stem, const string& bucket, long long maxBytes, bool apply)
+        : stem_(stem), bucket_(bucket), max_(maxBytes), apply_(apply), cur_(0) {}
+
+    bool write(const string& line, RankStoreBucket& stat, string& err) {
+        const long long need = (long long)line.size() + 1;
+        stat.rows++;
+        stat.bytes += need;
+        if (!apply_) {   // measuring: still model where the part boundaries fall
+            if (stat.parts.empty() || cur_ + need > max_) {
+                stat.parts.push_back(partPath((int)stat.parts.size() + 1));
+                cur_ = 0;
+            }
+            cur_ += need;
+            return true;
+        }
+        if (!out_.is_open() || cur_ + need > max_) {
+            if (out_.is_open()) out_.close();
+            string p = partPath((int)stat.parts.size() + 1);
+            out_.open(p.c_str(), std::ios::binary | std::ios::trunc);
+            if (!out_.is_open()) { err = "cannot write " + p; return false; }
+            stat.parts.push_back(p);
+            cur_ = 0;
+        }
+        out_ << line << "\n";
+        cur_ += need;
+        return true;
+    }
+    void close() { if (out_.is_open()) out_.close(); }
+
+private:
+    string partPath(int n) const {
+        std::ostringstream s;
+        s << stem_ << "." << bucket_ << "." << std::setw(4) << std::setfill('0') << n << ".jsonl";
+        return s.str();
+    }
+    string       stem_, bucket_;
+    long long    max_;
+    bool         apply_;
+    long long    cur_;
+    std::ofstream out_;
+};
+}  // namespace
+
+// Partition the store by who played each game (see ranking.h for the buckets).
+//
+// Stored ids are canonicalized exactly as rankLoadMatches canonicalizes them
+// before the roster is consulted. Skipping that would read every legacy-form
+// `learned(sN,hash8)` row as non-rostered and file live agents' games under
+// "retired" -- the same id-canonicalization gap that has already broken
+// scheduler dedup twice.
+int rankSplitStore(const string& storeFile, const string& rosterFile,
+                   const string& groupMatch, long long maxBytes, bool apply,
+                   RankSplitStats& out, string& err) {
+    err.clear();
+    out = RankSplitStats();
+    if (maxBytes <= 0) { err = "maxBytes must be positive"; return -1; }
+
+    std::vector<RankAgent> roster;
+    if (!rankLoadRosterFile(rosterFile, roster, err)) return -1;
+    std::set<string> live;
+    for (size_t i = 0; i < roster.size(); i++) live.insert(roster[i].id);
+    out.rosterAgents = (long long)live.size();
+
+    const string stem   = storeStem(storeFile);
+    const string tagged = groupMatch.empty() ? string("") : ("retired_" + groupMatch);
+
+    out.buckets.resize(tagged.empty() ? 2 : 3);
+    out.buckets[0].name = "roster";
+    if (!tagged.empty()) out.buckets[1].name = tagged;
+    out.buckets.back().name = "retired_other";
+
+    std::vector<PartWriter*> w;
+    for (size_t i = 0; i < out.buckets.size(); i++)
+        w.push_back(new PartWriter(stem, out.buckets[i].name, maxBytes, apply));
+
+    struct Cleanup {
+        std::vector<PartWriter*>& v;
+        explicit Cleanup(std::vector<PartWriter*>& r) : v(r) {}
+        ~Cleanup() { for (size_t i = 0; i < v.size(); i++) { v[i]->close(); delete v[i]; } }
+    } cleanup(w);
+    (void)cleanup;
+
+    std::vector<string> parts;
+    rankStoreParts(storeFile, parts);
+
+    long long scanned = 0;
+    for (size_t i = 0; i < parts.size(); i++) {
+        std::ifstream f(parts[i].c_str());
+        if (!f.is_open()) continue;
+        string line;
+        while (std::getline(f, line)) {
+            if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+            if (trimWs(line).empty()) continue;
+            scanned++;
+            RankMatchRow m;
+            if (!rankParseMatchRow(line, m)) {
+                // Unparseable rows ride with the roster part: this store is never
+                // regenerated, so discarding something we merely failed to read
+                // would be the one unrecoverable outcome.
+                out.malformed++;
+                if (!w[0]->write(line, out.buckets[0], err)) return -1;
+                continue;
+            }
+            const string a = canonicalizeLearnedIds(m.w);
+            const string b = canonicalizeLearnedIds(m.b);
+            const bool aLive = live.count(a) > 0;
+            const bool bLive = live.count(b) > 0;
+            size_t bucket;
+            if (aLive && bLive) {
+                bucket = 0;
+            } else {
+                if (!aLive) out.retired[a]++;
+                if (!bLive) out.retired[b]++;
+                const bool hit = !tagged.empty() &&
+                                 ((!aLive && a.find(groupMatch) != string::npos) ||
+                                  (!bLive && b.find(groupMatch) != string::npos));
+                bucket = hit ? 1 : out.buckets.size() - 1;
+            }
+            if (!w[bucket]->write(line, out.buckets[bucket], err)) return -1;
+        }
+    }
+    if (!apply) return 0;
+    for (size_t i = 0; i < w.size(); i++) w[i]->close();
+
+    // Verify the parts hold every scanned row BEFORE the originals are touched.
+    long long written = 0;
+    for (size_t i = 0; i < out.buckets.size(); i++)
+        for (size_t p = 0; p < out.buckets[i].parts.size(); p++)
+            written += countStoreLines(out.buckets[i].parts[p]);
+    if (written != scanned) {
+        for (size_t i = 0; i < out.buckets.size(); i++)
+            for (size_t p = 0; p < out.buckets[i].parts.size(); p++)
+                std::remove(out.buckets[i].parts[p].c_str());
+        std::ostringstream e;
+        e << "parts hold " << written << " rows but the store had " << scanned
+          << "; store left untouched";
+        err = e.str();
+        return -1;
+    }
+
+    // Index first, so a crash before the old files go leaves a readable store.
+    const string idxPath = rankStoreIndexPath(storeFile);
+    {
+        std::ofstream idx(idxPath.c_str(), std::ios::trunc);
+        if (!idx.is_open()) { err = "cannot write " + idxPath; return -1; }
+        idx << "# Parts of this match store, in load order. One filename per line,\n"
+            << "# relative to this directory. To drop a group of games from the\n"
+            << "# ratings, delete its line (and, when you mean it, its file).\n"
+            << "# A listed part that is missing is skipped, so parts kept out of\n"
+            << "# git simply do not contribute on a fresh clone.\n"
+            << "# Written by rank.exe split. New games still append to the store\n"
+            << "# file itself, which is always loaded last.\n";
+        const string dir = storeDir(storeFile);
+        for (size_t i = 0; i < out.buckets.size(); i++) {
+            if (out.buckets[i].parts.empty()) continue;
+            idx << "\n# " << out.buckets[i].name << ": " << out.buckets[i].rows << " rows\n";
+            for (size_t p = 0; p < out.buckets[i].parts.size(); p++) {
+                string rel = out.buckets[i].parts[p];
+                if (!dir.empty() && rel.compare(0, dir.size(), dir) == 0) rel = rel.substr(dir.size());
+                idx << rel << "\n";
+            }
+        }
+    }
+
+    // The rows now live in the parts, so the old chain and tail can go.
+    for (size_t i = 0; i + 1 < parts.size(); i++) std::remove(parts[i].c_str());
+    std::ofstream tail(storeFile.c_str(), std::ios::binary | std::ios::trunc);
+    if (!tail.is_open()) { err = "cannot truncate the tail " + storeFile; return -1; }
+    return 0;
+}
+
+int rankSealStore(const string& storeFile, long long maxBytes, string& err) {
+    err.clear();
+    if (maxBytes <= 0) { err = "maxBytes must be positive"; return -1; }
+
+    std::ifstream probe(storeFile.c_str(), std::ios::binary | std::ios::ate);
+    if (!probe.is_open()) { err = "no store at " + storeFile; return -1; }
+    long long tailBytes = (long long)probe.tellg();
+    probe.close();
+    if (tailBytes <= maxBytes) return 0;   // nothing to do
+
+    // Sealed shards are immutable, so new ones start after the existing chain.
+    int firstNew = 1;
+    while (true) {
+        std::ifstream s(rankStoreShardPath(storeFile, firstNew).c_str());
+        if (!s.is_open()) break;
+        firstNew++;
+    }
+
+    const long long before = countStoreLines(storeFile);
+    // Emit only whole shards; whatever is left over stays in the tail rather than
+    // becoming a stunted shard that the next seal would have to work around.
+    const int targetShards = (int)(tailBytes / maxBytes);
+
+    std::ifstream in(storeFile.c_str());
+    if (!in.is_open()) { err = "cannot read " + storeFile; return -1; }
+
+    const string tmpTail = storeFile + ".sealtmp";
+    std::vector<string> written;
+    std::ofstream cur;
+    std::ofstream tail;
+    int made = 0;
+    long long curBytes = 0;
+    string line;
+
+    while (std::getline(in, line)) {
+        if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+        if (trimWs(line).empty()) continue;
+        const long long need = (long long)line.size() + 1;
+        if (made < targetShards) {
+            if (!cur.is_open() || curBytes + need > maxBytes) {
+                if (cur.is_open()) { cur.close(); made++; }
+                if (made < targetShards) {
+                    string p = rankStoreShardPath(storeFile, firstNew + made);
+                    cur.open(p.c_str(), std::ios::binary | std::ios::trunc);
+                    if (!cur.is_open()) { err = "cannot write " + p; return -1; }
+                    written.push_back(p);
+                    curBytes = 0;
+                }
+            }
+            if (made < targetShards) { cur << line << "\n"; curBytes += need; continue; }
+        }
+        if (!tail.is_open()) {
+            tail.open(tmpTail.c_str(), std::ios::binary | std::ios::trunc);
+            if (!tail.is_open()) { err = "cannot write " + tmpTail; return -1; }
+        }
+        tail << line << "\n";
+    }
+    if (cur.is_open()) { cur.close(); made++; }
+    if (!tail.is_open()) {   // every line landed in a shard; the tail becomes empty
+        tail.open(tmpTail.c_str(), std::ios::binary | std::ios::trunc);
+        if (!tail.is_open()) { err = "cannot write " + tmpTail; return -1; }
+    }
+    tail.close();
+    in.close();
+
+    // Verify BEFORE destroying the original: this store is never regenerated, so
+    // a silent short write here would be unrecoverable.
+    long long after = countStoreLines(tmpTail);
+    for (size_t i = 0; i < written.size(); i++) after += countStoreLines(written[i]);
+    if (after != before) {
+        for (size_t i = 0; i < written.size(); i++) std::remove(written[i].c_str());
+        std::remove(tmpTail.c_str());
+        std::ostringstream e;
+        e << "line count changed (" << before << " -> " << after << "), store left untouched";
+        err = e.str();
+        return -1;
+    }
+
+    // When a part index exists it is the authority on what gets loaded, so newly
+    // sealed shards must be listed in it or their rows would silently stop being
+    // read. Append before the tail is replaced.
+    const string idxPath = rankStoreIndexPath(storeFile);
+    {
+        std::ifstream probeIdx(idxPath.c_str());
+        if (probeIdx.is_open()) {
+            probeIdx.close();
+            std::ofstream idx(idxPath.c_str(), std::ios::app);
+            if (!idx.is_open()) {
+                for (size_t i = 0; i < written.size(); i++) std::remove(written[i].c_str());
+                std::remove(tmpTail.c_str());
+                err = "cannot append to " + idxPath + "; store left untouched";
+                return -1;
+            }
+            const string dir = storeDir(storeFile);
+            idx << "\n# sealed from the tail\n";
+            for (size_t i = 0; i < written.size(); i++) {
+                string rel = written[i];
+                if (!dir.empty() && rel.compare(0, dir.size(), dir) == 0) rel = rel.substr(dir.size());
+                idx << rel << "\n";
+            }
+        }
+    }
+
+    std::remove(storeFile.c_str());
+    if (std::rename(tmpTail.c_str(), storeFile.c_str()) != 0) {
+        err = "sealed shards written but could not replace the tail; recover from " + tmpTail;
+        return -1;
+    }
+    return made;
 }
 
 // ============================================================

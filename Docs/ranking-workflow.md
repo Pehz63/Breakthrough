@@ -121,6 +121,18 @@ Nothing in this workflow can alter `ranking/ratings.tsv`, `standings.tsv`, or
 any champion. It does append real games to `ranking/matches.jsonl`, which is
 correct and permanent: the store is append-only and never regenerated.
 
+**Where the store lives.** `ranking/matches.jsonl` is the live *tail*, not the
+whole store. The rest sits in parts listed by `ranking/matches.index.txt`
+(`rank.exe split`), and everything appends to the tail as before. Two
+consequences for this workflow: the rating outputs are gitignored, so run a
+`rank.exe rate` before reading `standings.tsv` in a fresh clone; and the
+retired-agent parts are untracked, so a clone that lacks them rates on rostered
+games only and produces a different table (measured 2026-08-01: Spearman rho
+0.9555 against the full fit, 156 of 170 agents changing rank). Certification
+claims require the full store, so check that every index-listed part is present
+before running Workflow B. Details:
+`plans/store-sharding-results-1-tidy-albatross.md`.
+
 ## Workflow B: certify (this is what can dethrone a champion)
 
 Run deliberately, once, after choosing which agents to keep.

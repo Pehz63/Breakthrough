@@ -134,8 +134,88 @@ std::string rankFormatMatchRow(const RankMatchRow& m);
 bool rankParseMatchRow(const std::string& line, RankMatchRow& out);
 // Load rows from a JSONL file, keeping only rows whose board matches `board`
 // (empty = keep all). Malformed lines are counted in skipped, never fatal.
+//
+// The store is SHARDED (see rankStoreShardPath). Sealed shards are read first,
+// in index order, then `file` itself as the live tail, so the row order is the
+// same append order a single unsharded file would have given.
 bool rankLoadMatches(const std::string& file, const std::string& board,
                      std::vector<RankMatchRow>& out, int& skipped);
+
+// ---- Match store sharding ----
+// The store is append-only and grows without bound, which one file cannot carry:
+// a host that caps file size (GitHub rejects blobs over 100 MB) stops accepting
+// it, and every commit re-stores the whole file because a growing file deltas
+// badly. So the store is a chain of fixed-size SEALED shards plus a live tail:
+//
+//   ranking/matches.0001.jsonl   sealed, immutable, never appended to again
+//   ranking/matches.0002.jsonl   sealed
+//   ranking/matches.jsonl        the live tail: every write still appends HERE
+//
+// Only the tail changes, so each sealed shard is stored exactly once, forever.
+// Shard indices are contiguous from 1, which is what lets the loader find them
+// by probing successive names instead of enumerating a directory.
+//
+// Writers are unaffected: `play` and the run_rank.ps1 shard merge keep appending
+// to the tail, and sealing is a separate deliberate step.
+std::string rankStoreShardPath(const std::string& storeFile, int index);
+
+// Split the live tail into sealed shards of at most maxBytes each, leaving the
+// remainder as the new tail. No-op (returns 0) when the tail is already under
+// maxBytes. Verifies that the rewritten chain holds exactly the line count the
+// tail had before touching the original, and aborts leaving the tail untouched
+// if it does not, because this store is never regenerated.
+// Returns the number of shards created, or -1 on error.
+int rankSealStore(const std::string& storeFile, long long maxBytes, std::string& err);
+
+// ---- Splitting the store by who played the game ----
+// A screening study leaves behind agents that were never promoted, and their
+// games outlive them: the store holds every game ever played, so a sweep that
+// tried 25 candidates and kept 16 keeps carrying the other nine forever.
+//
+// Splitting groups rows into parts by WHO played them, so a group can later be
+// dropped (or kept out of a clone) by deleting one file, without any row being
+// destroyed now. Rows are classified by their two agents:
+//
+//   roster          both agents are in the roster
+//   retired_<tag>   otherwise, and some agent's id contains the group substring
+//   retired_other   otherwise
+//
+// The tagged bucket wins over retired_other when a row touches both, so a row
+// appears in exactly one part and the parts sum to the original store.
+struct RankStoreBucket {
+    std::string              name;
+    long long                rows = 0;
+    long long                bytes = 0;
+    std::vector<std::string> parts;   // files written, in load order
+};
+
+struct RankSplitStats {
+    std::vector<RankStoreBucket>     buckets;
+    long long                        malformed = 0;    // unparseable rows, kept with the roster part
+    long long                        rosterAgents = 0;
+    std::map<std::string, long long> retired;          // retired id -> rows it appears in
+};
+
+// Rewrite the store as grouped parts plus an index listing them, capping every
+// part at maxBytes so no single file can outgrow what a host will accept.
+// Nothing is deleted: every row lands in exactly one part, and the parts are all
+// still loaded, so ratings are unchanged until a part is deliberately removed.
+// With apply=false this only measures and writes nothing.
+// Returns 0 on success, -1 on error.
+int rankSplitStore(const std::string& storeFile, const std::string& rosterFile,
+                   const std::string& groupMatch, long long maxBytes, bool apply,
+                   RankSplitStats& out, std::string& err);
+
+// ---- Store part index ----
+// "ranking/matches.jsonl" -> "ranking/matches.index.txt". One part filename per
+// line (relative to the store's directory), in load order, '#' comments allowed.
+// Hand-editable on purpose: dropping a group of games is deleting its line.
+std::string rankStoreIndexPath(const std::string& storeFile);
+
+// Every file holding rows, in load order. Uses the index when one exists, else
+// falls back to probing the contiguous sealed-shard chain. The live tail is
+// always last.
+void rankStoreParts(const std::string& storeFile, std::vector<std::string>& out);
 
 // ---- Scheduler ----
 // Pending games = per active pair, gamesPerPair color-balanced targets minus what

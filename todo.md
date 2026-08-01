@@ -910,6 +910,28 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   search itself, not the check) `[Next]`
 
 ## Data + Infrastructure
+- ~~Match store outgrew what a git host accepts (270 MB, over GitHub's 100 MB
+  per-file limit, which blocked every push). Store is now PARTS + a live tail
+  listed in `ranking/matches.index.txt`, grouped by who played each game via
+  `rank.exe split`: rostered games committed (55 MB), retired-agent games kept
+  on disk but gitignored (216 MB). Verified information-preserving: the refit
+  returned byte-identical `ratings.tsv`/`standings.tsv`. See
+  `plans/store-sharding-results-1-*.md`.~~
+- **Running the test suite overwrites `models/manifest.{json,md}`** `[Next]`. The
+  ML tests call `writeManifest` with their own scratch rows, so `tests.exe`
+  replaces the real committed manifest with a single `build\dist_model_ckpt30.txt`
+  entry. Noticed 2026-08-01 while reviewing a diff before committing, and the
+  corruption is easy to commit by accident since it looks like an ordinary
+  modification. Fix by pointing the tests at a scratch manifest path, or by
+  having them restore what they overwrote.
+- **Decide whether the retired-agent parts should be committed after all** `[Now]`.
+  They are all under 100 MB now, so the original blocker no longer applies and
+  committing them is possible. Measured cost of leaving them out: a fresh clone
+  rates on rostered games only and gets a *different table* -- Spearman rho
+  0.9555, 156 of 170 agents change rank, largest shift 53 places, mean error bar
+  7.2 -> 11 Elo (2026-08-01). That makes the certified ranking non-reproducible
+  from the repo alone, which cuts against `ranking/CHAMPION.md` rule 1. Either
+  commit the parts, or transfer them out of band and document that requirement.
 - ~~Model file format (text, `type=`/`head=` header) **(P1)**~~
 - ~~Model slots so White/Black can use different models in one process **(P1)**~~
 - ~~Append-only JSONL datastore (runs, models, agents, games, positions, evaluations, labels) **(P1)**~~

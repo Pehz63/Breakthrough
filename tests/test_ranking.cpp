@@ -660,6 +660,244 @@ TEST_CASE("ranking match store - board filter and malformed-line counting") {
 }
 
 // ============================================================
+// Match store sharding
+// ============================================================
+// The store outgrew what one file can be hosted as, so it is a chain of sealed
+// shards plus a live tail. These pin the two properties the rest of the system
+// depends on: a sharded store loads as if it were still one file, and sealing
+// never loses a row.
+static string shardTestRow(const string& w, int seed) {
+    RankMatchRow m;
+    m.w = w; m.b = "tiered@1"; m.r = 'W'; m.plies = 9;
+    m.wms = m.bms = 0; m.wmv = m.bmv = 5; m.wnod = m.bnod = 0;
+    m.seed = (unsigned)seed; m.par = 1; m.ts = ""; m.run = "";
+    m.board = "boards/board1.txt";
+    return rankFormatMatchRow(m);
+}
+
+TEST_CASE("ranking match store - shard path naming") {
+    REQUIRE(rankStoreShardPath("ranking/matches.jsonl", 1) == "ranking/matches.0001.jsonl");
+    REQUIRE(rankStoreShardPath("ranking/matches.jsonl", 42) == "ranking/matches.0042.jsonl");
+    // The second pool shards under its own name, so the two never collide.
+    REQUIRE(rankStoreShardPath("ranking/matches_open.jsonl", 3) == "ranking/matches_open.0003.jsonl");
+    // Sealed-shard names must NOT collide with run_rank.ps1's per-worker temps
+    // (<store>.<shard>), which are gitignored scratch and merged into the tail.
+    REQUIRE(rankStoreShardPath("ranking/matches.jsonl", 1) != "ranking/matches.jsonl.1");
+}
+
+TEST_CASE("ranking match store - the part index decides what loads") {
+    const string base = "build\\test_rank_index.jsonl";
+    const string idx  = rankStoreIndexPath(base);
+    REQUIRE(idx == "build\\test_rank_index.index.txt");
+    const string p1 = "build\\test_rank_index.roster.0001.jsonl";
+    const string p2 = "build\\test_rank_index.retired.0001.jsonl";
+    std::remove(base.c_str()); std::remove(idx.c_str());
+    std::remove(p1.c_str());   std::remove(p2.c_str());
+
+    {
+        std::ofstream a(p1.c_str(), std::ios::trunc); a << shardTestRow("rand@1", 1) << "\n";
+        std::ofstream b(p2.c_str(), std::ios::trunc); b << shardTestRow("tiered@1", 2) << "\n";
+        std::ofstream t(base.c_str(), std::ios::trunc); t << shardTestRow("smart(3)@1", 3) << "\n";
+        std::ofstream f(idx.c_str(), std::ios::trunc);
+        f << "# comment\n\n"
+          << "test_rank_index.roster.0001.jsonl\n"
+          << "test_rank_index.retired.0001.jsonl\n";
+    }
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(base, "", rows, skipped));
+    REQUIRE(rows.size() == 3);   // both listed parts, then the tail
+
+    // Dropping a line drops those games from the fit -- the whole point of the
+    // index -- without the file being deleted.
+    {
+        std::ofstream f(idx.c_str(), std::ios::trunc);
+        f << "test_rank_index.roster.0001.jsonl\n";
+    }
+    REQUIRE(rankLoadMatches(base, "", rows, skipped));
+    REQUIRE(rows.size() == 2);
+    REQUIRE(rows[0].seed == 1u);
+    REQUIRE(rows[1].seed == 3u);   // the tail still loads last
+
+    // A listed part with no file behind it is skipped, not an error: retired
+    // parts are untracked, so a fresh clone has exactly this state.
+    {
+        std::ofstream f(idx.c_str(), std::ios::trunc);
+        f << "test_rank_index.roster.0001.jsonl\n"
+          << "test_rank_index.does_not_exist.jsonl\n";
+    }
+    REQUIRE(rankLoadMatches(base, "", rows, skipped));
+    REQUIRE(rows.size() == 2);
+    REQUIRE(skipped == 0);
+
+    std::remove(base.c_str()); std::remove(idx.c_str());
+    std::remove(p1.c_str());   std::remove(p2.c_str());
+}
+
+TEST_CASE("ranking match store - split groups rows by who played them") {
+    const string base = "build\\test_rank_split.jsonl";
+    const string rosterPath = "build\\test_rank_split_roster.txt";
+    const string idx = rankStoreIndexPath(base);
+    std::remove(base.c_str()); std::remove(idx.c_str());
+
+    const string kept    = "rand@1";
+    const string tiered  = "tiered@1";
+    const string retTag  = "smart(3)@1";     // stands in for the tagged retiree
+    const string retOther= "smart(5)@1";
+    {
+        std::ofstream r(rosterPath.c_str(), std::ios::trunc);
+        r << "anchor " << kept << "\n" << "on " << tiered << "\n";
+    }
+    {   // 3 roster-only, 2 touching the tagged retiree, 1 touching the other
+        std::ofstream f(base.c_str(), std::ios::trunc);
+        RankMatchRow m;
+        m.r = 'W'; m.plies = 9; m.wms = m.bms = 0; m.wmv = m.bmv = 5;
+        m.wnod = m.bnod = 0; m.par = 1; m.board = "boards/board1.txt";
+        const char* pairsW[6] = { "rand@1","rand@1","tiered@1","rand@1","smart(3)@1","rand@1" };
+        const char* pairsB[6] = { "tiered@1","rand@1","rand@1","smart(3)@1","tiered@1","smart(5)@1" };
+        for (int i = 0; i < 6; i++) {
+            m.w = pairsW[i]; m.b = pairsB[i]; m.seed = (unsigned)i;
+            f << rankFormatMatchRow(m) << "\n";
+        }
+    }
+
+    std::vector<RankMatchRow> before;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(base, "", before, skipped));
+    REQUIRE(before.size() == 6);
+
+    string err;
+    RankSplitStats st;
+    // Dry run must not write anything.
+    REQUIRE(rankSplitStore(base, rosterPath, "smart(3)", 1 << 20, false, st, err) == 0);
+    INFO(err);
+    { std::ifstream probe(idx.c_str()); REQUIRE(!probe.is_open()); }
+    REQUIRE(st.buckets.size() == 3);
+    REQUIRE(st.buckets[0].name == "roster");
+    REQUIRE(st.buckets[0].rows == 3);
+    REQUIRE(st.buckets[1].rows == 2);   // the tagged bucket wins over retired_other
+    REQUIRE(st.buckets[2].rows == 1);
+
+    REQUIRE(rankSplitStore(base, rosterPath, "smart(3)", 1 << 20, true, st, err) == 0);
+    INFO(err);
+
+    // Nothing is lost: the parts still load as the same 6 rows.
+    std::vector<RankMatchRow> after;
+    REQUIRE(rankLoadMatches(base, "", after, skipped));
+    REQUIRE(after.size() == 6);
+
+    // And the roster-only part alone holds exactly the roster-only games.
+    {
+        std::ofstream f(idx.c_str(), std::ios::trunc);
+        f << "test_rank_split.roster.0001.jsonl\n";
+    }
+    REQUIRE(rankLoadMatches(base, "", after, skipped));
+    REQUIRE(after.size() == 3);
+
+    std::remove(base.c_str()); std::remove(idx.c_str());
+    std::remove(rosterPath.c_str());
+    for (size_t i = 0; i < st.buckets.size(); i++)
+        for (size_t p = 0; p < st.buckets[i].parts.size(); p++)
+            std::remove(st.buckets[i].parts[p].c_str());
+}
+
+TEST_CASE("ranking match store - sealed shards load ahead of the live tail") {
+    const string base = "build\\test_rank_shard.tmp";
+    std::remove(base.c_str());
+    for (int n = 1; n <= 4; n++) std::remove(rankStoreShardPath(base, n).c_str());
+
+    {   // two sealed shards, then the tail: append order is 1, 2, tail
+        std::ofstream s1(rankStoreShardPath(base, 1).c_str(), std::ios::trunc);
+        s1 << shardTestRow("rand@1", 1) << "\n";
+        std::ofstream s2(rankStoreShardPath(base, 2).c_str(), std::ios::trunc);
+        s2 << shardTestRow("smart(3)@1", 2) << "\n";
+        std::ofstream t(base.c_str(), std::ios::trunc);
+        t << shardTestRow("tiered@1", 3) << "\n";
+    }
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(base, "boards/board1.txt", rows, skipped));
+    REQUIRE(rows.size() == 3);
+    REQUIRE(skipped == 0);
+    REQUIRE(rows[0].seed == 1u);   // shard order, then the tail last
+    REQUIRE(rows[1].seed == 2u);
+    REQUIRE(rows[2].seed == 3u);
+
+    // A gap ends the chain: shard 4 without shard 3 is not reachable, which is
+    // the invariant that lets the loader probe names instead of listing a dir.
+    {
+        std::ofstream s4(rankStoreShardPath(base, 4).c_str(), std::ios::trunc);
+        s4 << shardTestRow("rand@1", 4) << "\n";
+    }
+    REQUIRE(rankLoadMatches(base, "boards/board1.txt", rows, skipped));
+    REQUIRE(rows.size() == 3);
+
+    std::remove(base.c_str());
+    for (int n = 1; n <= 4; n++) std::remove(rankStoreShardPath(base, n).c_str());
+}
+
+TEST_CASE("ranking match store - sealing preserves every row and bounds shard size") {
+    const string base = "build\\test_rank_seal.tmp";
+    std::remove(base.c_str());
+    for (int n = 1; n <= 8; n++) std::remove(rankStoreShardPath(base, n).c_str());
+
+    const int kRows = 400;
+    {
+        std::ofstream f(base.c_str(), std::ios::trunc);
+        for (int i = 0; i < kRows; i++) f << shardTestRow("rand@1", i) << "\n";
+    }
+    std::vector<RankMatchRow> before;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(base, "", before, skipped));
+    REQUIRE(before.size() == (size_t)kRows);
+
+    std::ifstream sz(base.c_str(), std::ios::binary | std::ios::ate);
+    const long long total = (long long)sz.tellg();
+    sz.close();
+    const long long cap = total / 4;   // forces several shards plus a remainder
+
+    string err;
+    int made = rankSealStore(base, cap, err);
+    INFO(err);
+    REQUIRE(made > 0);
+
+    // Every emitted shard respects the cap -- the whole point of sealing.
+    for (int n = 1; n <= made; n++) {
+        std::ifstream s(rankStoreShardPath(base, n).c_str(), std::ios::binary | std::ios::ate);
+        REQUIRE(s.is_open());
+        REQUIRE((long long)s.tellg() <= cap);
+    }
+
+    // The chain reads back as the same rows in the same order.
+    std::vector<RankMatchRow> after;
+    REQUIRE(rankLoadMatches(base, "", after, skipped));
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < after.size(); i++) {
+        REQUIRE(after[i].seed == before[i].seed);
+        REQUIRE(after[i].w == before[i].w);
+    }
+
+    // Sealing again is a no-op once the tail is under the cap, so it is safe to
+    // run unconditionally from a script.
+    std::ifstream t(base.c_str(), std::ios::binary | std::ios::ate);
+    REQUIRE((long long)t.tellg() <= cap);
+    t.close();
+    REQUIRE(rankSealStore(base, cap, err) == 0);
+
+    // Writers still append to the tail, and the new row loads after the shards.
+    {
+        std::ofstream f(base.c_str(), std::ios::app);
+        f << shardTestRow("policy@1", 9999) << "\n";
+    }
+    REQUIRE(rankLoadMatches(base, "", after, skipped));
+    REQUIRE(after.size() == before.size() + 1);
+    REQUIRE(after.back().seed == 9999u);
+
+    std::remove(base.c_str());
+    for (int n = 1; n <= made + 1; n++) std::remove(rankStoreShardPath(base, n).c_str());
+}
+
+// ============================================================
 // Scheduler
 // ============================================================
 static RankAgent mkActive(const string& id) {

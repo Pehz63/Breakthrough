@@ -1,0 +1,18 @@
+# Parts of this match store, in load order. One filename per line,
+# relative to this directory. To drop a group of games from the
+# ratings, delete its line (and, when you mean it, its file).
+# A listed part that is missing is skipped, so parts kept out of
+# git simply do not contribute on a fresh clone.
+# Written by rank.exe split. New games still append to the store
+# file itself, which is always loaded last.
+
+# roster: 132769 rows
+matches.roster.0001.jsonl
+
+# retired_tdleaf_self: 457611 rows
+matches.retired_tdleaf_self.0001.jsonl
+matches.retired_tdleaf_self.0002.jsonl
+matches.retired_tdleaf_self.0003.jsonl
+
+# retired_other: 59054 rows
+matches.retired_other.0001.jsonl

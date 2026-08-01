@@ -98,12 +98,37 @@ data/labels/*.jsonl.s*
 data/labels/dry/
 data/labels/logs/
 
-# Agent Elo ranking (rank.exe). Unlike data/*.jsonl, ranking/matches.jsonl is
+# Agent Elo ranking (rank.exe). Unlike data/*.jsonl, the match store is
 # deliberately KEPT: it is the never-recomputed match history the ratings are
 # built from. Only per-shard temp files and the gauntlet scratch are ignored.
 ranking/matches.jsonl.*
 ranking/gauntlet.jsonl
 ranking/climb_*.tsv
+
+# The store is split into PARTS by who played each game (`rank.exe split`),
+# listed in the committed ranking/matches.index.txt. Games between rostered
+# agents (matches.roster.*.jsonl) are the durable asset and stay committed.
+#
+# Games touching an agent that was screened and never promoted are kept on disk
+# but NOT committed. There are far more of them than of the games that matter
+# (2026-08-01: 516,665 rows / 216 MB retired vs 132,769 rows / 55 MB rostered),
+# and their only future consumer is a decision to re-roster one of those agents.
+# A part named in the index whose file is absent is skipped rather than being an
+# error, so a fresh clone simply rates without those games. Nothing is deleted:
+# to move a group back into the ratings, restore its file.
+ranking/matches.retired_*.jsonl
+
+# Rating outputs, regenerated from the store by `rank.exe rate` (measured
+# 2026-08-01: 19.4 s over 649,434 games) and verified deterministic, so they are
+# not committed. Run a rate before reading standings in a fresh clone.
+ranking/ratings.tsv
+ranking/standings.tsv
+ranking/games.tsv
+ranking/report.md
+ranking/ratings_open.tsv
+ranking/standings_open.tsv
+ranking/games_open.tsv
+ranking/report_open.md
 # Pinned-fit outputs (rank.exe rate --pin) are a screening artifact of one study,
 # regenerable from the store, and must never be mistaken for the canonical
 # ratings/standings -- so they are not committed.
