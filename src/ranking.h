@@ -31,13 +31,29 @@
 //            | "nb" budget | "tb" N "ms" | "cap" N                (budget: 200k, 2m, raw)
 //   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
 //              | "learned(s" slot "," hash8 [ "," arch ] ")" ) "@" V   (LearnedValue)
-//   arch    = recipe "," mutype "," shape [ ",sig" shape ] ",con" pct
-//   recipe  = "dist" (mu/sigma heads, position-oracle pipeline) | "value" (outcome-trained)
+//   arch    = regime "," mutype "," shape [ ",sig" shape ] ",con" pct
+//   regime  = HOW THE MODEL WAS PRODUCED, read from its file's `teacher=` line:
+//             "tdleaf_self"   TD-Leaf(lambda) on self-play games
+//             "pool_games"    outcomes from games replayed out of the ranked pool
+//             "teacher_games" outcomes from a fixed heuristic teacher's self-play
+//             "model_games"   outcomes from a previously-trained model's self-play
+//             "position_elo"  per-position Elo labels (position-oracle pipeline)
+//             "weight_merge"  weight averaging and/or mirror symmetrisation
+//             "unknown"       provenance lost with the model file
+//             "value"|"dist"  SUPERSEDED model-type tokens: parsed, never emitted
 //   mutype  = "mlp" | "lin"      shape = dash-separated layer widths, e.g. 129-512-8-1
 //   con<N>  = percent connectivity, currently always con100 (reserved for sparsity)
 //   The arch fields are DESCRIPTIVE: identity is still (slot, hash), and they are
 //   derived from the file that hash covers. The legacy two-arg form is still accepted
 //   and expands to the rich form on parse, so pre-existing match rows keep matching.
+//   Regime replaced model-type on 2026-08-01: two agents can share an architecture
+//   and be nothing alike (a TD-Leaf model and a pool-replay model are both
+//   value,lin,129-1), so the id names the pipeline instead. It lives in the id
+//   rather than only in the model file because the id is stamped into every
+//   append-only store row and outlives the file -- slot9.txt was overwritten on
+//   2026-07-30 and its teacher= line went with it, making that agent's regime
+//   unrecoverable. canonicalizeLearnedIds() re-derives stale descriptors on read,
+//   so stored rows written under the old tokens keep matching.
 //   linpol  := "linpol(s" slot "," hash8 ")"                      (policy-head model payload, no "@V")
 //   weights := letter int { "," letter int }                      (ALL params, registry order)
 //   dilseg  := "dil(r" pct [ "," "d" N ] ")" "@" V                (r5 = 5% diluted moves;

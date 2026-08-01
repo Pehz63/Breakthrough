@@ -704,6 +704,15 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   dilution-quality question, deliberately deferred to its own session `[Later]`
 
 ## Elo / Tournaments
+- Recreate the `s9` linear v2 value model retired 2026-07-30 (`ranking/roster.txt`,
+  `ranking/roster_top.txt`, `ranking/CHAMPION.md`): `models/sweep/slot9.txt` was
+  accidentally overwritten by a test using an unverified slot number, and since
+  `models/sweep/*.txt` is gitignored the original weights are gone. Its exact
+  provenance (recipe/seed) lived in the file's own `teacher=` line and is lost with
+  it, so this can only be a NEW agent trained to fill a similar role (linear v2,
+  same head family), not a literal reproduction of the old weights/identity. Low
+  priority: the roster is fine without it, and its historical Elo/match record
+  already stands as-is regardless `[Later]`
 - ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
   pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
   each wearing `.opener(rand,4)@1`, played with `rank.exe ... --paired-openings` into

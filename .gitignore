@@ -123,3 +123,29 @@ models/sweep/*
 !models/sweep/slot97.txt
 !models/sweep/slot98.txt
 !models/sweep/slot99.txt
+# TD-Leaf Pass 2 selection, promoted to the permanent roster 2026-08-01 (16
+# agents, one seed each). Same rule as slots 94..99: referenced by hash from
+# ranking/roster.txt, so they must travel with the repo. This also closes the
+# hole that lost slot9 on 2026-07-30 -- a gitignored, roster-referenced model
+# overwritten with no way to recover it. Anything the roster cites lives in git.
+# Peak rungs (REF@1500, R23@2500, R9@1500):
+!models/sweep/slot169.txt
+!models/sweep/slot602.txt
+!models/sweep/slot349.txt
+# Final rung 4000, champion init (REF, R23, R9, R14, R10, R19):
+!models/sweep/slot171.txt
+!models/sweep/slot603.txt
+!models/sweep/slot351.txt
+!models/sweep/slot441.txt
+!models/sweep/slot369.txt
+!models/sweep/slot531.txt
+# Final rung 4000, random/scratch init -- linear (R11 v1, R15 v2):
+!models/sweep/slot387.txt
+!models/sweep/slot459.txt
+# Final rung 4000, random/scratch init -- mlp16 (R8, R5):
+!models/sweep/slot333.txt
+!models/sweep/slot279.txt
+# Final rung 4000, random/scratch init -- mlp32 (R12, R22, R4):
+!models/sweep/slot405.txt
+!models/sweep/slot585.txt
+!models/sweep/slot261.txt

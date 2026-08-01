@@ -435,6 +435,81 @@ TEST_CASE("ranking scheduler - cohort filter matches canonical ids, not legacy s
     // canonicalized on READ, not left to coincidentally already be canonical.)
 }
 
+// The id's first descriptor field names the TRAINING REGIME (2026-08-01), replacing
+// the model-TYPE token ("value"/"dist") that could not tell apart agents sharing an
+// architecture but produced by different pipelines. Regression coverage for the
+// migration: stored rows written under the old token must still match a roster
+// carrying the new one, or every learned agent silently loses its game history.
+TEST_CASE("ranking id - regime token replaces the superseded model-type token") {
+    // Dedicated slots for THIS test. Deliberately not ML_SLOTS-1 or ML_SLOTS-2:
+    // both are live trainer scratch slots (quickScoreVsRandom uses ML_SLOTS-1,
+    // trainTDLeaf and the gen-model path use ML_SLOTS-2), and ML_SLOTS-1 is also
+    // used by the scheduler tests above. archDescForSlot() caches per slot for the
+    // process lifetime, so two tests sharing a slot silently read each other's
+    // descriptor -- whichever ran first wins. Give every slot-writing test its own.
+    const int slot = ML_SLOTS - 4;
+    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    // A model whose teacher= line marks it as TD-Leaf self-play.
+    LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    m.bias = 0.3f;
+    for (int i = 0; i < m.n; i++) m.w[i] = 0.03f * i;
+    m.teacher = "tdleaf(lambda=0.7,lr=0.01,d6,games=4000,seed=1001) init:scratch";
+    REQUIRE(m.save(path));
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+
+    // Emitting an id for this slot must use the regime token, not "value".
+    RankAgent a;
+    string err;
+    string legacyId = "greedy@1.learned(s" + std::to_string(slot) + "," + h + ")@1";
+    REQUIRE(rankAgentFromId(legacyId, a, err));
+    string canon = rankAgentId(a.spec);
+    INFO("canonical: " << canon);
+    REQUIRE(canon.find(",tdleaf_self,") != string::npos);
+    REQUIRE(canon.find(",value,") == string::npos);
+
+    // The SUPERSEDED rich form must still parse (the ~49 dead-slot identities keep
+    // theirs permanently) and must canonicalise onto the same identity, so stored
+    // rows written under it keep matching.
+    string oldRich = "greedy@1.learned(s" + std::to_string(slot) + "," + h
+                   + ",value,lin," + std::to_string(MLV2_FEATURES) + "-1,con100)@1";
+    RankAgent b;
+    string err2;
+    REQUIRE(rankAgentFromId(oldRich, b, err2));
+    REQUIRE(b.spec.modelSlot == slot);
+    REQUIRE(b.id == canon);      // migrated onto the current descriptor, not left stale
+
+    // A model whose provenance is genuinely gone reads "unknown", never a guess.
+    // Uses a SECOND slot rather than overwriting the first: archDescForSlot()
+    // caches per slot for the process lifetime, so rewriting a slot file mid-run
+    // would keep returning the stale descriptor. That caching is fine in
+    // production (sweeps write slot files, then rank.exe runs as a separate
+    // process) but a test that swaps a model in place would silently assert
+    // against the previous model's descriptor.
+    const int slot2 = ML_SLOTS - 5;
+    const string path2 = "models/sweep/slot" + std::to_string(slot2) + ".txt";
+    LinearModel m2(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    m2.bias = 0.4f;
+    for (int i = 0; i < m2.n; i++) m2.w[i] = 0.04f * i;
+    m2.teacher = "";
+    REQUIRE(m2.save(path2));
+    RankAgent c;
+    string err3;
+    string h2 = rankFileHash8(path2);
+    REQUIRE_FALSE(h2.empty());
+    REQUIRE(rankAgentFromId("greedy@1.learned(s" + std::to_string(slot2) + "," + h2 + ")@1", c, err3));
+    INFO("unknown-provenance canonical: " << rankAgentId(c.spec));
+    REQUIRE(rankAgentId(c.spec).find(",unknown,") != string::npos);
+
+    std::remove(path.c_str());
+    std::remove(path2.c_str());
+}
+
 TEST_CASE("ranking codec - covers every registered evaluator with unique letters") {
     string err;
     bool ok = rankEvalCodecComplete(err);

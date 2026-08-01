@@ -71,6 +71,68 @@ than trusting 8-games/pair separations. The reigning champion is declared in
 `ranking/CHAMPION.md` (the single source of truth other docs point at), and
 the certification procedure is a standing instruction in `CLAUDE.md`.
 
+### A pinned fit reports on the PIN FILE'S scale, not today's (2026-08-01)
+
+`rank.exe rate --pin <tsv>` copies the listed agents' Elo verbatim out of that
+file and solves only for everyone else, so that the free agents come out
+consistent with those fixed values. A pinned fit therefore does **not** create a
+new scale: it EXTENDS the pin file's existing scale to cover new agents. That is
+the entire point of the mechanism.
+
+The consequence people get wrong is the dating. There are two scales in play:
+
+1. **The pin file's scale**, set by whichever fit generated it. A pinned fit
+   places new agents onto this scale.
+2. **An unpinned refit's scale**, where every rating re-solves over the current
+   store.
+
+So **a pinned-fit number carries the pin file's fit date, not the date you ran
+it.** Screening a cohort today against a pin file generated two weeks and
+400k games ago produces two-week-old-scale numbers computed today. They are
+perfectly valid for their purpose (ranking the cohort, and comparing it to the
+pinned agents *as those agents stood in that fit*), and they are not comparable
+to anything from a different fit.
+
+Three practical rules:
+
+1. **The pinned values do not update as the store grows.** They are literal
+   constants read off a file. That is not staleness to be fixed, it is the
+   mechanism working -- a frozen reference is the whole reason to pin.
+2. **A cohort's pinned Elo is comparable to other agents inside that same
+   pinned fit, and to nothing else.** Not to a later unpinned refit, not to a
+   different pinned fit built from a different pin file.
+3. **When the unpinned refit gives different numbers, that is EXPECTED.** Prior
+   mass redistributes and the scale shifts (see "Elo scale drift across fits"
+   above). A pinned agent reading 1012 in the pinned fit and 968 in the later
+   unpinned refit is not a contradiction, an inversion, or a bug. It is two
+   different fits, which is exactly the thing this document says three sections
+   up never to compare.
+
+**The failure this section exists to prevent** (2026-08-01, and roughly the
+fifth instance of the same class): a cohort screened well in a pinned fit, the
+subsequent unpinned refit did not put it on top, and the difference between the
+two fits' numbers was reported as a "disagreement" requiring explanation. There
+was nothing to explain. The pinned number and the unpinned number were never
+comparable, and the rule against comparing across fits is stated three sections
+up in this same document.
+
+The tell was psychological, not numerical: the work had been *quietly expected*
+to dethrone, no such claim had ever actually been made or evidenced during the
+session, and when the result came back ordinary, a cross-fit comparison got
+reached for to account for it. **If you find yourself explaining why a result
+"should" have come out differently, stop and check whether you are comparing
+numbers from two different fits before concluding anything is wrong.** An agent
+placing mid-table in an honest refit is a normal outcome, not an anomaly.
+
+Practical mitigations now in place:
+
+- Any script that prints cohort Elo must also print reference agents from the
+  SAME fit (see `tools/roster_composition.ps1` and the report scripts): the
+  champion, something mid-table, and something below the cohort. A number with
+  no in-fit neighbours invites exactly the cross-fit comparison above.
+- When quoting a pinned number, state the pin file and its fit date alongside
+  it, so a reader cannot silently treat it as current.
+
 ### Elo comparison hygiene: retired rows, search heads, sample size (2026-07-25)
 
 Three defects were found in this project's own Elo reporting, defects 1 and 2 on

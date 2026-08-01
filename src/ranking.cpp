@@ -271,15 +271,43 @@ static string archDescForSlot(int slot) {
             for (size_t i = 0; i < r.size(); i++) if (r[i] == ',') r[i] = '-';
             return r;
         } };
+        // TRAINING REGIME, read from the model file's own `teacher=` provenance
+        // line. This field used to be the model TYPE ("dist" or "value"), which
+        // could not distinguish agents that share an architecture but were
+        // produced by completely different pipelines -- a TD-Leaf model and a
+        // pool-replay-supervised model are both `value,lin,129-1` and are not
+        // remotely the same thing. Naming the regime instead makes the id say how
+        // the agent was made, which is what a roster needs spread across.
+        //
+        // Why it belongs in the ID and not only in the model file: the ID is
+        // stamped into every append-only match-store row and outlives the file.
+        // models/sweep/slot9.txt was overwritten on 2026-07-30 and its teacher=
+        // line went with it, so that agent's regime is now unrecoverable forever;
+        // had the ID carried it, 649k stored rows would still know.
+        string teacher = kv.count("teacher") ? kv["teacher"] : "";
+        struct R { static string of(const string& t, const string& type) {
+            if (t.compare(0, 7, "tdleaf(") == 0)              return "tdleaf_self";
+            if (t.compare(0, 11, "labelstore:") == 0)         return "position_elo";
+            if (t.compare(0, 7, "replay:") == 0)              return "pool_games";
+            if (t.compare(0, 9, "ensemble(") == 0)            return "weight_merge";
+            if (t.compare(0, 10, "AlphaBeta(") == 0)          return "teacher_games";
+            if (t.find("self-play-bootstrap") != string::npos) return "model_games";
+            if (!t.empty())                                   return "unknown";
+            // No teacher= line at all: provenance is genuinely lost. Fall back to
+            // the model type so a dist head is still recognisable as such.
+            return type == "dist" ? "position_elo" : "unknown";
+        } };
+        string regime = R::of(teacher, type);
+
         if (type == "dist") {
             string mt = kv.count("mu_type") ? kv["mu_type"] : "linear";
             string st = kv.count("s_type")  ? kv["s_type"]  : "linear";
-            out = "dist," + string(mt == "mlp" ? "mlp" : "lin") + ","
+            out = regime + "," + string(mt == "mlp" ? "mlp" : "lin") + ","
                 + L::shape(kv.count("mu_layers") ? kv["mu_layers"] : "", feat)
                 + ",sig" + L::shape(kv.count("s_layers") ? kv["s_layers"] : "", feat);
             (void)st;
         } else {
-            out = "value," + string(type == "mlp" ? "mlp" : "lin") + ","
+            out = regime + "," + string(type == "mlp" ? "mlp" : "lin") + ","
                 + L::shape(kv.count("layers") ? kv["layers"] : "", feat);
         }
         out += ",con100";
@@ -300,16 +328,25 @@ string rankFileHash8(const string& path) {
     return string(buf).substr(0, 8);
 }
 
-// Expand a LEGACY `learned(s<slot>,<hash8>)` segment to the rich architecture form,
-// so 90k+ stored rows written before the ID gained architecture fields still match
-// the roster's canonical IDs. Without this the scheduler would see no stored history
-// for any learned agent and replay every game.
+// Normalise every `learned(s<slot>,<hash8>[,<descriptor>])` segment to the CURRENT
+// descriptor derived from the model file, so stored rows keep matching the roster's
+// canonical IDs across descriptor-format changes. Without this the scheduler would
+// see no stored history for a learned agent and replay every game it had played.
+//
+// Handles both migrations this project has needed:
+//   * LEGACY 2-arg -> rich, for the 90k+ rows written before the ID carried any
+//     descriptor at all (2026-07-26).
+//   * STALE rich -> current rich, for the ~649k rows written when the first
+//     descriptor field held the model TYPE ("value"/"dist") rather than the
+//     TRAINING REGIME ("pool_games"/"tdleaf_self"/...) it holds now (2026-08-01).
+// Both are the same operation: throw away whatever descriptor the ID carries and
+// re-derive it, which is why this rewrites rich forms instead of skipping them.
 //
 // Only rewrites when the stored hash still matches the CURRENT slot file, because the
-// architecture can only be read from a file that holds that exact model. 49 of the
+// descriptor can only be read from a file that holds that exact model. 49 of the
 // 137 historical learned identities point at slots since overwritten by later models,
-// and those keep their legacy IDs permanently, which is correct: their architecture
-// is unrecoverable, and inventing one would silently merge two different agents.
+// and those keep their old IDs permanently, which is correct: their provenance is
+// unrecoverable, and inventing one would silently merge two different agents.
 // Idempotent, and a no-op for every non-learned ID. Cached: called once per stored row.
 static string canonicalizeLearnedIds(const string& id) {
     if (id.find(".learned(s") == string::npos) return id;
@@ -324,17 +361,22 @@ static string canonicalizeLearnedIds(const string& id) {
         if (close == string::npos) break;
         string inner = out.substr(open + 1, close - open - 1);   // "<slot>,<hash8>[,...]"
         size_t comma = inner.find(',');
-        if (comma == string::npos || inner.find(',', comma + 1) != string::npos) {
-            pos = close;                            // already rich, or malformed
-            continue;
-        }
+        if (comma == string::npos) { pos = close; continue; }    // malformed
+        // Hash runs to the next comma (rich form) or to the end (legacy 2-arg).
+        size_t hashEnd = inner.find(',', comma + 1);
         int slot = atoi(inner.substr(0, comma).c_str());
-        string hash = inner.substr(comma + 1);
+        string hash = (hashEnd == string::npos)
+                    ? inner.substr(comma + 1)
+                    : inner.substr(comma + 1, hashEnd - comma - 1);
         if (slot >= 0 && slot < ML_SLOTS && rankFileHash8(slotFile(slot)) == hash) {
             string arch = archDescForSlot(slot);
             if (!arch.empty()) {
-                out.insert(close, "," + arch);
-                close += arch.size() + 1;
+                // Replace everything after the hash with the freshly derived
+                // descriptor: identical for a legacy id (nothing to replace) and
+                // for an id already carrying the current descriptor (idempotent).
+                size_t keepFrom = open + 1 + comma + 1 + hash.size();
+                out = out.substr(0, keepFrom) + "," + arch + out.substr(close);
+                close = keepFrom + 1 + arch.size();
             }
         }
         pos = close;
@@ -782,8 +824,26 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             if (args.size() > 2) {
                 const string& recipe = args[2];
                 const string& mut    = args[3];
-                if (recipe != "dist" && recipe != "value") {
-                    err = "learned() recipe must be 'dist' or 'value', got '" + recipe + "'";
+                // Training-regime token, derived from the model file's teacher=
+                // line by archDescForSlot(). "value"/"dist" are the SUPERSEDED
+                // model-type tokens, still accepted (never emitted) because the
+                // ~49 identities whose slot files were overwritten can never be
+                // re-derived and keep their old strings permanently.
+                static const char* kRegimes[] = {
+                    "tdleaf_self",    // TD-Leaf(lambda) on self-play games
+                    "pool_games",     // outcomes from games replayed out of the ranked pool
+                    "teacher_games",  // outcomes from a fixed heuristic teacher's self-play
+                    "model_games",    // outcomes from a previously-trained model's self-play
+                    "position_elo",   // per-position Elo labels (position-oracle pipeline)
+                    "weight_merge",   // weight averaging and/or mirror symmetrisation
+                    "unknown",        // provenance lost with the model file
+                    "value", "dist"   // superseded model-type tokens, parse-only
+                };
+                bool regimeOk = false;
+                for (size_t k = 0; k < sizeof(kRegimes)/sizeof(kRegimes[0]); k++)
+                    if (recipe == kRegimes[k]) { regimeOk = true; break; }
+                if (!regimeOk) {
+                    err = "learned() regime '" + recipe + "' is not a known token";
                     return false;
                 }
                 if (mut != "mlp" && mut != "lin") {
