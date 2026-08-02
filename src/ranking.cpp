@@ -1128,6 +1128,80 @@ static void readMatchStream(std::istream& f, const string& board,
     }
 }
 
+// ============================================================
+// REGIMES AND MATCHUPS
+// ============================================================
+string rankAgentRegime(const string& id) {
+    // Heuristic evaluators name themselves.
+    if (id.find(".classic(") != string::npos) return "classic";
+    if (id.find(".exp(")     != string::npos) return "exp";
+    if (id.find(".adv(")     != string::npos) return "adv";
+    if (id.find(".linpol(")  != string::npos) return "linpol";
+
+    // learned(slot,hash,<regime>,...) -- the regime is the third field. The
+    // legacy two-field form carries no regime and is reported as such rather
+    // than guessed at, because a model file that has since been overwritten
+    // makes it genuinely unrecoverable.
+    size_t p = id.find(".learned(");
+    if (p != string::npos) {
+        size_t open = p + 9, close = id.find(')', open);
+        if (close == string::npos) return "learned?";
+        string inner = id.substr(open, close - open);
+        std::vector<string> f;
+        size_t s = 0;
+        while (true) {
+            size_t c = inner.find(',', s);
+            f.push_back(inner.substr(s, c == string::npos ? string::npos : c - s));
+            if (c == string::npos) break;
+            s = c + 1;
+        }
+        if (f.size() >= 3) return f[2];
+        return "learned?";
+    }
+    // No evaluator segment at all: a policy/random head.
+    return "nonlearning";
+}
+
+void rankMatchupByRegime(const std::vector<RankMatchRow>& rows, const RankFit& fit,
+                         std::vector<RankMatchupCell>& out) {
+    out.clear();
+    std::map<string, double> elo;
+    for (size_t i = 0; i < fit.ids.size(); i++) elo[fit.ids[i]] = fit.elo[i];
+
+    std::map<string, string> regimeOf;   // memoized: the parse is per distinct id
+    std::map<std::pair<string,string>, RankMatchupCell> cells;
+
+    for (size_t k = 0; k < rows.size(); k++) {
+        const string& w = rows[k].w;
+        const string& b = rows[k].b;
+        if (w == b) continue;
+        std::map<string,double>::const_iterator ew = elo.find(w), eb = elo.find(b);
+        if (ew == elo.end() || eb == elo.end()) continue;   // unrated, no expectation
+
+        if (!regimeOf.count(w)) regimeOf[w] = rankAgentRegime(w);
+        if (!regimeOf.count(b)) regimeOf[b] = rankAgentRegime(b);
+        const string& rw = regimeOf[w];
+        const string& rb = regimeOf[b];
+
+        const double sWhite = (rows[k].r == 'W') ? 1.0 : (rows[k].r == 'B') ? 0.0 : 0.5;
+        // Logistic expectation from the fitted gap, the same scale the fit uses.
+        const double pWhite = 1.0 / (1.0 + std::pow(10.0, (eb->second - ew->second) / 400.0));
+
+        // Key on the lexicographically smaller regime so both colours land in
+        // one cell and the White advantage cancels.
+        const bool whiteIsA = (rw <= rb);
+        std::pair<string,string> key = whiteIsA ? std::make_pair(rw, rb)
+                                                : std::make_pair(rb, rw);
+        RankMatchupCell& c = cells[key];
+        c.a = key.first; c.b = key.second;
+        c.games    += 1.0;
+        c.score    += whiteIsA ? sWhite : 1.0 - sWhite;
+        c.expected += whiteIsA ? pWhite : 1.0 - pWhite;
+    }
+    for (std::map<std::pair<string,string>, RankMatchupCell>::const_iterator it = cells.begin();
+         it != cells.end(); ++it) out.push_back(it->second);
+}
+
 static string storeStem(const string& storeFile) {
     const string ext = ".jsonl";
     if (storeFile.size() > ext.size() &&
@@ -1571,7 +1645,8 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
 // ============================================================
 static const double ELO_PER_NAT = 400.0 / 2.302585092994045684;   // 400 / ln(10)
 
-void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, RankFit& out) {
+void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, RankFit& out,
+               bool regimeBalanced) {
     out.ids.clear(); out.elo.clear(); out.se.clear(); out.provisional.clear();
     out.anchored = false;
 
@@ -1599,6 +1674,42 @@ void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, Ra
         e.first += 1.0;
         e.second += si;
     }
+    // Optional regime balancing, applied to the REAL counts before the prior so
+    // the prior stays a genuine half-game regularizer per pair.
+    //
+    // Problem it solves: pooled Elo depends on the pool's composition whenever
+    // matchups are non-transitive, and this roster is 30.6% classic + 30.0%
+    // pool_games (2026-08-01), so "strong" and "good against those two" are
+    // nearly the same measurement. Weighting each pair by
+    // 1/(agents in A's regime * agents in B's regime) makes every regime BLOC
+    // contribute equally however many agents happen to wear it, then the whole
+    // set is rescaled to the original total so error bars stay on the same
+    // footing. Note the SEs are then effective-sample SEs, not game counts.
+    if (regimeBalanced) {
+        std::vector<string> regimeOf(n);
+        std::map<string,int> pop;
+        for (std::map<string,int>::const_iterator it = idx.begin(); it != idx.end(); ++it) {
+            regimeOf[it->second] = rankAgentRegime(it->first);
+            pop[regimeOf[it->second]]++;
+        }
+        double rawTotal = 0.0, wTotal = 0.0;
+        for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) rawTotal += it->second.first;
+        for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+            double w = 1.0 / ((double)pop[regimeOf[it->first.first]] *
+                              (double)pop[regimeOf[it->first.second]]);
+            it->second.first  *= w;
+            it->second.second *= w;
+            wTotal += it->second.first;
+        }
+        if (wTotal > 0.0) {
+            const double s = rawTotal / wTotal;
+            for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
+                it->second.first  *= s;
+                it->second.second *= s;
+            }
+        }
+    }
+
     // Prior: 0.5 virtual games (0.25 win each way) per pair that actually played.
     // Keeps undefeated agents finite without adding phantom edges.
     for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
@@ -2627,8 +2738,79 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
     }
 }
 
+int rankMatchup(const string& rosterFile, const string& storeFile, const string& board,
+                int minGames) {
+    std::vector<RankAgent> roster;
+    string err;
+    if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+    string anchorId;
+    for (size_t i = 0; i < roster.size(); i++) if (roster[i].anchor) anchorId = roster[i].id;
+
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    rankLoadMatches(storeFile, board, rows, skipped);
+    if (rows.empty()) { cout << "No games in " << storeFile << " for board " << board << ".\n"; return 1; }
+
+    RankFit fit;
+    rankFitBT(rows, anchorId, fit);
+    std::vector<RankMatchupCell> cells;
+    rankMatchupByRegime(rows, fit, cells);
+
+    // Roster census: a residual only skews the pooled table in proportion to how
+    // much of the pool wears that regime, so the two belong in one report.
+    std::map<string,int> census;
+    for (size_t i = 0; i < roster.size(); i++)
+        if (roster[i].active) census[rankAgentRegime(roster[i].id)]++;
+    int activeTotal = 0;
+    for (std::map<string,int>::const_iterator it = census.begin(); it != census.end(); ++it)
+        activeTotal += it->second;
+
+    cout << "Regime matchups over " << rows.size() << " games, " << fit.ids.size()
+         << " rated agents (board " << board << ")\n\n";
+    cout << "Active roster by regime (" << activeTotal << " agents):\n";
+    for (std::map<string,int>::const_iterator it = census.begin(); it != census.end(); ++it) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "  %-16s %4d  %5.1f%%",
+                      it->first.c_str(), it->second,
+                      activeTotal ? 100.0 * it->second / activeTotal : 0.0);
+        cout << buf << "\n";
+    }
+
+    cout << "\nA vs B, both colours combined. 'actual' and 'Elo-exp' are A's score rate;\n"
+         << "'resid' is actual minus expected, i.e. how far the one-number model is off.\n"
+         << "A positive residual means A does BETTER against B than its rating predicts.\n\n";
+    char hdr[200];
+    std::snprintf(hdr, sizeof(hdr), "  %-16s %-16s %9s %8s %8s %8s",
+                  "A", "B", "games", "actual", "Elo-exp", "resid");
+    cout << hdr << "\n";
+
+    // Largest absolute residual first: the worst model failures are the point.
+    std::vector<std::pair<double, size_t> > order;
+    for (size_t i = 0; i < cells.size(); i++) {
+        if (cells[i].games < minGames) continue;
+        double resid = cells[i].score / cells[i].games - cells[i].expected / cells[i].games;
+        order.push_back(std::make_pair(-std::fabs(resid), i));
+    }
+    std::sort(order.begin(), order.end());
+    for (size_t k = 0; k < order.size(); k++) {
+        const RankMatchupCell& c = cells[order[k].second];
+        double act = c.score / c.games, exp_ = c.expected / c.games;
+        char buf[200];
+        std::snprintf(buf, sizeof(buf), "  %-16s %-16s %9.0f %7.1f%% %7.1f%% %+7.1f",
+                      c.a.c_str(), c.b.c_str(), c.games, 100.0 * act, 100.0 * exp_,
+                      100.0 * (act - exp_));
+        cout << buf << "\n";
+    }
+    if (order.empty()) cout << "  (no regime pair reached --min-games " << minGames << ")\n";
+    cout << "\nA large residual is a TRANSITIVITY violation: Bradley-Terry gives each agent\n"
+         << "one strength, so it cannot represent 'A is strong but happens to lose to B'.\n"
+         << "Where residuals are large, pooled Elo depends on the pool's regime mix, and\n"
+         << "adding or removing a bloc will move ratings that its games never touched.\n";
+    return 0;
+}
+
 int rankRate(const string& rosterFile, const string& storeFile, const string& board,
-             const string& pinFile) {
+             const string& pinFile, bool regimeBalanced) {
     setOutSuffixFromStore(storeFile);
     std::vector<RankAgent> roster;
     string err;
@@ -2663,7 +2845,17 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
              << "  Writing ranking/*" << g_outSuffix << ".* (canonical files untouched).\n";
         rankFitBTPinned(rows, pinned, fit);
     } else {
-        rankFitBT(rows, anchorId, fit);
+        if (regimeBalanced) {
+            // Like --pin, this is a different question from the canonical fit, so
+            // it gets its own output family rather than overwriting the table
+            // every doc quotes. Promoting it to canonical is a deliberate act.
+            g_outSuffix += "_balanced";
+            cout << "REGIME-BALANCED FIT: every regime bloc weighted equally regardless of\n"
+                 << "  how many agents wear it, so the rating answers 'strong against the\n"
+                 << "  space of strategies' rather than 'strong against this pool'.\n"
+                 << "  Writing ranking/*" << g_outSuffix << ".* (canonical files untouched).\n";
+        }
+        rankFitBT(rows, anchorId, fit, regimeBalanced);
         if (!fit.anchored)
             cout << "WARNING: anchor " << anchorId
                  << " has no games; ratings centered on mean 1000 instead of anchor = 0\n";

@@ -287,3 +287,99 @@ Verified information-preserving: after the split the refit returned
 byte-identical ratings.tsv and standings.tsv, and games.tsv is a
 confirmed pure reordering of the same 649,435 rows.
 ```
+
+---
+
+# Addendum: regimes, matchups, and why pooled Elo depends on the pool
+
+Added the same session, after the developer challenged the methodology rather
+than the storage question. Their hypothesis, quoted because it turned out to be
+the right frame: the TD-Leaf self-play agents "were often initialized by the
+learned champion and then learned to beat itself from self play, which really
+just means it learned to beat the previous champion. But that means that it
+didn't learn how to beat the chip counter."
+
+## The hypothesis was right in structure, wrong in direction
+
+Measured over the dropped cohort's 457,611 rows, win rate against rostered
+agents by regime:
+
+| Rostered opponent | Games | Cohort win rate | Implied Elo gap |
+|---|---|---|---|
+| `learned-other` | 166,813 | **70.5%** | ~151 |
+| `chip-counter` | 189,910 | **63.6%** | ~97 |
+| `heuristic-other` | 47,040 | 58.4% | ~59 |
+
+The chip counter did not have a *good* matchup: it lost 63.6%. It had a
+**comparatively** good one, losing ~54 Elo less badly than the other learned
+agents. The stated mechanism holds -- the cohort punishes agents resembling its
+ancestor hardest -- but the raw direction needed correcting, and the corrected
+version is what makes the effect possible at all.
+
+## Where Bradley-Terry actually breaks
+
+`rank.exe matchup` (built this session) reports, per regime pair with both
+colours combined, the actual score rate, the Elo-expected score rate, and the
+residual between them. The residual is the model misfit: BT assigns one strength
+per agent, so it cannot express "A is strong but loses to B", and the residual
+is exactly how much that costs.
+
+| Population | `classic` vs `tdleaf_self` | `classic` vs `pool_games` |
+|---|---|---|
+| Cohort included (196,767 games in the left cell) | +0.2 | **-6.0** |
+| Cohort dropped (6,857 games) | +0.8 | **-2.7** |
+
+The cohort was ~30% of the store, so the fit spent the chip counter's single
+parameter on explaining those games -- fitting them almost exactly (+0.2) --
+and paid for it by over-predicting the chip counter against `pool_games` by 6
+points. Dropping the cohort **more than halved the worst large-sample
+miscalibration**. So the developer's methodology decision improved calibration,
+which is a stronger justification than the storage argument it was made on.
+
+## Roster composition is part of the measurement
+
+Active roster by regime, 2026-08-01 (170 agents): `classic` 30.6%,
+`pool_games` 30.0%, `position_elo` 17.6%, `tdleaf_self` 9.4%, `adv` 3.5%,
+`exp` 3.5%, `nonlearning` 2.9%, `weight_merge` 2.4%.
+
+61% of the pool is two regimes, so "strong" and "good against classic and
+pool_games" are nearly the same measurement. `rate --regime-balanced` weights
+each pair by `1/(agents in A's regime * agents in B's regime)`, rescaled to the
+original total. Effect at head `ab(d6,tt,ord,nb200k)@1`, openless:
+
+| Rank | Canonical fit | Regime-balanced fit |
+|---|---|---|
+| 1 | s169 tdleaf_self, 1044 +/- 11 | s602 tdleaf_self, 1259 +/- 8 |
+| 2 | s76 position_elo, 1007 +/- 8 | s169 tdleaf_self, 1249 +/- 8 |
+| 3 | s602 tdleaf_self, 996 +/- 10 | s76 position_elo, 1240 +/- 8 |
+| 4 | s349 tdleaf_self, 990 +/- 10 | s349 tdleaf_self, 1239 +/- 8 |
+| 5 | s6 pool_games, 987 +/- 8 | **classic(t1,c4,w0,l0)@2, 1213 +/- 14** |
+
+(Absolute Elo is not comparable across the two fits; read the order.) The chip
+counter returns from openless rank 35 to rank 5, and the top four collapse into
+a 20-Elo, 4-way statistical tie. Not promoted to canonical: doing so re-certifies
+every champion, so it writes `ranking/*_balanced.*` and the decision is logged
+in `todo.md`.
+
+## Future Work (addendum)
+
+- **s169's rise is still unexplained.** The chip counter's fall now has a
+  measured mechanism; the cohort member gaining the title while losing 36% of
+  its games does not.
+- **Should the anchor be exempt from balancing?** `rand@1` is regime
+  `nonlearning` with 5 agents, so balancing up-weights games against random
+  play, which is the least informative comparison in the pool.
+- **SEs after reweighting are effective-sample SEs**, not game counts. They are
+  rescaled to the original total so the magnitudes look familiar, which is
+  convenient and slightly dishonest; a proper treatment would report effective
+  sample size alongside.
+- **The behavioural-clustering idea was deferred, not rejected.** Regimes are a
+  provenance label, and provenance is ambiguous exactly where the developer
+  noticed (a TD-Leaf agent initialised from another agent's weights). Clustering
+  agents on move agreement over a fixed `posgen` position pool would group by how
+  they PLAY, which is what determines a matchup, and would answer the
+  categorisation question empirically instead of by convention.
+- **Multidimensional ratings.** Nash averaging and multidimensional Elo (mElo)
+  model cyclic structure explicitly rather than reporting it as residual. Worth
+  reading before extending this further; verify the references before they go
+  into `Docs/works-cited.md`.

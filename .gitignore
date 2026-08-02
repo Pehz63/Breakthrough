@@ -155,6 +155,14 @@ ranking/report_open.md
 # ratings/standings -- so they are not committed.
 ranking/*_pinned.tsv
 ranking/*_pinned.md
+# Regime-balanced fit outputs (rank.exe rate --regime-balanced). A different
+# question from the certified table -- "strong against the space of strategies"
+# rather than "strong against this pool" -- so they are kept out of git for the
+# same reason as the pinned family: nothing should be able to mistake them for
+# the canonical ranking. Promoting this fit to canonical is a deliberate act
+# that re-certifies every champion (see todo.md).
+ranking/*_balanced.tsv
+ranking/*_balanced.md
 
 # Training hyperparameter sweeps (tools/sweep_pst.ps1): throwaway model
 # checkpoints + generated report, regenerable by re-running the sweep.

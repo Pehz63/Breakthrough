@@ -576,8 +576,29 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   See `ranking/CHAMPION.md`, which records two caveats: 32 rows/pair is ~22.6 DISTINCT games/pair
   (0.706 distinct/row measured), so the gap is 2.3 combined SE rather than 2.7; and s169 gained
   the title while LOSING 36% of its games, which is not understood `[Now]`
-- **Explain why removing the Pass-2 cohort games helped a cohort member and hurt the chip
-  counter.** `s169` rose to the openless title on 36% fewer games, while
+- ~~**Explain why removing the Pass-2 cohort games hurt the chip counter.**~~ ANSWERED
+  2026-08-01 (developer's hypothesis, then measured with the new `rank.exe matchup`). The
+  TD-Leaf cohort was initialised from a learned champion and self-played, so it specialised
+  against THAT style: it beat `learned-other` agents 70.5% but the chip counter only 63.6%.
+  The chip counter's matchup was **comparatively** favourable, not absolutely -- it still lost.
+  That bloc was ~30% of the store, so Bradley-Terry set the chip counter's single strength
+  parameter to explain those 196,767 games and mispriced it elsewhere: `classic` vs
+  `pool_games` ran a -6.0 residual with the cohort in, and -2.7 with it out. Dropping the
+  cohort more than halved the worst large-sample miscalibration. Elo cannot represent this;
+  it is a transitivity violation, not sampling noise.
+- **Still unexplained: why s169 GAINED the openless title while losing 36% of its games.**
+  The chip counter's fall is now accounted for, its rise is not `[Now]`
+- **Decide whether `rate --regime-balanced` should become the canonical fit** `[Now]`.
+  Implemented 2026-08-01 and writing `ranking/*_balanced.*`; not promoted, because promoting
+  it re-certifies every champion. It moves the table a lot: at head `ab(d6,tt,ord,nb200k)@1`
+  the openless order becomes s602 / s169 / s76 / s349 / classic@2 (1259 / 1249 / 1240 / 1239 /
+  1213, all +/-8 except classic's +/-14), i.e. a 4-way statistical tie at the top and
+  **`classic(t1,c4,w0,l0)@2` back to rank 5 from rank 35**. Open questions before promoting:
+  whether the anchor (`rand@1`, regime `nonlearning`, 5 agents) should be exempt from
+  balancing; whether SEs remain interpretable after reweighting (they are effective-sample
+  SEs now); and whether category champions should be declared on the balanced or pooled fit
+- **Old (superseded) framing of the chip-counter question, kept so the reasoning is not
+  re-derived:** `s169` rose to the openless title on 36% fewer games, while
   `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` fell from openless rank 2 to rank 35 under the
   same change. Bradley-Terry accounts for opponent strength, so "it farmed weak candidates" is
   not an explanation and should not be repeated as one. Candidate tests: refit with only the

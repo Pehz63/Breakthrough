@@ -675,6 +675,116 @@ static string shardTestRow(const string& w, int seed) {
     return rankFormatMatchRow(m);
 }
 
+// ============================================================
+// Regimes and matchups
+// ============================================================
+TEST_CASE("ranking regime - read off the canonical id") {
+    REQUIRE(rankAgentRegime("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2") == "classic");
+    REQUIRE(rankAgentRegime("ab(d6)@1.exp(t2,c10,w3,l2,f2)@1") == "exp");
+    REQUIRE(rankAgentRegime("rand@1") == "nonlearning");
+    // The regime is the THIRD field of learned(...), not the model type.
+    REQUIRE(rankAgentRegime(
+        "ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c,tdleaf_self,lin,129-1,con100)@1")
+        == "tdleaf_self");
+    REQUIRE(rankAgentRegime(
+        "ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,position_elo,mlp,129-512-8-1,sig129-64-1,con100)@1")
+        == "position_elo");
+    // A loadout must not change the regime: same core, same bloc.
+    REQUIRE(rankAgentRegime(
+        "ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,pool_games,lin,129-1,con100)@1.opener(book,11)@1")
+        == "pool_games");
+    // The legacy two-field form genuinely carries no regime; say so rather than guess.
+    REQUIRE(rankAgentRegime("ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1") == "learned?");
+}
+
+TEST_CASE("ranking matchup - residual is zero when Elo explains the results") {
+    // Two agents, one clearly stronger, with results matching the fitted gap.
+    // The residual measures model MISFIT, so a well-fitted pair must read ~0.
+    std::vector<RankMatchRow> rows;
+    RankMatchRow m;
+    m.r='W'; m.plies=9; m.wms=m.bms=0; m.wmv=m.bmv=5; m.wnod=m.bnod=0;
+    m.seed=1; m.par=1; m.board="";
+    const string strong = "ab(d6,tt,ord,nb200k)@1.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
+    const string weak   = "ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2";
+    // 30-10 to the strong agent, colours balanced so the White edge cancels.
+    for (int i = 0; i < 40; i++) {
+        bool strongWhite = (i % 2 == 0);
+        bool strongWins  = (i % 4 != 3);              // 30 of 40
+        m.w = strongWhite ? strong : weak;
+        m.b = strongWhite ? weak : strong;
+        m.r = (strongWhite == strongWins) ? 'W' : 'B';
+        rows.push_back(m);
+    }
+    RankFit fit;
+    rankFitBT(rows, weak, fit);
+    std::vector<RankMatchupCell> cells;
+    rankMatchupByRegime(rows, fit, cells);
+
+    REQUIRE(cells.size() == 1);
+    REQUIRE(cells[0].games == 40);
+    // classic sorts before tdleaf_self, so A is the WEAK side here.
+    REQUIRE(cells[0].a == "classic");
+    REQUIRE(cells[0].b == "tdleaf_self");
+    REQUIRE(cells[0].score == Approx(10.0));
+    const double resid = (cells[0].score - cells[0].expected) / cells[0].games;
+    INFO("residual = " << resid);
+    REQUIRE(std::fabs(resid) < 0.05);   // BT fits a 2-agent pool essentially exactly
+}
+
+TEST_CASE("ranking BT fit - regime balancing reweights an over-represented bloc") {
+    // One tdleaf agent against a bloc of many classic agents. Unweighted, the
+    // classic bloc dominates the likelihood; balanced, it counts once as a bloc.
+    // The fit must differ, and must NOT differ when every regime is equal-sized.
+    std::vector<RankMatchRow> rows;
+    RankMatchRow m;
+    m.r='W'; m.plies=9; m.wms=m.bms=0; m.wmv=m.bmv=5; m.wnod=m.bnod=0;
+    m.seed=1; m.par=1; m.board="";
+    const string td = "ab(d6,tt,ord,nb200k)@1.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
+    const string pe = "ab(d6,tt,ord,nb200k)@1.learned(s7,bbbbbbbb,position_elo,lin,129-1,con100)@1";
+    std::vector<string> classics;
+    for (int c = 0; c < 4; c++) {
+        std::ostringstream s;
+        s << "ab(d6,tt,ord,nb200k)@1.classic(t1,c" << (4 + c) << ",w0,l0)@2";
+        classics.push_back(s.str());
+    }
+    // td beats every classic 3-1; td loses to pe 1-3; pe beats each classic 2-2.
+    for (size_t c = 0; c < classics.size(); c++)
+        for (int i = 0; i < 4; i++) {
+            m.w = td; m.b = classics[c]; m.r = (i < 3) ? 'W' : 'B'; rows.push_back(m);
+            m.w = pe; m.b = classics[c]; m.r = (i < 2) ? 'W' : 'B'; rows.push_back(m);
+        }
+    for (int i = 0; i < 4; i++) { m.w = td; m.b = pe; m.r = (i < 1) ? 'W' : 'B'; rows.push_back(m); }
+
+    RankFit plain, bal;
+    rankFitBT(rows, classics[0], plain, false);
+    rankFitBT(rows, classics[0], bal,   true);
+    REQUIRE(plain.ids.size() == bal.ids.size());
+
+    std::map<string,double> ep, eb;
+    for (size_t i = 0; i < plain.ids.size(); i++) ep[plain.ids[i]] = plain.elo[i];
+    for (size_t i = 0; i < bal.ids.size(); i++)   eb[bal.ids[i]]   = bal.elo[i];
+    // The 4-agent classic bloc is down-weighted relative to the two singleton
+    // regimes, so td's rating (built mostly on beating classics) must move.
+    INFO("td plain " << ep[td] << " balanced " << eb[td]);
+    REQUIRE(std::fabs(ep[td] - eb[td]) > 1.0);
+
+    // Control: with one agent per regime there is nothing to rebalance, so the
+    // balanced fit must reproduce the plain one.
+    std::vector<RankMatchRow> even;
+    for (int i = 0; i < 4; i++) {
+        m.w = td; m.b = classics[0]; m.r = (i < 3) ? 'W' : 'B'; even.push_back(m);
+        m.w = pe; m.b = classics[0]; m.r = (i < 2) ? 'W' : 'B'; even.push_back(m);
+        m.w = td; m.b = pe;          m.r = (i < 1) ? 'W' : 'B'; even.push_back(m);
+    }
+    RankFit p2, b2;
+    rankFitBT(even, classics[0], p2, false);
+    rankFitBT(even, classics[0], b2, true);
+    for (size_t i = 0; i < p2.ids.size(); i++) {
+        INFO(p2.ids[i]);
+        REQUIRE(p2.elo[i] == Approx(b2.elo[i]).margin(1e-6));
+    }
+}
+
 TEST_CASE("ranking match store - shard path naming") {
     REQUIRE(rankStoreShardPath("ranking/matches.jsonl", 1) == "ranking/matches.0001.jsonl");
     REQUIRE(rankStoreShardPath("ranking/matches.jsonl", 42) == "ranking/matches.0042.jsonl");

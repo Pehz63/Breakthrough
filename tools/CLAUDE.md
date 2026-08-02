@@ -62,6 +62,45 @@ screening store: its `roster` bucket is exactly the games between agents that
 are now rostered, which is what gets appended to the permanent store and listed
 in `matches.index.txt`. Discarded candidates' games stay behind.
 
+### Regimes, matchups, and why pooled Elo depends on the pool
+
+A **regime** is how an agent was produced, already stamped into every canonical
+id (`tdleaf_self`, `pool_games`, `position_elo`, `teacher_games`, `model_games`,
+`weight_merge`, plus `classic`/`exp`/`adv`/`nonlearning` for the non-learned).
+No extra labelling is needed to group by it.
+
+```powershell
+.\rank.exe matchup --min-games 500      # regime x regime: actual vs Elo-expected, and the residual
+.\rank.exe rate --regime-balanced       # fit with every regime bloc weighted equally
+```
+
+Bradley-Terry gives each agent ONE strength number, so it assumes transitivity
+and cannot represent "A is strong but happens to lose to B". `matchup` measures
+where that assumption breaks: **residual = actual score rate minus Elo-expected
+score rate** for a regime pair, both colours combined. A large residual is a
+matchup the pooled rating is actively misreporting.
+
+Measured 2026-08-01, and the reason this exists. The TD-Leaf self-play cohort
+was initialised from a learned champion and self-played, so it specialised
+against that champion's style: it beat `learned-other` agents **70.5%** but the
+chip counter only **63.6%**. That bloc was ~30% of the store, so the fit set the
+chip counter's rating to explain those 196,767 games and mispriced it elsewhere
+-- `classic` vs `pool_games` ran a **-6.0** residual. Dropping the cohort cut
+that to **-2.7**, and the chip counter fell 33 places in the openless standings
+purely from the population change. No number of games fixes this; it is a
+modelling failure, not sampling noise.
+
+**Roster composition is therefore part of the measurement.** The 2026-08-01
+active roster is 30.6% `classic` + 30.0% `pool_games`, so "strong" and "good
+against those two" are nearly the same claim. `rate --regime-balanced` weights
+each pair by `1/(agents in A's regime * agents in B's regime)`, rescaled to the
+original total, so every regime bloc counts equally however many agents wear it.
+It answers "strong against the space of strategies" rather than "strong against
+this pool", and it moves the table a lot: `classic(t1,c4,w0,l0)@2` goes from
+openless rank 35 to rank 5. Like `--pin`, it writes its own `ranking/*_balanced.*`
+family and never the canonical files, because promoting it to canonical would
+re-certify every champion and is a deliberate act.
+
 ### Keeping the match store a size a host will accept
 
 The store only grows, so left alone it eventually stops being pushable: GitHub

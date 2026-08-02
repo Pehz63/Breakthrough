@@ -206,6 +206,42 @@ int rankSplitStore(const std::string& storeFile, const std::string& rosterFile,
                    const std::string& groupMatch, long long maxBytes, bool apply,
                    RankSplitStats& out, std::string& err);
 
+// ---- Regimes and matchups ----
+// A REGIME is how an agent was produced, read off its canonical id: the third
+// field of `learned(slot,hash,<regime>,...)` for learned agents, and the
+// evaluator name for heuristic ones. It is already stamped into every stored
+// match row, so no extra labelling is needed to group by it.
+//
+// Regimes exist because Elo cannot represent a non-transitive matchup. A
+// Bradley-Terry fit assigns ONE strength per agent and therefore assumes that
+// if A beats B and B beats C, A beats C by the implied margin. Real agent
+// populations violate this: an agent trained by self-play from some champion
+// learns to beat THAT champion's style, so it punishes agents resembling its
+// ancestor harder than it punishes unrelated ones. Measured here 2026-08-01:
+// the TD-Leaf self-play cohort beat `learned-other` agents 70.5% but the
+// chip counter only 63.6% -- so the chip counter's rating rose relative to
+// other learned agents purely by being in a pool that contained that cohort,
+// and fell 33 places when the cohort left. That is a modelling failure, not
+// sampling noise, and no number of games fixes it.
+std::string rankAgentRegime(const std::string& id);
+
+// One regime-vs-regime cell. `a` and `b` are regime labels with a <= b, and the
+// tallies are from A's perspective with both colours combined, so the White
+// advantage cancels instead of showing up as a matchup effect.
+struct RankMatchupCell {
+    std::string a, b;
+    double      games = 0;
+    double      score = 0;      // A's score: 1 per win, 0.5 per draw
+    double      expected = 0;   // A's Elo-expected score, summed per game
+};
+
+// Aggregate rows into regime-vs-regime cells, using `fit` for the expected
+// score. residual = score/games - expected/games is the quantity of interest:
+// it is how far the one-number model is off for that pairing, so a large
+// residual marks a matchup Elo is actively misreporting.
+void rankMatchupByRegime(const std::vector<RankMatchRow>& rows, const RankFit& fit,
+                         std::vector<RankMatchupCell>& out);
+
 // ---- Store part index ----
 // "ranking/matches.jsonl" -> "ranking/matches.index.txt". One part filename per
 // line (relative to the store's directory), in load order, '#' comments allowed.
@@ -239,8 +275,14 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
 // ---- Rating ----
 // Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with a
 // 0.5-virtual-game prior per played pair. Deterministic and order-independent.
+// regimeBalanced weights each pair by 1/(agents in A's regime * agents in B's
+// regime), rescaled to the original total game count, so every regime bloc
+// contributes equally however many agents wear it. Off by default because it
+// changes every rating: use it when the question is "how strong is this agent
+// against the space of strategies" rather than "against this particular pool".
+// Its SEs are effective-sample SEs, not game counts.
 void rankFitBT(const std::vector<RankMatchRow>& rows, const std::string& anchorId,
-               RankFit& out);
+               RankFit& out, bool regimeBalanced = false);
 // Same MM fit with a SUBSET of ratings HELD FIXED (`pinned`: id -> frozen Elo).
 // Rates a cohort of new agents on the existing roster's scale without letting
 // them move it, so the previous fit's numbers stay comparable for the whole of a
@@ -268,10 +310,21 @@ int rankPlay(const std::string& rosterFile, const std::string& storeFile,
              const std::string& cohortFile = "");
 // pinFile (optional): a ratings.tsv / standings.tsv whose agents are held at
 // their listed Elo (rankFitBTPinned) instead of being re-solved. Screening only.
+// regimeBalanced: run the fit with every regime bloc weighted equally (see
+// rankFitBT). Writes its own ranking/*_balanced.* family, never the canonical
+// files, because it answers a different question than the certified table.
 int rankRate(const std::string& rosterFile, const std::string& storeFile,
-             const std::string& board, const std::string& pinFile = "");
+             const std::string& board, const std::string& pinFile = "",
+             bool regimeBalanced = false);
 int rankHistory(const std::string& storeFile, const std::string& agentQuery,
                 int lastN, const std::string& board);
+// Print the regime-vs-regime matchup matrix (see rankMatchupByRegime). Reports
+// actual score, Elo-expected score, and the residual between them, plus a
+// per-regime roster census, since a residual only biases the table to the
+// extent that regime is over-represented in the pool. minGames drops cells too
+// thin to read.
+int rankMatchup(const std::string& rosterFile, const std::string& storeFile,
+                const std::string& board, int minGames);
 int rankGauntlet(const std::string& rosterFile, const std::string& storeFile,
                  const std::string& candidateId, int gamesPerOpp, bool keep,
                  unsigned runSeed, const std::string& board);

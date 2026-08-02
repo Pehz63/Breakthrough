@@ -44,6 +44,7 @@ static void usage() {
     cout << "  run        serial play then rate (the everyday command)\n";
     cout << "  seal       roll the oversized live store tail into immutable sealed shards\n";
     cout << "  split      group the store into parts by who played each game (dry run unless --apply)\n";
+    cout << "  matchup    regime-vs-regime matrix: actual vs Elo-expected score, and the residual\n";
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
@@ -136,7 +137,8 @@ int main(int argc, char** argv) {
                       seed, board, hasFlag(argc, argv, "--paired-openings"),
                       getOpt(argc, argv, "--cohort", ""));
     } else if (cmd == "rate") {
-        rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
+        rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""),
+                      hasFlag(argc, argv, "--regime-balanced"));
     } else if (cmd == "run") {
         rc = rankPlay(roster, store, store, games, 0, 1, seed, board,
                       hasFlag(argc, argv, "--paired-openings"),
@@ -193,6 +195,8 @@ int main(int argc, char** argv) {
             cout << "\nwrote " << rankStoreIndexPath(store) << "; every part is still loaded,\n"
                  << "so ratings are unchanged until a part's line is removed from the index.\n";
         rc = 0;
+    } else if (cmd == "matchup") {
+        rc = rankMatchup(roster, store, board, getInt(argc, argv, "--min-games", 200));
     } else if (cmd == "history") {
         rc = rankHistory(store, getOpt(argc, argv, "--agent", ""),
                          getInt(argc, argv, "--last", 20), board);
