@@ -114,8 +114,13 @@ ranking/climb_*.tsv
 #
 # Only the TD-Leaf Pass-2 screening cohort is untracked: 25 candidates were
 # tried and 16 promoted, and the discarded ones left 457,611 rows / 193 MB, 89%
-# of all retired rows and 71% of the whole store. They stay on disk and nothing
-# is deleted -- restoring the files puts them straight back in the fit.
+# of all retired rows and 71% of the whole store.
+#
+# Those files were DELETED 2026-08-02 to reclaim the space, on the developer's
+# instruction. They were never committed and never pushed, so no copy survives
+# anywhere: that population is now unrecoverable except by replaying the whole
+# Pass-2 campaign. The pattern below stays so a future screening cohort's parts
+# are ignored by default.
 #
 # NOTE, because it is easy to assume otherwise: a retired agent's games are not
 # dead weight just because the agent is not in standings.tsv. Bradley-Terry
@@ -203,3 +208,18 @@ models/sweep/*
 !models/sweep/slot405.txt
 !models/sweep/slot585.txt
 !models/sweep/slot261.txt
+# Regime-diversity backfill, 2026-08-02. The roster had ZERO agents from two
+# training regimes that the codebase supports and that had been run: models
+# distilled from a fixed heuristic teacher (teacher_games) and self-distillation
+# chains (model_games). These 8 fill that gap. Same rule as slots 94..99: cited
+# by hash from ranking/roster.txt, so they must travel with the repo.
+# teacher_games -- Classic teacher at d2 / d4 / d6, plus a diluted-d2 variant:
+!models/sweep/slot700.txt
+!models/sweep/slot701.txt
+!models/sweep/slot702.txt
+!models/sweep/slot703.txt
+# model_games -- two independent chains, each at generation 2 and 3:
+!models/sweep/slot704.txt
+!models/sweep/slot705.txt
+!models/sweep/slot706.txt
+!models/sweep/slot707.txt

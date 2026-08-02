@@ -134,7 +134,11 @@ Two structural checks that rule out the easy dismissals:
 The developer's decision was to **drop them from the fit permanently** rather
 than commit them, on the methodological ground that a permanent ladder should
 not be dominated by games against transient screening candidates. The three
-files stay on disk; their lines were removed from `ranking/matches.index.txt`.
+files' lines were removed from `ranking/matches.index.txt`, and on 2026-08-02
+the files themselves were deleted to reclaim the 193 MB. They were never
+committed, so **the excluded population no longer exists anywhere** and none of
+the with-cohort measurements in this document can be re-derived. They stand as
+a record of a fit that cannot be reproduced.
 
 That made this a certification event. The re-certification is in
 `ranking/CHAMPION.md`; the substance:

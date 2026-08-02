@@ -3,8 +3,8 @@
 > **[RE-CERTIFIED 2026-08-01 after a scoring-population change]** The match
 > store no longer includes games involving the TD-Leaf Pass-2 candidates that
 > were screened and never promoted (457,611 rows, 71% of the store). Their files
-> are on disk but their lines are out of `ranking/matches.index.txt`, by
-> developer decision: a permanent ladder should not be dominated by games
+> were removed from `ranking/matches.index.txt` on 2026-08-01 and DELETED on
+> 2026-08-02, by developer decision: a permanent ladder should not be dominated by games
 > against transient candidates, and `play --cohort` had left some rostered
 > agents with 60% of their games against that cohort. Screening cohorts now play
 > into their own store so this cannot recur.
@@ -16,6 +16,10 @@
 > holders. Every number in the Summary below comes from the 2026-08-01 fit and
 > is **not comparable to the 2026-07-29 numbers** that the rest of this file
 > still quotes, since the scale is refit over a different game population.
+>
+> Because those files were never committed and have now been deleted, the
+> pre-drop fit **cannot be reproduced**. The 2026-07-29 declarations below are
+> permanently historical: there is no way to re-run the fit that produced them.
 > Analysis: `plans/store-sharding-results-1-tidy-albatross.md`.
 
 > **[SPLIT 2026-07-28, EXPANDED 2026-07-29]** The single throne is now 5

@@ -136,8 +136,10 @@ over the screening store. This exists because the TD-Leaf Pass-2 cohort put
 457,611 rows of games against never-promoted candidates into the permanent
 ladder -- 71% of the store, with some rostered agents taking 60% of their games
 against agents that were then discarded. Those rows were dropped from the fit on
-2026-08-01 (their files are still on disk, their lines removed from
-`matches.index.txt`), which **re-certified the openless champion**. Note that
+2026-08-01 (lines removed from `matches.index.txt`) and the files themselves
+DELETED 2026-08-02, which **re-certified the openless champion**. That
+population is gone for good -- it was never committed, so the excluded games
+cannot be reconstructed and the pre-drop fit cannot be reproduced. Note that
 dropping games is never free: Bradley-Terry fits jointly, so a game against a
 retired agent is evidence about the rostered agent that played it, and this
 change moved 153 of 170 rostered agents. Details:

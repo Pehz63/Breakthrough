@@ -963,12 +963,13 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   having them restore what they overwrote.
 - ~~Decide what happens to the TD-Leaf screening games~~ Resolved 2026-08-01:
   **dropped from the fit permanently** (developer decision). Their three files
-  stay on disk, their lines are out of `ranking/matches.index.txt`, and
+  were DELETED 2026-08-02 (never committed, so unrecoverable), their lines are
+  out of `ranking/matches.index.txt`, and
   `matches.retired_other.*` remains tracked and loaded. The ranking is now
   reproducible from the repo alone, which was the point. Cost, measured: the
   change moved 153 of 170 rostered agents and re-certified the openless
-  champion. Re-adding the three index lines restores the old population exactly,
-  but requires re-certifying `ranking/CHAMPION.md` in the same session.
+  champion. The old population can no longer be restored: the files are gone, so
+  the pre-drop fit is not reproducible and that comparison is now historical only.
 - ~~Screening cohorts flood the permanent ladder~~ Fixed 2026-08-01:
   `tools/tdleaf_study.ps1 -ScreenStore` plays cohorts into
   `ranking/matches_screen.jsonl` instead. The pinned screening fit is unchanged

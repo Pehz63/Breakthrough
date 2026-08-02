@@ -238,6 +238,33 @@ bool rankEvalCodecComplete(string& err) {
 // it, but it distinguishes training recipes), and `con<N>` = percent connectivity,
 // currently always 100 and reserved for future sparsity.
 //
+// Index of the ')' matching the '(' at `openParen`, or npos if unbalanced. Needed
+// because a regime may carry its own parameters, so ids now nest one level.
+static size_t matchParen(const string& s, size_t openParen) {
+    if (openParen >= s.size() || s[openParen] != '(') return string::npos;
+    int depth = 0;
+    for (size_t i = openParen; i < s.size(); i++) {
+        if (s[i] == '(') depth++;
+        else if (s[i] == ')') { depth--; if (depth == 0) return i; }
+    }
+    return string::npos;
+}
+
+// Split a comma list on TOP-LEVEL commas only (see matchParen).
+static void splitTopLevel(const string& s, std::vector<string>& out) {
+    out.clear();
+    string cur;
+    int depth = 0;
+    for (size_t i = 0; i < s.size(); i++) {
+        char c = s[i];
+        if (c == '(') depth++;
+        else if (c == ')') depth--;
+        if (c == ',' && depth == 0) { out.push_back(cur); cur.clear(); }
+        else cur += c;
+    }
+    out.push_back(cur);
+}
+
 // IDENTITY IS STILL (slot, hash). The architecture fields are descriptive: they are
 // derived from the same file the hash covers, so they cannot disagree with it. They
 // are NOT re-validated against the file on parse, which matters because a slot may
@@ -285,13 +312,58 @@ static string archDescForSlot(int slot) {
         // line went with it, so that agent's regime is now unrecoverable forever;
         // had the ID carried it, 649k stored rows would still know.
         string teacher = kv.count("teacher") ? kv["teacher"] : "";
-        struct R { static string of(const string& t, const string& type) {
+        struct R {
+            // Pull "<key><digits>" out of a provenance string, e.g. tag(t,", d","")
+            // reads the 2 out of "AlphaBeta(Classic, d2)".
+            static string num(const string& t, const string& key) {
+                size_t p = t.find(key);
+                if (p == string::npos) return "";
+                size_t b = p + key.size(), e = b;
+                while (e < t.size() && t[e] >= '0' && t[e] <= '9') e++;
+                return (e > b) ? t.substr(b, e - b) : string("");
+            }
+            static string of(const string& t, const string& type) {
             if (t.compare(0, 7, "tdleaf(") == 0)              return "tdleaf_self";
             if (t.compare(0, 11, "labelstore:") == 0)         return "position_elo";
             if (t.compare(0, 7, "replay:") == 0)              return "pool_games";
             if (t.compare(0, 9, "ensemble(") == 0)            return "weight_merge";
-            if (t.compare(0, 10, "AlphaBeta(") == 0)          return "teacher_games";
-            if (t.find("self-play-bootstrap") != string::npos) return "model_games";
+            // Parameterised regimes. A regime whose recipe has a knob that changes
+            // how the agent PLAYS carries that knob, because two agents sharing a
+            // regime word can be as unalike as two sharing an architecture were
+            // before the regime field existed. Parameters go in parens, comma
+            // separated, exactly like dil(r30,d3) -- underscore stays reserved for
+            // joining words of a name. A regime with no knobs stays bare, so no
+            // existing id changes.
+            if (t.compare(0, 10, "AlphaBeta(") == 0) {
+                // "AlphaBeta(Classic, d2) params=[...] dil(0.3->0.05/30p)"
+                string d = num(t, ", d");
+                string s = "teacher_games";
+                if (!d.empty()) s += "(d" + d;
+                else            s += "(d?";
+                size_t dl = t.find("dil(");
+                if (dl != string::npos) {
+                    // Record the STARTING dilution rate as a percent: it is what
+                    // spreads the teacher's position distribution.
+                    double start = atof(t.c_str() + dl + 4);
+                    int pct = (int)(start * 100.0 + 0.5);
+                    std::ostringstream o; o << ",dil" << pct;
+                    s += o.str();
+                }
+                return s + ")";
+            }
+            if (t.find("self-play-bootstrap") != string::npos) {
+                // "self-play-bootstrap(alphabeta,d4,gen=3,model=...)": gen is how
+                // many LEARNED models deep the chain is (gen 1 learned from a
+                // hand-written heuristic), d is the search depth the parent used
+                // to generate the games. Both are read from THIS file, never by
+                // walking to the parent -- the hash covers this file only, and the
+                // ancestors live in reusable slots that may since have been reused.
+                string g = num(t, "gen="), d = num(t, ",d");
+                string s = "model_games(";
+                s += g.empty() ? "gen?" : ("gen" + g);
+                if (!d.empty()) s += ",d" + d;
+                return s + ")";
+            }
             if (!t.empty())                                   return "unknown";
             // No teacher= line at all: provenance is genuinely lost. Fall back to
             // the model type so a dist head is still recognisable as such.
@@ -357,7 +429,10 @@ static string canonicalizeLearnedIds(const string& id) {
     size_t pos = 0;
     while ((pos = out.find(".learned(s", pos)) != string::npos) {
         size_t open = pos + 9;                      // at "s<slot>..."
-        size_t close = out.find(')', open);
+        // The regime field may carry its own parenthesised parameters
+        // (`model_games(gen3,d4)`), so find the ')' that MATCHES learned's '(',
+        // not the first one -- which would cut the descriptor in half.
+        size_t close = matchParen(out, pos + 8);
         if (close == string::npos) break;
         string inner = out.substr(open + 1, close - open - 1);   // "<slot>,<hash8>[,...]"
         size_t comma = inner.find(',');
@@ -526,18 +601,26 @@ static bool splitTok(const string& tok0, string& word, std::vector<string>& args
     if (word.empty()) { err = "segment starts with '(' in '" + tok + "'"; return false; }
     hasParens = true;
     string inner = tok.substr(p + 1, tok.size() - p - 2);
-    if (inner.find('(') != string::npos || inner.find(')') != string::npos) {
-        err = "nested parens in '" + tok + "'";
-        return false;
-    }
+    // An argument may itself be parameterised -- `model_games(gen3,d4)` sitting in
+    // a learned() field -- so split on TOP-LEVEL commas only. Nesting is not
+    // blanket-legal: each call site validates its own arguments against the flags
+    // it knows, so an unexpected `tt(x)` is still rejected, just one layer later.
     string cur;
+    int depth = 0;
     for (size_t i = 0; i < inner.size(); i++) {
-        if (inner[i] == ',') {
+        char ch = inner[i];
+        if (ch == '(') depth++;
+        else if (ch == ')') {
+            depth--;
+            if (depth < 0) { err = "unbalanced ')' in '" + tok + "'"; return false; }
+        }
+        if (ch == ',' && depth == 0) {
             if (cur.empty()) { err = "empty argument in '" + tok + "'"; return false; }
             args.push_back(cur);
             cur.clear();
-        } else cur += inner[i];
+        } else cur += ch;
     }
+    if (depth != 0) { err = "unbalanced '(' in '" + tok + "'"; return false; }
     if (cur.empty()) { err = "empty argument list or trailing comma in '" + tok + "'"; return false; }
     args.push_back(cur);
     return true;
@@ -1144,19 +1227,20 @@ string rankAgentRegime(const string& id) {
     // makes it genuinely unrecoverable.
     size_t p = id.find(".learned(");
     if (p != string::npos) {
-        size_t open = p + 9, close = id.find(')', open);
+        size_t open = p + 9;
+        size_t close = matchParen(id, p + 8);
         if (close == string::npos) return "learned?";
-        string inner = id.substr(open, close - open);
         std::vector<string> f;
-        size_t s = 0;
-        while (true) {
-            size_t c = inner.find(',', s);
-            f.push_back(inner.substr(s, c == string::npos ? string::npos : c - s));
-            if (c == string::npos) break;
-            s = c + 1;
-        }
-        if (f.size() >= 3) return f[2];
-        return "learned?";
+        splitTopLevel(id.substr(open, close - open), f);
+        if (f.size() < 3) return "learned?";
+        // Return the FAMILY, dropping any parameters: `teacher_games(d6)` groups
+        // with `teacher_games(d2)`. Blocs are what balancing and the census are
+        // about, and treating every parameterisation as its own regime would give
+        // a lone configuration the same weight as a 50-agent family. The
+        // parameters stay visible in the id itself.
+        string r = f[2];
+        size_t paren = r.find('(');
+        return (paren == string::npos) ? r : r.substr(0, paren);
     }
     // No evaluator segment at all: a policy/random head.
     return "nonlearning";

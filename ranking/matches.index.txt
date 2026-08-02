@@ -21,8 +21,14 @@ matches.retired_other.0001.jsonl
 #
 # 457,611 rows from the TD-Leaf Pass-2 screening cohort: 25 candidates
 # were tried and 16 promoted, and these are the games involving the 9
-# that were not. The files are still on disk and nothing was deleted --
-# re-adding the three lines above restores them to the fit exactly.
+# that were not.
+#
+# THE FILES WERE DELETED 2026-08-02 to reclaim 193 MB, on the developer's
+# instruction. They were never committed and never pushed, so no copy
+# survives. Re-adding the three lines above would name files that do not
+# exist; the loader skips a missing part, so it would be inert rather than
+# an error. That population cannot be restored without replaying the whole
+# Pass-2 campaign.
 #
 # Why they are out: a permanent ladder should not be dominated by games
 # against transient candidates. 60% of some rostered agents' games were
