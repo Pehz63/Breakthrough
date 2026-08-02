@@ -126,6 +126,19 @@ ranking/climb_*.tsv
 # a fresh clone does not have. See plans/store-sharding-results-1-tidy-albatross.md.
 ranking/matches.retired_tdleaf_self.*.jsonl
 
+# Screening pool (tools/tdleaf_study.ps1 -ScreenStore). Cohort games are played
+# here instead of the permanent ladder, so a study's discarded candidates never
+# enter it. Bulky and transient: on promotion, `rank.exe split` over this store
+# separates the kept agents' games for merging into the ladder, and the rest
+# stay here. Its pinned-fit outputs are already covered by ranking/*_pinned.*.
+ranking/matches_screen.jsonl
+ranking/matches_screen.jsonl.*
+ranking/matches_screen.*.jsonl
+ranking/ratings_screen.tsv
+ranking/standings_screen.tsv
+ranking/games_screen.tsv
+ranking/report_screen.md
+
 # Rating outputs, regenerated from the store by `rank.exe rate` (measured
 # 2026-08-01: 19.4 s over 649,434 games) and verified deterministic, so they are
 # not committed. Run a rate before reading standings in a fresh clone.

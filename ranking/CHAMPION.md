@@ -1,5 +1,23 @@
 # Reigning Champions (single source of truth)
 
+> **[RE-CERTIFIED 2026-08-01 after a scoring-population change]** The match
+> store no longer includes games involving the TD-Leaf Pass-2 candidates that
+> were screened and never promoted (457,611 rows, 71% of the store). Their files
+> are on disk but their lines are out of `ranking/matches.index.txt`, by
+> developer decision: a permanent ladder should not be dominated by games
+> against transient candidates, and `play --cohort` had left some rostered
+> agents with 60% of their games against that cohort. Screening cohorts now play
+> into their own store so this cannot recur.
+>
+> **This changed the ranking**, because a Bradley-Terry fit is joint: a game
+> against a retired agent is evidence about the ROSTERED agent that played it.
+> Dropping those rows moved 153 of 170 rostered agents. The **openless** title
+> changed hands as a result; the other four categories re-confirmed the same
+> holders. Every number in the Summary below comes from the 2026-08-01 fit and
+> is **not comparable to the 2026-07-29 numbers** that the rest of this file
+> still quotes, since the scale is refit over a different game population.
+> Analysis: `plans/store-sharding-results-1-tidy-albatross.md`.
+
 > **[SPLIT 2026-07-28, EXPANDED 2026-07-29]** The single throne is now 5
 > parallel category champions. Every number below comes from the 2026-07-29
 > full-roster anchored refit (158 active agents), read from
@@ -92,7 +110,59 @@ shared pool."
   agents, ~21,384 new games. Every category's champion and runner-up from
   round 1 held its rank through round 2, but margins stayed thin (see below).
 
-## Summary (2026-07-29 fit, round 2, screening level)
+## Summary (2026-08-01 fit, after the scoring-population change)
+
+Read this table, not the 2026-07-29 one below it. Fit population: the `roster`
+and `retired_other` store parts (191,823 games before the openless boost run,
+192,639 after), 170 active agents.
+
+| Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) | vs 2026-07-29 |
+|---|---|---|---|---|---|
+| **openless** | `ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c,tdleaf_self,lin,129-1,con100)@1` | **1044 +/- 11** | 1603 | `ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,position_elo,lin,129-1,sig129-1,con100)@1`, 1007 +/- 8 (gap 37 / SE 13.6 = 2.7 SE) | **CHANGED** (was s76) |
+| 4-book | `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,pool_games,lin,129-1,con100)@1.opener(book,15)@1` | 968 +/- 11 | 1392 | `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,13)@1`, 947 +/- 11 (gap 21 / SE 15.6 = 1.3 SE) | held |
+| 8-book | `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,pool_games,lin,129-1,con100)@1.opener(book,16)@1` | 989 +/- 11 | 1392 | `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,14)@1`, 964 +/- 11 (gap 25 / SE 15.6 = 1.6 SE) | held |
+| 4-random | `ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,pool_games,lin,129-1,con100)@1.opener(rand,4)@1` | 965 +/- 11 | 1392 | `ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,position_elo,lin,129-1,sig129-1,con100)@1.opener(rand,4)@1`, 949 +/- 11 (gap 16 / SE 15.6 -- **statistically tied**) | held |
+| 8-random | `ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,position_elo,lin,129-1,sig129-1,con100)@1.opener(rand,8)@1` | 781 +/- 10 | 1392 | `ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,weight_merge,lin,129-1,con100)@1.opener(rand,8)@1`, 773 +/- 10 (gap 8 / SE 14.1 -- **statistically tied**) | held |
+
+### Evidence level, stated honestly
+
+**openless is the only category boosted to rule-2 fill.** Because dropping the
+cohort games left the new leader at a median 8.0 games/pair -- exactly the fill
+this project has been inverted by three times -- `ranking/roster_top.txt` was
+rewritten to the openless top 9 plus the bare chip counter and played out: 816
+games, and `rank.exe check --roster ranking/roster_top.txt --games 32` now
+reports **0 pending at 32 across all 55 contender pairs**.
+
+Two caveats on that, both measured rather than assumed:
+
+- **32 stored rows/pair is ~22.6 DISTINCT games/pair.** The boost games came
+  back at 0.706 distinct trajectories per row (816 rows, 576 distinct). These
+  contenders carry no dilution and no opener, so nothing consumes `rand()`; the
+  variation comes from the `tt` head's cross-game state differing across the 12
+  shard processes. Printed SEs are therefore understated by about
+  `sqrt(1/0.706)` = 1.19x. Applying that, the openless gap is 37 Elo against a
+  combined SE of ~16.1, so **2.3 SE, not 2.7**. Still a separation, less
+  comfortable than the raw table suggests.
+- **The other four categories are unboosted** and sit at 1392 games with pairs
+  well under 32. They are re-confirmed only in the sense that the same agent
+  still leads; 4-random and 8-random remain statistically tied at the top and
+  should not be quoted as settled.
+
+**A standing suspicion about the openless result.** `s169` took the title while
+*losing* 36% of its games, because it is itself a TD-Leaf agent and the removed
+cohort was its own family. The boost run was specifically designed to test
+whether that survived proper fill, and it did (1050 +/- 12 at 8 games/pair ->
+1044 +/- 11 at 32). But the mechanism by which removing cohort games helps a
+cohort member is not understood, and the bare chip counter
+`ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` swinging from openless rank 2 to
+rank 35 under the same change is unexplained. Treat this title as the one most
+likely to move again.
+
+## Superseded summary (2026-07-29 fit, round 2, screening level)
+
+Kept for lineage. **Do not quote these numbers as current** -- they come from a
+fit over a different game population (see the re-certification banner at the top
+of this file).
 
 | Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) |
 |---|---|---|---|---|

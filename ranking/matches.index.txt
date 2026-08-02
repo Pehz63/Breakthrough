@@ -3,16 +3,36 @@
 # ratings, delete its line (and, when you mean it, its file).
 # A listed part that is missing is skipped, so parts kept out of
 # git simply do not contribute on a fresh clone.
-# Written by rank.exe split. New games still append to the store
-# file itself, which is always loaded last.
+# New games still append to the store file itself, which is always
+# loaded last.
 
 # roster: 132769 rows
 matches.roster.0001.jsonl
 
-# retired_tdleaf_self: 457611 rows
-matches.retired_tdleaf_self.0001.jsonl
-matches.retired_tdleaf_self.0002.jsonl
-matches.retired_tdleaf_self.0003.jsonl
-
 # retired_other: 59054 rows
 matches.retired_other.0001.jsonl
+
+# ---------------------------------------------------------------
+# DELIBERATELY NOT LOADED (developer decision, 2026-08-01)
+#
+#   matches.retired_tdleaf_self.0001.jsonl
+#   matches.retired_tdleaf_self.0002.jsonl
+#   matches.retired_tdleaf_self.0003.jsonl
+#
+# 457,611 rows from the TD-Leaf Pass-2 screening cohort: 25 candidates
+# were tried and 16 promoted, and these are the games involving the 9
+# that were not. The files are still on disk and nothing was deleted --
+# re-adding the three lines above restores them to the fit exactly.
+#
+# Why they are out: a permanent ladder should not be dominated by games
+# against transient candidates. 60% of some rostered agents' games were
+# against this cohort, an artifact of `play --cohort` topping up
+# cohort-vs-roster pairs during the study. Screening cohorts now play
+# into their own store instead (ranking/matches_screen.jsonl), so this
+# cannot recur.
+#
+# This is a METHODOLOGY change and it moved the ranking: dropping these
+# games re-certified the openless category champion. Do not re-add them
+# without re-certifying ranking/CHAMPION.md in the same session.
+# Full analysis: plans/store-sharding-results-1-tidy-albatross.md.
+# ---------------------------------------------------------------

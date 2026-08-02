@@ -117,6 +117,55 @@ rostered X and retired R is evidence about X, so deleting it degrades X's
 rating, not just R's. That is also why `ratings.tsv` keeps `gone` rows at all:
 they are in the fit, merely filtered out of the standings view.
 
+Two structural checks that rule out the easy dismissals:
+
+- **The cohort is not a self-contained bubble.** Of the 457,611 TD-Leaf rows,
+  **409,283 (89.4%) have exactly one rostered agent** and only 48,328 are
+  cohort-internal. (Zero rows have both agents rostered, which independently
+  confirms the split is correct.) So they are overwhelmingly direct evidence
+  about roster members.
+- **They are not duplicate replays.** 438,008 distinct trajectories out of
+  457,611 rows, a ratio of **0.957**. The store-wide median is 0.438, so unlike
+  most of this store these are genuinely independent games and no dedup would
+  have recovered the space.
+
+## Outcome: the games were dropped, and the ranking was re-certified
+
+The developer's decision was to **drop them from the fit permanently** rather
+than commit them, on the methodological ground that a permanent ladder should
+not be dominated by games against transient screening candidates. The three
+files stay on disk; their lines were removed from `ranking/matches.index.txt`.
+
+That made this a certification event. The re-certification is in
+`ranking/CHAMPION.md`; the substance:
+
+- **Four of five categories re-confirmed the same holder.** 4-book, 8-book,
+  4-random and 8-random are unchanged.
+- **The openless title changed hands**, from
+  `learned(s76,ef183148,position_elo,...)` to
+  `learned(s169,4975683c,tdleaf_self,...)`.
+- The new leader initially sat at a **median 8.0 games/pair with all 169 pairs
+  under 32** -- the exact fill level rule 2 says has inverted this table three
+  times -- so `ranking/roster_top.txt` was rewritten to the openless top 9 plus
+  the bare chip counter and played out (816 games). `rank.exe check --games 32`
+  then reported **0 pending across all 55 contender pairs**, and s169 held:
+  1050 +/- 12 at 8/pair became **1044 +/- 11 at 32/pair**, over s76's 1007 +/- 8.
+- **The 32 is 32 stored rows, not 32 distinct games.** The boost games came back
+  at **0.706 distinct trajectories per row** (816 rows, 576 distinct), so the
+  real fill is ~22.6 distinct games/pair and printed SEs are understated by
+  ~1.19x. Corrected, the openless gap is 37 Elo against a combined SE of ~16.1:
+  **2.3 SE, not 2.7**. Recorded because quoting the raw table would overstate it.
+  These contenders carry no dilution and no opener, so the variation comes from
+  the `tt` head's cross-game state differing across the 12 shard processes.
+
+**What is NOT explained, and is flagged in `todo.md` as `[Now]`:** s169 took the
+title while *losing* 36% of its games (it is a TD-Leaf agent, so the removed
+cohort was its own family), and the bare chip counter fell from openless rank 2
+to rank 35 under the same change. Bradley-Terry accounts for opponent strength,
+so "it farmed weak candidates" is not an explanation and should not be repeated
+as one. The boost run tested whether the result survived proper fill, and it
+did, but surviving is not the same as being understood.
+
 Concrete inversions: the agent ranked 4th on the full store
 (`ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2`) falls to 43rd; 7th falls
 to 51st; 9th falls to 59th. Meanwhile the TD-Leaf agent
@@ -161,12 +210,27 @@ the original blocker no longer argues against it.
 
 ## Future Work
 
-- **Confirm the clone-only rating gap is caused by lost connectivity, not lost
-  volume.** The 0.9555 rho above conflates two things: fewer games per pair, and
-  fewer pairs. Re-rating the roster-only store after topping every rostered pair
-  back up to its full-store game count would separate them. This matters because
-  if the gap is mostly volume, it closes on its own as new games accumulate; if
-  it is connectivity, it does not.
+- **Explain the two unexplained swings** (also `todo.md` `[Now]`): why removing
+  the cohort games *promoted* a cohort member (s169) and *demoted* the bare chip
+  counter by 33 places. Tests that would settle it: refit with the cohort games
+  removed from classic@2's record only; measure classic@2's head-to-head record
+  against the 9 dropped candidates to test a non-transitivity story; and
+  separate connectivity from volume by topping the surviving pairs back up to
+  their old game counts. Until one of these lands, any mechanism story about the
+  openless title is a guess.
+- **Confirm the rating gap is caused by lost connectivity, not lost volume.**
+  The 0.9526 rho conflates two things: fewer games per pair, and fewer pairs.
+  Re-rating after topping every surviving pair back up to its old game count
+  would separate them. Matters because if the gap is mostly volume it closes on
+  its own as games accumulate; if it is connectivity, it does not.
+- **The other four categories were re-confirmed at unboosted fill** (1392 games,
+  pairs well under 32), so "held" means only that the same agent still leads.
+  4-random and 8-random remain statistically tied at the top. A boost run per
+  category would be needed to say more.
+- **Other study scripts still write to the permanent store.** Only
+  `tdleaf_study.ps1` got `-ScreenStore`. `sweep_pst_v2.ps1`,
+  `train_vs_champion.ps1` and `hill_climb.ps1 -Promote` should be audited for
+  the same flooding problem before the next study runs.
 - **The 19.4 s refit was measured once, on a warm cache, in one process.** It is
   quoted in `.gitignore` and `tools/CLAUDE.md` as the justification for not
   committing the rating outputs. It has not been measured cold or across

@@ -30,6 +30,19 @@
             this can reorder the table or dethrone anything. Not run by this
             script.
 
+  Screening pool (-ScreenStore, added 2026-08-01). Cohort games go to their own
+  store, never the permanent ladder. A screening cohort is mostly candidates
+  that will be discarded, and `--cohort` tops up every cohort-vs-roster pair, so
+  writing them to the shared store floods it with games against agents nobody
+  will keep: the Pass-2 run left 457,611 such rows, 71% of the whole store, and
+  some rostered agents ended up with 60% of their games against candidates that
+  were thrown away. Removing them afterwards is not free either, because a
+  Bradley-Terry fit is joint -- those games were evidence about the ROSTERED
+  agent too, so dropping them moved 153 of 170 rostered agents. Keeping them out
+  from the start avoids both problems. On promotion, `rank.exe split` over the
+  screening store separates the kept agents' games for merging into the ladder.
+  Full analysis: plans/store-sharding-results-1-tidy-albatross.md.
+
 .PARAMETER Workers
   Parallel training processes, and shards for the play phase.
 
@@ -56,6 +69,9 @@ param(
     [int]$GamesPerPair = 8,
     [int]$N = 24,
     [int]$SweepSeed = 42,
+    # Screening games go to their OWN store, never the permanent ladder. See
+    # the "Screening pool" note in the .DESCRIPTION above.
+    [string]$ScreenStore = "ranking/matches_screen.jsonl",
     [switch]$DryRun
 )
 
@@ -221,23 +237,33 @@ function BuildRoster {
 # ---- Phase: play ----
 function PlayCohort {
     Write-Host "  playing cohort at $GamesPerPair games/pair, $Workers shards (cohort-filtered)"
+    Write-Host "  store: $ScreenStore (screening pool, NOT the permanent ladder)"
     # -NoRate is REQUIRED: run_rank.ps1 otherwise finishes with an UNPINNED rate
     # that would overwrite the canonical ranking/ratings.tsv + standings.tsv with
     # a fit including this cohort -- the exact drift `rate --pin` exists to
     # prevent. (Learned the hard way 2026-07-29; the generated files had to be
     # restored from git afterwards.)
-    & (Join-Path $PSScriptRoot "run_rank.ps1") -Workers $Workers -NoRate play `
+    & (Join-Path $PSScriptRoot "run_rank.ps1") -Workers $Workers -Store $ScreenStore -NoRate play `
         --roster $RosterOut --cohort $CohortOut --games $GamesPerPair
 }
 
 # ---- Phase: screen ----
 function ScreenCohort {
-    Write-Host "  pinned fit (roster frozen at ranking/standings.tsv)"
-    & $RankExe rate --roster $RosterOut --pin $Standings
+    Write-Host "  pinned fit over $ScreenStore (roster frozen at ranking/standings.tsv)"
+    # The screening store holds cohort-vs-roster games as well as
+    # cohort-vs-cohort ones, and the roster agents enter at their pinned Elo, so
+    # the cohort is still placed on the canonical scale without the permanent
+    # ladder ever seeing these games.
+    & $RankExe rate --roster $RosterOut --in $ScreenStore --pin $Standings
     Write-Host ""
-    Write-Host "Cohort results are in ranking/standings_pinned.tsv (canonical files untouched)."
-    Write-Host "CERTIFICATION is a separate, deliberate step: choose which cohort agents to keep,"
-    Write-Host "append them to ranking/roster.txt, then run a plain unpinned 'rank.exe run'."
+    Write-Host "Cohort results are in ranking/standings_screen_pinned.tsv (canonical files untouched)."
+    Write-Host "CERTIFICATION is a separate, deliberate step:"
+    Write-Host "  1. choose which cohort agents to keep and append them to ranking/roster.txt"
+    Write-Host "  2. rank.exe split --in $ScreenStore   (its 'roster' bucket is exactly the games"
+    Write-Host "     between agents that are NOW rostered -- the promoted ones)"
+    Write-Host "  3. append that bucket to the permanent store and list it in matches.index.txt"
+    Write-Host "  4. run a plain unpinned 'rank.exe rate'"
+    Write-Host "Discarded candidates' games stay in the screening store and never reach the ladder."
 }
 
 switch ($Phase) {

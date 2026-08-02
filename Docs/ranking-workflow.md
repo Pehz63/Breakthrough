@@ -124,16 +124,23 @@ correct and permanent: the store is append-only and never regenerated.
 **Where the store lives.** `ranking/matches.jsonl` is the live *tail*, not the
 whole store. The rest sits in parts listed by `ranking/matches.index.txt`
 (`rank.exe split`), and everything appends to the tail as before. Two
-consequences for this workflow: the rating outputs are gitignored, so run a
-`rank.exe rate` before reading `standings.tsv` in a fresh clone; and one part
-(`matches.retired_tdleaf_self.*`, the never-promoted TD-Leaf screening
-candidates) is untracked, so a clone that lacks it produces a different table.
-That part is not optional detail. Bradley-Terry fits every rating jointly, so
-those games are evidence about the ROSTERED agents that played them: without it,
-153 of 170 rostered agents change rank (Spearman rho 0.9526 against the full
-fit, mean error bar 7.2 -> 10.2 Elo, measured 2026-08-01). **Certification
-requires the full store**, so confirm every index-listed part is present before
-running Workflow B. Details:
+consequence for this workflow: the rating outputs are gitignored, so run a
+`rank.exe rate` before reading `standings.tsv` in a fresh clone. Confirm every
+index-listed part is present before running Workflow B, since a missing part is
+skipped silently by design.
+
+**Screening cohorts do not play into this store.** They play into
+`ranking/matches_screen.jsonl` (`tdleaf_study.ps1 -ScreenStore`), and only the
+games of agents you actually promote get merged back in, via `rank.exe split`
+over the screening store. This exists because the TD-Leaf Pass-2 cohort put
+457,611 rows of games against never-promoted candidates into the permanent
+ladder -- 71% of the store, with some rostered agents taking 60% of their games
+against agents that were then discarded. Those rows were dropped from the fit on
+2026-08-01 (their files are still on disk, their lines removed from
+`matches.index.txt`), which **re-certified the openless champion**. Note that
+dropping games is never free: Bradley-Terry fits jointly, so a game against a
+retired agent is evidence about the rostered agent that played it, and this
+change moved 153 of 170 rostered agents. Details:
 `plans/store-sharding-results-1-tidy-albatross.md`.
 
 ## Workflow B: certify (this is what can dethrone a champion)

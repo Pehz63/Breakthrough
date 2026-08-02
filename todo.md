@@ -565,10 +565,26 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   the gain is specifically the BOOTSTRAP. Game count has an interior optimum ~1000 and declines
   past it (-36, all 4 seeds same sign). NOT certified: a pinned fit cannot dethrone and 8
   games/pair is half the standard `[Now]`
-- **Certify the TD-Leaf peak.** Append the top rungs to `ranking/roster.txt`, fill contenders to
+- ~~**Certify the TD-Leaf peak.** Append the top rungs to `ranking/roster.txt`, fill contenders to
   32 games/pair, run an unpinned refit (`Docs/ranking-workflow.md` Workflow B). Best screening
   agent is `ab(d6,tt,ord,nb200k)@1.learned(s131,18bfb7a0,value,lin,129-1,con100)@1` (A-base seed
-  1001 at 1000 games) at 1056, vs the pinned openless champion's 1012 `[Now]`
+  1001 at 1000 games) at 1056, vs the pinned openless champion's 1012~~ Done 2026-08-01, though
+  via a different route than planned: the certification refit happened as a side effect of
+  dropping the Pass-2 screening games from the fit. A TD-Leaf agent,
+  `ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c,tdleaf_self,lin,129-1,con100)@1`, **took the
+  openless title** at 1044 +/- 11 over s76's 1007 +/- 8, boosted to 0 pending at 32 games/pair.
+  See `ranking/CHAMPION.md`, which records two caveats: 32 rows/pair is ~22.6 DISTINCT games/pair
+  (0.706 distinct/row measured), so the gap is 2.3 combined SE rather than 2.7; and s169 gained
+  the title while LOSING 36% of its games, which is not understood `[Now]`
+- **Explain why removing the Pass-2 cohort games helped a cohort member and hurt the chip
+  counter.** `s169` rose to the openless title on 36% fewer games, while
+  `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` fell from openless rank 2 to rank 35 under the
+  same change. Bradley-Terry accounts for opponent strength, so "it farmed weak candidates" is
+  not an explanation and should not be repeated as one. Candidate tests: refit with only the
+  cohort games REMOVED from classic@2's record but kept for everyone else; check whether the
+  cohort was a non-transitive matchup for classic@2 specifically (head-to-head vs the 9 dropped
+  candidates); check whether the effect is connectivity (pairs lost) or volume (games lost) by
+  topping the surviving pairs back up to the old game counts `[Now]`
 - Bracket the TD-Leaf game-count peak: the ladder jumps 500/1000/2000 so the optimum is located
   only within 2x, and the post-peak decline is unexplained. Add 700/1400 rungs + a decayed-lr arm `[Next]`
 - Extend the TD-Leaf from-scratch arm past 2000 games: it was still climbing (+134 from 500->2000)
@@ -924,20 +940,22 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   corruption is easy to commit by accident since it looks like an ordinary
   modification. Fix by pointing the tests at a scratch manifest path, or by
   having them restore what they overwrote.
-- **Decide whether the TD-Leaf screening games should be committed after all**
-  `[Later]`. Currently the only untracked part (457,611 rows / 193 MB, the 9 of
-  25 Pass-2 candidates that were never promoted). `matches.retired_other.*`
-  (59,054 rows / 23 MB) IS tracked, so re-rostering one of those agents needs no
-  file transfer. Measured cost of leaving the TD-Leaf part out: a clone rates
-  without it and gets a different table -- Spearman rho 0.9526, 153 of 170
-  rostered agents change rank, largest shift 54 places, mean error bar 7.2 ->
-  10.2 Elo (2026-08-01). Note this is barely better than dropping *all* retired
-  parts (rho 0.9555), because the TD-Leaf games are 89% of the retired rows and
-  carry nearly all the pairwise connectivity. So the certified ranking is not
-  reproducible from the repo alone, which cuts against `ranking/CHAMPION.md`
-  rule 1: either commit the part (it is 3 files, each under the 100 MB limit and
-  immutable once written), or transfer it out of band and document that as a
-  prerequisite for any certification run.
+- ~~Decide what happens to the TD-Leaf screening games~~ Resolved 2026-08-01:
+  **dropped from the fit permanently** (developer decision). Their three files
+  stay on disk, their lines are out of `ranking/matches.index.txt`, and
+  `matches.retired_other.*` remains tracked and loaded. The ranking is now
+  reproducible from the repo alone, which was the point. Cost, measured: the
+  change moved 153 of 170 rostered agents and re-certified the openless
+  champion. Re-adding the three index lines restores the old population exactly,
+  but requires re-certifying `ranking/CHAMPION.md` in the same session.
+- ~~Screening cohorts flood the permanent ladder~~ Fixed 2026-08-01:
+  `tools/tdleaf_study.ps1 -ScreenStore` plays cohorts into
+  `ranking/matches_screen.jsonl` instead. The pinned screening fit is unchanged
+  (cohort-vs-roster games live in that store and the roster enters pinned). On
+  promotion, `rank.exe split` over the screening store separates the kept
+  agents' games for merging into the ladder. **Other study scripts still write
+  to the permanent store** -- `sweep_pst_v2.ps1`, `train_vs_champion.ps1`, and
+  `hill_climb.ps1`'s promote path should be audited for the same problem `[Next]`
 - ~~Model file format (text, `type=`/`head=` header) **(P1)**~~
 - ~~Model slots so White/Black can use different models in one process **(P1)**~~
 - ~~Append-only JSONL datastore (runs, models, agents, games, positions, evaluations, labels) **(P1)**~~
