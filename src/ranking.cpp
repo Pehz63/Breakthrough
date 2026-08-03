@@ -1673,6 +1673,26 @@ static unsigned coupleSeed(const string& a, const string& b, long long couple, u
     return (unsigned)(fnv1a64(k.data(), k.size(), 1469598103934665603ULL) & 0xffffffffULL);
 }
 
+bool rankAgentIsDeterministic(const AgentSpec& spec) {
+    if (spec.randomMoveProb > 0.0) return false;          // dilution draws from rand()
+    if (spec.openerKind >= 0 && spec.openerKind < g_openerCount &&
+        std::strcmp(g_openers[spec.openerKind].idName, "rand") == 0) return false;
+    if (spec.brain == BRAIN_POLICY) {
+        // The random family draws; LearnedPolicy is an argmax and does not.
+        if (spec.chooser >= 0 && spec.chooser < g_chooserCount &&
+            std::strcmp(g_choosers[spec.chooser].name, "LearnedPolicy") != 0) return false;
+    }
+    return true;
+}
+
+// Games worth playing for one pair. A deterministic pair replays one game per
+// colour, so 2 is BOTH the floor and the ceiling: fewer leaves a colour
+// unmeasured, more just stores copies and understates the error bar.
+static int pairGameTarget(const RankAgent& a, const RankAgent& b, int gamesPerPair) {
+    if (rankAgentIsDeterministic(a.spec) && rankAgentIsDeterministic(b.spec)) return 2;
+    return gamesPerPair;
+}
+
 std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
                                           int gamesPerPair, unsigned runSeed,
@@ -1680,8 +1700,9 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::set<std::string>* cohort) {
     std::vector<RankPendingGame> out;
     std::vector<string> ids;
+    std::map<string, const RankAgent*> specOf;
     for (size_t i = 0; i < roster.size(); i++)
-        if (roster[i].active) ids.push_back(roster[i].id);
+        if (roster[i].active) { ids.push_back(roster[i].id); specOf[roster[i].id] = &roster[i]; }
     std::sort(ids.begin(), ids.end());
 
     std::map<std::pair<string,string>, long long> have;   // (white, black) -> games played
@@ -1704,8 +1725,9 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
             if (it != have.end()) haveAW = it->second;
             it = have.find(std::make_pair(b, a));
             if (it != have.end()) haveBW = it->second;
-            long long pendAW = (gamesPerPair + 1) / 2 - haveAW;
-            long long pendBW = gamesPerPair / 2 - haveBW;
+            const int target = pairGameTarget(*specOf[a], *specOf[b], gamesPerPair);
+            long long pendAW = (target + 1) / 2 - haveAW;
+            long long pendBW = target / 2 - haveBW;
             if (pendAW < 0) pendAW = 0;
             if (pendBW < 0) pendBW = 0;
             long long ordinal = haveAW + haveBW;
@@ -2100,6 +2122,15 @@ static double processCpuMs() {
 static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& board,
                         RankMatchRow& m) {
     if (!reloadBoard(board)) return false;
+    // Fresh TT per game. Without this a tt-flagged agent's play depends on every
+    // game the worker process happened to run first, so the same scheduled game
+    // gives different results under a different shard split or resume point --
+    // the exact defect the replay and label paths already clear for. It also
+    // makes "deterministic" mean what it says: measured 2026-08-03, the boost run
+    // returned 0.706 distinct trajectories per stored row for pairs that draw no
+    // randomness at all, and that residual variation was cross-game TT state, not
+    // game diversity.
+    ttClear();
     typedef std::chrono::steady_clock clk;
     m.w = wa.id; m.b = ba.id;
     m.plies = 0;

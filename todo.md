@@ -1013,6 +1013,25 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   search itself, not the check) `[Next]`
 
 ## Data + Infrastructure
+- **Make the Bradley-Terry SE honest, then schedule to a target SE** `[Now]`. The fit
+  counts stored rows as independent samples, but a deterministic pair replays one game
+  per colour, so store-wide only 0.438 distinct games per row -- every printed `pm` is
+  understated by roughly 1.5x. Fix the fit to weight a pair by DISTINCT games, then
+  replace `--games N` with a target ("every active agent at SE <= 8 Elo") and allocate
+  greedily to whichever pair most reduces the worst SE. Fisher information per game is
+  `p(1-p)`, so a lopsided pair contributes almost nothing and uniform games/pair spends
+  most of its compute on settled matchups. Sparsity then falls out instead of being
+  hand-tuned. Scheduling half is done (deterministic pairs pinned at 2); the fit half
+  is not.
+- **Regime-level pooling: ordering confirmed, magnitude not** `[Next]`. Measured
+  2026-08-03 over 209 agents' matchup-residual profiles: same regime + same opener
+  r=0.150, same regime different opener r=0.059, different regime same opener r=-0.010,
+  different both r=-0.045. So the grouping is real and REGIME separates more strongly
+  than opener (0.160 vs 0.091 drop), which is the opposite of the initial guess. But
+  r=0.150 is far too weak to treat regime members as exchangeable, and the residuals
+  are measured on 8-game samples whose noise attenuates correlation toward zero, so
+  the true value is an unknown amount higher. Re-run after the SE fix before building
+  a hierarchical fit or regime-sparse scheduling on it.
 - ~~Match store outgrew what a git host accepts (270 MB, over GitHub's 100 MB
   per-file limit, which blocked every push). Store is now PARTS + a live tail
   listed in `ranking/matches.index.txt`, grouped by who played each game via

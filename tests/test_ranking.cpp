@@ -1027,6 +1027,53 @@ static RankMatchRow asRow(const RankPendingGame& g) {
     return m;
 }
 
+TEST_CASE("ranking determinism - derived from the spec, not stored") {
+    // Draws no randomness: a search brain with no dilution and no random opener.
+    REQUIRE(rankAgentIsDeterministic(
+        mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2").spec));
+    // A book opener is a lookup, so it stays deterministic.
+    REQUIRE(rankAgentIsDeterministic(
+        mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1").spec));
+    // Dilution and the random opener both draw from rand().
+    REQUIRE(!rankAgentIsDeterministic(
+        mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30)@1").spec));
+    REQUIRE(!rankAgentIsDeterministic(
+        mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1").spec));
+    // The random chooser family draws; the anchor is one of them.
+    REQUIRE(!rankAgentIsDeterministic(mkActive("rand@1").spec));
+    REQUIRE(!rankAgentIsDeterministic(mkActive("smart(4)@1").spec));
+}
+
+TEST_CASE("ranking scheduler - a deterministic pair is REQUIRED to play exactly 2") {
+    std::vector<RankAgent> roster;
+    roster.push_back(mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2"));
+    roster.push_back(mkActive("ab(d4)@1.classic(t1,c4,w0,l0)@2"));
+    std::vector<RankMatchRow> store;
+
+    // Ceiling: asking for 32 still schedules 2, because the other 30 would be
+    // byte-identical replays that inflate the error bar.
+    std::vector<RankPendingGame> p = rankSchedule(roster, store, 32, 1, false, NULL);
+    REQUIRE(p.size() == 2);
+    REQUIRE(p[0].w != p[1].w);        // one game per colour
+
+    // Floor: asking for 1 still schedules 2, so neither colour goes unmeasured.
+    p = rankSchedule(roster, store, 1, 1, false, NULL);
+    REQUIRE(p.size() == 2);
+    REQUIRE(p[0].w != p[1].w);
+
+    // Already satisfied: no top-up on a later pass.
+    for (size_t i = 0; i < p.size(); i++) store.push_back(asRow(p[i]));
+    REQUIRE(rankSchedule(roster, store, 32, 1, false, NULL).empty());
+
+    // A stochastic partner lifts the cap: those games are genuinely independent.
+    roster.push_back(mkActive("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30)@1"));
+    std::vector<RankPendingGame> q = rankSchedule(roster, store, 8, 1, false, NULL);
+    int withDil = 0;
+    for (size_t i = 0; i < q.size(); i++)
+        if (q[i].w.find("dil(") != string::npos || q[i].b.find("dil(") != string::npos) withDil++;
+    REQUIRE(withDil == 16);           // 8 games against each of the two others
+}
+
 TEST_CASE("ranking scheduler - color balance, incremental top-up, determinism") {
     std::vector<RankAgent> roster;
     roster.push_back(mkActive("rand@1"));

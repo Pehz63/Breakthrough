@@ -253,6 +253,21 @@ std::string rankStoreIndexPath(const std::string& storeFile);
 // always last.
 void rankStoreParts(const std::string& storeFile, std::vector<std::string>& out);
 
+// ---- Determinism ----
+// True when this agent never draws from rand(), so from a fixed position it
+// always plays the same move. Derived from the spec rather than stored: an agent
+// is stochastic only if it dilutes (randomMoveProb > 0), wears the `rand`
+// opener, or IS a random chooser. Notably the Advanced evaluator's noise/jitter
+// terms do NOT count -- they are seeded hashes that reorder choices without ever
+// drawing from rand(), so they are deterministic per NoiseSeed.
+//
+// This matters because a pair of deterministic agents replays ONE game per
+// colour however many games are scheduled. Measured 2026-08-03: 109 of 170
+// active agents are deterministic, giving 5,886 deterministic pairs, where a
+// 32-games/pair fill plays 188,352 games to learn what 11,772 could tell you,
+// and inflates every error bar by counting replays as independent samples.
+bool rankAgentIsDeterministic(const AgentSpec& spec);
+
 // ---- Scheduler ----
 // Pending games = per active pair, gamesPerPair color-balanced targets minus what
 // the store already holds. Deterministic: agents sorted by ID, per-game seeds
