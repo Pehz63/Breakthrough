@@ -930,6 +930,72 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   discriminator agent as a feature vector. Cluster k-means-style and keep the most
   interesting few per cluster. Big project, deliberately deferred `[Later]`
 
+## Books (openers and mid-game)
+
+- **Opening book chosen by win rate over the roster's own game history.** Pick each
+  position's move by how often it won across every game already in the match store,
+  instead of mining one agent's wins against one target the way `rank.exe bookgen`
+  does today. Iterations worth trying:
+  - Restrict the source games to random-opener agents, so the book is built from
+    diverse openings rather than the few lines deterministic pairs replay.
+  - Weight each win by the Elo-EXPECTED win rate of that matchup rather than counting
+    it flat, so beating a much stronger opponent counts for more. `rank.exe matchup`
+    already computes actual minus Elo-expected, so the per-game expectation is on hand.
+  - Compare against the existing per-pair mined books. Theory 38
+    (`plans/book-opener-audit-results-1-vivid-lantern.md`) found a mined book's lift is
+    a memorized-line artifact that collapses under opening diversification. A win-rate
+    book drawn from many agents may or may not inherit that failure, and finding out
+    is most of the value here. `[Next]`
+
+- **Mid-game book: identify difficult positions and the best response.** Key the book on
+  positions where an agent went on to lose, ranked by how many games the correction
+  would have saved across the roster.
+  - Only positions where it is the eventual loser's turn.
+  - Only positions reached at least 16 times by DIFFERENT agent pairs, lowering that
+    threshold iteratively once the candidates are exhausted.
+  - Exclude the first 4 moves, which the opening book already covers.
+  - For each agent pair that reached the position, replay with a different move
+    substituted for the loser and keep it if the loser now wins. `pairgen
+    --branch-tries` already rewinds to a snapshot and substitutes a move, so the
+    replay machinery exists.
+  - Sort entries by games saved, so the book can be truncated to whatever is worth
+    carrying. `[Next]`
+
+## Position and agent analysis
+
+- **Do strong agents recognise the lines a random agent beat them on?** Collect games
+  where a random agent beat an agent rated 500+ Elo above it, then check whether the
+  strong agents' own evaluators score those lines as strong. If they do not, the losses
+  are an evaluation or search blind spot rather than variance. `[Next]`
+
+- **Position similarity score.** For a given position, find or generate another position
+  with a similar win rate for EVERY agent pair. A position's signature is the whole
+  vector of pairwise win rates, not one number: agent A may beat B from it 90% of the
+  time but beat C only 60%.
+  - Some positions likely have win rates that barely depend on who is playing. Weight
+    the score by how common that distribution of pairwise win rates is, so an
+    unremarkable signature counts for less.
+  - Worth splitting: the likelihood an agent REACHES a position versus the likelihood
+    it WINS from it. Different questions, possibly uncorrelated. `[Later]`
+
+- **Agent similarity score: the proportion of positions where two agents play the same
+  move.** Scores agents on how they PLAY rather than on how they were trained, which is
+  what actually determines a matchup. `rank.exe posgen` already builds deduped, ply and
+  material stratified pools, so the benchmark set exists. Would settle empirically what
+  provenance cannot, for example whether a TD-Leaf model initialised from another
+  agent's weights belongs with its ancestor or with the other TD-Leaf models. `[Next]`
+
+- **Model to predict which agent pair generated a board position.**
+  - Baseline first, no model: search the history for that exact position, or the one
+    the least piece-distance away, and return the agent pair that played it.
+  - Then test whether a trained model beats that baseline. Open question is how much
+    data diversity it needs. Unique 1-distance positions may suffice, or it may need
+    1-distance and beyond to generalise to novel positions.
+  - Hold out ENTIRE GAMES, not individual positions: positions from one game are not
+    independent samples.
+  - Related measurement this would need anyway: how different does a random opening
+    actually make the games? `[Later]`
+
 ## Agent Composition + Play
 - ~~AgentSpec (explorer + evaluator + chooser + model slots + dilution) **(P1)**~~
 - ~~Saved agent library file **(P1)**~~
