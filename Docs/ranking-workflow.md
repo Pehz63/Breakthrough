@@ -89,7 +89,7 @@ Use during a study, when you will add and discard many candidates.
    append one `on <id>` line per new agent. A learned agent's ID is
    `<head>.learned(s<slot>,<hash8>,<arch>)@1`, e.g.
    ```
-   on ab(d6,tt,ord,nb200k)@1.learned(s128,7d73ec01,value,lin,129-1,con100)@1
+   on ab(deep=6,tt,ord,nodes=200k)@1.learned(model=128,7d73ec01,value,lin,129-1,con100)@1
    ```
    Keep **one head** for everything you intend to compare (`CHAMPION.md` rule
    6). Write the same IDs, one per line, to a cohort list file.
@@ -177,8 +177,8 @@ Run deliberately, once, after choosing which agents to keep.
 
 - **Compare order and error bands within ONE fit.** Never compare absolute Elo
   across fits; the Bradley-Terry prior compresses the scale as the pool grows.
-- **One search head per comparison.** `ab(d6,tt,ord,nb200k)@1` and
-  `ab(d6,ord,nb200k)@1` are different agents. A table mixing heads is not an
+- **One search head per comparison.** `ab(deep=6,tt,ord,nodes=200k)@1` and
+  `ab(deep=6,ord,nodes=200k)@1` are different agents. A table mixing heads is not an
   evaluator comparison.
 - **Match loadouts.** Never compare a bare core against an equipped one and call
   it an evaluator result.

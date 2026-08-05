@@ -8,12 +8,12 @@
 # non-deterministic (smooth win rates, few ties). Exactly one anchor is required.
 
 anchor  rand@1
-on      smart(6)@1
-on      ab(d3)@1.classic(t1,c4,w0,l0)@2
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1
+on      smart(pieces=6)@1
+on      ab(deep=3)@1.classic(chip=100)@2
+on      ab(deep=4)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=22)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=43)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=63)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=4)@1

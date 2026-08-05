@@ -150,7 +150,7 @@ system (see [src/ranking.h](src/ranking.h) and the README's "Agent Elo ranking"
 section) is the **permanent incremental ladder** and the ground-truth strength
 label for training:
 
-- Agents are canonical ID strings (`ab(d6,tt,ord,nb200k).classic(t2,c10,w3,l2).v1`)
+- Agents are canonical ID strings (`ab(deep=6,tt,ord,nodes=200k).classic(chip=10,wall=3,column=2).v1`)
   listed in the hand-edited `ranking/roster.txt` with `anchor|on|off` toggles.
 - Every game is appended forever to `ranking/matches.jsonl`, keyed by those IDs, so
   the scheduler only plays missing pairings. Adding one agent costs O(N) games and
@@ -417,7 +417,7 @@ evaluator, explorer) connect into one picture.
   value. Optionally wrapped by `ResidualModel`, a frozen chip-count skip
   (`skipW * material_diff` added to the logit) plus the MLP learning the residual.
 - **Agent = alpha-beta search + this value model.** e.g.
-  `ab(d6,tt,ord,nb200k)@1.learned(<hash>)@1`: alpha-beta minimax at depth 6 with a
+  `ab(deep=6,tt,ord,nodes=200k)@1.learned(<hash>)@1`: alpha-beta minimax at depth 6 with a
   200000-node budget, transposition table + move ordering, scoring leaf positions
   with the MLP. The model is a position evaluator, not a move-output policy; the
   agent searches and evaluates. The MLP mu head is now scored with an NNUE-style

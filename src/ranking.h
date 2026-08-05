@@ -24,14 +24,26 @@
 // use it (bump the version constant once, and every affected agent gets a new
 // identity and a fresh rating; old games stay as history). A stale "@N" in the
 // roster fails the canonical check and prints the current form to paste.
-//   id      := head [ "." evalseg ] [ "." dilseg ]                (policy: head [ "." linpol ] [ "." dilseg ])
-//   head    := ( "rand" | "tiered" | "smart(" N ")" | "policy"    (policy brains)
-//              | "greedy" | "ab(" "d" N { "," flag } ")" ) "@" V  (search brains)
-//   flag    := "noab" | "tt" | "ord" | "qs" | "part" | "asp" N
-//            | "nb" budget | "tb" N "ms" | "cap" N                (budget: 200k, 2m, raw)
+// EVERY NUMBER CARRIES A LABEL saying what it is, joined to its value by "=".
+// Not merely what unit it is in: many quantities here are measured in plies, so
+// "ply" alone would conflate a search depth with a dilution depth with an
+// opening cutoff. `_` is reserved for joining words inside a name (mu_shape,
+// tdleaf_self), which is what keeps `mu_shape=129-512-8-1` readable. Superseded
+// spellings (`d6`, `deep_6`, `c4`, `s111`) still PARSE so the store's existing
+// rows keep resolving, but only the current one is ever EMITTED, and
+// rankUpgradeId() rewrites a stored id into it on read.
+//   id      := head [ "." evalseg ] [ "." dilseg ] [ "." openseg ]
+//                                          (policy: head [ "." linpol ] [ ... ])
+//   head    := ( "rand" | "tiered" | "smart(pieces=" N ")" | "policy"  (policy brains)
+//              | "greedy" | "ab(deep=" N { "," flag } ")" ) "@" V      (search brains)
+//   flag    := "noab" | "tt" | "ord" | "qs" | "part" | "margin=" N
+//            | "nodes=" budget | "time=" N "ms" | "maxdeep=" N    (budget: 200k, 2m, raw)
 //   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
-//              | "learned(s" slot "," hash8 [ "," arch ] ")" ) "@" V   (LearnedValue)
-//   arch    = regime "," mutype "," shape [ ",sig" shape ] ",con" pct
+//              | "adv(" weights ")"
+//              | "learned(model=" slot "," hash8 [ "," arch ] ")" ) "@" V  (LearnedValue)
+//   arch    = regime "," mutype "," shapes [ ",conn=" pct ]
+//   shapes  = "shape=" shape                                     (single-head models)
+//           | "mu_shape=" shape ",sigma_shape=" shape            (dist: mean + volatility)
 //   regime  = HOW THE MODEL WAS PRODUCED, read from its file's `teacher=` line:
 //             "tdleaf_self"   TD-Leaf(lambda) on self-play games
 //             "pool_games"    outcomes from games replayed out of the ranked pool
@@ -42,31 +54,48 @@
 //             "unknown"       provenance lost with the model file
 //             "value"|"dist"  SUPERSEDED model-type tokens: parsed, never emitted
 //   mutype  = "mlp" | "lin"      shape = dash-separated layer widths, e.g. 129-512-8-1
-//   con<N>  = percent connectivity, currently always con100 (reserved for sparsity)
+//   conn=N  = percent connectivity, reserved for sparsity. Omitted at its default
+//             of 100 (fully connected), which is every model shipped so far.
 //   The arch fields are DESCRIPTIVE: identity is still (slot, hash), and they are
-//   derived from the file that hash covers. The legacy two-arg form is still accepted
-//   and expands to the rich form on parse, so pre-existing match rows keep matching.
+//   derived from the file that hash covers. So any superseded SPELLING of the
+//   descriptor is accepted and re-derived on parse -- the legacy two-arg
+//   `learned(s111,78ef6974)`, an older regime vocabulary, an older label -- which
+//   is what lets pre-existing match rows keep matching (learnedSpellingOnly).
 //   Regime replaced model-type on 2026-08-01: two agents can share an architecture
 //   and be nothing alike (a TD-Leaf model and a pool-replay model are both
 //   value,lin,129-1), so the id names the pipeline instead. It lives in the id
 //   rather than only in the model file because the id is stamped into every
 //   append-only store row and outlives the file -- slot9.txt was overwritten on
 //   2026-07-30 and its teacher= line went with it, making that agent's regime
-//   unrecoverable. canonicalizeLearnedIds() re-derives stale descriptors on read,
-//   so stored rows written under the old tokens keep matching.
-//   linpol  := "linpol(s" slot "," hash8 ")"                      (policy-head model payload, no "@V")
-//   weights := letter int { "," letter int }                      (ALL params, registry order)
-//   dilseg  := "dil(r" pct [ "," "d" N ] ")" "@" V                (r5 = 5% diluted moves;
-//                                                                  ,dN = those moves use a
-//                                                                  depth-N search, 0<N<depth,
-//                                                                  search head only; else random)
+//   unrecoverable.
+//   linpol  := "linpol(model=" slot "," hash8 ")"     (policy-head payload, no "@V")
+//   weights := name "=" int { "," name "=" int }      (a SUBSET, registry order)
+//              An omitted weight takes its REGISTRY DEFAULT, and a weight sitting
+//              at a default of 0 -- an optional term never switched on -- is not
+//              emitted. A non-default zero always is, so `racewin=0` (default 1)
+//              survives rather than silently switching the term back on. The TURN
+//              weight is elided unless the head has `qs` or `part`, because only
+//              mixed leaf parity makes it act (src/CLAUDE.md, "Turn weight").
+//              When chip is the only ACTIVE weight it is written as 100 whatever
+//              its stored value: scaling the sole live term cannot reorder a move,
+//              so c4 / c10 / c100 name the one player they have always been.
+//   dilseg  := "dil(prob=" pct [ ",deep=" N ] ")" "@" V   (prob=5 -> 5% diluted moves;
+//                                                          deep=N -> those moves use a
+//                                                          depth-N search, 0<N<depth,
+//                                                          search head only; else random)
+//   openseg := "opener(" name "," label "=" N [ "," "ply=" N ] ")" "@" V
+//                                                     (label from the opener registry:
+//                                                      moves= for rand, book= for book;
+//                                                      ply= caps the book by game clock)
 //   V       := positive int, the module's code version (from the codec tables)
-// Examples: rand@1  smart(4)@1  ab(d6)@1.classic(t2,c10,w3,l2)@1
-//           ab(d8,tt,ord,nb200k)@1.exp(t2,c10,w3,l2,f2)@1.dil(r5)@1
-//           ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@1.dil(r30,d3)@1
-//           greedy@1.learned(s0,ab12cd34,value,lin,30-1,con100)@1
-//           ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-//           policy@1.linpol(s1,9f3e21aa)
+// Examples: rand@1   smart(pieces=4)@1   ab(deep=6)@1.classic(chip=100)@2
+//           ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=2)@1
+//           ab(deep=6,tt,ord,qs,nodes=200k)@1.classic(turn=2,chip=10,wall=3,column=2)@2
+//           ab(deep=8,tt,ord,nodes=200k)@1.exp(chip=10,wall=3,column=2,forward=2)@2.dil(prob=5)@1
+//           ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1
+//           greedy@1.learned(model=0,ab12cd34,pool_games,lin,shape=30-1)@1
+//           ab(deep=6,tt,ord,nodes=200k)@1.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+//           policy@1.linpol(model=1,9f3e21aa)
 
 // A roster entry: the engine-playable spec plus the identity fields that
 // AgentSpec cannot hold (the full canonical ID string, which embeds each
@@ -120,6 +149,19 @@ struct RankFit {
 // module versions); on failure returns false with a human-readable reason.
 std::string rankAgentId(const AgentSpec& spec);
 bool rankAgentFromId(const std::string& id, RankAgent& out, std::string& err);
+// Rewrite a STORED id into today's canonical spelling. Label conventions have
+// changed (`d6` -> `deep=6`, `c4` -> `chip=100`, `s111` -> `model=111`), and the
+// roster carries only the current form, so without this every stored row would
+// stop matching the agent the roster names and the fit would see zero games.
+// Preserves the original learned()/linpol() payload verbatim when its slot file
+// no longer matches the stored hash, so a slot that was later overwritten cannot
+// rename a historical identity. Returns the input unchanged if it cannot parse.
+std::string rankUpgradeId(const std::string& id);
+// Shorten an id for PRINTING ONLY: drop each segment's "@N" when N is already
+// that module's current version, so a retired identity pinned at an older one
+// still shows its version and a table of live agents is not padded with a
+// constant. Console tables only -- every file keeps the full canonical id.
+std::string rankDisplayId(const std::string& id);
 // First 8 lowercase hex chars of FNV-1a-64 over a file's bytes ("" if unreadable).
 std::string rankFileHash8(const std::string& path);
 // Verify every g_evaluators entry has a codec row with unique weight letters.

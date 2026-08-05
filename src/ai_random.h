@@ -31,12 +31,23 @@ struct OpenerDef {
     const char* idName;   // canonical-ID token, e.g. "rand"
     const char* desc;
     bool        hasArg;   // true = takes one integer arg (openerArg); false = none
+    bool        hasArg2;  // true = accepts an OPTIONAL second arg (openerArg2, 0 = unset)
+    // Label written before openerArg in the canonical id, naming WHAT the number
+    // is: "moves" for the random opener's own-move span, "book" for which book
+    // file. The second arg, when present, is always "ply" (a cutoff on the game
+    // clock), so it needs no per-opener label.
+    const char* argLabel;
     // side: White/Black. ownPly: count of THIS agent's own prior moves (0-based).
-    // arg: the agent's openerArg (meaning is opener-specific). If this opener
-    // wants to play the move this ply, it plays it on the live board, sets
-    // victor to the resulting victor code, and returns true; otherwise it
-    // returns false and the caller falls back to the agent's brain.
-    bool (*fn)(int side, int ownPly, int arg, int& victor);
+    // halfMove: half-moves elapsed since the game start (0-based), i.e. the same
+    //   clock `bookgen --plies` cuts on. Both are passed because the two openers
+    //   legitimately want different units: `rand` bounds the agent's OWN moves,
+    //   while `book` bounds distance from the start so that a capped book is
+    //   exactly equivalent to one mined at that --plies value.
+    // arg/arg2: the agent's openerArg/openerArg2 (meaning is opener-specific).
+    // If this opener wants to play the move this ply, it plays it on the live
+    // board, sets victor to the resulting victor code, and returns true;
+    // otherwise it returns false and the caller falls back to the agent's brain.
+    bool (*fn)(int side, int ownPly, int halfMove, int arg, int arg2, int& victor);
 };
 
 extern const OpenerDef g_openers[];

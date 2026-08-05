@@ -147,14 +147,15 @@ retired ones. Its `active` column distinguishes them: `on` (live roster), `off`
 typically an older `@N` code version whose behavior differs from the live one,
 frozen at whatever game count it had when it left the roster (often 196-504
 games against a then-smaller pool). Its Elo is not that agent's current
-strength. Measured instance: a retired `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,
-w0,l0)@1` row reads **1081** while its live `@2` identity reads **990**, a
+strength. Measured instance: a retired
+`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@1` row reads **1081** while
+its live `@2` identity reads **990**, a
 91-Elo phantom gap. Quoting the retired row made a hill-climbed Advanced agent
 look *worse* than plain classic when at a matched head it is slightly *better*.
 
 **Defect 2: comparing across search heads.** An agent is search + evaluator.
-`ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` differ in whether a transposition
-table is on; `ab(d8,tt,ord,nb2m)` is a different depth AND a 10x node budget.
+`ab(deep=6,tt,ord,nodes=200k)` and `ab(deep=6,ord,nodes=200k)` differ in whether a transposition
+table is on; `ab(deep=8,tt,ord,nodes=2m)` is a different depth AND a 10x node budget.
 Their Elos are not interchangeable, so a table mixing heads is not an evaluator
 comparison even though every row looks alike.
 
@@ -180,7 +181,7 @@ node counts make effectively unique):
   games played is **0.438**, so a nominal 32-game pair is typically about 14
   distinct games.
 - Worst cases are 32 games yielding **2** distinct trajectories. All of them are
-  `ab(d6,ord,nb200k)` pairs, the head with no TT and therefore no cross-game
+  `ab(deep=6,ord,nodes=200k)` pairs, the head with no TT and therefore no cross-game
   state at all: one game as White, one as Black, each replayed 16 times.
 - The collapse is instrument-wide, not caused by any one loadout item. Mean
   diversity is 0.574 for pairs with no book and 0.529 for pairs where one side
@@ -197,8 +198,9 @@ understated by roughly `sqrt(1/0.438)`, about 1.5x, for a typical pair, and far
 more for the deterministic no-TT pairs. A margin that looks like 2 standard errors
 may be under 1.
 
-Worked instance, the reigning champion's own certification. `...classic(t1,c4,w0,
-l0)@2.opener(book,2)@1` versus its bare self at the same head reads 29-3 (91%) in
+Worked instance, the reigning champion's own certification.
+`...classic(chip=100)@2.opener(book,book=2)@1` versus its bare self at the same
+head reads 29-3 (91%) in
 the store. That splits into run `20260718T175325Z` at **5-3 of 8** and run
 `20260718T175433Z` at **24-0 of 24**. Fresh reproduction on 2026-07-26 with
 identical agents and board: eight separate 8-game processes each returned exactly

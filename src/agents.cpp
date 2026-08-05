@@ -52,6 +52,8 @@ AgentSpec agentMakeSearch(const char* name, int explorer, int evaluator, int dep
     a.dilDepth = 0;
     a.openerKind = -1;
     a.openerArg = 0;
+    a.openerArg2 = 0;
+    a.openerArg = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, evaluator);
     return a;
@@ -70,6 +72,8 @@ AgentSpec agentMakePolicy(const char* name, int chooser, int chooserParam, int m
     a.depthCap = 0;
     a.dilDepth = 0;
     a.openerKind = -1;
+    a.openerArg = 0;
+    a.openerArg2 = 0;
     a.openerArg = 0;
     seedAgentDefaults(a);
     seedEvalParams(a, 0);
@@ -147,7 +151,12 @@ string agentDescribe(const AgentSpec& a) {
     if (a.dilDepth > 0)         s += " dil-d" + std::to_string(a.dilDepth);
     if (a.openerKind >= 0 && a.openerKind < g_openerCount) {
         s += string(" opener=") + g_openers[a.openerKind].idName;
-        if (g_openers[a.openerKind].hasArg) s += "(" + std::to_string(a.openerArg) + ")";
+        if (g_openers[a.openerKind].hasArg) {
+            s += "(" + std::to_string(a.openerArg);
+            if (g_openers[a.openerKind].hasArg2 && a.openerArg2 > 0)
+                s += "," + std::to_string(a.openerArg2);
+            s += ")";
+        }
     }
     if (a.depthCap > 0)         s += " cap=" + std::to_string(a.depthCap);
     if (a.brain == BRAIN_SEARCH) {

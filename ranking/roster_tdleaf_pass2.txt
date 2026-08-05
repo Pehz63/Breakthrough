@@ -12,83 +12,83 @@
 #
 # The set varies one axis at a time so per-feature Elo deltas are readable.
 
-anchor  rand@1                                                  # UniformRandom, pinned at Elo 0
+anchor  rand@1  # UniformRandom, pinned at Elo 0
 
 # Random family: tier ladder around the furthest-N knob.
-on      tiered@1                                                # win/capture/normal tiers
-on      smart(2)@1                                              # tiered, furthest-2 pieces
-on      smart(4)@1
-on      smart(6)@1
+on      tiered@1  # win/capture/normal tiers
+on      smart(pieces=2)@1  # tiered, furthest-2 pieces
+on      smart(pieces=4)@1
+on      smart(pieces=6)@1
 
 # 1-ply greedy: default vs structure-weighted Classic.
-on      greedy@1.classic(t1,c4,w0,l0)@2
-on      greedy@1.classic(t2,c10,w3,l2)@2
+on      greedy@1.classic(chip=100)@2
+on      greedy@1.classic(chip=10,wall=3,column=2)@2
 
 # Depth ladder, Classic default weights.
-on      ab(d1)@1.classic(t1,c4,w0,l0)@2
-on      ab(d2)@1.classic(t1,c4,w0,l0)@2
-on      ab(d3)@1.classic(t1,c4,w0,l0)@2
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2
-on      ab(d5)@1.classic(t1,c4,w0,l0)@2
+on      ab(deep=1)@1.classic(chip=100)@2
+on      ab(deep=2)@1.classic(chip=100)@2
+on      ab(deep=3)@1.classic(chip=100)@2
+on      ab(deep=4)@1.classic(chip=100)@2
+on      ab(deep=5)@1.classic(chip=100)@2
 
 # Eval-weight variants at d4: structure-weighted Classic + the forward ladder.
-on      ab(d4)@1.classic(t2,c10,w3,l2)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@2
+on      ab(deep=4)@1.classic(chip=10,wall=3,column=2)@2
+on      ab(deep=4)@1.exp(chip=4,forward=1)@2
+on      ab(deep=4)@1.exp(chip=4,forward=2)@2
+on      ab(deep=4)@1.exp(chip=4,forward=4)@2
+on      ab(deep=4)@1.exp(chip=4,forward=8)@2
 
 # Dilution ladder on ab(d4): Elo vs random-move probability.
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=5)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=25)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=50)@1
 
 # Pruning ladder at a fixed 200k-node budget, depth cap 6: from no pruning at
 # all up to TT + ordering + tight aspiration windows. Same compute, more
 # cutoffs = more effective depth = Elo (watch the eff-depth telemetry).
-on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@2             # full minimax floor
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2                  # plain alpha-beta
-on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2               # + transposition table
-on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2              # + move ordering only
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2           # + both
-on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2     # + tight aspiration window
-on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(deep=6,noab,nodes=200k)@1.classic(chip=100)@2  # full minimax floor
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2  # plain alpha-beta
+on      ab(deep=6,tt,nodes=200k)@1.classic(chip=100)@2  # + transposition table
+on      ab(deep=6,ord,nodes=200k)@1.classic(chip=100)@2  # + move ordering only
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2  # + both
+on      ab(deep=6,tt,ord,margin=25,nodes=200k)@1.classic(chip=100)@2  # + tight aspiration window
+on      ab(deep=6,tt,ord,margin=50,nodes=200k)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,margin=100,nodes=200k)@1.classic(chip=100)@2
 
 # Dilution ladder on the budgeted d6 (mirrors the d4 ladder at higher strength).
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=25)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=50)@1
 
 # Dense dilution ladder over the strongest pruned d6, to resolve the top-end ties and to
 # give the hill climber (tools/hill_climb.ps1) non-deterministic opponents. Random-move
 # dilution dil(rP) plays a fully random move P% of the time; stochastic depth dilution
 # dil(rP,dN) instead plays a shallower depth-N search P% of the time (plausible-but-weaker).
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1        # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1        # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r14)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r28)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r52)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r75)@1
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1     # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1     # benched 2026-07-21: exact Elo tie with dil(r60,d4)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1     # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d3)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d4)@1
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=4)@1  # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=7)@1  # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=14)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=18)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=22)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=28)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=35)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=43)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=52)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=63)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=75)@1
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=15,deep=3)@1  # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1  # benched 2026-07-21: exact Elo tie with dil(r60,d4)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=45,deep=3)@1  # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=60,deep=3)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=15,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=45,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=60,deep=4)@1
 
 # off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
-on      ab(d4)@1.exp(t20,c64,w0,l1,f15)@2
-on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
+on      ab(deep=4)@1.exp(chip=64,column=1,forward=15)@2
+on      ab(deep=4)@1.exp(chip=65,column=1,forward=14)@2
 
 # Best learned model to date: trained on 4000 games REPLAYED from this store's
 # own match history (rank.exe extract, the full diverse agent pool as teachers),
@@ -98,21 +98,21 @@ on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
 # Caveat: trained on the pool's own games and rated against that pool, so part
 # of the number may be style-fit; the held-out-agent probe (todo.md) tests this.
 # off   ab(d6,tt,ord,nb200k)@1.learned(s2,59815079)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=75,hole=3,race=2,noiseseed=1,racewin=1)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1
 
 # Quiescence challengers (dethrone plan phase 1): the qs flag spends the d6
 # head's idle node budget on a captures-only stand-pat extension at depth
 # leaves. Same head as the reigning champion s98 otherwise.
-on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,qs,nodes=200k)@1.classic(turn=1,chip=4)@2
+on      ab(deep=6,tt,ord,qs,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
 
 # Refutation-book challengers (dethrone plan phase 2): .opener(book,1) plays
 # models/book1.txt (the d8/nb2m oracle's winning replies against s98, mined by
@@ -121,8 +121,8 @@ on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
 # NOTE: the book file is not hashed into the ID (unlike learned models), so
 # models/book1.txt is treated as immutable -- regenerating it under slot 1 would
 # silently change these agents' behavior. A new book gets a new slot number.
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,1)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1)@1
 
 # Self-mined book (developer hypothesis 2026-07-18, theory 31): instead of
 # giving classic the ORACLE's winning moves against s98 (book,1 above, which
@@ -140,7 +140,7 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 # hash with no response tree, so its lift only holds while the opponent repeats
 # its mined replies. Under pairgen --open-plies 8 every book effect measured in
 # this project collapses to noise. Do not quote a book Elo as strength.
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=2)@1
 
 # Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the
 # todo's weight-symmetrization [Now] item). Slots 3-8 are 6 fresh seed
@@ -150,49 +150,49 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
 # is that policy). slot9 = mirror-symmetrized average of all 6 seeds;
 # slot10 = mirror-symmetrized champion weights alone (separates the
 # symmetrization effect from the ensembling effect). Both standard heads.
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
 # off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: models/sweep/slot9.txt accidentally overwritten by a test using an unverified slot number (gitignored, unrecoverable). Historical record + Elo stand as of the last fit; can never play again.
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
 # off   ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: see the s9 note above (slot9.txt unrecoverably overwritten).
-on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1
-on ab(d2)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d4)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d2)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d4)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d2)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d4)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d2)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2.dil(prob=15,deep=6)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2.dil(prob=30,deep=6)@1
+on      ab(deep=2)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=4)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=2)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=4)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=2)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=4)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=2)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
 
 # NNUE-shaped dist mu heads (129->512->8->1), 6 seeds, slots 110-115.
 # Efficiency negative result (2.47 us/node, ~2x standard head); rated for completeness.
-on ab(d4)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on      ab(deep=4)@1.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 
 # ---------------------------------------------------------------------------
 # Book loadout study (2026-07-26, plans/book-opener-audit-results-1-vivid-lantern.md).
@@ -216,29 +216,29 @@ on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1
 # it would add hours of roster play for one more row.
 
 # classic core, own-book depth ladder (6/16/30; the 60 rung is the champion above)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,7)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,8)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,9)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=7)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=9)@1
 # classic core wearing s98's 60-ply book (borrowed)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=4)@1
 
 # s98 core, own-book depth ladder (6/16/30/60)
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,10)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,11)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,12)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=12)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=4)@1
 # s98 core wearing classic's 60-ply book (borrowed; this is the champion's book)
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
 
 # s3 core: own 60-ply book vs the champion's borrowed book
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,6)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=6)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
 
 # hill-climbed Advanced core (DIFFERENT head, no tt): own vs borrowed.
 # This is the core where the borrowed book beat the own book 32-0 vs 16-16 in
 # pairwise play, which is the single result the pooled fit most needs to check.
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,2)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=3)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=2)@1
 
 # ---------------------------------------------------------------------------
 # Champion-category cohort (2026-07-28, splits the single throne into 5
@@ -252,10 +252,10 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # (classic-own: book7/8/9/2 = 6/16/30/60ply; s98-own: book10/11/12/4 =
 # 6/16/30/60ply). book13-16 mined for free from the same already-stored
 # classic-vs-s98 match history (no new games needed to mine them).
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,13)@1        # classic-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,14)@1        # classic-own, 8-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,15)@1   # s98-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,16)@1   # s98-own, 8-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1  # classic-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1  # classic-own, 8-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1  # s98-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1  # s98-own, 8-ply
 
 # 4-random / 8-random: every bare target-class core >= ~1000 Elo in the
 # standard-head standings, plus the classic control, each wearing
@@ -263,26 +263,26 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.op
 # in ranking/roster_open.txt's separate matches_open.jsonl store -- that's a
 # different, incompatible-scale instrument; this builds independent history
 # for these identities in the merged pool.
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # 370ms/move core, cost flag
-on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # NNUE-wide core, cost flag
-on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=4)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=4)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=8)@1
 
 # ---------------------------------------------------------------------------
 # Champion-category cohort, round 2 (2026-07-29). More cores per category for
@@ -298,10 +298,10 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
 # to mine. adv is a DIFFERENT search head (ab(d6,ord,nb200k)@1, no tt), so its
 # book19/20 lines add Elo diversity but are NOT category-eligible (one-head
 # rule) -- same treatment as the existing bare/book2/book3 adv rows above.
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,17)@1   # s3-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,18)@1   # s3-own, 8-ply
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,19)@1   # adv-own, 4-ply, off-head (not category-eligible)
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,20)@1   # adv-own, 8-ply, off-head (not category-eligible)
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=17)@1  # s3-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=18)@1  # s3-own, 8-ply
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=19)@1  # adv-own, 4-ply, off-head (not category-eligible)
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=20)@1  # adv-own, 8-ply, off-head (not category-eligible)
 
 # 4-random / 8-random: the remaining bare target-class value-linear seeds at
 # the standard head not yet covered (s4/s9/s10/s94/s95/s97/s99). Deliberately
@@ -310,487 +310,487 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # and adding the rest would cost hours of roster play for rows that theory 39
 # already predicts will rate low, the same cost-vs-benefit call as book5's
 # exclusion (tools/CLAUDE.md).
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
 # off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1  # RETIRED 2026-07-30: see the s9 note above.
 # off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1  # RETIRED 2026-07-30: see the s9 note above.
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
 
 # ---- TD-Leaf Pass 2 cohort (468 agents), added 2026-07-30 ----
-on ab(d6,tt,ord,nb200k)@1.learned(s166,314255f2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s167,78865d90)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s168,8378d548)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s170,d76459aa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s171,10d3530c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s172,0081165a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s173,4b18c47b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s174,f57ac964)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s175,f4ca0554)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s176,bd15831c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s177,1453b83a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s178,209859cd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s179,65391c66)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s180,e779909a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s181,da2955fd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s182,21829e73)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s183,de55e83e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s184,83048f3d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s185,2fc25b4a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s186,1ad92230)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s187,a7f9f32e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s188,fa7de194)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s189,4a6eaf22)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s190,dfec5850)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s191,e1658d7e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s192,fb0016c2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s193,b0a0c3f5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s194,58cc04ed)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s195,62ca2912)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s196,1c40344f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s197,b64cb33b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s198,5b0de98f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s199,0e7252e8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s200,611445a0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s201,c9011df3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s202,8ba4b01e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s203,b9b1c0a9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s204,45baf454)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s205,decec2e3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s206,e6f300a4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s207,a14ffaa1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s208,80054185)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s209,4910086c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s210,8e3fbe00)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s211,68206ff5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s212,143a6aee)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s213,ff09634a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s214,ee30a6d8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s215,41aa1a83)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s216,be872879)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s217,408c5f22)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s218,1b7a51f1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s219,dd943c94)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s220,794c926b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s221,79fd930d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s222,ec34f34c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s223,554615ed)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s224,bacf038c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s225,134d8aaa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s226,4559d5a3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s227,ce017d10)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s228,f3f85cd4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s229,6f4d36ec)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s230,5a2755ad)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s231,3c1c00b3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s232,a3e115d4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s233,2e8daadf)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s234,003fce99)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s235,5c695352)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s236,d389691d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s237,027ca166)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s238,de012953)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s239,498cc87e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s240,d9ce013a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s241,98b35941)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s242,790ddf1b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s243,f83b7628)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s244,b03a9bdd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s245,b2716504)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s246,0f705be8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s247,cd089541)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s248,22e360aa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s249,5a9c8ec7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s250,be92144b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s251,80e2b500)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s252,ff3be65c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s253,3ea8b114)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s254,bb6b1c2c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s255,0afedfb8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s256,f12dc51a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s257,17f5e111)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s258,60d5dc7b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s259,33e1f5ec)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s260,15e3a6da)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s261,52cd70f8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s262,5946d9dc)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s263,08bcb747)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s264,ba85ca36)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s265,ab95e875)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s266,a87056a0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s267,9eb956a4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s268,7b6b3541)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s269,d6e19134)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s270,25021142)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s271,396cb1ad)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s272,89b199f9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s273,2074f5f6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s274,7faa09eb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s275,30d93661)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s276,52e214dd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s277,33cc21ce)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s278,7fe8bc3f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s279,409dc0b3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s280,ccd8ada6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s281,f4387570)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s282,4f31db2d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s283,a1cbc4cf)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s284,56759884)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s285,4d989985)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s286,314310a1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s287,ff4d3740)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s288,5c52f995)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s289,691fe1cf)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s290,95f38ef4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s291,ae2cae4b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s292,0c311139)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s293,9e921b54)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s294,2882c474)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s295,18c68f7f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s296,640e3789)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s297,2653c503)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s298,91d46850)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s299,876a1d86)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s300,7e050c36)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s301,2e5fe634)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s302,db6572a4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s303,784a529d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s304,d997abcd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s305,68bcfad4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s306,b879218e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s307,c9ef6765)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s308,6c81aea1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s309,3b9c0f56)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s310,4a18f1a9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s311,5bb858b3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s312,93a37787)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s313,0d615b5a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s314,f286582c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s315,8ae2fd94)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s316,feabcf41)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s317,7a720c59)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s318,7e094b8b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s319,682ee4f9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s320,736d57d8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s321,4657ad0a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s322,90099fda)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s323,8af7c4f3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s324,7b33210d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s325,0e033f98)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s326,ecbdf8b2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s327,f3601345)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s328,e0a65745)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s329,819bddca)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s330,c8bb05e3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s331,d99924aa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s332,419d1077)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s333,06bdc1f0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s334,27a1d20c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s335,22fd3acb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s336,bf31a5d0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s337,81ded76b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s338,860adcee)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s339,df964e94)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s340,f7574427)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s341,2f635371)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s342,4fd37166)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s343,f67153ea)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s344,0bc648e6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s345,5bb675d7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s346,9f35b572)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s347,76952e2a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s348,eb6440e6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s349,5ee50d5c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s350,2569231e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s351,42d88d8e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s352,fe298be7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s353,600c2155)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s354,4f890dac)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s355,2ce1c30f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s356,f707da4e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s357,c3c9faa7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s358,50326df9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s359,30fca4ce)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s360,a968b528)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s361,3a482d4d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s362,b0edea52)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s363,e5c281ef)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s364,f2caa077)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s365,1970ea77)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s366,c09ad9d9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s367,5deb7060)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s368,cdfe08b2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s369,612a48a8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s370,fcb39fb5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s371,97ffb8b6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s372,adbb2381)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s373,a46aa9a6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s374,8a53f5bb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s375,3cd89b98)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s376,4f0ccd03)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s377,3c34c5fa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s378,d591bb4f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s379,1d4858a1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s380,88c5c2cc)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s381,dc356719)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s382,ecd342f5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s383,578defd4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s384,7e77dd6b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s385,d5c9d323)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s386,2dba22c8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s387,607b64aa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s388,ebbac246)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s389,06d8726e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s390,9a9f639e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s391,685a1403)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s392,8b4d9673)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s393,762be5f1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s394,96516003)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s395,6274d6b4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s396,6c7f10ed)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s397,640dfb3a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s398,dcfd30cd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s399,ced544c3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s400,2aba42d9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s401,92f013df)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s402,aa78d551)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s403,da784ad2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s404,90856b60)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s405,111c40c8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s406,0f097bb3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s407,dc844823)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s408,e12f3a20)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s409,198dbf24)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s410,23412e13)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s411,808b72eb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s412,e883bc4e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s413,6d80960a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s414,cb53121d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s415,19f1968b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s416,a5f0287a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s417,f24b0f53)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s418,e3f47478)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s419,49a87e7d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s420,e7e0f74e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s421,d13121eb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s422,8893b385)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s423,8da788fa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s424,e69014a9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s425,47bb6e90)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s426,714403d6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s427,245068dc)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s428,b85aa809)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s429,6e867666)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s430,361deb9b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s431,fca9f39f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s432,c4d9e52e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s433,2b19f72c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s434,5d268cff)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s435,408d922e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s436,6276a9b0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s437,a170a4c5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s438,53792a64)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s439,e6200bb6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s440,cd7a738f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s441,01db390c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s442,9d4515f8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s443,9cfd41b7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s444,1691efad)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s445,a2b0ac71)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s446,28afbab5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s447,1390aefa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s448,842ef6a2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s449,05072c0c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s450,0d2ff868)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s451,ca29bd6b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s452,52f7adc7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s453,36b0792f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s454,605565b0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s455,c21db26d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s456,9cc86c23)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s457,2a9cd082)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s458,9fb85b93)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s459,642147d2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s460,b6dec165)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s461,ad98a4aa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s462,133aecd1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s463,c7f068bc)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s464,3df10d8a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s465,05ddacb5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s466,3a962e51)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s467,b4edc8c2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s468,b6aeaf80)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s469,cc57e423)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s470,3730bb17)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s471,f0ada367)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s472,66c0968e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s473,d3d3ea14)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s474,0c16a6c2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s475,001e3db7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s476,677e655d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s477,5171b2fc)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s478,8ea81a2f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s479,a97576e5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s480,a64552bb)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s481,92bfa871)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s482,8df8ccef)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s483,adb7f207)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s484,0d6106da)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s485,5c32a736)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s486,3bc9ffcf)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s487,6337bc2b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s488,6bdb8151)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s489,7c5e83a5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s490,0e611b02)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s491,8b5896e2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s492,01ca245e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s493,fb86e303)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s494,8d45a4c0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s495,0527cee1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s496,be01dcbe)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s497,6377d364)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s498,35542f60)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s499,7c686ff3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s500,61158825)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s501,8e1d8f41)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s502,1e6e1902)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s503,b7a385ec)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s504,7d14a7d9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s505,6d5240f0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s506,5956ea8b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s507,1e2cb368)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s508,77afc0e1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s509,3de5b388)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s510,c32ca545)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s511,791051fa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s512,bc116b9b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s513,3038c8ef)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s514,257647a1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s515,a421dece)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s516,dd84e05b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s517,e8330f4f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s518,74868be1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s519,cd1a10ef)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s520,171a9d3c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s521,ef30c99d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s522,c2ae442d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s523,1939d069)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s524,488a58a9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s525,75adb0cd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s526,cfffe017)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s527,d9888a98)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s528,f8259a65)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s529,0631d06a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s530,369d3f4d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s531,748d1c8d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s532,d969777b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s533,26d44cb8)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s534,79e9797c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s535,732143da)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s536,99a9c4a1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s537,5c0f0338)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s538,0f44c075)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s539,ec019190)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s540,b09073c7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s541,5f05dafe)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s542,f9ae3d1b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s543,5c3e9e20)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s544,7675ff3a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s545,3472b179)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s546,458df414)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s547,a6c7ba93)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s548,8fcf323b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s549,6b36a477)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s550,7d827908)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s551,cbd77ec7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s552,a21f9c4d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s553,a44e6ad6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s554,970de74a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s555,b4f80cc1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s556,3dd6a3ce)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s557,581c97df)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s558,d241ebb7)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s559,b0e4db1d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s560,37be84d4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s561,4207ab3c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s562,337aa1c5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s563,5399d9a2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s564,19813d0b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s565,837b2370)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s566,14ad32e5)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s567,a1b482dd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s568,db427918)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s569,4c892781)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s570,3baee3bd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s571,93a2ec16)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s572,e837fce2)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s573,48099f0c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s574,98f86e38)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s575,1b54ded0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s576,5fadcb55)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s577,619c2cfa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s578,8f3b1318)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s579,afcc41ec)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s580,8104a402)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s581,1cb17e5b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s582,5d01fd83)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s583,aebfb8fd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s584,f64126c9)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s585,e37f6895)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s586,89baf29f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s587,f2df3eea)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s588,f281e46b)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s589,e55cd4b6)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s590,5bbabfe3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s591,b01ae718)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s592,84814d37)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s593,1ab7f364)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s594,2d3b824f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s595,d9357c67)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s596,db021e0c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s597,d2003093)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s598,860ad508)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s599,2eb4d5dd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s600,1edd8b6f)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s601,a441d1fa)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s602,68cbb27d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s603,2da121ee)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s604,4d3f9c66)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s605,9d3db033)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s606,e4c659c0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s607,fbdf976a)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s608,a5217d04)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s609,349d1870)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s610,0891e3f4)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s611,4102fc15)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s612,9cc33d63)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s613,4aecb69c)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s614,ba5e7361)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s615,3fd4d063)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s616,16ddb077)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s617,f0807cc1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s618,0791d12e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s619,f14f148e)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s620,dc995cd3)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s621,d9626b88)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s622,091c4e77)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s623,3dab8a16)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s624,1bbff449)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s625,90590abd)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s626,76fc8704)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s627,52c5e2a1)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s628,75b3269d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s629,8e4ad19d)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s630,7bb48fe0)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s631,02e13108)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s632,835e8651)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s633,2c9b5576)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=166,314255f2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=167,78865d90,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=168,8378d548,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=170,d76459aa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=172,0081165a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=173,4b18c47b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=174,f57ac964,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=175,f4ca0554,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=176,bd15831c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=177,1453b83a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=178,209859cd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=179,65391c66,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=180,e779909a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=181,da2955fd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=182,21829e73,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=183,de55e83e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=184,83048f3d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=185,2fc25b4a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=186,1ad92230,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=187,a7f9f32e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=188,fa7de194,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=189,4a6eaf22,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=190,dfec5850,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=191,e1658d7e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=192,fb0016c2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=193,b0a0c3f5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=194,58cc04ed,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=195,62ca2912,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=196,1c40344f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=197,b64cb33b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=198,5b0de98f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=199,0e7252e8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=200,611445a0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=201,c9011df3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=202,8ba4b01e,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=203,b9b1c0a9,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=204,45baf454,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=205,decec2e3,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=206,e6f300a4,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=207,a14ffaa1,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=208,80054185,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=209,4910086c,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=210,8e3fbe00,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=211,68206ff5,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=212,143a6aee,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=213,ff09634a,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=214,ee30a6d8,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=215,41aa1a83,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=216,be872879,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=217,408c5f22,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=218,1b7a51f1,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=219,dd943c94,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=220,794c926b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=221,79fd930d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=222,ec34f34c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=223,554615ed,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=224,bacf038c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=225,134d8aaa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=226,4559d5a3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=227,ce017d10,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=228,f3f85cd4,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=229,6f4d36ec,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=230,5a2755ad,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=231,3c1c00b3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=232,a3e115d4,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=233,2e8daadf,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=234,003fce99,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=235,5c695352,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=236,d389691d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=237,027ca166,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=238,de012953,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=239,498cc87e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=240,d9ce013a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=241,98b35941,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=242,790ddf1b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=243,f83b7628,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=244,b03a9bdd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=245,b2716504,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=246,0f705be8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=247,cd089541,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=248,22e360aa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=249,5a9c8ec7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=250,be92144b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=251,80e2b500,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=252,ff3be65c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=253,3ea8b114,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=254,bb6b1c2c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=255,0afedfb8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=256,f12dc51a,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=257,17f5e111,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=258,60d5dc7b,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=259,33e1f5ec,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=260,15e3a6da,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=262,5946d9dc,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=263,08bcb747,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=264,ba85ca36,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=265,ab95e875,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=266,a87056a0,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=267,9eb956a4,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=268,7b6b3541,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=269,d6e19134,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=270,25021142,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=271,396cb1ad,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=272,89b199f9,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=273,2074f5f6,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=274,7faa09eb,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=275,30d93661,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=276,52e214dd,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=277,33cc21ce,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=278,7fe8bc3f,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=280,ccd8ada6,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=281,f4387570,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=282,4f31db2d,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=283,a1cbc4cf,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=284,56759884,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=285,4d989985,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=286,314310a1,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=287,ff4d3740,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=288,5c52f995,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=289,691fe1cf,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=290,95f38ef4,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=291,ae2cae4b,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=292,0c311139,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=293,9e921b54,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=294,2882c474,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=295,18c68f7f,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=296,640e3789,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=297,2653c503,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=298,91d46850,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=299,876a1d86,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=300,7e050c36,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=301,2e5fe634,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=302,db6572a4,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=303,784a529d,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=304,d997abcd,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=305,68bcfad4,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=306,b879218e,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=307,c9ef6765,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=308,6c81aea1,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=309,3b9c0f56,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=310,4a18f1a9,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=311,5bb858b3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=312,93a37787,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=313,0d615b5a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=314,f286582c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=315,8ae2fd94,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=316,feabcf41,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=317,7a720c59,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=318,7e094b8b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=319,682ee4f9,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=320,736d57d8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=321,4657ad0a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=322,90099fda,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=323,8af7c4f3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=324,7b33210d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=325,0e033f98,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=326,ecbdf8b2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=327,f3601345,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=328,e0a65745,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=329,819bddca,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=330,c8bb05e3,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=331,d99924aa,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=332,419d1077,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=334,27a1d20c,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=335,22fd3acb,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=336,bf31a5d0,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=337,81ded76b,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=338,860adcee,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=339,df964e94,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=340,f7574427,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=341,2f635371,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=342,4fd37166,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=343,f67153ea,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=344,0bc648e6,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=345,5bb675d7,tdleaf_self,mlp,shape=30-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=346,9f35b572,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=347,76952e2a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=348,eb6440e6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=350,2569231e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=352,fe298be7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=353,600c2155,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=354,4f890dac,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=355,2ce1c30f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=356,f707da4e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=357,c3c9faa7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=358,50326df9,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=359,30fca4ce,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=360,a968b528,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=361,3a482d4d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=362,b0edea52,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=363,e5c281ef,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=364,f2caa077,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=365,1970ea77,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=366,c09ad9d9,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=367,5deb7060,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=368,cdfe08b2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=370,fcb39fb5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=371,97ffb8b6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=372,adbb2381,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=373,a46aa9a6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=374,8a53f5bb,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=375,3cd89b98,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=376,4f0ccd03,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=377,3c34c5fa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=378,d591bb4f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=379,1d4858a1,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=380,88c5c2cc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=381,dc356719,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=382,ecd342f5,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=383,578defd4,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=384,7e77dd6b,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=385,d5c9d323,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=386,2dba22c8,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=388,ebbac246,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=389,06d8726e,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=390,9a9f639e,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=391,685a1403,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=392,8b4d9673,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=393,762be5f1,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=394,96516003,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=395,6274d6b4,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=396,6c7f10ed,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=397,640dfb3a,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=398,dcfd30cd,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=399,ced544c3,tdleaf_self,lin,shape=30-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=400,2aba42d9,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=401,92f013df,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=402,aa78d551,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=403,da784ad2,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=404,90856b60,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=406,0f097bb3,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=407,dc844823,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=408,e12f3a20,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=409,198dbf24,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=410,23412e13,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=411,808b72eb,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=412,e883bc4e,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=413,6d80960a,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=414,cb53121d,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=415,19f1968b,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=416,a5f0287a,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=417,f24b0f53,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=418,e3f47478,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=419,49a87e7d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=420,e7e0f74e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=421,d13121eb,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=422,8893b385,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=423,8da788fa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=424,e69014a9,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=425,47bb6e90,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=426,714403d6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=427,245068dc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=428,b85aa809,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=429,6e867666,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=430,361deb9b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=431,fca9f39f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=432,c4d9e52e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=433,2b19f72c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=434,5d268cff,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=435,408d922e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=436,6276a9b0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=437,a170a4c5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=438,53792a64,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=439,e6200bb6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=440,cd7a738f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=442,9d4515f8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=443,9cfd41b7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=444,1691efad,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=445,a2b0ac71,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=446,28afbab5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=447,1390aefa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=448,842ef6a2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=449,05072c0c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=450,0d2ff868,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=451,ca29bd6b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=452,52f7adc7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=453,36b0792f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=454,605565b0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=455,c21db26d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=456,9cc86c23,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=457,2a9cd082,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=458,9fb85b93,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=460,b6dec165,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=461,ad98a4aa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=462,133aecd1,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=463,c7f068bc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=464,3df10d8a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=465,05ddacb5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=466,3a962e51,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=467,b4edc8c2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=468,b6aeaf80,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=469,cc57e423,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=470,3730bb17,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=471,f0ada367,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=472,66c0968e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=473,d3d3ea14,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=474,0c16a6c2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=475,001e3db7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=476,677e655d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=477,5171b2fc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=478,8ea81a2f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=479,a97576e5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=480,a64552bb,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=481,92bfa871,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=482,8df8ccef,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=483,adb7f207,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=484,0d6106da,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=485,5c32a736,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=486,3bc9ffcf,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=487,6337bc2b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=488,6bdb8151,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=489,7c5e83a5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=490,0e611b02,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=491,8b5896e2,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=492,01ca245e,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=493,fb86e303,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=494,8d45a4c0,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=495,0527cee1,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=496,be01dcbe,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=497,6377d364,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=498,35542f60,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=499,7c686ff3,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=500,61158825,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=501,8e1d8f41,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=502,1e6e1902,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=503,b7a385ec,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=504,7d14a7d9,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=505,6d5240f0,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=506,5956ea8b,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=507,1e2cb368,tdleaf_self,mlp,shape=129-16-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=508,77afc0e1,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=509,3de5b388,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=510,c32ca545,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=511,791051fa,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=512,bc116b9b,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=513,3038c8ef,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=514,257647a1,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=515,a421dece,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=516,dd84e05b,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=517,e8330f4f,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=518,74868be1,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=519,cd1a10ef,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=520,171a9d3c,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=521,ef30c99d,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=522,c2ae442d,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=523,1939d069,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=524,488a58a9,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=525,75adb0cd,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=526,cfffe017,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=527,d9888a98,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=528,f8259a65,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=529,0631d06a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=530,369d3f4d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=532,d969777b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=533,26d44cb8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=534,79e9797c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=535,732143da,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=536,99a9c4a1,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=537,5c0f0338,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=538,0f44c075,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=539,ec019190,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=540,b09073c7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=541,5f05dafe,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=542,f9ae3d1b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=543,5c3e9e20,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=544,7675ff3a,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=545,3472b179,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=546,458df414,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=547,a6c7ba93,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=548,8fcf323b,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=549,6b36a477,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=550,7d827908,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=551,cbd77ec7,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=552,a21f9c4d,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=553,a44e6ad6,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=554,970de74a,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=555,b4f80cc1,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=556,3dd6a3ce,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=557,581c97df,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=558,d241ebb7,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=559,b0e4db1d,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=560,37be84d4,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=561,4207ab3c,tdleaf_self,mlp,shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=562,337aa1c5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=563,5399d9a2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=564,19813d0b,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=565,837b2370,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=566,14ad32e5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=567,a1b482dd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=568,db427918,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=569,4c892781,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=570,3baee3bd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=571,93a2ec16,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=572,e837fce2,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=573,48099f0c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=574,98f86e38,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=575,1b54ded0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=576,5fadcb55,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=577,619c2cfa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=578,8f3b1318,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=579,afcc41ec,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=580,8104a402,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=581,1cb17e5b,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=582,5d01fd83,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=583,aebfb8fd,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=584,f64126c9,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=586,89baf29f,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=587,f2df3eea,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=588,f281e46b,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=589,e55cd4b6,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=590,5bbabfe3,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=591,b01ae718,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=592,84814d37,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=593,1ab7f364,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=594,2d3b824f,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=595,d9357c67,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=596,db021e0c,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=597,d2003093,tdleaf_self,mlp,shape=30-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=598,860ad508,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=599,2eb4d5dd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=600,1edd8b6f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=601,a441d1fa,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=604,4d3f9c66,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=605,9d3db033,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=606,e4c659c0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=607,fbdf976a,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=608,a5217d04,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=609,349d1870,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=610,0891e3f4,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=611,4102fc15,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=612,9cc33d63,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=613,4aecb69c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=614,ba5e7361,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=615,3fd4d063,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=616,16ddb077,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=617,f0807cc1,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=618,0791d12e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=619,f14f148e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=620,dc995cd3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=621,d9626b88,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=622,091c4e77,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=623,3dab8a16,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=624,1bbff449,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=625,90590abd,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=626,76fc8704,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=627,52c5e2a1,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=628,75b3269d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=629,8e4ad19d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=630,7bb48fe0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=631,02e13108,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=632,835e8651,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=633,2c9b5576,tdleaf_self,lin,shape=129-1)@1

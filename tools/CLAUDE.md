@@ -13,7 +13,7 @@ Copy-paste forms beyond the root's short list:
 .\tools\run_train.ps1 -Build selfplay-supervised --games 250 --epochs 6 --feature-version 2 --out models/pst_value
 .\tools\run_train.ps1 tournament --games 10                # single-process, default depth ladder
 .\tools\run_train.ps1 docs                                 # regenerate ML.md AUTODOC region + registries
-.\rank.exe history --agent "ab(d4"                         # per-opponent record for one agent
+.\rank.exe history --agent "ab(deep=4"                         # per-opponent record for one agent
 .\rank.exe run --games 8                                   # serial play (live progress) then rate
 .\rank.exe pairgen --a "<challenger>" --b "<champion>" --games 80 --open-plies 6 --open-side a --out data/pg.jsonl   # asymmetric opener: only agent a plays random
 .\rank.exe opener-bias --a "<champion>" --b "<id>" --judge "<learned id>" --games 60   # how much the random opener degrades agent a's position
@@ -96,7 +96,7 @@ against those two" are nearly the same claim. `rate --regime-balanced` weights
 each pair by `1/(agents in A's regime * agents in B's regime)`, rescaled to the
 original total, so every regime bloc counts equally however many agents wear it.
 It answers "strong against the space of strategies" rather than "strong against
-this pool", and it moves the table a lot: `classic(t1,c4,w0,l0)@2` goes from
+this pool", and it moves the table a lot: `classic(chip=100)@2` goes from
 openless rank 35 to rank 5. Like `--pin`, it writes its own `ranking/*_balanced.*`
 family and never the canonical files, because promoting it to canonical would
 re-certify every champion and is a deliberate act.
@@ -174,7 +174,7 @@ NOT `src\ml_train.cpp` or `src\settings.cpp`). Common invocations are in the roo
 `CLAUDE.md`. Raw build: `.\build_rank.bat`.
 
 Agents are identified by a canonical ID string, e.g.
-`ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1` (grammar in `src\ranking.h`), which is
+`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=10,wall=3,column=2)@1` (grammar in `src\ranking.h`), which is
 the permanent key of the append-only match store `ranking/matches.jsonl` (committed,
 never regenerated). Every module segment carries its code version as `@N`, a constant in
 the codec tables in `src\ranking.cpp`: bump one constant when that module's code changes
@@ -249,7 +249,7 @@ resets (weights may go negative; the only way to reach e.g. the capacity directi
 positive forward + negative chip). It plays the small stochastic pool
 `ranking/climb_roster.txt` by default; `-Promote` appends the top finds to
 `ranking/roster.txt` and does a full refit. The roster also carries a dense diluted-d6
-ladder (random-move `dil(rP)` + stochastic-depth `dil(rP,dN)`) so the top of the table
+ladder (random-move `dil(prob=P)` + stochastic-depth `dil(prob=P,deep=N)`) so the top of the table
 is well-resolved and the climber has non-deterministic opponents.
 
 ## Script details
@@ -280,40 +280,40 @@ is well-resolved and the climber has non-deterministic opponents.
 
 | Slot | Line owner (`--a`) | Target (`--b`) | Depth | Entries | Kept replays |
 |---|---|---|---|---|---|
-| `book1` | `ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2` (oracle) | `learned(s98,5801570e)` | 60 | 553 | 29 of 32 |
-| `book2` | `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` | `learned(s98,5801570e)` | 60 | 134 | 7 of 32 |
-| `book3` | `ab(d6,ord,nb200k)@1.adv(t20,c77,...)@1` | champion | 60 | 24 | 16 of 32 |
-| `book4` | `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1` | `classic@2` | 60 | 519 | 25 of 32 |
-| `book5` | `ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974)@1` (dist) | champion | 60 | 145 | 6 of 8 |
-| `book6` | `ab(d6,tt,ord,nb200k)@1.learned(s3,68364898)@1` | champion | 60 | 162 | 7 of 8 |
-| `book7` | `classic@2` (same pair as book2) | `learned(s98,...)` | 6 | 13 | 7 of 32 |
+| `book1` | `ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2` (oracle) | `learned(model=98,5801570e)` | 60 | 553 | 29 of 32 |
+| `book2` | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` | `learned(model=98,5801570e)` | 60 | 134 | 7 of 32 |
+| `book3` | `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,...)@1` | champion | 60 | 24 | 16 of 32 |
+| `book4` | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` | `classic@2` | 60 | 519 | 25 of 32 |
+| `book5` | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974)@1` (dist) | champion | 60 | 145 | 6 of 8 |
+| `book6` | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898)@1` | champion | 60 | 162 | 7 of 8 |
+| `book7` | `classic@2` (same pair as book2) | `learned(model=98,...)` | 6 | 13 | 7 of 32 |
 | `book8` | same | same | 16 | 38 | 7 of 32 |
 | `book9` | same | same | 30 | 73 | 7 of 32 |
-| `book10` | `learned(s98,...)` (same pair as book4) | `classic@2` | 6 | 41 | 25 of 32 |
+| `book10` | `learned(model=98,...)` (same pair as book4) | `classic@2` | 6 | 41 | 25 of 32 |
 | `book11` | same | same | 16 | 134 | 25 of 32 |
 | `book12` | same | same | 30 | 279 | 25 of 32 |
-| `book13` | `classic@2` (same pair as book2/7-9) | `learned(s98,...)` | 4 | 8 | 7 of 32 |
+| `book13` | `classic@2` (same pair as book2/7-9) | `learned(model=98,...)` | 4 | 8 | 7 of 32 |
 | `book14` | same | same | 8 | 18 | 7 of 32 |
-| `book15` | `learned(s98,...)` (same pair as book4/10-12) | `classic@2` | 4 | 22 | 25 of 32 |
+| `book15` | `learned(model=98,...)` (same pair as book4/10-12) | `classic@2` | 4 | 22 | 25 of 32 |
 | `book16` | same | same | 8 | 60 | 25 of 32 |
-| `book17` | `learned(s3,68364898)` (same pair as book6) | `classic@2.opener(book,2)@1` | 4 | 10 | 23 of 32 |
+| `book17` | `learned(model=3,68364898)` (same pair as book6) | `classic@2.opener(book,book=2)@1` | 4 | 10 | 23 of 32 |
 | `book18` | same | same | 8 | 42 | 23 of 32 |
-| `book19` | `ab(d6,ord,nb200k)@1.adv(t20,c77,...)@1` (same pair as book3) | `classic@2.opener(book,2)@1` | 4 | 2 | 16 of 32 |
+| `book19` | `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,...)@1` (same pair as book3) | `classic@2.opener(book,book=2)@1` | 4 | 2 | 16 of 32 |
 | `book20` | same | same | 8 | 4 | 16 of 32 |
 
 `book13`-`book16` (2026-07-28) and `book17`-`book20` (2026-07-29) fill the 4-ply
 and 8-ply rungs of the four existing own-book ladders, for the category-champion
 split (`ranking/CHAMPION.md`, "4-book" and "8-book" categories). `book17`/`book18`
 (s3-own) and `book19`/`book20` (adv-own) are mined against the fixed pre-split
-single champion identity (`classic@2.opener(book,2)@1`), the same target book3/
+single champion identity (`classic@2.opener(book,book=2)@1`), the same target book3/
 book6 used, so mining needed no new games. `adv`'s books live at a DIFFERENT
-search head (`ab(d6,ord,nb200k)@1`, no `tt`) so they add Elo diversity to the
+search head (`ab(deep=6,ord,nodes=200k)@1`, no `tt`) so they add Elo diversity to the
 roster but are never category-eligible for the 4-book/8-book titles (one-head
 rule). `book11` was the single-champion era's reigning book until the 2026-07-28
 split; under the new taxonomy (exactly 4-ply and 8-ply) it isn't a member of
 either book category and holds no title, but stays rostered as depth-ladder
 data. Books 1-4, 6, 7-20 are rostered in `ranking/roster.txt`; `book5`
-is not, because its `learned(s111,...)` dist core costs 370 ms/move and would add
+is not, because its `learned(model=111,...)` dist core costs 370 ms/move and would add
 hours of roster play for one row.
 
 Two things measured on the full-roster refit that are easy to get wrong
@@ -323,8 +323,8 @@ Two things measured on the full-roster refit that are easy to get wrong
   worst loadout on the `classic` core (-12 Elo), the 24-entry `adv` self-book is the
   worst anywhere (-107), and the best is 134 entries.
 - **A self-mined book is not reliably better than a borrowed one.** Own beats
-  borrowed for `classic`, ties for `s98`, and LOSES for `learned(s3,...)` (-33 vs +1)
-  and `adv(t20,c77,...)` (-107 vs +15). Do not assume core-specificity.
+  borrowed for `classic`, ties for `s98`, and LOSES for `learned(model=3,...)` (-33 vs +1)
+  and `adv(chip=77,...)` (-107 vs +15). Do not assume core-specificity.
 
 Book size also tracks the mining pair's diversity rather than its skill: `book3` is
 tiny (24 entries, 0 replay drift) because its no-TT head is fully deterministic and
@@ -337,7 +337,7 @@ its 16 wins collapse to about 7 distinct games, while `book4` is large (519 entr
 |---|---|
 | `ranking/` | The persistent Elo-ranking state: `roster.txt` (hand-edited `anchor|on|off <id>` lines, incl. a dense diluted-d6 ladder), `CHAMPION.md` (the reigning-champion declaration, single source of truth + certification methodology), `roster_top.txt` (the reusable top-resolution boost roster: contenders played to >= 32 games/pair before any top-of-table claim), `climb_roster.txt` (a small mostly-stochastic opponent pool for the hill climber), and the **match store** (below). The rating outputs `ratings.tsv` (full historical fit, includes retired agents), `standings.tsv` (**read this one for current standings**: active agents only, grouped by search head), `games.tsv` and `report.md` are all **gitignored**: `rank.exe rate` rebuilds them from the store in about 20 seconds (measured 2026-08-01, 649,434 games) and the fit is deterministic, so a fresh clone runs a rate before reading standings. Shard temps `matches.jsonl.*`, `gauntlet.jsonl` scratch, and `climb_*.tsv` logs are gitignored too. |
 | `ranking/` (store) | **The match store is a set of PARTS plus a live tail**, not one file. `matches.index.txt` (committed) lists the parts in load order, one filename per line, `#` comments allowed; a listed part whose file is absent is skipped rather than being an error. Writers always append to `matches.jsonl`, the tail, which is loaded last. Parts are grouped by WHO played the game (`rank.exe split`). **Loaded and committed:** `matches.roster.NNNN.jsonl` (games between rostered agents, 132,769 rows / 55 MB) and `matches.retired_other.NNNN.jsonl` (59,054 rows / 23 MB, tracked so re-rostering one of those agents needs no file transfer). **Not loaded, not committed:** `matches.retired_tdleaf_self.NNNN.jsonl` (457,611 rows / 193 MB), the TD-Leaf Pass-2 candidates that were screened and never promoted. Their index lines were removed on 2026-08-01 by developer decision: a permanent ladder should not be dominated by games against transient candidates, and 60% of some rostered agents' games were against that cohort. **Those files were DELETED 2026-08-02** to reclaim the space. They were never committed and never pushed, so no copy survives: that population is unrecoverable except by replaying the Pass-2 campaign. Re-adding their index lines would name files that no longer exist, which the loader skips silently. **This was a methodology change that moved the ranking**, so it required re-certifying `ranking/CHAMPION.md`; do not re-add the lines without re-certifying in the same session. **A retired agent's games are not dead weight:** Bradley-Terry fits every rating jointly, so a game against a retired agent is evidence about the ROSTERED agent that played it. Dropping this part moved 153 of 170 rostered agents (Spearman rho 0.9526, mean error bar 7.2 -> 10.2 Elo). Screening cohorts now play into their own store instead (see below), so this cannot recur. `rank.exe seal` separately rolls an oversized tail into `matches.NNNN.jsonl` shards (and appends them to the index when one exists). Both cap every part with `--max-mb` so no single file can outgrow what a host accepts (GitHub rejects blobs over 100 MB). |
-| `ranking/` (2nd pool) | **Diversified-opening pool**, a self-contained second instrument added 2026-07-26: `roster_open.txt` (14 agents, each wearing `.opener(rand,4)@1`), `matches_open.jsonl` (its own store, never mixed with `matches.jsonl`), and generated `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. Rating outputs are named after the store, so `matches<X>.jsonl` writes `ratings<X>.tsv` and so on, and the default store keeps the historical unsuffixed names. |
+| `ranking/` (2nd pool) | **Diversified-opening pool**, a self-contained second instrument added 2026-07-26: `roster_open.txt` (14 agents, each wearing `.opener(rand,moves=4)@1`), `matches_open.jsonl` (its own store, never mixed with `matches.jsonl`), and generated `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. Rating outputs are named after the store, so `matches<X>.jsonl` writes `ratings<X>.tsv` and so on, and the default store keeps the historical unsuffixed names. |
 | `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
 | `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |
 | `data/labels/` | Position-oracle campaign home: committed pools (`pool_train/eval.jsonl`), ladder specs, fitted labels (`labels_train/eval.jsonl`), raw-store `.meta.json` sidecars (the frozen rung-id mapping), `ratings_snapshot.tsv` (the study's fixed Elo basis), and `study.csv` (the resume ledger). The raw stores themselves (`raw_train/eval.jsonl`, ~hundreds of MB, the durable asset that re-labels under any future ratings fit) are gitignored -- back them up outside git. `dry/` and `logs/` are scratch. |

@@ -60,7 +60,9 @@ struct AgentSpec {
     // opener as two distinct roster entries, so the Elo gap between them is a
     // general opener-sensitivity measure for any agent.
     int    openerKind;   // index into g_openers, or < 0 for no opener
-    int    openerArg;    // opener-specific parameter (rand: ply count)
+    int    openerArg;    // opener-specific parameter (rand: own-move count; book: book slot)
+    int    openerArg2;   // optional second parameter, 0 = unset (book: cap in half-moves
+                         // from the game start, so book,S,P matches a --plies P mining)
 };
 
 // Construct common agents (evalParams seeded from the evaluator's registry defaults).

@@ -360,12 +360,12 @@ encodes the whole agent, for example:
 
 ```
 rand@1                                             uniform random (the Elo-0 anchor)
-smart(4)@1                                         SmartRandom over the furthest 4 pieces
-ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@2     alpha-beta d6 + TT + ordering + node budget,
+smart(pieces=4)@1                                         SmartRandom over the furthest 4 pieces
+ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=10,wall=3,column=2)@2     alpha-beta d6 + TT + ordering + node budget,
                                                    Classic eval with those weights
-ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1         10% random-move dilution
-ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1   30% depth-3 dilution of a d6
-greedy@1.learned(s0,7cc8a70d)@1                    learned value model (content-hashed)
+ab(deep=4)@1.classic(chip=100)@2.dil(prob=10)@1         10% random-move dilution
+ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1   30% depth-3 dilution of a d6
+greedy@1.learned(model=0,7cc8a70d)@1                    learned value model (content-hashed)
 ```
 
 The head names the move choice / search, then the evaluator with all its weights,
@@ -404,8 +404,8 @@ seconds. Run a rate before reading standings in a fresh clone.
 .\tools\run_rank.ps1 -Build check        # validate the roster, print model hashes
 .\tools\run_rank.ps1 run --games 8       # play pending games (live progress), then rate
 .\tools\run_rank.ps1 -Workers 8 --games 8   # same, process-sharded across 8 workers
-.\rank.exe history --agent "ab(d4"       # one agent's record vs every opponent
-.\rank.exe gauntlet --id "ab(d5)@1.classic(t1,c4,w0,l0)@2" --games 4
+.\rank.exe history --agent "ab(deep=4"       # one agent's record vs every opponent
+.\rank.exe gauntlet --id "ab(deep=5)@1.classic(chip=100)@2" --games 4
 ```
 
 Each game records wall time per side, **process CPU time** per side (via
@@ -443,7 +443,7 @@ champion, champion-loss cherry-picks, branch-mined wins) and compares them
 against the replay and self-play baselines.
 
 ```
-.\rank.exe pairgen --a "ab(d2)@1.classic(t1,c4,w0,l0)@2" --b "ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2" --games 200 --dil-apply a --out data/pg.jsonl
+.\rank.exe pairgen --a "ab(deep=2)@1.classic(chip=100)@2" --b "ab(deep=6,ord,nodes=200k)@1.classic(chip=100)@2" --games 200 --dil-apply a --out data/pg.jsonl
 ```
 
 `bookgen` mines an opening/refutation book from stored games: it replays every

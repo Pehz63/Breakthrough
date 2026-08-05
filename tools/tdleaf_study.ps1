@@ -212,8 +212,9 @@ function BuildRoster {
     # a real sanity run caught 2026-07-30 (champion-init + --model-type mlp trained
     # linear; the wrong rich-form id was rejected by `rank.exe check`, not silently
     # accepted). The legacy form makes no claim to be wrong: rank.exe's own
-    # canonicalizeLearnedIds() fills the descriptive fields in from the ACTUAL
-    # slot file, so the id can never mismatch the model it names.
+    # parser fills the descriptive fields in from the ACTUAL slot file (see
+    # learnedSpellingOnly / rankUpgradeId in src/ranking.cpp), so the id can
+    # never mismatch the model it names.
     $lines = @(); $ids = @()
     foreach ($c in $Cells) {
         for ($i = 0; $i -lt $c.Rungs.Count; $i++) {

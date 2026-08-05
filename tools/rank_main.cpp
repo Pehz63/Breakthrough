@@ -195,6 +195,37 @@ int main(int argc, char** argv) {
             cout << "\nwrote " << rankStoreIndexPath(store) << "; every part is still loaded,\n"
                  << "so ratings are unchanged until a part's line is removed from the index.\n";
         rc = 0;
+    } else if (cmd == "canon") {
+        // Print a roster / id-list file with every id rewritten into today's
+        // canonical spelling, leaving state tokens, comments, blank lines and
+        // column alignment alone. rank.exe is the single source of truth for the
+        // rewrite, so a migration can never drift from what the parser accepts.
+        std::ifstream f(roster.c_str());
+        if (!f.is_open()) { cout << "ERROR: cannot read " << roster << "\n"; return 1; }
+        std::string line;
+        while (std::getline(f, line)) {
+            std::string keep = line;
+            while (!keep.empty() && (keep[keep.size()-1] == '\r' || keep[keep.size()-1] == '\n'))
+                keep.erase(keep.size()-1);
+            // Split off a trailing comment so an id is never confused with prose.
+            std::string body = keep, tail;
+            size_t hash = keep.find('#');
+            if (hash != std::string::npos) { body = keep.substr(0, hash); tail = keep.substr(hash); }
+            size_t a = body.find_first_not_of(" \t");
+            if (a == std::string::npos) { cout << keep << "\n"; continue; }
+            size_t b = body.find_first_of(" \t", a);
+            if (b == std::string::npos) { cout << keep << "\n"; continue; }
+            std::string state = body.substr(a, b - a);
+            size_t c = body.find_first_not_of(" \t", b);
+            if (c == std::string::npos) { cout << keep << "\n"; continue; }
+            size_t d = body.find_last_not_of(" \t");
+            std::string id = body.substr(c, d - c + 1);
+            std::string up = rankUpgradeId(id);
+            cout << state << std::string(b - a >= 8 ? 1 : 8 - state.size(), ' ') << up;
+            if (!tail.empty()) cout << "  " << tail;
+            cout << "\n";
+        }
+        rc = 0;
     } else if (cmd == "matchup") {
         rc = rankMatchup(roster, store, board, getInt(argc, argv, "--min-games", 200));
     } else if (cmd == "history") {

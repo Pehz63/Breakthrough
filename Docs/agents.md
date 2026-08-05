@@ -35,7 +35,7 @@ mistake (see the Champdil entry below for the case that prompted this document).
 
 ## Foundational agents (not trained; building blocks the others are measured against or built from)
 
-**Champion** -- `ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2`. A depth-6 alpha-beta
+**Champion** -- `ab(deep=6,ord,nodes=200k)@1.classic(chip=100)@2`. A depth-6 alpha-beta
 search using the Classic evaluator with weights turn=1, chip=4, **wall=0,
 column=0**. That last part matters: the champion's own evaluation is completely
 blind to positional structure (piece placement, walls, columns) -- it only ever
@@ -47,18 +47,18 @@ Ranking-pool Elo ~1140 (a different, incompatible scale from `agents/champion.tx
 2244, which comes from the separate full-tournament rating system -- see the note
 at the bottom).
 
-**Oracle (the teacher, not a trained model)** -- `ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2`.
+**Oracle (the teacher, not a trained model)** -- `ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2`.
 A depth-8 alpha-beta search (same Classic weights as the champion, just deeper),
 used purely to *generate* training data by playing against the champion -- it is
 never itself trained on anything. "Oracle" in this project always refers to this
 deep-search teacher agent; "oracle-vs-champ" (below) is the trained *model* whose
 labels came from its games.
 
-**PstD2** -- `ab(d2,tt,ord)@1.learned(s2,<hash>)@1`. Whatever model currently sits
+**PstD2** -- `ab(deep=2,tt,ord)@1.learned(model=2,<hash>)@1`. Whatever model currently sits
 in `models/pst_value.txt` (slot 2), wrapped in a depth-2 search. Used as a cheap
 "current best learner" generator in some training arms (below).
 
-**ClassicD2** -- `ab(d2)@1.classic(t1,c4,w0,l0)@2`. A shallow depth-2 Classic
+**ClassicD2** -- `ab(deep=2)@1.classic(chip=100)@2`. A shallow depth-2 Classic
 search, used as a weak, non-learned baseline generator.
 
 ## The vs-champion training study's promoted models
@@ -67,7 +67,7 @@ All from `tools/train_vs_champion.ps1`; results and Elo numbers in
 `plans/vs-champion-training-results-1-cozy-forest.md`. Each is a linear
 piece-square-table (PST) value model (feature v2), trained via
 `train.exe selfplay-supervised --from-data <recipe file>`, then wrapped as
-`ab(d6,tt,ord,nb200k)@1.learned(s<slot>,<hash>)@1` for rating. Ranking-pool d6 Elo
+`ab(deep=6,tt,ord,nodes=200k)@1.learned(s<slot>,<hash>)@1` for rating. Ranking-pool d6 Elo
 after the full re-fit is given for each; screening Elo (the cheaper d4-wrapper
 gauntlet used to pick the best of several training seeds before the d6 confirm) is
 in the results doc if you need it.
@@ -176,12 +176,12 @@ result an opener artifact." For a general, reusable version -- "how much does AN
 agent's rating depend on being allowed a random opener" -- every agent's canonical
 ID can carry an `.opener(<kind>[,<arg>])@1` segment (`AgentSpec::openerKind`, the
 `g_openers[]` registry, `Docs/terminology.md`). One opener kind is registered so
-far, `rand`: `.opener(rand,6)@1` makes the agent play its first 6 own moves as
+far, `rand`: `.opener(rand,moves=6)@1` makes the agent play its first 6 own moves as
 uniform-random, then hand off to its normal brain (the registry is where a future
 opening-book or scripted opener would slot in). Gauntletting the same agent with and
 without this segment gives a direct Elo gap, e.g.:
 
-| Agent | clean ranking-pool Elo | with `.opener(rand,6)@1` (gauntlet) | drop |
+| Agent | clean ranking-pool Elo | with `.opener(rand,moves=6)@1` (gauntlet) | drop |
 |---|---|---|---|
 | Champion | 1140 | 923 | ~217 |
 | champdil (s96) | 1153 | 962 | ~191 |

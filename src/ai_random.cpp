@@ -688,7 +688,8 @@ bool playOpenerBlack(int openerCode) { //If opponent hasn't advanced too far, pl
 // ============================================================
 // The "rand" opener: play a uniform-random legal move for the agent's own first
 // `arg` plies, then defer to the brain.
-static bool openerRandom(int side, int ownPly, int arg, int& victor) {
+static bool openerRandom(int side, int ownPly, int halfMove, int arg, int arg2, int& victor) {
+    (void)halfMove; (void)arg2;   // `rand` bounds the agent's OWN moves
     if (ownPly >= arg) return false;
     victor = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
     return true;
@@ -734,8 +735,17 @@ static const std::map<unsigned long long, BookEntry>* bookForSlot(int arg) {
     return (it == s_books.end()) ? nullptr : &it->second;
 }
 
-static bool openerBook(int side, int ownPly, int arg, int& victor) {
-    (void)ownPly;   // the book plays whenever the position matches, at any ply
+static bool openerBook(int side, int ownPly, int halfMove, int arg, int arg2, int& victor) {
+    (void)ownPly;
+    // A book is a position -> move dictionary with no notion of depth: it fires
+    // whenever the current position is in the table, at any ply. arg2 optionally
+    // bounds that by distance from the game start, in half-moves -- the same
+    // clock `bookgen --plies` cuts on, so `book,S,P` plays exactly the entries a
+    // --plies P mining of the same games would have stored (verified 2026-08-03:
+    // a 4-ply mining of book1's pair produced 13 entries, all 13 present in
+    // book1's 553, position and move identical). 0 = uncapped, which is the
+    // behaviour of every book agent written before the cap existed.
+    if (arg2 > 0 && halfMove >= arg2) return false;
     const std::map<unsigned long long, BookEntry>* bk = bookForSlot(arg);
     if (!bk) return false;
     unsigned long long h = positionKey(side, false).hash;
@@ -755,8 +765,8 @@ static bool openerBook(int side, int ownPly, int arg, int& victor) {
 }
 
 const OpenerDef g_openers[] = {
-    { "Random", "rand", "uniform-random move for the agent's first <arg> plies, then hand off", true, openerRandom },
-    { "Book",   "book", "opening-book follower: play models/book<arg>.txt's stored reply while the position is in book, then hand off", true, openerBook },
+    { "Random", "rand", "uniform-random move for the agent's first <arg> own moves, then hand off", true, false, "moves", openerRandom },
+    { "Book",   "book", "opening-book follower: play models/book<arg>.txt's stored reply while the position is in book, optionally only within the first <arg2> half-moves from the game start, then hand off", true, true, "book", openerBook },
 };
 const int g_openerCount = (int)(sizeof(g_openers) / sizeof(g_openers[0]));
 

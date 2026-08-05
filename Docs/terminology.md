@@ -26,7 +26,7 @@ each ply.
 *"It's White's turn again after Black's capture."*
 
 **Turn weight (tempo weight)** -- the evaluator parameter `p[0]` (the `t` in
-an agent ID such as `classic(t1,c4,w0,l0)`), added to the leaf score as
+an agent ID such as `classic(chip=100)`), added to the leaf score as
 `+t` when White is to move and `-t` when Black is. It prices the value of
 having the move. `train.exe turn-swing` calibrates it by measuring the
 1-ply white-centric eval swing between sides.
@@ -42,7 +42,7 @@ bare fixed-depth agent, two IDs differing only in `t` describe agents that
 play identically, and a ratio involving `t` (for example "chip/turn")
 carries no meaning. The hill climber pins `t` rather than searching it, so
 its `t` value is a script default, not a result.
-*"Both agents are `ab(d6,ord,nb200k)` with no quiescence, so their differing
+*"Both agents are `ab(deep=6,ord,nodes=200k)` with no quiescence, so their differing
 turn weights of 20 and 1 have no effect on the moves either one plays."*
 
 **Wall** -- a structural-eval bonus for two same-color pieces that sit
@@ -77,7 +77,7 @@ forward."*
 **Agent** -- anything that plays Breakthrough: given a board and a side to
 move, it produces a move. An agent decomposes into either a **Search** (an
 Explorer paired with an Evaluator) or a **Policy** (a direct Chooser).
-*"The champion agent is `ab(d6,tt,ord,nb200k)@1.classic(...)@1`, a depth-6
+*"The champion agent is `ab(deep=6,tt,ord,nodes=200k)@1.classic(...)@1`, a depth-6
 alpha-beta search over the Classic evaluator."*
 
 **Search** (agent brain) -- an agent that explores the move tree with an
@@ -111,7 +111,7 @@ furthest-advanced N pieces."*
 an otherwise-strong agent's play, to diversify training data or give an
 opponent pool some non-determinism; a diluted move is either fully random or
 a shallower depth-N search.
-*"The roster's `dil(r0.3,d2)` ladder plays 30% of its moves as a depth-2
+*"The roster's `dil(prob=0.3,deep=2)` ladder plays 30% of its moves as a depth-2
 search instead of the full depth-6 search."*
 
 **Opener (identity-level)** -- an `AgentSpec` property (openerKind + openerArg),
@@ -119,11 +119,11 @@ distinct from the scripted `OffensiveOpener`/`DefensiveOpener` above: an opener
 from the pluggable registry `g_openers[]` overrides the agent's brain during the
 opening phase, then hands off. Carried in the canonical ID as
 `.opener(<idName>[,<arg>])@N`. One opener is registered so far, `rand`
-(`.opener(rand,N)@1`: a uniform-random move for the agent's first N plies); the
+(`.opener(rand,moves=N)@1`: a uniform-random move for the agent's first N plies); the
 registry is where an opening-book or scripted-opener kind would be added. Lets
 the same agent be rated both with and without an opener as two roster entries,
 so the Elo gap is a general opener-sensitivity measure for any agent.
-*"`champion...classic(...)@2.opener(rand,6)@1` scores ~217 Elo below the clean
+*"`champion...classic(...)@2.opener(rand,moves=6)@1` scores ~217 Elo below the clean
 champion in the ranking pool, purely from 6 random opening plies."*
 
 ## Search mechanics
@@ -307,16 +307,16 @@ the original stored games."*
 **Canonical ID** -- the exact string identifying an agent's full
 configuration (chooser/explorer/evaluator, weights, model hash, dilution,
 per-module code versions), used as the permanent key in the match store.
-*"`ab(d6,tt,ord,nb200k)@1.classic(t2,c10,w3,l2)@1` is a canonical ID for a
+*"`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=10,wall=3,column=2)@1` is a canonical ID for a
 depth-6 alpha-beta agent using the Classic evaluator."*
 
 **Search head (head)** -- the leading segment of a canonical ID: the explorer
-and its search settings, e.g. `ab(d6,tt,ord,nb200k)` (alpha-beta, depth 6,
+and its search settings, e.g. `ab(deep=6,tt,ord,nodes=200k)` (alpha-beta, depth 6,
 transposition table, move ordering, 200k node budget). Because an agent is
 core + loadout on top of a head, agents at different heads are different
 players and their Elos are not interchangeable. Every strength comparison
 fixes ONE head and says which.
-*"`ab(d6,tt,ord,nb200k)` and `ab(d6,ord,nb200k)` differ only in the
+*"`ab(deep=6,tt,ord,nodes=200k)` and `ab(deep=6,ord,nodes=200k)` differ only in the
 transposition table, but they are still two different agents."*
 
 **Roster** -- the hand-edited list of agents (`ranking/roster.txt`) active
@@ -438,7 +438,7 @@ wears on top of its core: an opening book or other opener, quiescence,
 transposition table, move ordering, aspiration windows, dilution. Each
 appears as an optional segment in the canonical ID, so an agent's loadout is
 readable off its ID.
-*"The champion's loadout is a single item, `.opener(book,2)`."*
+*"The champion's loadout is a single item, `.opener(book,book=2)`."*
 
 **Bare / equipped** -- an agent with an empty loadout is *bare*; one wearing
 any loadout item is *equipped*. Preferred over "vanilla/modded" (a loadout

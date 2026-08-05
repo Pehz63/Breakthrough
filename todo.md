@@ -63,7 +63,7 @@ they describe the single-champion era's history, not a current category leader).
 **The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
 after boosting the top pairs to 32 games each and refitting, a learned PST
-(`ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1`, trained on oracle-vs-champion
+(`ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1`, trained on oracle-vs-champion
 data) dethroned the classic chip counter, 1064 +/- 14 vs 976 +/- 13 (direct
 head-to-head 23-9). The chip counter's weakness class is now known: d6-head
 learned piece-square models beat it far above their pooled Elo (theory 28).
@@ -77,7 +77,7 @@ weights alone cost 135 Elo). **A FOURTH attempt, 2026-07-18, DID dethrone**:
 mining a book from the WEAK agent's OWN wins (not a stronger agent's wins over
 it -- theory 33, the repaired form of theory 14) turned the classic chip
 counter itself back into the reigning champion,
-`ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1` at 1145 +/- 13,
+`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=2)@1` at 1145 +/- 13,
 25-7 against s98 directly and 27-5 against the d8/nb2m oracle it was never
 mined against. **This has an open scrutiny flag** (`ranking/CHAMPION.md`,
 results-5's "open scrutiny question"): it is a 134-entry hard-coded book on the
@@ -101,7 +101,7 @@ against the same seams.
 - Add variety in openers and moves `[Now]`
   - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
   - Random move chooser out of top candidates (especially ties); the board-state-evaluator noise variant of this idea moved to the Heuristic Evaluator Feature Ideas section below
-  - Elo-rate the existing SCRIPTED openers (Offensive/Defensive) as ID modules: an optional `op(o|d)@1` ID segment (absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences). ~~A sibling idea for RANDOM (not scripted) openers shipped~~: a pluggable opener registry `g_openers[]` (`src/ai_random.h`) + `AgentSpec::openerKind`/`openerArg` + a `.opener(<kind>[,<arg>])@1` ID segment lets ANY agent be rostered/gauntletted both with and without an opener, so the Elo gap is a general, per-agent opener-sensitivity score (currently one kind, `rand`: e.g. champion 1140 clean vs 923 with `.opener(rand,6)@1`, champdil 1153 vs 962). The registry is exactly the extension point for the SCRIPTED (`off`/`def`) and opening-book openers above -- adding one is a table row + fn, and the same ID slot names it. See `Docs/agents.md` and `Docs/terminology.md`'s "Opener (identity-level)" entry `[done]`
+  - Elo-rate the existing SCRIPTED openers (Offensive/Defensive) as ID modules: an optional `op(o|d)@1` ID segment (absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences). ~~A sibling idea for RANDOM (not scripted) openers shipped~~: a pluggable opener registry `g_openers[]` (`src/ai_random.h`) + `AgentSpec::openerKind`/`openerArg` + a `.opener(<kind>[,<arg>])@1` ID segment lets ANY agent be rostered/gauntletted both with and without an opener, so the Elo gap is a general, per-agent opener-sensitivity score (currently one kind, `rand`: e.g. champion 1140 clean vs 923 with `.opener(rand,moves=6)@1`, champdil 1153 vs 962). The registry is exactly the extension point for the SCRIPTED (`off`/`def`) and opening-book openers above -- adding one is a table row + fn, and the same ID slot names it. See `Docs/agents.md` and `Docs/terminology.md`'s "Opener (identity-level)" entry `[done]`
   - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]`
   - ~~Color-swap recovery test: play the same random-opener snapshot to conclusion twice with colors swapped, to separate "the position favors a color" from "this agent recovers better."~~ Shipped as `rank.exe opener-swap`. Champdil vs the champion at n=20 (theory 15, `Docs/theories.md`): 65% of outcomes were a color effect (White won both 55%, Black won both 10% -- consistent with the champion's own White/Black split), but in the remaining 35% agent-effect bucket champdil won every time (7/7), the champion never (0/7) -- promising but small-sample signal that champdil recovers from bad positions better than the champion, independent of color. Follow-up (larger sample, try with oracle too) filed in `plans/opener-bias-results-1-synchronous-stearns.md`'s Future Work `[Next]`
   - ~~Random-first-K-plies opening diversity for data generation~~ (shipped as pairgen `--open-plies`); extend the same knob to tournament and self-play generation `[Next]`
@@ -567,11 +567,11 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   games/pair is half the standard `[Now]`
 - ~~**Certify the TD-Leaf peak.** Append the top rungs to `ranking/roster.txt`, fill contenders to
   32 games/pair, run an unpinned refit (`Docs/ranking-workflow.md` Workflow B). Best screening
-  agent is `ab(d6,tt,ord,nb200k)@1.learned(s131,18bfb7a0,value,lin,129-1,con100)@1` (A-base seed
+  agent is `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=131,18bfb7a0,tdleaf_self,lin,shape=129-1)@1` (A-base seed
   1001 at 1000 games) at 1056, vs the pinned openless champion's 1012~~ Done 2026-08-01, though
   via a different route than planned: the certification refit happened as a side effect of
   dropping the Pass-2 screening games from the fit. A TD-Leaf agent,
-  `ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c,tdleaf_self,lin,129-1,con100)@1`, **took the
+  `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1`, **took the
   openless title** at 1044 +/- 11 over s76's 1007 +/- 8, boosted to 0 pending at 32 games/pair.
   See `ranking/CHAMPION.md`, which records two caveats: 32 rows/pair is ~22.6 DISTINCT games/pair
   (0.706 distinct/row measured), so the gap is 2.3 combined SE rather than 2.7; and s169 gained
@@ -590,16 +590,16 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   The chip counter's fall is now accounted for, its rise is not `[Now]`
 - **Decide whether `rate --regime-balanced` should become the canonical fit** `[Now]`.
   Implemented 2026-08-01 and writing `ranking/*_balanced.*`; not promoted, because promoting
-  it re-certifies every champion. It moves the table a lot: at head `ab(d6,tt,ord,nb200k)@1`
+  it re-certifies every champion. It moves the table a lot: at head `ab(deep=6,tt,ord,nodes=200k)@1`
   the openless order becomes s602 / s169 / s76 / s349 / classic@2 (1259 / 1249 / 1240 / 1239 /
   1213, all +/-8 except classic's +/-14), i.e. a 4-way statistical tie at the top and
-  **`classic(t1,c4,w0,l0)@2` back to rank 5 from rank 35**. Open questions before promoting:
+  **`classic(chip=100)@2` back to rank 5 from rank 35**. Open questions before promoting:
   whether the anchor (`rand@1`, regime `nonlearning`, 5 agents) should be exempt from
   balancing; whether SEs remain interpretable after reweighting (they are effective-sample
   SEs now); and whether category champions should be declared on the balanced or pooled fit
 - **Old (superseded) framing of the chip-counter question, kept so the reasoning is not
   re-derived:** `s169` rose to the openless title on 36% fewer games, while
-  `ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2` fell from openless rank 2 to rank 35 under the
+  `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` fell from openless rank 2 to rank 35 under the
   same change. Bradley-Terry accounts for opponent strength, so "it farmed weak candidates" is
   not an explanation and should not be repeated as one. Candidate tests: refit with only the
   cohort games REMOVED from classic@2's record but kept for everyone else; check whether the
@@ -736,7 +736,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   dilution depths (5, 7) diverge from the full depth MORE than even depths (4, 6, 8), because an
   odd-depth search's leaf lands on the opponent's reply rather than after a complete move/response
   round trip, a horizon-style asymmetry -- compare odd vs even depth agreement rates to check.
-  Motivated by a question about `dil(r15,d6)`/`dil(r30,d6)` (the position-oracle campaign's d8
+  Motivated by a question about `dil(prob=15,deep=6)`/`dil(prob=30,deep=6)` (the position-oracle campaign's d8
   ladder rungs, `Docs/Memories/position-oracle-campaign.md`) but stands alone as a general
   dilution-quality question, deliberately deferred to its own session `[Later]`
 
@@ -752,7 +752,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   already stands as-is regardless `[Later]`
 - ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
   pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
-  each wearing `.opener(rand,4)@1`, played with `rank.exe ... --paired-openings` into
+  each wearing `.opener(rand,moves=4)@1`, played with `rank.exe ... --paired-openings` into
   `ranking/matches_open.jsonl`. Result: **median distinct-trajectory ratio 1.000, min
   1.000** across all 91 pairs (the fixed-start pool is 0.438 median, 0.062 min), and
   error bars scale as 1/sqrt(n) exactly as independent samples should (median pm 53 ->
@@ -781,7 +781,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   plus the scale (see the header of `ranking/roster_open.txt` for the selection rule).
   Candidates to add: more seed replicas per recipe so the training-seed-noise band is
   visible inside this pool, the remaining `adv` hill-climb finds, and a second dist
-  seed (only `learned(s111,...)` is in). Also decide whether `.opener(rand,4)` is the
+  seed (only `learned(model=111,...)` is in). Also decide whether `.opener(rand,moves=4)` is the
   right depth: 4 own half-moves means 8 plies of random play, never swept.
 - **Give the rating path real sample diversity (original entry, superseded above).**
   Found 2026-07-26 (`plans/book-opener-audit-results-1-vivid-lantern.md`, defect 3 in
@@ -791,7 +791,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   byte-identical. `playOneGame` also never calls `ttClear()`, so for a `tt` head the sole
   source of variation is which games ran earlier in the same process. Measured: median
   distinct-trajectory ratio 0.438 across 190 pairs with >= 16 games, worst cases 32 games
-  yielding 2 distinct games (all `ab(d6,ord,nb200k)`, the no-TT head). A null control of
+  yielding 2 distinct games (all `ab(deep=6,ord,nodes=200k)`, the no-TT head). A null control of
   two identical deterministic agents went 32-0 as White and 1-31 as Black over 64 games.
   Consequence: `pm` in `ratings.tsv` / `standings.tsv` is understated by roughly 1.5x for
   a typical pair and much more for deterministic ones.
@@ -818,10 +818,10 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   13 book agents were added to `ranking/roster.txt`, played to 8 games/pair over the
   116-agent roster, boosted to 32 games/pair via a refreshed `ranking/roster_top.txt`,
   and refit on the full roster. **The throne changed:**
-  `ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1.opener(book,11)@1` at 1122 +/- 10
-  dethroned `...classic(t1,c4,w0,l0)@2.opener(book,2)@1`, now 1075 +/- 9, by 3.5
+  `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1` at 1122 +/- 10
+  dethroned `...classic(chip=100)@2.opener(book,book=2)@1`, now 1075 +/- 9, by 3.5
   combined SE. It is statistically tied with the 6-ply rung of its own ladder
-  (`book,10`, 1110 +/- 10). `ranking/CHAMPION.md` updated and its UNVERIFIED banner
+  (`book=10`, 1110 +/- 10). `ranking/CHAMPION.md` updated and its UNVERIFIED banner
   cleared. The 8-games/pair fill had the OLD champion first at 1090 with book11 at
   1067, so the top inverted on boosting for the third time in this project.
 - ~~**Decide whether book agents are champion-eligible.**~~ Resolved 2026-07-28:
@@ -889,9 +889,9 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~BayesElo-style rating with uncertainty~~ (rank.exe: anchored Bradley-Terry MLE + Fisher standard errors)
 - ~~Persistent incremental Elo ranking (rank.exe: canonical agent IDs, editable roster with on/off toggles, append-only match store, anchored BT refit, per-agent head-to-head reports)~~
 - **Loadout-parity study: stop comparing bare cores against an equipped champion. `[Next]`**
-  The reigning champion is a `classic` core wearing one loadout item (`.opener(book,2)`),
+  The reigning champion is a `classic` core wearing one loadout item (`.opener(book,book=2)`),
   and that item is worth **+124 Elo** on that core (990 bare -> 1114 equipped, 2026-07-25
-  fit, head `ab(d6,tt,ord,nb200k)`). Every learned/dist/hill-climbed agent it has been
+  fit, head `ab(deep=6,tt,ord,nodes=200k)`). Every learned/dist/hill-climbed agent it has been
   measured against is **bare**, so those comparisons have been reading the loadout, not
   the core. Report all three numbers instead of one: (1) **bare vs bare** (the honest core
   comparison), (2) the **lift** of each loadout item on each core (same core, with and
@@ -1039,6 +1039,19 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   on disk but gitignored (216 MB). Verified information-preserving: the refit
   returned byte-identical `ratings.tsv`/`standings.tsv`. See
   `plans/store-sharding-results-1-*.md`.~~
+- ~~Agent IDs used bare integers whose meaning was ambiguous (`4-random` vs
+  `4-book`: plies in one, a slot number in the other, and `d6`/`c4` two more
+  quantities again).~~ Resolved 2026-08-05: **every number in an ID now carries a
+  descriptive label joined by `=`** (`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2`).
+  Legacy spellings still parse so the store keeps resolving; only the new form is
+  emitted, and `rankUpgradeId()` rewrites stored ids on read. Weights became a
+  SUBSET (omitted = registry default, a default-zero term hidden, a non-default
+  zero kept, turn elided without `qs`/`part`, chip-only Classic written
+  `chip=100`), and `rankDisplayId()` hides a CURRENT `@N` from console tables
+  while every file keeps it. Migration verified per agent: 381 -> 381 distinct
+  ids, 0 unmatched, 0 elo/games mismatches, Elo multiset identical against a
+  rebuilt pre-migration binary. 269 ids across 12 docs migrated through
+  `rank.exe canon`. See `plans/id-labelling-results-1-tidy-albatross.md`.
 - **Running the test suite overwrites `models/manifest.{json,md}`** `[Next]`. The
   ML tests call `writeManifest` with their own scratch rows, so `tests.exe`
   replaces the real committed manifest with a single `build\dist_model_ckpt30.txt`

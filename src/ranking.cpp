@@ -141,6 +141,53 @@ static string fmtN(double v, int decimals) {
 }
 
 // ============================================================
+// LABELLED NUMBERS
+// ============================================================
+// Every number in an id carries a label saying WHAT IT IS, not merely what unit
+// it is in: `deep6` rather than `d6` or `6ply`, because many different
+// quantities here are measured in plies and "ply" alone would conflate a search
+// depth with a dilution depth with an opening cutoff. `ply` is used only where
+// the number genuinely IS a position on the game clock (the book cutoff).
+// Labels precede their number, matching the grammar's existing shape.
+//
+// Legacy short labels still PARSE so the store's existing rows keep resolving to
+// the agents the roster names; only the current label is ever EMITTED, and
+// rankUpgradeIds rewrites stored ids on read.
+//
+// Longest label first: `deep6` must not be eaten by the legacy `d` alias.
+static bool labelledNum(const string& tok, const char* const* labels, int nLabels,
+                        string& tail) {
+    for (int i = 0; i < nLabels; i++) {
+        const size_t L = std::strlen(labels[i]);
+        if (tok.size() > L && tok.compare(0, L, labels[i]) == 0) {
+            tail = tok.substr(L);
+            if (!tail.empty()) return true;
+        }
+    }
+    return false;
+}
+// An UNDERSCORE separates a label from its number: `model_111`, not `model111`,
+// because glyphs like l and 1 run together without a visual break. Longest
+// spelling first so `deep_6` is never eaten by the legacy `d` alias.
+// `=` separates a label from its VALUE; `_` only ever joins words inside a
+// name (mu_shape, teacher_games). Keeping the two jobs on different characters
+// is what makes mu_shape=129-512-8-1 readable. Longest spelling first so
+// `deep=6` is never eaten by the legacy `d` alias.
+static const char* const LBL_DEEP[]    = { "deep=", "deep_", "deep", "d" };
+static const char* const LBL_MAXDEEP[] = { "maxdeep=", "maxdeep_", "maxdeep", "cap" };
+static const char* const LBL_MARGIN[]  = { "margin=", "margin_", "margin", "asp" };
+static const char* const LBL_NODES[]   = { "nodes=", "nodes_", "nodes", "nb" };
+static const char* const LBL_TIME[]    = { "time=", "time_", "time", "tb" };
+static const char* const LBL_PROB[]    = { "prob=", "prob_", "prob", "r" };
+static const char* const LBL_PIECES[]  = { "pieces=", "pieces_", "pieces" };
+static const char* const LBL_PLY[]     = { "ply=", "ply_", "ply" };
+static const char* const LBL_MODEL[]   = { "model=", "model_", "model", "s" };
+static const char* const LBL_CONN[]    = { "conn=", "conn_", "conn", "con" };
+static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
+static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
+static const int LBLN_MODEL = 4, LBLN_CONN = 4;
+
+// ============================================================
 // ID CODEC
 // ============================================================
 // Hand-maintained codec tables mapping registry names to ID tokens. Weight
@@ -338,15 +385,15 @@ static string archDescForSlot(int slot) {
                 // "AlphaBeta(Classic, d2) params=[...] dil(0.3->0.05/30p)"
                 string d = num(t, ", d");
                 string s = "teacher_games";
-                if (!d.empty()) s += "(d" + d;
-                else            s += "(d?";
+                if (!d.empty()) s += "(deep=" + d;
+                else            s += "(deep=?";
                 size_t dl = t.find("dil(");
                 if (dl != string::npos) {
                     // Record the STARTING dilution rate as a percent: it is what
                     // spreads the teacher's position distribution.
                     double start = atof(t.c_str() + dl + 4);
                     int pct = (int)(start * 100.0 + 0.5);
-                    std::ostringstream o; o << ",dil" << pct;
+                    std::ostringstream o; o << ",prob=" << pct;
                     s += o.str();
                 }
                 return s + ")";
@@ -360,8 +407,8 @@ static string archDescForSlot(int slot) {
                 // ancestors live in reusable slots that may since have been reused.
                 string g = num(t, "gen="), d = num(t, ",d");
                 string s = "model_games(";
-                s += g.empty() ? "gen?" : ("gen" + g);
-                if (!d.empty()) s += ",d" + d;
+                s += g.empty() ? "gen=?" : ("gen=" + g);
+                if (!d.empty()) s += ",deep=" + d;
                 return s + ")";
             }
             if (!t.empty())                                   return "unknown";
@@ -371,18 +418,31 @@ static string archDescForSlot(int slot) {
         } };
         string regime = R::of(teacher, type);
 
+        // Layer widths are labelled `shape_`, never left as a bare dashed list:
+        // the dashes separate the widths from each other and say nothing about
+        // what the list IS, and a dash is too useful a separator to burn on
+        // implying one meaning.
+        //
+        // A `dist` model carries TWO networks over the same features, so each
+        // shape names its head: `mu` predicts the White advantage in logits,
+        // `sigma` predicts the volatility of that advantage (see ml_model.h --
+        // A ~ N(mu, sigma^2), with log-sigma trained and clamped). Every other
+        // learned model is a single network, so it just says `shape_`.
         if (type == "dist") {
             string mt = kv.count("mu_type") ? kv["mu_type"] : "linear";
             string st = kv.count("s_type")  ? kv["s_type"]  : "linear";
-            out = regime + "," + string(mt == "mlp" ? "mlp" : "lin") + ","
-                + L::shape(kv.count("mu_layers") ? kv["mu_layers"] : "", feat)
-                + ",sig" + L::shape(kv.count("s_layers") ? kv["s_layers"] : "", feat);
+            out = regime + "," + string(mt == "mlp" ? "mlp" : "lin")
+                + ",mu_shape="    + L::shape(kv.count("mu_layers") ? kv["mu_layers"] : "", feat)
+                + ",sigma_shape=" + L::shape(kv.count("s_layers")  ? kv["s_layers"]  : "", feat);
             (void)st;
         } else {
-            out = regime + "," + string(type == "mlp" ? "mlp" : "lin") + ","
-                + L::shape(kv.count("layers") ? kv["layers"] : "", feat);
+            out = regime + "," + string(type == "mlp" ? "mlp" : "lin")
+                + ",shape=" + L::shape(kv.count("layers") ? kv["layers"] : "", feat);
         }
-        out += ",con100";
+        // Connectivity is 100% for every model built so far and is reserved for
+        // future sparsity, so the default says nothing and is omitted. A sparse
+        // model would print conn=<pct>.
+        // (no conn field emitted at the default)
     }
     cache[slot] = out;
     return out;
@@ -400,64 +460,47 @@ string rankFileHash8(const string& path) {
     return string(buf).substr(0, 8);
 }
 
-// Normalise every `learned(s<slot>,<hash8>[,<descriptor>])` segment to the CURRENT
-// descriptor derived from the model file, so stored rows keep matching the roster's
-// canonical IDs across descriptor-format changes. Without this the scheduler would
-// see no stored history for a learned agent and replay every game it had played.
+// Does `id` differ from its own canonical form ONLY inside the learned()
+// parentheses, while still naming the same (slot, hash) identity?
 //
-// Handles both migrations this project has needed:
-//   * LEGACY 2-arg -> rich, for the 90k+ rows written before the ID carried any
-//     descriptor at all (2026-07-26).
-//   * STALE rich -> current rich, for the ~649k rows written when the first
-//     descriptor field held the model TYPE ("value"/"dist") rather than the
-//     TRAINING REGIME ("pool_games"/"tdleaf_self"/...) it holds now (2026-08-01).
-// Both are the same operation: throw away whatever descriptor the ID carries and
-// re-derive it, which is why this rewrites rich forms instead of skipping them.
+// That is exactly the set of superseded learned() spellings, and there are three
+// generations of them:
+//   * LEGACY 2-arg `learned(s111,78ef6974)`, written before the ID carried any
+//     architecture at all (2026-07-26).
+//   * STALE rich, whose first descriptor field held the model TYPE ("value",
+//     "dist") rather than the TRAINING REGIME ("pool_games", "tdleaf_self")
+//     it holds now (2026-08-01).
+//   * OLD LABELS, `s111` before `model=111` and `129-1` before `shape=129-1`
+//     (2026-08-03).
+// All three re-derive to the same canonical ID from the slot file, because the
+// architecture fields are DESCRIPTIVE: identity is (slot, hash) alone. So
+// accepting them merges no identities and loses no information, and it is what
+// lets a hand-written roster line name a learned agent by slot and hash without
+// having to spell out an architecture only the model file knows.
 //
-// Only rewrites when the stored hash still matches the CURRENT slot file, because the
-// descriptor can only be read from a file that holds that exact model. 49 of the
-// 137 historical learned identities point at slots since overwritten by later models,
-// and those keep their old IDs permanently, which is correct: their provenance is
-// unrecoverable, and inventing one would silently merge two different agents.
-// Idempotent, and a no-op for every non-learned ID. Cached: called once per stored row.
-static string canonicalizeLearnedIds(const string& id) {
-    if (id.find(".learned(s") == string::npos) return id;
-    static std::map<string, string> cache;
-    std::map<string, string>::iterator c = cache.find(id);
-    if (c != cache.end()) return c->second;
-    string out = id;
-    size_t pos = 0;
-    while ((pos = out.find(".learned(s", pos)) != string::npos) {
-        size_t open = pos + 9;                      // at "s<slot>..."
-        // The regime field may carry its own parenthesised parameters
-        // (`model_games(gen3,d4)`), so find the ')' that MATCHES learned's '(',
-        // not the first one -- which would cut the descriptor in half.
-        size_t close = matchParen(out, pos + 8);
-        if (close == string::npos) break;
-        string inner = out.substr(open + 1, close - open - 1);   // "<slot>,<hash8>[,...]"
-        size_t comma = inner.find(',');
-        if (comma == string::npos) { pos = close; continue; }    // malformed
-        // Hash runs to the next comma (rich form) or to the end (legacy 2-arg).
-        size_t hashEnd = inner.find(',', comma + 1);
-        int slot = atoi(inner.substr(0, comma).c_str());
-        string hash = (hashEnd == string::npos)
-                    ? inner.substr(comma + 1)
-                    : inner.substr(comma + 1, hashEnd - comma - 1);
-        if (slot >= 0 && slot < ML_SLOTS && rankFileHash8(slotFile(slot)) == hash) {
-            string arch = archDescForSlot(slot);
-            if (!arch.empty()) {
-                // Replace everything after the hash with the freshly derived
-                // descriptor: identical for a legacy id (nothing to replace) and
-                // for an id already carrying the current descriptor (idempotent).
-                size_t keepFrom = open + 1 + comma + 1 + hash.size();
-                out = out.substr(0, keepFrom) + "," + arch + out.substr(close);
-                close = keepFrom + 1 + arch.size();
-            }
-        }
-        pos = close;
-    }
-    cache[id] = out;
-    return out;
+// Deliberately narrow. Anything differing OUTSIDE learned()'s parentheses -- a
+// stale `@N`, a legacy weight spelling, a reordered segment -- is still rejected
+// with the canonical form printed to paste, which is the whole value of the
+// strict check.
+static bool learnedSpellingOnly(const string& id, const string& canon) {
+    const size_t oldP = id.find(".learned("), newP = canon.find(".learned(");
+    if (oldP == string::npos || newP == string::npos) return false;
+    // The regime field may carry its own parenthesised parameters
+    // (`model_games(gen3,d4)`), so find the ')' that MATCHES learned's '(',
+    // not the first one -- which would cut the descriptor in half.
+    const size_t oldOpen = oldP + 8, newOpen = newP + 8;
+    const size_t oldClose = matchParen(id, oldOpen), newClose = matchParen(canon, newOpen);
+    if (oldClose == string::npos || newClose == string::npos) return false;
+    if (id.substr(0, oldOpen + 1) != canon.substr(0, newOpen + 1)) return false;
+    if (id.substr(oldClose) != canon.substr(newClose)) return false;
+    std::vector<string> of, nf;
+    splitTopLevel(id.substr(oldOpen + 1, oldClose - oldOpen - 1), of);
+    splitTopLevel(canon.substr(newOpen + 1, newClose - newOpen - 1), nf);
+    if (of.size() < 2 || nf.size() < 2) return false;
+    string oSlot, nSlot;
+    if (!labelledNum(of[0], LBL_MODEL, LBLN_MODEL, oSlot)) oSlot = of[0];
+    if (!labelledNum(nf[0], LBL_MODEL, LBLN_MODEL, nSlot)) nSlot = nf[0];
+    return oSlot == nSlot && of[1] == nf[1];
 }
 
 
@@ -486,11 +529,11 @@ string rankAgentId(const AgentSpec& a) {
         for (int i = 0; i < g_rkChooserCount; i++)
             if (string(g_rkChoosers[i].regName) == cname) row = &g_rkChoosers[i];
         string idn = row ? row->idName : "?";
-        if (idn == "smart") s = "smart(" + std::to_string(a.chooserParam) + ")";
+        if (idn == "smart") s = "smart(pieces=" + std::to_string(a.chooserParam) + ")";
         else                s = idn;
         s += "@" + std::to_string(row ? row->version : 1);
         if (idn == "policy")
-            s += ".linpol(s" + std::to_string(a.modelSlot) + ","
+            s += ".linpol(model=" + std::to_string(a.modelSlot) + ","
                + rankFileHash8(slotFile(a.modelSlot)) + ")";
     } else {
         const char* ename = (a.explorer >= 0 && a.explorer < g_explorerCount)
@@ -500,16 +543,16 @@ string rankAgentId(const AgentSpec& a) {
             if (string(g_rkExplorers[i].regName) == ename) row = &g_rkExplorers[i];
         string idn = row ? row->idName : "?";
         if (idn == "ab") {
-            s = "ab(d" + std::to_string(a.depth);
+            s = "ab(deep=" + std::to_string(a.depth);
             if (!a.useAlphaBeta)        s += ",noab";
             if (a.useTT)                s += ",tt";
             if (a.useMoveOrder)         s += ",ord";
             if (a.useQuiescence)        s += ",qs";
             if (a.keepPartial)          s += ",part";
-            if (a.aspirationWindow > 0) s += ",asp" + std::to_string(a.aspirationWindow);
-            if (a.nodeBudget)           s += ",nb" + fmtBudget(a.nodeBudget);
-            if (a.timeBudgetMs > 0.0)   s += ",tb" + std::to_string((long long)a.timeBudgetMs) + "ms";
-            if (a.depthCap > 0)         s += ",cap" + std::to_string(a.depthCap);
+            if (a.aspirationWindow > 0) s += ",margin=" + std::to_string(a.aspirationWindow);
+            if (a.nodeBudget)           s += ",nodes=" + fmtBudget(a.nodeBudget);
+            if (a.timeBudgetMs > 0.0)   s += ",time=" + std::to_string((long long)a.timeBudgetMs) + "ms";
+            if (a.depthCap > 0)         s += ",maxdeep=" + std::to_string(a.depthCap);
             s += ")";
         } else {
             s = idn;   // greedy (always 1-ply, no arguments)
@@ -520,29 +563,75 @@ string rankAgentId(const AgentSpec& a) {
         const RankEvalCodec* ev = evalCodecByRegName(vname);
         if (ev && ev->letters[0] == '\0') {
             string arch = archDescForSlot(a.modelSlot);
-            s += ".learned(s" + std::to_string(a.modelSlot) + ","
+            s += ".learned(model=" + std::to_string(a.modelSlot) + ","
                + rankFileHash8(slotFile(a.modelSlot))
                + (arch.empty() ? "" : "," + arch) + ")@" + std::to_string(ev->version);
         } else if (ev) {
-            s += "." + string(ev->idName) + "(";
-            int pc = g_evaluators[a.evaluator].paramCount;
-            for (int i = 0; i < pc; i++) {
-                if (i) s += ",";
-                s += string(1, ev->letters[i]) + std::to_string(a.evalParams[i]);
+            // Weights are named (`chip=4`, not `c4`) and only the ones that say
+            // something about this agent are shown. Two omissions:
+            //   - a weight that is ZERO when its DEFAULT is zero: an optional
+            //     term that was simply never switched on. A non-default zero is
+            //     always printed, so `racewin_0` (default 1, 0 = off) survives --
+            //     this is why the rule is not plain "hide zeros", which would
+            //     silently re-enable it.
+            //   - the TURN weight, inert unless leaves sit at mixed ply parity,
+            //     which happens only under `qs` or `part`. At fixed depth it adds
+            //     the same constant to every leaf, shifting whole subtrees equally
+            //     and reordering nothing (see src/CLAUDE.md, "Turn weight").
+            // Matched by parameter NAME, not index, so reordering a registry
+            // cannot silently elide the wrong weight.
+            //
+            // CHIP RESCALE: when chip is the only ACTIVE weight, it is written as
+            // 100 rather than its stored value, matching the hill climber's
+            // sum-100 convention. Scaling the sole active term is a monotonic
+            // rescale of every leaf, so it cannot reorder a single move; agents
+            // with any other term live keep their stored numbers, where scaling
+            // one weight WOULD change the mix.
+            //
+            // Verified before adopting: this collapses no identities -- all 175
+            // roster agents and all 381 stored ids stay distinct, and the rescale
+            // introduces no collisions.
+            const bool turnLive = a.useQuiescence || a.keepPartial;
+            const EvalDef& def = g_evaluators[a.evaluator];
+            int chipIdx = -1, activeCount = 0;
+            for (int i = 0; i < def.paramCount; i++) {
+                const bool isTurn = (std::strcmp(def.params[i].name, "Turn") == 0);
+                if (a.evalParams[i] == 0 || (isTurn && !turnLive)) continue;
+                activeCount++;
+                if (std::strcmp(def.params[i].name, "Chip") == 0) chipIdx = i;
             }
-            s += ")@" + std::to_string(ev->version);
+            const bool chipOnly = (activeCount == 1 && chipIdx >= 0);
+            string body;
+            for (int i = 0; i < def.paramCount; i++) {
+                if (a.evalParams[i] == 0 && def.params[i].def == 0) continue;
+                if (!turnLive && std::strcmp(def.params[i].name, "Turn") == 0) continue;
+                if (!body.empty()) body += ",";
+                const int shown = (chipOnly && i == chipIdx) ? 100 : a.evalParams[i];
+                body += string(def.params[i].key) + "=" + std::to_string(shown);
+            }
+            // Every weight suppressed: emit the bare evaluator name rather than
+            // empty parens, which the segment splitter rejects.
+            s += "." + string(ev->idName);
+            if (!body.empty()) s += "(" + body + ")";
+            s += "@" + std::to_string(ev->version);
         } else {
             s += ".?";
         }
     }
     if (a.randomMoveProb > 0.0) {
-        s += ".dil(r" + fmtPct(a.randomMoveProb);
-        if (a.dilDepth > 0) s += ",d" + std::to_string(a.dilDepth);  // stochastic depth dilution
+        s += ".dil(prob=" + fmtPct(a.randomMoveProb);
+        if (a.dilDepth > 0) s += ",deep=" + std::to_string(a.dilDepth);  // stochastic depth dilution
         s += ")@" + std::to_string(RK_DIL_VERSION);
     }
     if (a.openerKind >= 0 && a.openerKind < g_openerCount) {
         s += ".opener(" + string(g_openers[a.openerKind].idName);
-        if (g_openers[a.openerKind].hasArg) s += "," + std::to_string(a.openerArg);
+        if (g_openers[a.openerKind].hasArg)
+            s += "," + string(g_openers[a.openerKind].argLabel) + "="
+               + std::to_string(a.openerArg);
+        // arg2 is optional and omitted when unset, so every id written before
+        // the cap existed still round-trips to exactly the same string.
+        if (g_openers[a.openerKind].hasArg2 && a.openerArg2 > 0)
+            s += ",ply=" + std::to_string(a.openerArg2);
         s += ")@" + std::to_string(RK_OPENER_VERSION);
     }
     return s;
@@ -681,7 +770,7 @@ static bool isHash8(const string& s) {
     return true;
 }
 
-bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
+static bool parseAgentId(const string& id, RankAgent& out, string& err, bool lenient) {
     err.clear();
     std::vector<string> segs;
     if (!splitSegs(id, segs, err)) return false;
@@ -712,8 +801,14 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         if (chooserIdx < 0) { err = string("chooser '") + reg + "' not in registry"; return false; }
     } else if (headWord == "smart") {
         long long n;
-        if (!parens || args.size() != 1 || !lenientInt(args[0], false, n) || n < 1) {
-            err = "smart needs one positive argument, e.g. smart(4)";
+        string sTail;
+        if (!parens || args.size() != 1) {
+            err = "smart needs one positive argument, e.g. smart(pieces4)";
+            return false;
+        }
+        if (!labelledNum(args[0], LBL_PIECES, LBLN_PIECES, sTail)) sTail = args[0];   // legacy bare form
+        if (!lenientInt(sTail, false, n) || n < 1) {
+            err = "smart needs one positive argument, e.g. smart(pieces4)";
             return false;
         }
         chooserIdx = chooserIndexByName("SmartRandom");
@@ -731,15 +826,17 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         explorerIdx = explorerIndexByName("AlphaBeta");
         if (explorerIdx < 0) { err = "explorer 'AlphaBeta' not in registry"; return false; }
         long long d;
-        if (args[0].size() < 2 || args[0][0] != 'd'
-            || !lenientInt(args[0].substr(1), false, d) || d < 1 || d > 99) {
-            err = "ab()'s first argument must be a depth like d6 (got '" + args[0] + "')";
+        string dTail;
+        if (!labelledNum(args[0], LBL_DEEP, LBLN_DEEP, dTail)
+            || !lenientInt(dTail, false, d) || d < 1 || d > 99) {
+            err = "ab()'s first argument must be a depth like deep6 (got '" + args[0] + "')";
             return false;
         }
         depth = (int)d;
         for (size_t i = 1; i < args.size(); i++) {
             const string& f = args[i];
             long long n;
+            string fTail;
             if (f == "noab") {
                 if (fNoab) { err = "duplicate ab() flag 'noab'"; return false; }
                 fNoab = true;
@@ -755,32 +852,32 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             } else if (f == "part") {
                 if (fPart) { err = "duplicate ab() flag 'part'"; return false; }
                 fPart = true;
-            } else if (f.size() > 3 && f.compare(0, 3, "asp") == 0) {
-                if (haveAsp) { err = "duplicate ab() flag '" + f + "'"; return false; }
-                if (!lenientInt(f.substr(3), false, n) || n <= 0) {
-                    err = "bad aspiration window '" + f + "'";
-                    return false;
-                }
-                asp = n; haveAsp = true;
-            } else if (f.size() > 3 && f.compare(0, 3, "cap") == 0) {
+            } else if (labelledNum(f, LBL_MAXDEEP, LBLN_MAXDEEP, fTail)) {
                 if (haveCap) { err = "duplicate ab() flag '" + f + "'"; return false; }
-                if (!lenientInt(f.substr(3), false, n) || n <= 0) {
-                    err = "bad depth cap '" + f + "'";
+                if (!lenientInt(fTail, false, n) || n <= 0) {
+                    err = "bad depth ceiling '" + f + "' (expected like maxdeep3)";
                     return false;
                 }
                 cap = n; haveCap = true;
-            } else if (f.size() > 4 && f.compare(0, 2, "tb") == 0
-                       && f.compare(f.size()-2, 2, "ms") == 0) {
+            } else if (labelledNum(f, LBL_MARGIN, LBLN_MARGIN, fTail)) {
+                if (haveAsp) { err = "duplicate ab() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail, false, n) || n <= 0) {
+                    err = "bad search margin '" + f + "' (expected like margin50)";
+                    return false;
+                }
+                asp = n; haveAsp = true;
+            } else if (labelledNum(f, LBL_TIME, LBLN_TIME, fTail)
+                       && fTail.size() > 2 && fTail.compare(fTail.size()-2, 2, "ms") == 0) {
                 if (haveTb) { err = "duplicate ab() flag '" + f + "'"; return false; }
-                if (!lenientInt(f.substr(2, f.size()-4), false, n) || n <= 0) {
-                    err = "bad time budget '" + f + "' (expected like tb250ms)";
+                if (!lenientInt(fTail.substr(0, fTail.size()-2), false, n) || n <= 0) {
+                    err = "bad time budget '" + f + "' (expected like time250ms)";
                     return false;
                 }
                 tbMs = n; haveTb = true;
-            } else if (f.size() > 2 && f.compare(0, 2, "nb") == 0) {
+            } else if (labelledNum(f, LBL_NODES, LBLN_NODES, fTail)) {
                 if (haveNb) { err = "duplicate ab() flag '" + f + "'"; return false; }
-                if (!lenientBudget(f.substr(2), nb)) {
-                    err = "bad node budget '" + f + "' (expected like nb200k, nb2m, nb1500)";
+                if (!lenientBudget(fTail, nb)) {
+                    err = "bad node budget '" + f + "' (expected like nodes200k, nodes2m)";
                     return false;
                 }
                 haveNb = true;
@@ -804,7 +901,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     string modelHash;
     double dilProb = 0.0;
     int dilDepth = 0;
-    int openerKindVal = -1, openerArgVal = 0;
+    int openerKindVal = -1, openerArgVal = 0, openerArg2Val = 0;
 
     for (size_t si = 1; si < segs.size(); si++) {
         if (!splitTok(segs[si], word, args, parens, atV, err)) return false;
@@ -823,16 +920,40 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
                 return false;
             }
             if (g_openers[ok].hasArg) {
-                if (args.size() != 2) {
-                    err = string("opener '") + args[0] + "' needs an arg, e.g. opener(" + args[0] + ",6)@1";
+                const size_t maxArgs = g_openers[ok].hasArg2 ? 3 : 2;
+                if (args.size() < 2 || args.size() > maxArgs) {
+                    err = string("opener '") + args[0] + "' needs an arg, e.g. opener("
+                        + args[0] + "," + g_openers[ok].argLabel + "6)@1";
+                    if (g_openers[ok].hasArg2)
+                        err += string(" (optionally a ply cutoff, e.g. opener(") + args[0] + ","
+                             + g_openers[ok].argLabel + "6,ply8)@1)";
                     return false;
                 }
                 long long op;
-                if (!lenientInt(args[1], false, op) || op < 1) {
-                    err = "bad opener() arg '" + args[1] + "' (expected a positive integer, e.g. 6)";
+                // Accept the opener's own label (moves4 / book6) and the legacy
+                // bare number, so pre-label ids in the store still resolve.
+                const string lab = g_openers[ok].argLabel;
+                const string labE = lab + "=", labU = lab + "_";
+                const char* argLabels[3] = { labE.c_str(), labU.c_str(), lab.c_str() };
+                string opTail;
+                if (!labelledNum(args[1], argLabels, 3, opTail)) opTail = args[1];
+                if (!lenientInt(opTail, false, op) || op < 1) {
+                    err = "bad opener() arg '" + args[1] + "' (expected "
+                        + g_openers[ok].argLabel + "_<n>, e.g. "
+                        + g_openers[ok].argLabel + "_6)";
                     return false;
                 }
                 openerArgVal = (int)op;
+                if (args.size() == 3) {
+                    long long op2;
+                    string plyTail;
+                    if (!labelledNum(args[2], LBL_PLY, LBLN_PLY, plyTail)) plyTail = args[2];
+                    if (!lenientInt(plyTail, false, op2) || op2 < 1) {
+                        err = "bad opener() cutoff '" + args[2] + "' (expected ply_<n>, e.g. ply_8)";
+                        return false;
+                    }
+                    openerArg2Val = (int)op2;
+                }
             } else if (args.size() != 1) {
                 err = string("opener '") + args[0] + "' takes no arg (use opener(" + args[0] + ")@1)";
                 return false;
@@ -842,15 +963,16 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
         } else if (word == "dil") {
             if (haveDil) { err = "duplicate dil() segment"; return false; }
             if (atV < 1) { err = "dil segment '" + segs[si] + "' needs a module version like @1"; return false; }
-            if (!parens) { err = "dil needs an argument, e.g. dil(r5)@1"; return false; }
+            if (!parens) { err = "dil needs an argument, e.g. dil(prob5)@1"; return false; }
             if (args.size() > 2) {
-                err = "dil() takes at most r<percent> and an optional d<depth>, got '"
+                err = "dil() takes at most prob<percent> and an optional deep<depth>, got '"
                     + segs[si] + "'";
                 return false;
             }
             double pct;
-            if (args[0].size() < 2 || args[0][0] != 'r' || !lenientPct(args[0].substr(1), pct)) {
-                err = "bad dil() argument '" + args[0] + "' (expected r<percent>, e.g. r5 or r2.5)";
+            string pTail;
+            if (!labelledNum(args[0], LBL_PROB, LBLN_PROB, pTail) || !lenientPct(pTail, pct)) {
+                err = "bad dil() argument '" + args[0] + "' (expected prob<percent>, e.g. prob5 or prob2.5)";
                 return false;
             }
             dilProb = pct / 100.0;
@@ -858,9 +980,10 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             // fully random move. Requires a search head and a depth strictly below the agent's.
             if (args.size() == 2) {
                 long long dd;
-                if (args[1].size() < 2 || args[1][0] != 'd'
-                    || !lenientInt(args[1].substr(1), false, dd) || dd < 1) {
-                    err = "bad dil() argument '" + args[1] + "' (expected d<depth>, e.g. d3)";
+                string ddTail;
+                if (!labelledNum(args[1], LBL_DEEP, LBLN_DEEP, ddTail)
+                    || !lenientInt(ddTail, false, dd) || dd < 1) {
+                    err = "bad dil() argument '" + args[1] + "' (expected deep<depth>, e.g. deep3)";
                     return false;
                 }
                 if (!isSearch) {
@@ -868,7 +991,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
                     return false;
                 }
                 if (dd >= depth) {
-                    err = "dil() depth dilution must be shallower than the agent depth d"
+                    err = "dil() depth dilution must be shallower than the agent depth deep"
                         + std::to_string(depth) + " (got '" + args[1] + "')";
                     return false;
                 }
@@ -896,16 +1019,20 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             // deliberately NOT re-validated against the model file: a slot may since
             // have been overwritten, and such an ID must still parse.
             long long sl;
+            string slTail;
             bool argsOk = parens && (args.size() == 2 || (args.size() >= 5 && args.size() <= 7));
-            if (!argsOk || args[0].size() < 2 || args[0][0] != 's'
-                || !lenientInt(args[0].substr(1), false, sl) || sl < 0 || sl >= ML_SLOTS) {
-                err = word + " needs (s<slot>,<hash8>) or (s<slot>,<hash8>,<recipe>,<mu_type>,"
-                      "<mu_shape>[,sig<shape>],con<N>) with slot in 0.."
+            if (!argsOk || !labelledNum(args[0], LBL_MODEL, LBLN_MODEL, slTail)
+                || !lenientInt(slTail, false, sl) || sl < 0 || sl >= ML_SLOTS) {
+                err = word + " needs (model<slot>,<hash8>) or (model<slot>,<hash8>,<recipe>,<mu_type>,"
+                      "<mu_shape>[,sig<shape>],conn<N>) with slot in 0.."
                       + std::to_string(ML_SLOTS-1);
                 return false;
             }
             if (args.size() > 2) {
-                const string& recipe = args[2];
+                // The regime may carry parameters -- teacher_games(deep_2) -- so
+                // validate the FAMILY name, not the whole token.
+                const string recipeFull = args[2];
+                const string recipe = recipeFull.substr(0, recipeFull.find('('));
                 const string& mut    = args[3];
                 // Training-regime token, derived from the model file's teacher=
                 // line by archDescForSlot(). "value"/"dist" are the SUPERSEDED
@@ -933,10 +1060,20 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
                     err = "learned() mu type must be 'mlp' or 'lin', got '" + mut + "'";
                     return false;
                 }
-                if (args[args.size()-1].compare(0, 3, "con") != 0) {
-                    err = "learned() architecture must end with con<N>, got '"
-                          + args[args.size()-1] + "'";
-                    return false;
+                // Connectivity is OPTIONAL: it is 100% for every model built so
+                // far, and a field that never varies says nothing, so the emitter
+                // omits it at that default. When a sparse model does appear it
+                // prints conn=<pct> and lands here as the final field. Older ids
+                // carry the mandatory con<N> and still parse.
+                const string& last = args[args.size()-1];
+                if (last.compare(0, 3, "con") == 0) {
+                    string cTail;
+                    long long pct;
+                    if (!labelledNum(last, LBL_CONN, LBLN_CONN, cTail)
+                        || !lenientInt(cTail, false, pct) || pct < 1 || pct > 100) {
+                        err = "bad learned() connectivity '" + last + "' (expected conn=<1..100>)";
+                        return false;
+                    }
                 }
             }
             if (!isHash8(args[1])) {
@@ -953,22 +1090,47 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
             haveEval = true;
             evalIdx = evaluatorIndexByName(row->regName);
             if (evalIdx < 0) { err = string("evaluator '") + row->regName + "' not in registry"; return false; }
-            int pc = g_evaluators[evalIdx].paramCount;
-            if (!parens || (int)args.size() != pc) {
-                err = word + " needs all " + std::to_string(pc) + " weights (letters '"
-                    + row->letters + "' in that order)";
+            const EvalDef& edef = g_evaluators[evalIdx];
+            int pc = edef.paramCount;
+            // Weights are a SUBSET, not the full list. The emitter drops a weight
+            // that is zero when its default is zero, plus the inert turn weight,
+            // so AN ABSENT WEIGHT MEANS ITS REGISTRY DEFAULT. A non-default zero
+            // is written explicitly (racewin_0), which is what stops an omission
+            // from silently re-enabling a term the id says is off. An evaluator
+            // with nothing to say is written bare, without parens.
+            if ((int)args.size() > pc) {
+                err = word + " has more weights than the " + std::to_string(pc) + " it defines";
                 return false;
             }
             weights.assign(pc, 0);
+            for (int i = 0; i < pc; i++) weights[i] = edef.params[i].def;
             std::vector<bool> seen(pc, false);
-            for (int k = 0; k < pc; k++) {
+            const size_t nw = parens ? args.size() : 0;
+            for (size_t k = 0; k < nw; k++) {
                 const string& a = args[k];
-                const char* pos = (a.size() >= 2) ? strchr(row->letters, a[0]) : nullptr;
-                if (!pos) { err = "bad weight '" + a + "' for " + word + " (letters '" + row->letters + "')"; return false; }
-                int wi = (int)(pos - row->letters);
-                if (seen[wi]) { err = string("duplicate weight letter '") + a[0] + "'"; return false; }
+                // `chip=4` (current), `chip_4` (its predecessor), or legacy `c4`,
+                // so stored rows written under any of the three keep parsing.
+                int wi = -1;
+                string valTxt;
+                size_t us = a.find('=');
+                if (us == string::npos) us = a.find('_');   // pre-'=' spelling
+                if (us != string::npos) {
+                    const string key = a.substr(0, us);
+                    for (int i = 0; i < pc; i++)
+                        if (key == edef.params[i].key) { wi = i; break; }
+                    valTxt = a.substr(us + 1);
+                } else if (a.size() >= 2) {
+                    const char* pos = strchr(row->letters, a[0]);
+                    if (pos) { wi = (int)(pos - row->letters); valTxt = a.substr(1); }
+                }
+                if (wi < 0 || wi >= pc) {
+                    err = "bad weight '" + a + "' for " + word + " (expected <name>=<value>, e.g. "
+                        + edef.params[1].key + "=4)";
+                    return false;
+                }
+                if (seen[wi]) { err = "duplicate weight '" + string(edef.params[wi].key) + "'"; return false; }
                 long long v;
-                if (!lenientInt(a.substr(1), true, v) || v < -100000 || v > 100000) {
+                if (!lenientInt(valTxt, true, v) || v < -100000 || v > 100000) {
                     err = "bad weight value '" + a + "'";
                     return false;
                 }
@@ -985,7 +1147,7 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     } else {
         if (haveEval) { err = "'" + headWord + "' takes no evaluator segment"; return false; }
         if (headWord == "policy" && !haveModel) {
-            err = "'policy' needs a linpol(s<slot>,<hash8>) segment";
+            err = "'policy' needs a linpol(model<slot>,<hash8>) segment";
             return false;
         }
         if (headWord != "policy" && haveModel) {
@@ -1031,19 +1193,19 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     a.dilDepth = dilDepth;
     a.openerKind = openerKindVal;
     a.openerArg = openerArgVal;
+    a.openerArg2 = openerArg2Val;
 
     // Canonical form check: re-emitting must reproduce the input exactly. This
     // also rejects stale module versions, pointing at the current form.
     //
-    // ONE ALIAS IS ACCEPTED: the LEGACY two-arg `learned(s<slot>,<hash8>)` written
-    // before the ID carried the model architecture. Expanding it yields exactly this
-    // canonical form, so accepting it merges no identities and loses no information,
-    // and it is what lets 90k+ stored rows and any hand-written roster line keep
-    // working. Anything else that fails to round-trip is still an error.
+    // ONE ALIAS IS ACCEPTED: a superseded spelling of the learned() DESCRIPTOR,
+    // which is re-derived from the slot file rather than being part of the
+    // identity. See learnedSpellingOnly(). Anything else that fails to
+    // round-trip is still an error.
     string canon = rankAgentId(a);
-    if (canon != id && canonicalizeLearnedIds(id) == canon) {
-        // Legacy learned id: accept, the caller sees the canonical spec.
-    } else if (canon != id) {
+    if (canon != id && learnedSpellingOnly(id, canon)) {
+        // Superseded learned() spelling: accept, the caller sees the canonical spec.
+    } else if (canon != id && !lenient) {
         err = "id is not canonical; use: " + canon;
         return false;
     }
@@ -1053,8 +1215,8 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     // `canon`, not the original `id`: a legacy short-form learned() id was just
     // validated as equivalent to `canon` above, but storing the SHORT form here
     // silently broke every string-keyed lookup against it downstream. Concretely:
-    // rankLoadMatches expands every STORED match row's w/b through
-    // canonicalizeLearnedIds() (so old rows keep matching an enriched roster), but
+    // rankLoadMatches rewrites every STORED match row's w/b through
+    // rankUpgradeId() (so old rows keep matching an enriched roster), but
     // a roster loaded via the short form never went through that expansion, so
     // rankSchedule's `have` map (keyed by the roster's ids) could never match a
     // stored row's (post-expansion) key -- pending games for that pair silently
@@ -1067,6 +1229,129 @@ bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
     out.anchor = false;
     return true;
 }
+
+// Public entry: STRICT. A roster line must be spelled canonically, so a stale
+// id is rejected with the current form printed to paste.
+bool rankAgentFromId(const string& id, RankAgent& out, string& err) {
+    return parseAgentId(id, out, err, false);
+}
+
+// Rewrite a stored id into today's canonical spelling. Stored rows were written
+// under older label conventions (`d6` before `deep=6`, `c4` before `chip=100`,
+// `s111` before `model=111`), and the roster now carries only the current form,
+// so without this every one of the store's rows would stop matching the agents
+// the roster names and the fit would see 0 games each.
+//
+// The learned() segment is the trap. rankAgentId re-derives a model's descriptor
+// AND hash from the slot file as it stands NOW, but ~49 historical identities
+// point at slots that were later overwritten by a different model. Re-emitting
+// those would silently swap in another model's hash and architecture, renaming
+// one agent into another. So when the stored hash disagrees with the file, the
+// original learned() segment is spliced back verbatim and only the surrounding
+// segments are upgraded -- the same protection learnedSpellingOnly relies on.
+string rankUpgradeId(const string& id) {
+    static std::map<string, string> cache;
+    std::map<string, string>::iterator c = cache.find(id);
+    if (c != cache.end()) return c->second;
+
+    string out = id;
+    RankAgent a;
+    string err;
+    if (parseAgentId(id, a, err, true)) {
+        string canon = rankAgentId(a.spec);
+        // Splice the stored learned()/linpol() payload back when the slot file no
+        // longer matches, so an overwritten slot cannot rewrite an old identity.
+        size_t oldP = id.find(".learned(");
+        if (oldP == string::npos) oldP = id.find(".linpol(");
+        size_t newP = canon.find(".learned(");
+        if (newP == string::npos) newP = canon.find(".linpol(");
+        if (oldP != string::npos && newP != string::npos) {
+            size_t oldOpen = id.find('(', oldP), newOpen = canon.find('(', newP);
+            size_t oldClose = matchParen(id, oldOpen), newClose = matchParen(canon, newOpen);
+            if (oldClose != string::npos && newClose != string::npos) {
+                const string oldSeg = id.substr(oldOpen + 1, oldClose - oldOpen - 1);
+                const string newSeg = canon.substr(newOpen + 1, newClose - newOpen - 1);
+                std::vector<string> of, nf;
+                splitTopLevel(oldSeg, of);
+                splitTopLevel(newSeg, nf);
+                if (of.size() >= 2 && nf.size() >= 2 && of[1] != nf[1])
+                    canon = canon.substr(0, newOpen + 1) + oldSeg + canon.substr(newClose);
+            }
+        }
+        // Preserve every segment's @N verbatim. rankAgentId emits each module's
+        // CURRENT version, but a stored row may name a RETIRED identity pinned at
+        // an older one -- `classic(...)@1` is a different player from `@2`, which
+        // is the entire point of module versioning. Re-deriving them merged 49
+        // retired identities into their live successors on the first attempt at
+        // this migration, silently combining their game histories.
+        std::vector<string> oldSegs, newSegs;
+        string e1, e2;
+        if (splitSegs(id, oldSegs, e1) && splitSegs(canon, newSegs, e2)
+            && oldSegs.size() == newSegs.size()) {
+            string rebuilt;
+            for (size_t i = 0; i < newSegs.size(); i++) {
+                string seg = newSegs[i];
+                const size_t oldAt = oldSegs[i].rfind('@');
+                const size_t newAt = seg.rfind('@');
+                if (oldAt != string::npos) {
+                    const string ver = oldSegs[i].substr(oldAt);
+                    seg = (newAt == string::npos) ? seg + ver : seg.substr(0, newAt) + ver;
+                } else if (newAt != string::npos) {
+                    seg = seg.substr(0, newAt);   // the stored form carried none
+                }
+                if (i) rebuilt += ".";
+                rebuilt += seg;
+            }
+            canon = rebuilt;
+        }
+        out = canon;
+    }
+    cache[id] = out;
+    return out;
+}
+
+// Shorten an id for PRINTING ONLY, by dropping each segment's `@N` when N is
+// already that module's current version.
+//
+// The version is load-bearing exactly when it is NOT current: `classic(...)@1`
+// beside a live `classic(...)@2` is a different, retired player, and that is the
+// one case this keeps visible. On a screen full of agents that all sit at the
+// current version, repeating it on every row is noise that pushes the part a
+// reader is comparing off the right edge.
+//
+// Console tables only. Every FILE keeps the full canonical id -- the match store
+// is keyed by it, `standings.tsv`/`ratings.tsv` are read back by tooling, and an
+// id pasted out of a doc has to parse. rankAgentId is unaffected, so nothing
+// functional ever sees the short form.
+string rankDisplayId(const string& id) {
+    static std::map<string, string> cache;
+    std::map<string, string>::iterator c = cache.find(id);
+    if (c != cache.end()) return c->second;
+
+    string out = id;
+    RankAgent a;
+    string err;
+    std::vector<string> segs, canonSegs;
+    if (parseAgentId(id, a, err, true)
+        && splitSegs(id, segs, err)
+        && splitSegs(rankAgentId(a.spec), canonSegs, err)
+        && segs.size() == canonSegs.size()) {
+        string rebuilt;
+        for (size_t i = 0; i < segs.size(); i++) {
+            string seg = segs[i];
+            const size_t at = seg.rfind('@'), cAt = canonSegs[i].rfind('@');
+            if (at != string::npos && cAt != string::npos
+                && seg.substr(at) == canonSegs[i].substr(cAt))
+                seg = seg.substr(0, at);
+            if (i) rebuilt += ".";
+            rebuilt += seg;
+        }
+        out = rebuilt;
+    }
+    cache[id] = out;
+    return out;
+}
+
 
 // ============================================================
 // ROSTER
@@ -1205,11 +1490,17 @@ static void readMatchStream(std::istream& f, const string& board,
         RankMatchRow m;
         if (!rankParseMatchRow(line, m)) { skipped++; continue; }
         if (!board.empty() && m.board != board) continue;
-        m.w = canonicalizeLearnedIds(m.w);
-        m.b = canonicalizeLearnedIds(m.b);
+        // Upgrade the WHOLE id, not just its learned() segment: stored rows
+        // predate the current label spelling in every segment (head, dilution,
+        // opener, evaluator weights), and the roster now carries only the new
+        // form, so matching on the old text would orphan the entire history.
+        m.w = rankUpgradeId(m.w);
+        m.b = rankUpgradeId(m.b);
         out.push_back(m);
     }
 }
+
+
 
 // ============================================================
 // REGIMES AND MATCHUPS
@@ -1463,8 +1754,12 @@ int rankSplitStore(const string& storeFile, const string& rosterFile,
                 if (!w[0]->write(line, out.buckets[0], err)) return -1;
                 continue;
             }
-            const string a = canonicalizeLearnedIds(m.w);
-            const string b = canonicalizeLearnedIds(m.b);
+            // rankUpgradeId, not a learned()-only rewrite: the roster carries
+            // today's labels and the store carries whatever was current when each
+            // row was written, so comparing the two spellings directly would file
+            // every LIVE agent's games under "retired" and orphan them.
+            const string a = rankUpgradeId(m.w);
+            const string b = rankUpgradeId(m.b);
             const bool aLive = live.count(a) > 0;
             const bool bLive = live.count(b) > 0;
             size_t bucket;
@@ -2153,7 +2448,7 @@ static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& 
         // declines (or there is none), the brain plays.
         bool playedByOpener = false;
         if (ag.spec.openerKind >= 0 && ag.spec.openerKind < g_openerCount)
-            playedByOpener = g_openers[ag.spec.openerKind].fn(side, h / 2, ag.spec.openerArg, victor);
+            playedByOpener = g_openers[ag.spec.openerKind].fn(side, h / 2, h, ag.spec.openerArg, ag.spec.openerArg2, victor);
         if (!playedByOpener)
             victor = agentChooseMove(ag.spec, side);
         double dt = std::chrono::duration<double, std::milli>(clk::now() - t0).count();
@@ -2221,7 +2516,7 @@ static bool loadIdList(const string& path, std::set<std::string>& out, string& e
         if (a == string::npos) continue;
         if (line[a] == '#') continue;
         size_t b = line.find_last_not_of(" \t\r\n");
-        out.insert(canonicalizeLearnedIds(line.substr(a, b - a + 1)));
+        out.insert(rankUpgradeId(line.substr(a, b - a + 1)));
     }
     return true;
 }
@@ -2335,7 +2630,8 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
 
         std::ostringstream ln;
         ln << pre << "[" << std::setw(4) << (p + 1) << "/" << pending.size() << "] "
-           << gm.w << " (W) vs " << gm.b << " : " << m.r << " in " << m.plies
+           << rankDisplayId(gm.w) << " (W) vs " << rankDisplayId(gm.b)
+           << " : " << m.r << " in " << m.plies
            << " plies, " << fmtN((m.wms + m.bms) / 1000.0, 1) << "s | pair "
            << t.w << "-" << t.l;
         cout << ln.str() << "\n" << flush;
@@ -2470,7 +2766,7 @@ static void printConsoleTable(const RankFit& fit, const std::vector<int>& order,
            << "  " << std::setw(6) << pm << "  " << std::setw(6) << a.games
            << "  " << std::setw(8) << wlW << "  " << std::setw(8) << wlB
            << "  " << std::setw(10) << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
-           << "  " << std::setw(5) << effCol(fit.elo[i], cpu) << "  " << id;
+           << "  " << std::setw(5) << effCol(fit.elo[i], cpu) << "  " << rankDisplayId(id);
         if (fit.provisional[i]) ln << " ~provisional";
         if (st == "off") ln << " (off)";
         if (st == "gone") ln << " (retired)";
@@ -3234,7 +3530,8 @@ int rankGauntlet(const string& rosterFile, const string& storeFile, const string
             score.push_back(sCand);
             std::ostringstream ln;
             ln << "[" << std::setw(4) << played << "/" << total << "] "
-               << m.w << " (W) vs " << m.b << " : " << m.r << " in " << m.plies
+               << rankDisplayId(m.w) << " (W) vs " << rankDisplayId(m.b)
+               << " : " << m.r << " in " << m.plies
                << " plies | vs this opponent " << w << "-" << l;
             cout << ln.str() << "\n" << flush;
         }
@@ -3327,7 +3624,7 @@ static int playoutCapture(const RankAgent& wa, const RankAgent& ba, int startHal
         // The agent's own identity-level opener composes (via OR) with pairgen's.
         bool playedByOpener = false;
         if (!pairgenOpener && moverSpec.openerKind >= 0 && moverSpec.openerKind < g_openerCount)
-            playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, moverSpec.openerArg, victor);
+            playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, h, moverSpec.openerArg, moverSpec.openerArg2, victor);
         if (pairgenOpener) {
             victor = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
         } else if (!playedByOpener) {
@@ -3508,7 +3805,7 @@ int rankBookGen(const string& storeFile, const string& board, const string& idA,
             const AgentSpec& moverSpec = (side == White) ? wSpec : bSpec;
             bool playedByOpener = false;
             if (moverSpec.openerKind >= 0 && moverSpec.openerKind < g_openerCount)
-                playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, moverSpec.openerArg, victor);
+                playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, h, moverSpec.openerArg, moverSpec.openerArg2, victor);
             if (!playedByOpener) victor = agentChooseMove(moverSpec, side);
             if (record) {
                 BookRec br;

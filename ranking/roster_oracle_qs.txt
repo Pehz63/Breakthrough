@@ -5,6 +5,6 @@
 
 anchor  rand@1
 
-on      ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,qs,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1

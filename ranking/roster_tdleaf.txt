@@ -12,83 +12,83 @@
 #
 # The set varies one axis at a time so per-feature Elo deltas are readable.
 
-anchor  rand@1                                                  # UniformRandom, pinned at Elo 0
+anchor  rand@1  # UniformRandom, pinned at Elo 0
 
 # Random family: tier ladder around the furthest-N knob.
-on      tiered@1                                                # win/capture/normal tiers
-on      smart(2)@1                                              # tiered, furthest-2 pieces
-on      smart(4)@1
-on      smart(6)@1
+on      tiered@1  # win/capture/normal tiers
+on      smart(pieces=2)@1  # tiered, furthest-2 pieces
+on      smart(pieces=4)@1
+on      smart(pieces=6)@1
 
 # 1-ply greedy: default vs structure-weighted Classic.
-on      greedy@1.classic(t1,c4,w0,l0)@2
-on      greedy@1.classic(t2,c10,w3,l2)@2
+on      greedy@1.classic(chip=100)@2
+on      greedy@1.classic(chip=10,wall=3,column=2)@2
 
 # Depth ladder, Classic default weights.
-on      ab(d1)@1.classic(t1,c4,w0,l0)@2
-on      ab(d2)@1.classic(t1,c4,w0,l0)@2
-on      ab(d3)@1.classic(t1,c4,w0,l0)@2
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2
-on      ab(d5)@1.classic(t1,c4,w0,l0)@2
+on      ab(deep=1)@1.classic(chip=100)@2
+on      ab(deep=2)@1.classic(chip=100)@2
+on      ab(deep=3)@1.classic(chip=100)@2
+on      ab(deep=4)@1.classic(chip=100)@2
+on      ab(deep=5)@1.classic(chip=100)@2
 
 # Eval-weight variants at d4: structure-weighted Classic + the forward ladder.
-on      ab(d4)@1.classic(t2,c10,w3,l2)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f1)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f2)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f4)@2
-on      ab(d4)@1.exp(t1,c4,w0,l0,f8)@2
+on      ab(deep=4)@1.classic(chip=10,wall=3,column=2)@2
+on      ab(deep=4)@1.exp(chip=4,forward=1)@2
+on      ab(deep=4)@1.exp(chip=4,forward=2)@2
+on      ab(deep=4)@1.exp(chip=4,forward=4)@2
+on      ab(deep=4)@1.exp(chip=4,forward=8)@2
 
 # Dilution ladder on ab(d4): Elo vs random-move probability.
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r5)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
-on      ab(d4)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=5)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=25)@1
+on      ab(deep=4)@1.classic(chip=100)@2.dil(prob=50)@1
 
 # Pruning ladder at a fixed 200k-node budget, depth cap 6: from no pruning at
 # all up to TT + ordering + tight aspiration windows. Same compute, more
 # cutoffs = more effective depth = Elo (watch the eff-depth telemetry).
-on      ab(d6,noab,nb200k)@1.classic(t1,c4,w0,l0)@2             # full minimax floor
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2                  # plain alpha-beta
-on      ab(d6,tt,nb200k)@1.classic(t1,c4,w0,l0)@2               # + transposition table
-on      ab(d6,ord,nb200k)@1.classic(t1,c4,w0,l0)@2              # + move ordering only
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2           # + both
-on      ab(d6,tt,ord,asp25,nb200k)@1.classic(t1,c4,w0,l0)@2     # + tight aspiration window
-on      ab(d6,tt,ord,asp50,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,asp100,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(deep=6,noab,nodes=200k)@1.classic(chip=100)@2  # full minimax floor
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2  # plain alpha-beta
+on      ab(deep=6,tt,nodes=200k)@1.classic(chip=100)@2  # + transposition table
+on      ab(deep=6,ord,nodes=200k)@1.classic(chip=100)@2  # + move ordering only
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2  # + both
+on      ab(deep=6,tt,ord,margin=25,nodes=200k)@1.classic(chip=100)@2  # + tight aspiration window
+on      ab(deep=6,tt,ord,margin=50,nodes=200k)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,margin=100,nodes=200k)@1.classic(chip=100)@2
 
 # Dilution ladder on the budgeted d6 (mirrors the d4 ladder at higher strength).
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r25)@1
-on      ab(d6,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r50)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=25)@1
+on      ab(deep=6,nodes=200k)@1.classic(chip=100)@2.dil(prob=50)@1
 
 # Dense dilution ladder over the strongest pruned d6, to resolve the top-end ties and to
 # give the hill climber (tools/hill_climb.ps1) non-deterministic opponents. Random-move
 # dilution dil(rP) plays a fully random move P% of the time; stochastic depth dilution
 # dil(rP,dN) instead plays a shallower depth-N search P% of the time (plausible-but-weaker).
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r4)@1        # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r7)@1        # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r10)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r14)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r18)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r22)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r28)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r35)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r43)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r52)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r63)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r75)@1
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d3)@1     # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d3)@1     # benched 2026-07-21: exact Elo tie with dil(r60,d4)
-off     ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d3)@1     # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d3)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r15,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r30,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r45,d4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.dil(r60,d4)@1
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=4)@1  # benched 2026-07-21: 8 Elo from dil(r45,d4) (~1 SE)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=7)@1  # benched 2026-07-21: 9 Elo from dil(r60,d4) (~1 SE)
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=14)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=18)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=22)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=28)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=35)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=43)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=52)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=63)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=75)@1
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=15,deep=3)@1  # benched 2026-07-21: within 1 SE of dil(r15,d4) and dil(r30,d4)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1  # benched 2026-07-21: exact Elo tie with dil(r60,d4)
+off     ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=45,deep=3)@1  # benched 2026-07-21: 8 Elo from dil(r10) (~1 SE)
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=60,deep=3)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=15,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=45,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=60,deep=4)@1
 
 # off   policy@1.linpol(s1,602891f2)                            # enable after (re)training; check prints the hash
-on      ab(d4)@1.exp(t20,c64,w0,l1,f15)@2
-on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
+on      ab(deep=4)@1.exp(chip=64,column=1,forward=15)@2
+on      ab(deep=4)@1.exp(chip=65,column=1,forward=14)@2
 
 # Best learned model to date: trained on 4000 games REPLAYED from this store's
 # own match history (rank.exe extract, the full diverse agent pool as teachers),
@@ -98,21 +98,21 @@ on      ab(d4)@1.exp(t20,c65,w0,l1,f14)@2
 # Caveat: trained on the pool's own games and rated against that pool, so part
 # of the number may be style-fit; the held-out-agent probe (todo.md) tests this.
 # off   ab(d6,tt,ord,nb200k)@1.learned(s2,59815079)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,ord,nb200k)@1.adv(t20,c75,w0,l0,f0,d0,e0,m0,h3,b0,o0,r2,x0,n0,s1,g1)@1
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=75,hole=3,race=2,noiseseed=1,racewin=1)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1
 
 # Quiescence challengers (dethrone plan phase 1): the qs flag spends the d6
 # head's idle node budget on a captures-only stand-pat extension at depth
 # leaves. Same head as the reigning champion s98 otherwise.
-on      ab(d6,tt,ord,qs,nb200k)@1.classic(t1,c4,w0,l0)@2
-on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,qs,nodes=200k)@1.classic(turn=1,chip=4)@2
+on      ab(deep=6,tt,ord,qs,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
 
 # Refutation-book challengers (dethrone plan phase 2): .opener(book,1) plays
 # models/book1.txt (the d8/nb2m oracle's winning replies against s98, mined by
@@ -121,8 +121,8 @@ on      ab(d6,tt,ord,qs,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1
 # NOTE: the book file is not hashed into the ID (unlike learned models), so
 # models/book1.txt is treated as immutable -- regenerating it under slot 1 would
 # silently change these agents' behavior. A new book gets a new slot number.
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,1)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1)@1
 
 # Self-mined book (developer hypothesis 2026-07-18, theory 31): instead of
 # giving classic the ORACLE's winning moves against s98 (book,1 above, which
@@ -140,7 +140,7 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,1)@1
 # hash with no response tree, so its lift only holds while the opponent repeats
 # its mined replies. Under pairgen --open-plies 8 every book effect measured in
 # this project collapses to noise. Do not quote a book Elo as strength.
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=2)@1
 
 # Symmetrization + seed-ensembling challengers (dethrone plan phase 3, the
 # todo's weight-symmetrization [Now] item). Slots 3-8 are 6 fresh seed
@@ -150,49 +150,49 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,2)@1
 # is that policy). slot9 = mirror-symmetrized average of all 6 seeds;
 # slot10 = mirror-symmetrized champion weights alone (separates the
 # symmetrization effect from the ensembling effect). Both standard heads.
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1
-on      ab(d4,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r15,d6)@1
-on ab(d8,tt,ord,nb2m)@1.classic(t1,c4,w0,l0)@2.dil(r30,d6)@1
-on ab(d2)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d4)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1
-on ab(d2)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d4)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s77,ddaa5090,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d2)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d4)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s78,2fa21eda,dist,mlp,129-128-64-1,sig129-32-1,con100)@1
-on ab(d2)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s79,18f19059,dist,mlp,129-256-128-1,sig129-64-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: models/sweep/slot9.txt accidentally overwritten by a test using an unverified slot number (gitignored, unrecoverable). Historical record + Elo stand as of the last fit; can never play again.
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+# off   ab(d4,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1  # RETIRED 2026-07-30: see the s9 note above (slot9.txt unrecoverably overwritten).
+on      ab(deep=4,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2.dil(prob=15,deep=6)@1
+on      ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2.dil(prob=30,deep=6)@1
+on      ab(deep=2)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=4)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=2)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=4)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=2)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=4)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on      ab(deep=2)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
 
 # NNUE-shaped dist mu heads (129->512->8->1), 6 seeds, slots 110-115.
 # Efficiency negative result (2.47 us/node, ~2x standard head); rated for completeness.
-on ab(d4)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s110,1466db6c,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s112,baa2951a,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s114,316257e9,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d4)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1,con100)@1
+on      ab(deep=4)@1.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=4)@1.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 
 # ---------------------------------------------------------------------------
 # Book loadout study (2026-07-26, plans/book-opener-audit-results-1-vivid-lantern.md).
@@ -216,29 +216,29 @@ on ab(d6,tt,ord,nb200k)@1.learned(s115,21d7e638,dist,mlp,129-512-8-1,sig129-64-1
 # it would add hours of roster play for one more row.
 
 # classic core, own-book depth ladder (6/16/30; the 60 rung is the champion above)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,7)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,8)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,9)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=7)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=9)@1
 # classic core wearing s98's 60-ply book (borrowed)
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=4)@1
 
 # s98 core, own-book depth ladder (6/16/30/60)
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,10)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,11)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,12)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=12)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=4)@1
 # s98 core wearing classic's 60-ply book (borrowed; this is the champion's book)
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
 
 # s3 core: own 60-ply book vs the champion's borrowed book
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,6)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=6)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
 
 # hill-climbed Advanced core (DIFFERENT head, no tt): own vs borrowed.
 # This is the core where the borrowed book beat the own book 32-0 vs 16-16 in
 # pairwise play, which is the single result the pooled fit most needs to check.
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,3)@1
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,2)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=3)@1
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=2)@1
 
 # ---------------------------------------------------------------------------
 # Champion-category cohort (2026-07-28, splits the single throne into 5
@@ -252,10 +252,10 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # (classic-own: book7/8/9/2 = 6/16/30/60ply; s98-own: book10/11/12/4 =
 # 6/16/30/60ply). book13-16 mined for free from the same already-stored
 # classic-vs-s98 match history (no new games needed to mine them).
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,13)@1        # classic-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(book,14)@1        # classic-own, 8-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,15)@1   # s98-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(book,16)@1   # s98-own, 8-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1  # classic-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1  # classic-own, 8-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1  # s98-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1  # s98-own, 8-ply
 
 # 4-random / 8-random: every bare target-class core >= ~1000 Elo in the
 # standard-head standings, plus the classic control, each wearing
@@ -263,26 +263,26 @@ on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.op
 # in ranking/roster_open.txt's separate matches_open.jsonl store -- that's a
 # different, incompatible-scale instrument; this builds independent history
 # for these identities in the merged pool.
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,dist,lin,129-1,sig129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # 370ms/move core, cost flag
-on      ab(d6,tt,ord,nb200k)@1.learned(s111,78ef6974,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s7,c7f7ce61,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s8,6f1a4264,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,4)@1   # NNUE-wide core, cost flag
-on      ab(d6,tt,ord,nb200k)@1.learned(s113,e3cc8b4e,dist,mlp,129-512-8-1,sig129-64-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=4)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=7,c7f7ce61,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=4)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=8)@1
 
 # ---------------------------------------------------------------------------
 # Champion-category cohort, round 2 (2026-07-29). More cores per category for
@@ -298,10 +298,10 @@ on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2.opener(rand,8)@1
 # to mine. adv is a DIFFERENT search head (ab(d6,ord,nb200k)@1, no tt), so its
 # book19/20 lines add Elo diversity but are NOT category-eligible (one-head
 # rule) -- same treatment as the existing bare/book2/book3 adv rows above.
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,17)@1   # s3-own, 4-ply
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,value,lin,129-1,con100)@1.opener(book,18)@1   # s3-own, 8-ply
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,19)@1   # adv-own, 4-ply, off-head (not category-eligible)
-on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,g1)@1.opener(book,20)@1   # adv-own, 8-ply, off-head (not category-eligible)
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=17)@1  # s3-own, 4-ply
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=18)@1  # s3-own, 8-ply
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=19)@1  # adv-own, 4-ply, off-head (not category-eligible)
+on      ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=20)@1  # adv-own, 8-ply, off-head (not category-eligible)
 
 # 4-random / 8-random: the remaining bare target-class value-linear seeds at
 # the standard head not yet covered (s4/s9/s10/s94/s95/s97/s99). Deliberately
@@ -310,60 +310,60 @@ on      ab(d6,ord,nb200k)@1.adv(t20,c77,w0,l0,f0,d-2,e0,m0,h0,b1,o0,r0,x0,n0,s1,
 # and adding the rest would cost hours of roster play for rows that theory 39
 # already predicts will rate low, the same cost-vs-benefit call as book5's
 # exclusion (tools/CLAUDE.md).
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s4,eb105733,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s10,fead67b7,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s94,784bb5fe,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s95,07792e69,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s97,87a5093d,value,lin,129-1,con100)@1.opener(rand,8)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,4)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s99,59815079,value,lin,129-1,con100)@1.opener(rand,8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,4)@1  # RETIRED 2026-07-30: see the s9 note above.
+# off   ab(d6,tt,ord,nb200k)@1.learned(s9,e5b3b014,value,lin,129-1,con100)@1.opener(rand,8)@1  # RETIRED 2026-07-30: see the s9 note above.
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
 
 # ---- TD-Leaf study cohort (38 agents), added 2026-07-29 ----
-on ab(d6,tt,ord,nb200k)@1.learned(s128,71ebe585,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s129,27f6c3ea,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s130,78fb8e7e,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s131,18bfb7a0,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s132,05d88a05,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s133,32735178,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s134,a0eda253,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s135,2b6f39f7,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s136,856a440e,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s137,57d86605,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s138,b9a48dbb,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s139,3deae9d6,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s140,05841a0c,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s141,a9798171,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s142,7b28c884,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s143,3b702c7c,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s144,553fed13,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s145,0a5ebe82,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s146,796ad7f8,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s147,4c5552ba,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s148,894ffe49,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s149,2c335531,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s150,8117f1d8,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s151,15c5c8ea,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s152,9c008efc,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s153,16a394b6,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s154,82b2ea76,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s155,2da53be0,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s156,56d6af90,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s157,aaaf75d5,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s158,1eb535fe,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s159,ebf1bc3d,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s160,922d8ecc,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s161,fdc0f8fe,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s162,a8bb44c3,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s163,b8ff215f,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s164,db45bc8c,value,lin,129-1,con100)@1
-on ab(d6,tt,ord,nb200k)@1.learned(s165,265a1423,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=128,71ebe585,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=129,27f6c3ea,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=130,78fb8e7e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=131,18bfb7a0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=132,05d88a05,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=133,32735178,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=134,a0eda253,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=135,2b6f39f7,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=136,856a440e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=137,57d86605,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=138,b9a48dbb,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=139,3deae9d6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=140,05841a0c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=141,a9798171,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=142,7b28c884,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=143,3b702c7c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=144,553fed13,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=145,0a5ebe82,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=146,796ad7f8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=147,4c5552ba,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=148,894ffe49,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=149,2c335531,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=150,8117f1d8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=151,15c5c8ea,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=152,9c008efc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=153,16a394b6,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=154,82b2ea76,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=155,2da53be0,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=156,56d6af90,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=157,aaaf75d5,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=158,1eb535fe,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=159,ebf1bc3d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=160,922d8ecc,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=161,fdc0f8fe,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=162,a8bb44c3,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=163,b8ff215f,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=164,db45bc8c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=165,265a1423,tdleaf_self,lin,shape=129-1)@1
 
 # ---- INIT CONTROL: the model every champ-init TD-Leaf cell started from ----
-on ab(d6,tt,ord,nb200k)@1.learned(s2,59815079,value,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=2,59815079,pool_games,lin,shape=129-1)@1

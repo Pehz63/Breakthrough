@@ -24,17 +24,17 @@
 anchor  rand@1
 
 # Openless contenders, in 2026-08-01 refit order (head ab(d6,tt,ord,nb200k)@1).
-on      ab(d6,tt,ord,nb200k)@1.learned(s169,4975683c,tdleaf_self,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s76,ef183148,position_elo,lin,129-1,sig129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s6,eac8ab99,pool_games,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s3,68364898,pool_games,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s349,5ee50d5c,tdleaf_self,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s602,68cbb27d,tdleaf_self,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s171,10d3530c,tdleaf_self,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s96,990e39e7,pool_games,lin,129-1,con100)@1
-on      ab(d6,tt,ord,nb200k)@1.learned(s98,5801570e,pool_games,lin,129-1,con100)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
 
 # The bare chip counter: rank 2 openless with the cohort games in, rank 35
 # without them. Included so that swing is measured at full fill rather than
 # left as an artifact of the methodology change.
-on      ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2
