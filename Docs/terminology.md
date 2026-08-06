@@ -227,7 +227,11 @@ slots 0-2 are the fixed value/policy/PST slot conventions."*
 **Distributional (dist) model, mu head, sigma head** -- a model that predicts
 a position's strength as a distribution rather than a point: a `mu` head for
 the mean advantage (in logits, convertible to Elo) and a `sigma` head for its
-volatility. Search reads only mu, so only mu needs to be fast.
+volatility. By default search reads only mu, so only mu needs to be fast (the
+sigma head is not incrementally accumulated); LearnedValue's optional Risk
+weight (`p[1]`, ID `risk=<tenths>`, an integer count of tenths of a sigma
+multiple, e.g. `risk=5` -> k=0.5) is the one exception, scoring `mu + k*sigma`
+via a full leaf scan when nonzero.
 *"The dist model's mu head says White is 140 Elo better, with a sigma saying
 that estimate is not very stable."*
 

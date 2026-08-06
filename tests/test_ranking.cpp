@@ -371,6 +371,75 @@ TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
     REQUIRE(parseErr("greedy@1.learned(s" + std::to_string(ML_SLOTS) + "," + h + ")@1").find("slot") != string::npos);
 }
 
+// LearnedValue's optional Risk weight (evalParams[1]: mu + k*sigma where k is
+// the value/10, DistModel slots only at runtime -- see mlValueScoreRisk in
+// ml_eval.cpp) rides on the learned() id as a trailing risk=<tenths>, always
+// last, omitted at its default of 0. Unlike the architecture fields
+// archDescForSlot adds, risk is a real functional parameter, not file-derived,
+// so it must survive
+// canonicalisation exactly rather than being folded away by
+// learnedSpellingOnly's slot+hash-only tolerance (which it rides alongside
+// here, since the test uses the same legacy-2-arg-expands-to-rich-form path).
+static RankAgent parseOkLearnedRisk(const string& id, int expectRisk) {
+    RankAgent a;
+    string err;
+    bool ok = rankAgentFromId(id, a, err);
+    INFO("id: " << id << "  parse error: " << err);
+    REQUIRE(ok);
+    REQUIRE(a.spec.evalParams[1] == expectRisk);
+    string canon = rankAgentId(a.spec);
+    if (expectRisk != 0)
+        REQUIRE(canon.find(",risk=" + std::to_string(expectRisk) + ")") != string::npos);
+    else
+        REQUIRE(canon.find("risk=") == string::npos);
+    REQUIRE(a.id == canon);   // the RankAgent's own .id field, not just a re-derivation
+    RankAgent b;
+    string err2;
+    REQUIRE(rankAgentFromId(canon, b, err2));
+    REQUIRE(rankAgentId(b.spec) == canon);   // canonical form is a fixed point
+    REQUIRE(b.spec.evalParams[1] == expectRisk);
+    return a;
+}
+
+TEST_CASE("ranking id - learned() optional risk= weight") {
+    const int slot = ML_SLOTS - 6;
+    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    m.bias = 0.2f;
+    for (int i = 0; i < m.n; i++) m.w[i] = 0.01f * i;
+    REQUIRE(m.save(path));
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+
+    RankAgent a = parseOkLearnedRisk(
+        "greedy@1.learned(model=" + std::to_string(slot) + "," + h + ",risk=2)@1", 2);
+    REQUIRE(a.spec.modelSlot == slot);
+    REQUIRE(a.spec.evaluator == rkEvalIdx("LearnedValue"));
+
+    parseOkLearnedRisk("greedy@1.learned(model=" + std::to_string(slot) + "," + h + ",risk=-3)@1", -3);
+
+    // Explicit risk=0 parses (learnedSpellingOnly folds it away like any other
+    // learned()-internal spelling difference) but is never re-emitted.
+    parseOkLearnedRisk("greedy@1.learned(model=" + std::to_string(slot) + "," + h + ",risk=0)@1", 0);
+
+    // Out of range (range is -50..50, tenths of sigma): rejected before the
+    // model file/hash are even consulted.
+    REQUIRE(parseErr("greedy@1.learned(model=" + std::to_string(slot) + "," + h + ",risk=51)@1")
+                .find("risk") != string::npos);
+    REQUIRE(parseErr("greedy@1.learned(model=" + std::to_string(slot) + "," + h + ",risk=-51)@1")
+                .find("risk") != string::npos);
+
+    // linpol() carries no risk weight (a policy chooser, not a value head): a
+    // trailing risk= there is left unstripped and simply overflows the
+    // accepted arg count.
+    parseErr("policy@1.linpol(model=" + std::to_string(slot) + "," + h + ",risk=2)");
+}
+
 // End-to-end regression for the bug fixed 2026-07-30: a roster line written in the
 // LEGACY short learned() form must schedule correctly against stored games recorded
 // under the (post-canonicalization) rich form -- i.e. rankLoadRoster's output id must

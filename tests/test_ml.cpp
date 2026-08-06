@@ -943,6 +943,55 @@ TEST_CASE("mlValueScoreDist - reads mean and SD from a dist slot") {
     mlClearSlots();
 }
 
+TEST_CASE("mlValueScoreRisk - blends sigma into the score, and the knob changes the output") {
+    LinearModel* mu = makeV2Model();
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    sh->bias = 0.3f;                              // sd > 0, see mlValueScoreDist test above
+    DistModel* d = new DistModel(mu, sh);
+    mlSetModel(0, d);
+    clearBoard(); board[2][2] = WHITE; board[5][5] = BLACK;
+
+    int base = mlValueScore(White, 0);
+    REQUIRE(mlValueScoreRisk(White, 0, 0) == base);   // k=0 is byte-identical to mu-only
+
+    int plus  = mlValueScoreRisk(White, 0, 1);
+    int minus = mlValueScoreRisk(White, 0, -1);
+    REQUIRE(plus != base);                            // the knob actually moves the score...
+    REQUIRE(minus != base);
+    REQUIRE(plus > minus);                            // ...monotonically in sigma (tanh is increasing)
+    REQUIRE(mlValueScoreRisk(White, 0, 2) >= plus);    // more k moves further the same direction
+
+    // Non-dist slot: no sigma head to blend in, silently falls back to mu-only.
+    mlSetModel(1, makeV2Model());
+    REQUIRE(mlValueScoreRisk(White, 1, 1) == mlValueScore(White, 1));
+
+    // Decided position: the near-win sentinel short-circuits before mu/sigma,
+    // independent of k.
+    clearBoard(); board[3][SIZE-2] = WHITE;
+    REQUIRE(mlValueScoreRisk(White, 0, 1) == mlValueScoreRisk(White, 0, 0));
+    mlClearSlots();
+}
+
+TEST_CASE("LearnedValue Risk weight: forces full-scan (no accumulator) and matches evaluateBoard") {
+    int lvIdx = evalIdx("LearnedValue");
+    int params[MAX_EVAL_PARAMS] = { 0 };
+    params[1] = 1;   // Risk = +0.1 sigma (tenths)
+    LinearModel* mu = makeV2Model();
+    LinearModel* sh = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    sh->bias = 0.3f;
+    DistModel* d = new DistModel(mu, sh);
+    mlSetModel(0, d);
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    evalBeginSearch(lvIdx, params);
+    REQUIRE_FALSE(g_mlIncremental);   // risk != 0 -> accumulator skipped, full scan every leaf
+    REQUIRE(evalLeaf(White, lvIdx, params) == evaluateBoard(White, lvIdx, params));
+    REQUIRE(evalLeaf(Black, lvIdx, params) == evaluateBoard(Black, lvIdx, params));
+    REQUIRE(evaluateBoard(White, lvIdx, params) != mlValueScore(White, 0));   // genuinely reads sigma
+    evalEndSearch();
+    mlClearSlots();
+}
+
 TEST_CASE("Dist+linear mu: incremental leaf matches full recompute over a walk") {
     int lvIdx = evalIdx("LearnedValue");
     int params[MAX_EVAL_PARAMS] = { 0 };

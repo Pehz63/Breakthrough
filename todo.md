@@ -638,7 +638,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   or oracle (1151) in this fit. Also surfaced an unexplained reversal: `dist_mlp_wide` is the
   best MLP at d4 (768) but the worst at d6 (931). Full table:
   `plans/position-oracle-results-1-lazy-popping-simon.md`, `ML.md`'s shipped-models section.
-- Explore new agent types built from the mu/sigma distribution instead of just mu-as-eval:
+- ~~Explore new agent types built from the mu/sigma distribution instead of just mu-as-eval:
   (a) SAMPLE a value from N(mu, sigma) at each leaf instead of using mu directly -- a
   genuinely new stochasticity source (the model's own learned uncertainty) distinct from the
   dilution/jitter mechanisms already in the ladder; (b) mean +/- k*sigma variants (an
@@ -646,7 +646,15 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   the sigma-as-search-time-signal idea two lines up (prefer high-sigma/high-upside lines when
   behind is exactly a mu+sigma-style leaf score). Needs a new accessor or explorer variant
   since `mlValueScore`/`mlLeafScore` currently read mu only (`mlValueScoreDist` already
-  exposes both mu and sigma, so the plumbing exists, just not wired into move choice) `[Now]`
+  exposes both mu and sigma, so the plumbing exists, just not wired into move choice)~~ (b)
+  shipped 2026-08-06 as LearnedValue's Risk weight (`mlValueScoreRisk`, ID `risk=<tenths>`,
+  see `plans/risk-weight-plan-1-dusty-kestrel.md` / `risk-weight-results-1-dusty-kestrel.md`,
+  theory 47). Screened on the s76 core only (developer scoping decision) at k in
+  {-1.0,-0.5,-0.2,-0.1,0.1,0.2,0.5,1.0}: REFUTED cleanly, every nonzero k rated 66-228 Elo below
+  the mu-only baseline (1007), monotonically worse with |k|, negative k less damaging than
+  positive at matched magnitude. (a) sampling from N(mu,sigma) remains open, and so does
+  screening (b) on the other 9 rostered position_elo cores and at k below 0.1 (see the results
+  doc's Future Work) `[Next]`
 - Activate --elo-se (rating-SE variance is plumbed, off by default); an adaptive second
   labeling pass (per position, add pairings whose gap centers on -mu_hat from the first
   labels, where sigma is best identified); relabel-free retrain after each future ratings

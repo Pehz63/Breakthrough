@@ -183,9 +183,10 @@ static const char* const LBL_PIECES[]  = { "pieces=", "pieces_", "pieces" };
 static const char* const LBL_PLY[]     = { "ply=", "ply_", "ply" };
 static const char* const LBL_MODEL[]   = { "model=", "model_", "model", "s" };
 static const char* const LBL_CONN[]    = { "conn=", "conn_", "conn", "con" };
+static const char* const LBL_RISK[]    = { "risk=" };   // no legacy spelling: new field, one form only
 static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
 static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
-static const int LBLN_MODEL = 4, LBLN_CONN = 4;
+static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1;
 
 // ============================================================
 // ID CODEC
@@ -283,7 +284,13 @@ bool rankEvalCodecComplete(string& err) {
 // pipeline, `value` = a plain outcome-trained head), mu head type (`mlp`/`lin`), mu
 // layer shape, an optional `sig<shape>` for the dist sigma head (search never reads
 // it, but it distinguishes training recipes), and `con<N>` = percent connectivity,
-// currently always 100 and reserved for future sparsity.
+// currently always 100 and reserved for future sparsity. An optional trailing
+// `risk=<tenths>` (LearnedValue's Risk weight, evalParams[1], an integer count
+// of TENTHS of a sigma multiple: risk=5 means k=0.5) is the one field here
+// that search DOES act on: a nonzero k scores mu + k*sigma instead of mu alone
+// (DistModel slots only, see mlValueScoreRisk in src/ml_eval.cpp), and it is
+// always the LAST token when present, after any architecture fields. Omitted
+// at its default of 0, like conn=, so an unrisked agent's id is unchanged.
 //
 // Index of the ')' matching the '(' at `openParen`, or npos if unbalanced. Needed
 // because a regime may carry its own parameters, so ids now nest one level.
@@ -565,7 +572,13 @@ string rankAgentId(const AgentSpec& a) {
             string arch = archDescForSlot(a.modelSlot);
             s += ".learned(model=" + std::to_string(a.modelSlot) + ","
                + rankFileHash8(slotFile(a.modelSlot))
-               + (arch.empty() ? "" : "," + arch) + ")@" + std::to_string(ev->version);
+               + (arch.empty() ? "" : "," + arch);
+            // Risk (evalParams[1]): tenths-of-sigma multiplier in mu + k*sigma
+            // (risk=5 -> k=0.5), DistModel slots only. Always last, omitted at
+            // its default of 0 like conn=, so a risk-less agent's id is
+            // unchanged by this field existing.
+            if (a.evalParams[1] != 0) s += ",risk=" + std::to_string(a.evalParams[1]);
+            s += ")@" + std::to_string(ev->version);
         } else if (ev) {
             // Weights are named (`chip=4`, not `c4`) and only the ones that say
             // something about this agent are shown. Two omissions:
@@ -899,6 +912,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     std::vector<long long> weights;
     bool haveEval = false, haveModel = false, haveDil = false, haveOpener = false;
     string modelHash;
+    long long riskVal = 0;   // learned()'s optional trailing risk=<k>, see below
     double dilProb = 0.0;
     int dilDepth = 0;
     int openerKindVal = -1, openerArgVal = 0, openerArg2Val = 0;
@@ -999,6 +1013,23 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
             }
             haveDil = true;
         } else if (word == "learned" || word == "linpol") {
+            // Optional trailing risk=<k> (LearnedValue's Risk weight, whole-sigma
+            // multiplier in mu + k*sigma; DistModel slots only). Always the LAST
+            // token when present, so it is stripped here before the existing
+            // positional model=/hash/arch parsing below runs unmodified against
+            // the remaining args. Omitted at its default of 0, like conn=.
+            // linpol() is a policy chooser, not a value head, so it carries no
+            // such weight -- only "learned" strips it.
+            if (word == "learned" && parens && !args.empty()
+                && args.back().compare(0, 4, "risk") == 0) {
+                string rTail;
+                if (!labelledNum(args.back(), LBL_RISK, LBLN_RISK, rTail)
+                    || !lenientInt(rTail, true, riskVal) || riskVal < -50 || riskVal > 50) {
+                    err = "bad learned() risk '" + args.back() + "' (expected risk=<-50..50>, tenths of sigma)";
+                    return false;
+                }
+                args.pop_back();
+            }
             if (word == "learned") {
                 if (haveEval) { err = "more than one evaluator segment"; return false; }
                 if (atV < 1) { err = "learned segment '" + segs[si] + "' needs a module version like @1"; return false; }
@@ -1177,6 +1208,11 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     if (isSearch) {
         a = agentMakeSearch("", explorerIdx, evalIdx, depth, modelSlot >= 0 ? modelSlot : 0);
         for (size_t k = 0; k < weights.size(); k++) a.evalParams[k] = (int)weights[k];
+        // weights stays empty for a learned() segment (it has no generic weight
+        // loop, see above), so this is the only place LearnedValue's Risk param
+        // is ever set from an id; guarded by evalIdx so it can never stomp
+        // another evaluator's own evalParams[1] (e.g. Advanced's Chip).
+        if (evalIdx == learnedValueIndex()) a.evalParams[1] = (int)riskVal;
         a.useAlphaBeta = !fNoab;
         a.useTT = fTT;
         a.useMoveOrder = fOrd;

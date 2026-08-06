@@ -333,6 +333,36 @@ analysis surfaces. Playing strength is a separate measurement from
 prediction quality (theory 27): the dist models' roster Elo is recorded but
 is not the oracle claim.
 
+LearnedValue's optional **Risk** weight (`p[1]`, ID `learned(...,risk=<tenths>)@1`,
+an integer count of tenths of a sigma multiple in range -50..50 (`risk=5` ->
+k=0.5), default 0) is the one place search itself reads the sigma head: it
+scores `mu + k*sigma` (both in the model's raw pre-tanh output units)
+instead of mu alone, via `mlValueScoreRisk` in `src/ml_eval.cpp`. `k=0`, or a
+slot holding no dist model, is byte-identical to the mu-only path. A nonzero
+`k` forces the full-scan leaf (the incremental accumulator only ever tracks
+the mean, see `src/CLAUDE.md`'s `ml_eval.cpp` entry), so it costs the same
+per-leaf price a v1 (non-incremental) model would. See `todo.md`'s
+mu/sigma-agent-types entry for the follow-up sampling variant (drawing a
+value from N(mu,sigma) at each leaf) this does not cover.
+
+**Screened 2026-08-06 on the `s76` (linear) core** at `ab(deep=6,tt,ord,nodes=200k)@1`,
+a pinned fit against `ranking/standings.tsv` (8 games/pair, 720 games per new
+agent, played into its own screening store per the convention below):
+
+| k | -1.0 | -0.5 | -0.2 | -0.1 | 0 (baseline) | 0.1 | 0.2 | 0.5 | 1.0 |
+|---|---|---|---|---|---|---|---|---|---|
+| Elo | 789 | 871 | 928 | 941 | **1007** | 910 | 865 | 818 | 779 |
+| SE | 14 | 14 | 15 | 15 | 0 (pinned) | 15 | 14 | 14 | 14 |
+
+Every nonzero k rated below the mu-only baseline, monotonically worse with
+`|k|` in both directions, and negative (cautious) k beat positive (optimistic)
+k at every matched magnitude except the extremes, where the two nearly
+converge. Theory 47 (`Docs/theories.md`), refuted for this core. Full
+writeup: [risk-weight-results-1-dusty-kestrel](plans/risk-weight-results-1-dusty-kestrel.md).
+Not yet tested on the other 9 rostered `position_elo` cores (the 8 MLP
+variants + confirming this doesn't generalize), which the developer
+deliberately deferred to keep the first pass narrow.
+
 ### Shipped models (2026-07-21 campaign)
 
 Four dist models trained on the full labeled store (22,788 train positions,

@@ -551,9 +551,14 @@ void evalBeginSearch(int evaluator, const int* params) {
     // LearnedValue with a sparse piece-square model (feature v2) gets its own
     // accumulator, maintained by the same make/unmake hooks as g_evalPos. Any
     // other model leaves g_mlIncremental false and the leaf falls back to the
-    // full-scan mlValueScore path.
-    if (g_evaluators[evaluator].fn == evalLearnedValue)
-        mlIncrementalBegin(params[0]);
+    // full-scan mlValueScore path. A nonzero Risk weight (p[1]) needs the
+    // sigma head too, which the accumulator does not track, so that case skips
+    // the accumulator entirely and always takes the full-scan mlValueScoreRisk
+    // path in evalLeaf.
+    if (g_evaluators[evaluator].fn == evalLearnedValue) {
+        if (params[1] == 0) mlIncrementalBegin(params[0]);
+        else                 mlIncrementalEnd();
+    }
 }
 
 void evalEndSearch() {
@@ -691,8 +696,12 @@ static int evalAdvanced(int turnColor, const int* p) {
 // piece-square model (feature v2), evalBeginSearch enables the separate g_mlAcc
 // accumulator and evalLeaf reads it via mlLeafScore; any other model (feature v1
 // aggregates) runs this full feature scan at each leaf via the evalLeaf fallback.
+// p[1] = Risk (default 0, tenths of sigma): when the slot holds a DistModel,
+// adds (p[1]/10)*sigma to the mean before the tanh squash (mlValueScoreRisk);
+// 0 is byte-identical to mu-only mlValueScore, and a nonzero value on a
+// non-dist model is likewise mu-only, since there is no sigma head to read.
 static int evalLearnedValue(int turnColor, const int* p) {
-    return mlValueScore(turnColor, p[0]);
+    return mlValueScoreRisk(turnColor, p[0], p[1]);
 }
 
 // Evaluator registry. Add an evaluator by appending an EvalDef here and writing its
@@ -715,8 +724,12 @@ const EvalDef g_evaluators[] = {
         { "Column",  "column", 0, 0, 10 },
         { "Forward", "forward", 1, 0, 10 },
       }, evalExperimental, true },
-    { "LearnedValue", 1, {
+    { "LearnedValue", 2, {
         { "Model", "model", 0, 0, ML_SLOTS-1 },
+        // Tenths-of-sigma multiplier k in mu + (k/10)*sigma (DistModel slots
+        // only; see mlValueScoreRisk). Default 0 = mu-only, today's behavior.
+        // e.g. risk=5 -> k=0.5, risk=-25 -> k=-2.5.
+        { "Risk",  "risk",  0, -50, 50 },
       }, evalLearnedValue, false },
     // Advanced is appended AFTER LearnedValue so existing registry indices stay
     // stable: minimax_params.txt persists the evaluator as a raw index

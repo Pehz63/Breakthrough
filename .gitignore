@@ -144,6 +144,15 @@ ranking/standings_screen.tsv
 ranking/games_screen.tsv
 ranking/report_screen.md
 
+# One-off screening cohort store (risk-weight study, see
+# plans/risk-weight-results-1-dusty-kestrel.md). Same rationale as the
+# matches_screen.* block above (a study's games kept out of the permanent
+# ladder) but named for this specific study rather than a reusable pool; its
+# pinned-fit outputs are already covered by ranking/*_pinned.* below.
+ranking/matches_risk_study.jsonl
+ranking/matches_risk_study.jsonl.*
+ranking/matches_risk_study.*.jsonl
+
 # Rating outputs, regenerated from the store by `rank.exe rate` (measured
 # 2026-08-01: 19.4 s over 649,434 games) and verified deterministic, so they are
 # not committed. Run a rate before reading standings in a fresh clone.

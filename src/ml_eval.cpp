@@ -100,6 +100,29 @@ bool mlValueScoreDist(int turnColor, int slot, double& muElo, double& sdElo) {
     return true;
 }
 
+int mlValueScoreRisk(int turnColor, int slot, int riskTenths) {
+    if (riskTenths == 0) return mlValueScore(turnColor, slot);
+    int nw = nearWinCheck(turnColor);
+    if (nw) return nw;
+
+    Model* m = mlGetModel(slot);
+    DistModel* dm = m ? dynamic_cast<DistModel*>(m) : nullptr;
+    if (!dm) return mlValueScore(turnColor, slot);   // no sigma head to blend in
+
+    float mu, sd;
+    if (dm->featureVersion() == 2) {
+        float feats[MLV2_FEATURES];
+        mlExtractValueFeaturesV2(turnColor, feats);
+        dm->forwardDist(feats, MLV2_FEATURES, mu, sd);
+    } else {
+        float feats[MLV_FEATURES];
+        mlExtractValueFeatures(turnColor, feats);
+        dm->forwardDist(feats, MLV_FEATURES, mu, sd);
+    }
+    double out = (double)mu + ((double)riskTenths / 10.0) * (double)sd;
+    return mlSquashToEval(out, dm->outputScale());
+}
+
 // ============================================================
 // INCREMENTAL VALUE PATH (feature v2 accumulator)
 // ============================================================

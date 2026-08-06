@@ -48,9 +48,19 @@ int mlValueScore(int turnColor, int slot);
 // Distribution accessor: mean and SD of the current board's White advantage,
 // in Elo, from the DistModel in `slot`. Returns false (outputs untouched) when
 // the slot holds no dist model. A decided position (nearWinCheck) returns true
-// with muElo = +-99999 and sdElo = 0. Analysis/GUI surface; search never
-// reads the SD.
+// with muElo = +-99999 and sdElo = 0. Analysis/GUI surface.
 bool mlValueScoreDist(int turnColor, int slot, double& muElo, double& sdElo);
+
+// Risk-adjusted value score: mu + (riskTenths/10)*sigma (both in the model's
+// raw output units, i.e. the same units mlValueScore's forward() reads before
+// the tanh squash), then squashed the same way as mlValueScore. riskTenths ==
+// 0, or a slot that holds no DistModel, is byte-identical to mlValueScore (mu
+// only) -- the only caller (LearnedValue's evaluator fn) always uses this
+// path, so mlValueScore stays the pure-mu building block and this is its
+// superset. Backs LearnedValue's optional Risk weight (see ai_eval.cpp);
+// riskTenths is an integer count of TENTHS of a sigma multiple (risk=5 means
+// k=0.5), and this is the one caller where search DOES read the SD.
+int mlValueScoreRisk(int turnColor, int slot, int riskTenths);
 
 // ---- Incremental ML value path (sparse piece-square models, feature v2) ----
 // mlIncrementalBegin: if the model in `slot` is a value head over the v2 sparse
