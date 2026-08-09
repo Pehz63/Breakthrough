@@ -2528,6 +2528,14 @@ static bool loadModelSlots(const std::vector<const RankAgent*>& agents, string& 
     return true;
 }
 
+// Single-spec convenience wrapper around loadModelSlots, for a caller (the GUI)
+// that has one AgentSpec at a time rather than a roster to schedule games over.
+bool rankLoadAgentModels(const AgentSpec& spec, string& err) {
+    RankAgent tmp; tmp.spec = spec;
+    std::vector<const RankAgent*> v; v.push_back(&tmp);
+    return loadModelSlots(v, err);
+}
+
 // ============================================================
 // PLAY
 // ============================================================

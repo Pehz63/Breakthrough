@@ -371,6 +371,51 @@ TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
     REQUIRE(parseErr("greedy@1.learned(s" + std::to_string(ML_SLOTS) + "," + h + ")@1").find("slot") != string::npos);
 }
 
+// rankLoadAgentModels is the GUI's single-agent counterpart to the internal
+// loadModelSlots used by every rank.exe subcommand that plays games: load
+// whichever model slot one hand-picked AgentSpec needs (see gui/main_gui.cpp's
+// DrawAgentEditor Apply handler), without building a whole RankAgent roster.
+TEST_CASE("ranking - rankLoadAgentModels") {
+    // A non-learned agent touches no model slot: no-op success.
+    {
+        AgentSpec s = agentMakeSearch("t", 0, rkEvalIdx("Classic"), 4, 0);
+        string err;
+        REQUIRE(rankLoadAgentModels(s, err));
+        REQUIRE(err.empty());
+    }
+
+    // A LearnedValue agent naming a real sweep-slot model loads successfully.
+    {
+        const int slot = 6;
+        const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+#ifdef _WIN32
+        _mkdir("models/sweep");
+#else
+        mkdir("models/sweep", 0755);
+#endif
+        LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+        m.bias = 0.1f;
+        for (int i = 0; i < m.n; i++) m.w[i] = 0.01f * i;
+        REQUIRE(m.save(path));
+
+        AgentSpec s = agentMakeSearch("t", 0, rkEvalIdx("LearnedValue"), 4, slot);
+        string err;
+        REQUIRE(rankLoadAgentModels(s, err));
+        REQUIRE(err.empty());
+    }
+
+    // A LearnedValue agent naming a slot with no file on disk fails, with a
+    // human-readable error, rather than silently loading stale slot content.
+    {
+        const int slot = 7;
+        std::remove(("models/sweep/slot" + std::to_string(slot) + ".txt").c_str());
+        AgentSpec s = agentMakeSearch("t", 0, rkEvalIdx("LearnedValue"), 4, slot);
+        string err;
+        REQUIRE_FALSE(rankLoadAgentModels(s, err));
+        REQUIRE_FALSE(err.empty());
+    }
+}
+
 // LearnedValue's optional Risk weight (evalParams[1]: mu + k*sigma where k is
 // the value/10, DistModel slots only at runtime -- see mlValueScoreRisk in
 // ml_eval.cpp) rides on the learned() id as a trailing risk=<tenths>, always

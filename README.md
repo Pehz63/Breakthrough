@@ -140,50 +140,78 @@ Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
   (it is not covered). Toggle the panel with the **Options** / **Hide** button in
   the top-left, or the **Tab** key. Hiding it lets the board grow to fill the
   window.
-- Pick a player type for **White** and **Black** from the dropdowns
-  (Human / Uniform Random / Tiered Random / Smart Random / MiniMax), choose each
-  side's **opener** from a dropdown (Standard / Offensive / Defensive), and adjust
-  **Smart Random** / **MiniMax** parameters with the controls that appear for those
-  types. The default matchup is **Human (White) vs MiniMax (Black)**.
-- **Evaluator (MiniMax):** an **Eval** dropdown picks which board-state evaluator
-  the MiniMax search uses (e.g. Classic / Experimental). Each evaluator defines its
-  own set of weights, and the parameter sliders below the dropdown change to match
-  the selected evaluator. Switching evaluator resets that side's weights to the new
-  evaluator's defaults.
+- **Native build only.** The sections below (agent-ID selection, the agent
+  editor, id history) are native-only: `ranking.cpp`, which the native build
+  links for the canonical-ID codec, does not compile under Emscripten (it
+  needs `<windows.h>`). The web build keeps a separate, simpler player-type
+  system without agent-ID selection.
+- Each side (**White**/**Black**) is either **Human** or **Agent**, chosen with a
+  toggle. The default matchup is **Human (White) vs Agent (Black)**, Black
+  defaulting to the historical MiniMax-depth-8-Classic agent. A Human side plays
+  by clicking; an Agent side is any agent expressible by the project's canonical
+  ID grammar (`src/ranking.h`) -- the same identifier `ranking/roster.txt` and
+  `rank.exe` use, so any agent currently in the roster can be pasted in and
+  played, including learned-model agents, dilution, and identity-level openers.
+- **Setting an agent:** click **Edit Agent...** next to an Agent side to open its
+  editor. At the top, a text box holds the canonical ID directly -- type or paste
+  one (e.g. `ab(deep=6,tt,ord,nodes=200000)@1.classic(chip=100)@2`) and click
+  elsewhere or press Enter to validate it; an invalid ID shows the parser's error
+  message beneath the box instead of being applied. A **Recent** list below it
+  remembers previously-applied IDs (persisted to `gui_agent_history.txt` next to
+  the executable, so it survives restarts) -- click one to reload it.
+- **Structured editing:** below the ID box, dropdowns and sliders cover every
+  field the grammar exposes, so the same agent can be built without typing IDs
+  by hand: **Brain** (Search or Policy), then either a **Search** explorer +
+  **Eval** dropdown (Search) or a **Policy** chooser (Policy), an **Opener**
+  dropdown (None, or one of the project's pluggable openers), and a scrollable
+  list of numeric fields -- search depth, feature-toggle checkboxes (no
+  alpha-beta / transposition table / move ordering / quiescence / partial-depth
+  keep), aspiration window, node/time budgets, a depth cap, the selected
+  evaluator's weights (or a model slot + Risk for a learned evaluator/policy),
+  dilution probability/depth, and the opener's own argument(s). Editing any of
+  these live-updates the ID box at the top, and editing the ID box (or picking a
+  Recent entry) updates all of these to match -- both views describe the same
+  agent. Numeric fields use the same modular slider controls described below.
+  **Apply** commits the agent (loading its model, if any) and closes the editor;
+  **Cancel** discards the edit.
 - **Slider designs:** the numeric parameters use prototype controls that each show
   both a bar and the number and step with a "+" (up) above a "-" (down) button.
   Each row demonstrates a different design (Bar+number, Segments, Number+bar,
   Handle, Ruler) so you can compare them, and you can also click or drag a bar to
   set its value directly. The **Sliders** switcher at the top of the panel forces
   one design across all rows ("Per-row" restores the mixed view).
-- **MiniMax depth:** the Depth control (the Number+bar design) lets you type an
-  exact depth, step it with +/-, or drag its bar (which tops out at 25, though the
-  typed/stepped value can go higher). Large depths get very slow. The default depth
-  is 8. The AI's search runs on a background thread (native build), so the window
-  stays responsive (resize, panel, buttons) while it thinks. The board shows the
-  position before the move until the search finishes, then updates to the move
-  played. The web build runs the search inline, so a deep search still stalls it.
+- **Search depth / node budget:** the Depth and Nodes controls (the Number+bar
+  design) let you type an exact value, step it with +/-, or drag the bar (which
+  tops out well below the field's real range, though the typed/stepped value can
+  go higher). Large depths and budgets get very slow. The AI's search runs on a
+  background thread (native build), so the window stays responsive (resize,
+  panel, buttons) while it thinks. The board shows the position before the move
+  until the search finishes, then updates to the move played. The web build runs
+  the search inline, so a deep search still stalls it.
 - The game starts automatically when the GUI opens using the default board and
   matchup. To change the board file, type a new path in the **Board** box and press
   **New Game** to apply it.
-- **Changing settings mid-game:** if you adjust any player option while a game is in
-  progress, a "Settings changed." notice appears above the **New Game** button.
-  Press **New Game** to restart with the new settings.
+- **Changing settings mid-game:** if you adjust any player option (including
+  applying a different agent) while a game is in progress, a "Settings changed."
+  notice appears above the **New Game** button. Press **New Game** to restart
+  with the new settings.
 - **Piece counts** are shown on the board itself as small badges (a piece icon plus
   the count) on each side, so they stay visible even with the options panel hidden.
 - **Board-state evaluation** is shown under each side's count badge. `now` is the
-  immediate static evaluation of the position that side faced; for a **MiniMax**
-  side a second line `pred` shows the AI's predicted best-line ("downstream")
-  evaluation. Numbers are white-centric: a positive value favors White, and a
-  forced win shows as `+WIN` / `-WIN`. Turn off the readouts with the **Show
-  evaluations** checkbox or the **E** key (useful for a hint-free PvP / PvC game).
+  immediate static evaluation of the position that side faced; for a search-brain
+  agent using the AlphaBeta explorer, a second line `pred` shows its predicted
+  best-line ("downstream") evaluation (not shown for a Greedy/policy agent, or a
+  move an opener played, neither of which produces one). Numbers are
+  white-centric: a positive value favors White, and a forced win shows as `+WIN`
+  / `-WIN`. Turn off the readouts with the **Show evaluations** checkbox or the
+  **E** key (useful for a hint-free PvP / PvC game).
 - **Human moves:** click one of your pieces to select it (legal destinations are
   highlighted), then click the destination square one row forward.
 - **Pacing** adapts to the matchup:
-  - **Human vs a strong AI** (MiniMax depth > 5): no pacing controls, the AI's own
-    search sets the pace.
-  - **Human vs a fast AI** (shallow MiniMax or a random AI): a **Min 2s per AI
-    move** checkbox so the AI does not snap back instantly.
+  - **Human vs a strong AI** (an AlphaBeta search past depth 5): no pacing
+    controls, the AI's own search sets the pace.
+  - **Human vs a fast AI** (a shallow search, Greedy, or a policy/random agent): a
+    **Min 2s per AI move** checkbox so the AI does not snap back instantly.
   - **AI vs AI:** the full set, slow-motion (`|>`) / fast-forward (`>>`) buttons
     that step the speed presets (Step / 0.25x / 1x / 4x / Instant) shown between
     them, plus icon buttons for **play/pause**, **step**, and **restart**.

@@ -410,6 +410,13 @@ int rankBookGen(const std::string& storeFile, const std::string& board,
                 const std::string& idA, const std::string& idB,
                 int maxPlies, const std::string& outFile);
 
+// ---- Model loading (also used by the GUI, not just rank.exe subcommands) ----
+// Load whichever model slot(s) this one spec's brain needs (LearnedValue's
+// model, or LearnedPolicy's) into g_mlModels via mlLoadSlot (src/ml_eval.h),
+// using the project's slot-file convention. A spec with no model slot is a
+// no-op success. False + err (human-readable) on a missing/unreadable file.
+bool rankLoadAgentModels(const AgentSpec& spec, std::string& err);
+
 // ---- Pair-play training-data generation (pairgen) ----
 // A dilution override applied on top of the two agents' own specs during
 // generation, so games between deterministic agents still vary without

@@ -155,3 +155,23 @@ Both `tools\smoke_test_gui.ps1` and `tools\gui_capture.ps1` already do this at s
   fast-forward icon, so the slow-motion (`|>`) and fast-forward (`>>`) speed glyphs
   are custom-drawn by `DrawSpeedGlyph`. Custom glyphs need a dark fill to be
   visible on the light button face (see above).
+- **`GuiToggleGroup`'s `bounds` is the size of ONE item, not the whole group.**
+  Each subsequent item is placed at `bounds.x += bounds.width + GROUP_PADDING`
+  (see raygui.h's implementation), so passing the full row/column width as
+  `bounds` (as if it were the group's total span, the natural first guess)
+  draws item 0 at full width and pushes every other item off past the edge of
+  the panel/popup -- invisible, not merely misaligned, and the exit code and
+  even a full-screen screenshot both look fine unless you look at exactly that
+  region. Divide the intended total width by the item count first. Caught via
+  the agent editor's Human/Agent and Search/Policy toggles (2026-08-08): a
+  full-panel-width group showed only the active item, all row width, with
+  no error anywhere.
+- **`ml_model.h`'s `class Model` collides with raylib's own `struct Model`**
+  (a 3D model asset, `raylib.h`). Unlike the `WHITE`/`BLACK` macro collision
+  above, this is a type name, so `#undef` cannot fix it: including any header
+  that pulls in `ml_model.h` (e.g. `ml_eval.h`, for its `ML_SLOTS` constant)
+  into `main_gui.cpp` fails with `C2011: 'Model': 'struct' type redefinition`.
+  Work around it by not including that header from `main_gui.cpp`; duplicate
+  just the small constant you need locally with a comment pointing at the
+  original (see `GUI_MODEL_SLOTS` in `main_gui.cpp`, mirroring `ml_eval.h`'s
+  `ML_SLOTS`) rather than pulling in the whole ML model hierarchy.
