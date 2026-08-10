@@ -2,29 +2,29 @@
 
 Priority tags: `[Now]` = active focus, `[Next]` = queued up, `[Later]` = valuable but not soon, `[Dream]` = fun idea, not currently planning to do it. The two tracks below are prioritized independently, a `[Now]` in one track says nothing about the other.
 
-- Keep optimizing
+- Keep optimizing {cpu: days, dev: high}
 
 ---
 
 # 1v1 / GUI Track
 
-- Display whose turn it is in the main board area `[Next]`
-- Add a button or something that changes the white and black pieces to red and blue in the GUI `[Next]`
-- Best moves list or recommendation arrow `[Later]`
-- GUI: play against a named saved agent `[Next]`
-- GUI: agent-vs-agent ladder / leaderboard view `[Later]`
+- Display whose turn it is in the main board area `[Next]` {cpu: seconds, dev: high}
+- Add a button or something that changes the white and black pieces to red and blue in the GUI `[Next]` {cpu: seconds, dev: high}
+- Best moves list or recommendation arrow `[Later]` {cpu: seconds, dev: high}
+- GUI: play against a named saved agent `[Next]` {cpu: seconds, dev: high}
+- GUI: agent-vs-agent ladder / leaderboard view `[Later]` {cpu: seconds, dev: high}
 ## Pondering / 1v1 Performance
 - Run the side-bar evaluator's minimax at iterative deepening with no node or depth limit
   while waiting for the human's turn. Only use this for the visual evaluation readout, not
-  the move actually played `[Now]`
+  the move actually played `[Now]` {cpu: seconds, dev: medium}
 - Pipeline eval: instantly show a precomputed eval, then precompute the response and
   resulting eval for every possible next move in the background while waiting for the
-  opponent's turn (can be parallelized) `[Next]`
-- Parallelize more computations `[Later]`
+  opponent's turn (can be parallelized) `[Next]` {cpu: seconds, dev: medium}
+- Parallelize more computations `[Later]` {cpu: seconds, dev: high}
 - New "rush" mode: Player B is an agent that runs iterative deepening against all of Player
   A's possible moves while waiting for A to move. On B's turn it plays the best move it
   already found for A's actual move, so it responds instantly with hardly any computation.
-  The longer A takes, the deeper B has precomputed `[Next]`
+  The longer A takes, the deeper B has precomputed `[Next]` {cpu: seconds, dev: medium}
 
 ---
 
@@ -80,24 +80,24 @@ below). rank.exe's pool + gauntlet already measures this on every run.
 Legend: **(P1)** = built in the first pass (versatility proof). Everything else is future work
 against the same seams.
 
-- Add variety in openers and moves `[Now]`
+- Add variety in openers and moves `[Now]` {cpu: hours, dev: medium}
   - Either an opening book, arbitrary rewards for certain opening positions, or a separate opener model for training
   - Random move chooser out of top candidates (especially ties); the board-state-evaluator noise variant of this idea moved to the Heuristic Evaluator Feature Ideas section below
-  - Elo-rate the existing SCRIPTED openers (Offensive/Defensive) as ID modules: an optional `op(o|d)@1` ID segment (absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences). ~~A sibling idea for RANDOM (not scripted) openers shipped~~: a pluggable opener registry `g_openers[]` (`src/ai_random.h`) + `AgentSpec::openerKind`/`openerArg` + a `.opener(<kind>[,<arg>])@1` ID segment lets ANY agent be rostered/gauntletted both with and without an opener, so the Elo gap is a general, per-agent opener-sensitivity score (currently one kind, `rand`: e.g. champion 1140 clean vs 923 with `.opener(rand,moves=6)@1`, champdil 1153 vs 962). The registry is exactly the extension point for the SCRIPTED (`off`/`def`) and opening-book openers above -- adding one is a table row + fn, and the same ID slot names it. See `Docs/agents.md` and `Docs/terminology.md`'s "Opener (identity-level)" entry `[done]`
-  - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]`
-  - ~~Color-swap recovery test: play the same random-opener snapshot to conclusion twice with colors swapped, to separate "the position favors a color" from "this agent recovers better."~~ Shipped as `rank.exe opener-swap`. Champdil vs the champion at n=20 (theory 15, `Docs/theories.md`): 65% of outcomes were a color effect (White won both 55%, Black won both 10% -- consistent with the champion's own White/Black split), but in the remaining 35% agent-effect bucket champdil won every time (7/7), the champion never (0/7) -- promising but small-sample signal that champdil recovers from bad positions better than the champion, independent of color. Follow-up (larger sample, try with oracle too) filed in `plans/opener-bias-results-1-synchronous-stearns.md`'s Future Work `[Next]`
-  - ~~Random-first-K-plies opening diversity for data generation~~ (shipped as pairgen `--open-plies`); extend the same knob to tournament and self-play generation `[Next]`
-  - Sweep `--open-plies` length for the oracle-vs-champion training regime (0/2/4/6/8/12 tried against the single untested value of 6 used in the first vs-champion study), gauntlet-screen each, to check whether 6 was actually a good choice or just a guess `[Next]`
-  - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase. Specific angle worth testing: train the opener on WINNING-line data (see the refutation-book idea below) and hand off to a cheaper depth-5 search after the opener phase, on the theory that a strong precomputed opening plus a shallower live search could beat the d6 champion for less total compute -- directly on-target for the session's "beat d6 without searching deeper" goal `[Later]`
-  - Single-line refutation book (extended, more concrete version of the offline-refutation idea below): find ONE oracle-verified winning line against the champion for each color (2 lines total), play that fixed line against every other deterministic agent in the roster, and whenever an opponent deviates from the line (or the line stops applying), use the oracle to find a new winning continuation from that deviation point. Builds a small branching decision tree rooted at "beat the champion," tested for robustness against the whole pool, not just the champion. Consider separate White/Black book models plus a combined one `[Later]`
-  - ~~Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction.~~ Shipped 2026-07-17 as `rank.exe bookgen` (mines A's winning positions/moves from stored games) + the `book` opener (`.opener(book,<N>)@1` plays `models/book<N>.txt`). First verdict (mining the STRONG agent's wins over the weak target): REFUTED in this naive form (theory 14, `plans/dethrone-champion-results-3-wiggly-mitten.md`) -- both book agents rated ~16 Elo below their bookless selves. **Reversed 2026-07-18** (theory 33, `plans/dethrone-champion-results-5-wiggly-mitten.md`): mining the WEAK/book-wearing agent's OWN wins instead (zero new code, just swapped which agent's wins get kept) fixes the brain-portability failure by construction and DETHRONED s98 outright (classic+selfbook 1145 +/- 13 vs s98 1074 +/- 12, 25-7 head-to-head, 27-5 vs the oracle it was never mined against). Open scrutiny flag: genuine strength vs pool-specific effect, unresolved (`ranking/CHAMPION.md`). Remaining open repairs: a `--reset-state` mode for reproducible det-vs-det play (still needed, drift rate was 12/32 for this pairing); testing whether "opponent must be stronger" is load-bearing or any own-win suffices; applying the same self-mining fix to s98's own book; and the stay-in-book-to-the-win / response-tree variant via `--branch-tries`-style mining, which folds into the single-line refutation book idea above `[Next]`
+  - Elo-rate the existing SCRIPTED openers (Offensive/Defensive) as ID modules: an optional `op(o|d)@1` ID segment (absent = Standard), roster the champion build under each opener, and let the BT fit price the openers directly. Generalize beyond the 3 built-in openers: rate arbitrary candidate opening move sequences the same way (Elo given/taken vs the pool), and learn to prefer strong ones and avoid weak ones. The general version is a bigger project (developer's own estimate: "too much work for now") `[Next]` (built-in openers) / `[Later]` (arbitrary sequences) {cpu: minutes-hours, dev: medium}. ~~A sibling idea for RANDOM (not scripted) openers shipped~~: a pluggable opener registry `g_openers[]` (`src/ai_random.h`) + `AgentSpec::openerKind`/`openerArg` + a `.opener(<kind>[,<arg>])@1` ID segment lets ANY agent be rostered/gauntletted both with and without an opener, so the Elo gap is a general, per-agent opener-sensitivity score (currently one kind, `rand`: e.g. champion 1140 clean vs 923 with `.opener(rand,moves=6)@1`, champdil 1153 vs 962). The registry is exactly the extension point for the SCRIPTED (`off`/`def`) and opening-book openers above -- adding one is a table row + fn, and the same ID slot names it. See `Docs/agents.md` and `Docs/terminology.md`'s "Opener (identity-level)" entry `[done]`
+  - Mine `matches.jsonl` for an opening book: tabulate the first 8-10 plies of >= 900 Elo games by `positionKey` with win rates and visit counts, emit a book file, and add a book-follower opener that plays the book move while in book `[Next]` {cpu: minutes, dev: low}
+  - ~~Color-swap recovery test: play the same random-opener snapshot to conclusion twice with colors swapped, to separate "the position favors a color" from "this agent recovers better."~~ Shipped as `rank.exe opener-swap`. Champdil vs the champion at n=20 (theory 15, `Docs/theories.md`): 65% of outcomes were a color effect (White won both 55%, Black won both 10% -- consistent with the champion's own White/Black split), but in the remaining 35% agent-effect bucket champdil won every time (7/7), the champion never (0/7) -- promising but small-sample signal that champdil recovers from bad positions better than the champion, independent of color. Follow-up (larger sample, try with oracle too) filed in `plans/opener-bias-results-1-synchronous-stearns.md`'s Future Work `[Next]` {cpu: hours, dev: medium}
+  - ~~Random-first-K-plies opening diversity for data generation~~ (shipped as pairgen `--open-plies`); extend the same knob to tournament and self-play generation `[Next]` {cpu: seconds, dev: low}
+  - Sweep `--open-plies` length for the oracle-vs-champion training regime (0/2/4/6/8/12 tried against the single untested value of 6 used in the first vs-champion study), gauntlet-screen each, to check whether 6 was actually a good choice or just a guess `[Next]` {cpu: hours, dev: medium}
+  - Learned opener: a policy head trained only on plies < 10 of high-Elo replay games, used as an opener module that hands off to the main brain once out of phase. Specific angle worth testing: train the opener on WINNING-line data (see the refutation-book idea below) and hand off to a cheaper depth-5 search after the opener phase, on the theory that a strong precomputed opening plus a shallower live search could beat the d6 champion for less total compute -- directly on-target for the session's "beat d6 without searching deeper" goal `[Later]` {cpu: hours, dev: high}
+  - Single-line refutation book (extended, more concrete version of the offline-refutation idea below): find ONE oracle-verified winning line against the champion for each color (2 lines total), play that fixed line against every other deterministic agent in the roster, and whenever an opponent deviates from the line (or the line stops applying), use the oracle to find a new winning continuation from that deviation point. Builds a small branching decision tree rooted at "beat the champion," tested for robustness against the whole pool, not just the champion. Consider separate White/Black book models plus a combined one `[Later]` {cpu: hours, dev: medium}
+  - ~~Offline refutation book against the champion: run deep budgeted searches (d8-d10, nb2m) on the champion's preferred opening lines (it is deterministic, so its lines are minable from games.tsv), store best replies keyed by `positionKey`. A book + d6 search agent then attempts the dethrone with LESS live computation by construction.~~ Shipped 2026-07-17 as `rank.exe bookgen` (mines A's winning positions/moves from stored games) + the `book` opener (`.opener(book,<N>)@1` plays `models/book<N>.txt`). First verdict (mining the STRONG agent's wins over the weak target): REFUTED in this naive form (theory 14, `plans/dethrone-champion-results-3-wiggly-mitten.md`) -- both book agents rated ~16 Elo below their bookless selves. **Reversed 2026-07-18** (theory 33, `plans/dethrone-champion-results-5-wiggly-mitten.md`): mining the WEAK/book-wearing agent's OWN wins instead (zero new code, just swapped which agent's wins get kept) fixes the brain-portability failure by construction and DETHRONED s98 outright (classic+selfbook 1145 +/- 13 vs s98 1074 +/- 12, 25-7 head-to-head, 27-5 vs the oracle it was never mined against). Open scrutiny flag: genuine strength vs pool-specific effect, unresolved (`ranking/CHAMPION.md`). Remaining open repairs: a `--reset-state` mode for reproducible det-vs-det play (still needed, drift rate was 12/32 for this pairing); testing whether "opponent must be stronger" is load-bearing or any own-win suffices; applying the same self-mining fix to s98's own book; and the stay-in-book-to-the-win / response-tree variant via `--branch-tries`-style mining, which folds into the single-line refutation book idea above `[Next]` {cpu: hours, dev: medium}
 - Interpret board analysis
-  - Which piece is most impactful to the current evaluation? `[Later]`
-  - What's the cheapest strategy to beat each given bot/parameters, even if overfitted? `[Dream]`
-  - What strategies could a human devise to beat a bot? `[Dream]`
-  - Is attacking the center or attacking the edge the best? `[Dream]`
-  - Is advancing through the center or the edge the best? `[Dream]`
-  - Is keeping the hind pieces in place the best? `[Dream]`
+  - Which piece is most impactful to the current evaluation? `[Later]` {cpu: minutes, dev: high}
+  - What's the cheapest strategy to beat each given bot/parameters, even if overfitted? `[Dream]` {cpu: minutes, dev: high}
+  - What strategies could a human devise to beat a bot? `[Dream]` {cpu: minutes, dev: high}
+  - Is attacking the center or attacking the edge the best? `[Dream]` {cpu: minutes, dev: high}
+  - Is advancing through the center or the edge the best? `[Dream]` {cpu: minutes, dev: high}
+  - Is keeping the hind pieces in place the best? `[Dream]` {cpu: minutes, dev: high}
 - Build a search tool to bound/compute **distance-to-win**: the true, rules-respecting
   number of plies to a forced win from a position, as opposed to `Docs/axioms.md` Lemma
   B's naive "capacity" sum (which ignores blocking and whether a piece can actually reach
@@ -123,17 +123,17 @@ against the same seams.
     (Ambiguous as stated -- clarify whether "it" is the threatened piece being the
     opponent's LAST piece, in which case the capture wins outright via A9/D6 rather than
     merely defusing a threat, or the capturing piece being the defender's OWN last piece
-    needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]`
+    needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]` {cpu: minutes, dev: high}
 
 ## Models (value head: board -> scalar)
-- Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]`
+- Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]` {cpu: days, dev: high}
 - NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`).
   Concrete next step now that `MLPModel` (full-scan) ships and beats the linear PST ceiling on
   offline equal-material calibration (theory 24): make its FIRST layer an incremental accumulator
   -- widen the scalar `g_mlAcc` that the linear inner already maintains into a vector, and
   recompute only the hidden units touched by the 2-3 changed inputs per make/unmake -- so the MLP
   can compete at FIXED compute. Motivated directly by the residual-mlp results' full-scan Elo
-  caveat (its per-node eval is strong but per-second it is handicapped). `[Next]`
+  caveat (its per-node eval is strong but per-second it is handicapped). `[Next]` {cpu: hours, dev: medium}
 - Residual skip design space (follow-up to the shipped HARD frozen chip skip; theory 24,
   `plans/residual-mlp-results-1-tingly-chipmunk.md`). The linear residual HELPED + stabilized
   equal-material calibration but the MLP residual was a WASH, so probe whether a softer/richer
@@ -143,8 +143,8 @@ against the same seams.
   linear mix) instead of the literal chip differential (theory 24 Q2); (c) a wider / DEEPER MLP
   capacity sweep (2 hidden layers, more widths) to map where added capacity stops improving
   calibration. All measurable with the existing stratified-loss printout + the generalized
-  `sweep_pst_v2.ps1` groups. `[Next]`
-- Transformer value model (squares as tokens) -- teacher / label generator only, not in-search `[Dream]`
+  `sweep_pst_v2.ps1` groups. `[Next]` {cpu: hours, dev: medium}
+- Transformer value model (squares as tokens) -- teacher / label generator only, not in-search `[Dream]` {cpu: days, dev: high}
 - ~~Incrementalize an ML model (e.g. MLP/NNUE) so a move recomputes only the few inputs it changed
   instead of the whole forward pass.~~ Shipped 2026-07-22 as the NNUE-style first-hidden
   accumulator for an MLP mu head (`g_mlAccDim`/`g_mlAccVec`/`g_mlL0ByInput`; the vector
@@ -163,24 +163,24 @@ against the same seams.
     more complex (H2-dim reversible accumulator state) than just recomputing the
     already-sparse tail per leaf. Would only be worth it if the second layer were much wider
     than the live-unit count, or for a head where per-move churn (not just static sparsity)
-    is the bottleneck. `[Dream]`
+    is the bottleneck. `[Dream]` {cpu: hours, dev: medium}
   - **Sparsity-training penalty** (`dist-value` L1 / non-clamped-fraction loss): now lower
     priority still -- the sparse leaf-tail forward already captures the ~90%-sparse heads'
     speed win without changing training at all. Would only matter if a future architecture
-    trains denser. `[Later]`
+    trains denser. `[Later]` {cpu: hours, dev: medium}
   - **Set `/arch:AVX2` as the native-build baseline?** Would realize the general ~1.2x leaf
     speedup in production (helps the standard head we would actually use). Requires an AVX2 CPU
     (~2013+) for the shipped native binaries; not the web/WASM build. A one-line flag add per
-    native build script + a portability note. Developer decision. `[Next]`
+    native build script + a portability note. Developer decision. `[Next]` {cpu: seconds, dev: medium}
   - **int16 quantization of the accumulator.** The full NNUE throughput recipe (32 int16 per
     AVX-512 register vs 16 floats), but it multiplies SIMD lanes by a constant too, so it will
     not change the shape ranking either -- only worth it for the general leaf speedup, and it
-    breaks bit-identicality and needs a retrain or post-training calibration. `[Later]`
+    breaks bit-identicality and needs a retrain or post-training calibration. `[Later]` {cpu: hours, dev: medium}
   - **Full multi-seed 32-game d6 campaign for the dist MLPs**, now that d6 is affordable
     (~0.57 s/move for the wide head): re-confirm the existing 720-game standings (dist_lin
     1031 > MLPs 974/967/931) hold at tighter error bars, now that cost is no longer a
-    constraint on games/pair. `[Next]`
-- Joint value + policy + next-value model trained to minimize its own recomputation `[Later]`
+    constraint on games/pair. `[Next]` {cpu: hours, dev: low}
+- Joint value + policy + next-value model trained to minimize its own recomputation `[Later]` {cpu: days, dev: high}
   - With ReLU units, a hidden unit that remains clamped at 0 before and after a move contributes
     no changed downstream value (equivalently, the derivative through the ReLU pre-activation is
     0 except at the kink). So add a penalty (L0, or an L1/sigmoid surrogate) on the count of
@@ -201,7 +201,7 @@ against the same seams.
   heads naturally have more zero weights and more dead ReLU units. Directly reduces the
   incrementalization work above once it exists (fewer nonzero paths to touch per move) and may
   also cut the current FULL-SCAN cost on its own (skip zero-weight multiplies even without an
-  accumulator) `[Later]`
+  accumulator) `[Later]` {cpu: hours, dev: medium}
 - Position-oracle MLP variant, more left-right symmetry (developer, 2026-07-21): either double
   each training batch with mirrored copies of each board, tie mirror-pair weights together, or
   add a symmetry-forcing loss term. Developer's own prediction going in: this will NOT do as
@@ -214,12 +214,12 @@ against the same seams.
   playing strength diverge again here too (see theory 27, freshly reconfirmed by this
   campaign). Concrete design already proposed and unbuilt for the general case: theory 32's
   5-way unflipped/flipped/averaged/left-onto-both/right-onto-both comparison, reusable for the
-  dist model's mu head with `mlv2MirrorIndex` `[Later]`
+  dist model's mu head with `mlv2MirrorIndex` `[Later]` {cpu: hours, dev: medium}
 
 ## Models (policy head: board + move -> score / move-rater)
-- MLP policy `[Later]`
-- Transformer policy `[Dream]`
-- Softmax / temperature sampling over move scores (for exploration + diverse self-play) `[Now]`
+- MLP policy `[Later]` {cpu: hours, dev: medium}
+- Transformer policy `[Dream]` {cpu: days, dev: high}
+- Softmax / temperature sampling over move scores (for exploration + diverse self-play) `[Now]` {cpu: minutes, dev: low}
 - Repurpose the position-oracle's labeled data for a policy signal (developer question,
   2026-07-21: "is that just the same thing?"). Answer: not quite, but three real, distinct
   paths exist, in order of how much new work each needs: (1) NOTHING new to build -- the dist
@@ -236,20 +236,20 @@ against the same seams.
   "argmax over the dist model's mu across every legal move" would pick, without paying for the
   per-move mu evaluation at inference time. (2) is the interesting new-signal answer to the
   question as posed; (1) and (3) are real but are repackaging the existing model, not a new
-  learning signal `[Later]`
+  learning signal `[Later]` {cpu: hours, dev: medium}
 
 ## Models (difficulty head: board -> how hard is this position)
 - Blunder labeling by branch replay: play a game between two strong deterministic
   agents, rewind to a move by the eventual winner, substitute a random different move,
   and replay from there. If the winner changes, label the substitute a blunder. Also a
   per-turn difficulty probe: turn difficulty = how few of the legal moves preserve the
-  win. `[Later]`
+  win. `[Later]` {cpu: hours, dev: medium}
 - Position difficulty as a learned target: position difficulty = an aggregate of this
   turn's and the following turns' difficulty. A strong move lowers your future
   difficulty; a risky move raises it while still winning. Computing it exactly needs
   near-exhaustive tree exploration (intractable except trivial endgames), which makes
   it a natural ML target: generate labels by branch replay / sampling where it IS
-  computable, train a model to predict it anywhere. `[Later]`
+  computable, train a model to predict it anywhere. `[Later]` {cpu: hours, dev: high}
   - Uses: difficulty-aware move choice (prefer low-difficulty winning lines against a
     tricky opponent), rating the difficulty of puzzles/positions for humans,
     difficulty-aware time allocation in search.
@@ -259,14 +259,14 @@ against the same seams.
   search for moves it pruned early (cut off before full evaluation) and check whether
   continuing into that line actually wins. Train a policy that preferentially steers
   into an opponent's under-explored lines. Deliberately overfits to one opponent's
-  build/pruning behavior, so it is fragile against everyone else by design. `[Later]`
+  build/pruning behavior, so it is fragile against everyone else by design. `[Later]` {cpu: hours, dev: high}
   - Purpose is not a standalone strong agent: keep counter-agents in the rank.exe pool
     on purpose. They force every other agent, especially the reigning #1, to be robust
     not only to raw strength but to opponent-specific exploitation, the same way the
     dilution ladder forces robustness to weaker/noisier play.
 
 ## Board-State Evaluators (BSEFs)
-- Ensemble / blended evaluator (average or weighted mix of several evaluators/models) `[Later]`
+- Ensemble / blended evaluator (average or weighted mix of several evaluators/models) `[Later]` {cpu: hours, dev: low}
 - Phase-conditioned mixture of experts: a lightweight router (start with a hand-fixed classifier
   on total material/piece count: high piece count = opener, low piece count = endgame, graded
   band in between) that dispatches evaluation to a phase-specialized model (separate opener/
@@ -279,7 +279,7 @@ against the same seams.
   material-band classifier and later become learned/soft (e.g. blending adjacent-phase experts
   near the boundary instead of a hard cutoff). Motivated by the developer's hypothesis that
   Breakthrough has genuinely distinct phases with different best strategies, not just a smoothly
-  varying one. See theory 25, `Docs/theories.md` `[Now]`
+  varying one. See theory 25, `Docs/theories.md` `[Now]` {cpu: days, dev: high}
 
 ## Heuristic Evaluator Feature Ideas (Classic / Experimental)
 New candidate terms for the hand-crafted evaluators, alongside the existing chip/wall/column/
@@ -301,7 +301,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   outcome-correlation half stays open, `capacityWhite/Black()` are the helpers for it
 - Per-term incremental routing: let each Advanced term declare whether it is maintained in
   `g_evalPos` or recomputed at the leaf based on which weights are enabled, so sparse mixes
-  (e.g. chip+mobility) stop paying delta overhead (from the ladder pricing above) `[Next]`
+  (e.g. chip+mobility) stop paying delta overhead (from the ladder pricing above) `[Next]` {cpu: seconds, dev: low}
 - "Cluster": a Wall/Column variant restricted to the middle rows only (excluding the 2 rows
   nearest each side's home row and the 2 nearest the goal row, avoiding overlap with the
   existing Hole/Control/RaceWin terms that already own that territory). Motivated by theory
@@ -310,22 +310,22 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   deeper look), and a middle-only clustering term might reward the same pattern statically.
   Test by hill-climbing the Advanced weight mix twice, once with `qs` off and once on, and
   checking whether Cluster's (and Race/RaceWin's) climbed weight shifts between the two runs
-  `[Next]`
+  `[Next]` {cpu: hours, dev: medium}
 
 ## Move Choosers / Policies (direct, no search)
-- Greedy-by-eval (1-ply pick of the move maximizing a BSEF) **(P1, via the Greedy explorer)**
-- Softmax/temperature sampling policy (probabilistic move choice) `[Now]`
+- Greedy-by-eval (1-ply pick of the move maximizing a BSEF) **(P1, via the Greedy explorer)** {cpu: seconds, dev: low}
+- Softmax/temperature sampling policy (probabilistic move choice) `[Now]` {cpu: minutes, dev: low}
 
 ## Move-Tree Explorers (search)
-- MCTS / PUCT (pairs a policy head with a value head) `[Later]`
-- TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]`
+- MCTS / PUCT (pairs a policy head with a value head) `[Later]` {cpu: days, dev: high}
+- TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes
 - Eval-blended labels: label each position with lambda*outcome + (1-lambda)*sigmoid(teacherEval/scale)
   instead of outcome alone. The teacher already computes a root search score every move and throws
   it away; blending turns one noisy bit per game into a real-valued signal per position (the NNUE
   training recipe) and should also improve move ordering, where the PST prunes 3x worse than
-  Classic `[Now]`
+  Classic `[Now]` {cpu: hours, dev: medium}
 - ~~Weight symmetrization + seed-ensembling for linear models: after training, average each weight
   with its left-right mirror (exact symmetry projection, free variance cut), and average the
   weights of K seed-replicas (for a linear model the ensemble IS the average). Directly attacks
@@ -346,11 +346,11 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     right-onto-both (same, mirrored) -- and rate all 5 variants (unflipped/flipped/averaged/
     left/right) against each other. If flipped ~ unflipped >> averaged, asymmetry itself is
     what matters, not its direction; if unflipped >> flipped, the specific learned direction is
-    fitted to something real about the pool `[Next]`
+    fitted to something real about the pool `[Next]` {cpu: hours, dev: medium}
 - Extraction quality controls in rank.exe extract: --min-elo floor or Elo-confidence weighting
   (label quality), --exclude held-out agents (measure pool-style overfitting by comparing Elo vs
   held-in against held-out opponents; low risk for linear models, must exist before MLP/NNUE),
-  and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]`
+  and positionKey-based dedup / repeat capping (openings are massively overrepresented) `[Next]` {cpu: hours, dev: medium}
   (partly superseded: the position-oracle pipeline sidesteps found-data label quality entirely
   by playing designed fresh games per position; posgen ships the positionKey dedup for pools.
   extract's own controls still matter for the outcome-label training path)
@@ -359,7 +359,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     low-Elo agents' games, (b) EXCLUDING mixed high-vs-low games, (c) EXCLUDING high-Elo games (the
     control), and compare the trained models' Elo. Also try an Elo-weighted reward (stronger label
     signal from higher-Elo games). Use seed replicas so the deltas clear the training-seed noise
-    band (theory 8) `[Next]`
+    band (theory 8) `[Next]` {cpu: hours, dev: medium}
 - ~~Vs-champion training regime (first pairgen study): train value models on games
   involving the reigning champion, sourced every plausible way (learner vs champ,
   diluted champ vs champ, oracle vs champ, champion-loss cherry-picks, branch-mined
@@ -373,15 +373,15 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   pool, Theory 2 (dilution data can't approach the champ) refuted on strength but
   head-to-head unresolved at n=8.) Standing longitudinal check: after each future
   batch of diverse agents joins the pool, re-run `tools/train_vs_champion.ps1
-  -AnalysisOnly` to re-test the out-of-distribution theory `[Now]`
+  -AnalysisOnly` to re-test the out-of-distribution theory `[Now]` {cpu: minutes, dev: medium}
 - Tapered / phase-split PST: separate opening/endgame weight tables interpolated by piece count
   (piece count changes only on capture, so it stays fully incremental). The natural capacity step
-  before MLP `[Next]`
+  before MLP `[Next]` {cpu: hours, dev: medium}
 - PV/leaf position harvesting: train on positions from inside the teacher's search tree labeled
-  by subtree value, matching the off-path distribution the eval actually sees in search `[Later]`
+  by subtree value, matching the off-path distribution the eval actually sees in search `[Later]` {cpu: hours, dev: medium}
 - Active / hard-example mining: oversample positions where the current model most
   disagrees with the teacher label or with a deeper search, instead of uniform
-  sampling `[Later]`
+  sampling `[Later]` {cpu: hours, dev: medium}
 - ~~TD-Leaf(lambda) self-play bootstrap (value)~~ Shipped 2026-07-29 as `src/ml_tdleaf.cpp`
   + `train.exe tdleaf`. The project's first ONLINE, bootstrapped value regime: the target for a
   position is the model's own evaluation of a later position backed up through the search, applied
@@ -394,7 +394,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   lambda=1 control (provably == outcome-supervised on PV leaves) scored 713, BELOW the init, so
   the gain is specifically the BOOTSTRAP. Game count has an interior optimum ~1000 and declines
   past it (-36, all 4 seeds same sign). NOT certified: a pinned fit cannot dethrone and 8
-  games/pair is half the standard `[Now]`
+  games/pair is half the standard `[Now]` {cpu: seconds, dev: low}
 - ~~**Certify the TD-Leaf peak.** Append the top rungs to `ranking/roster.txt`, fill contenders to
   32 games/pair, run an unpinned refit (`Docs/ranking-workflow.md` Workflow B). Best screening
   agent is `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=131,18bfb7a0,tdleaf_self,lin,shape=129-1)@1` (A-base seed
@@ -405,10 +405,10 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   openless title** at 1044 +/- 11 over s76's 1007 +/- 8, boosted to 0 pending at 32 games/pair.
   See `ranking/CHAMPION.md`, which records two caveats: 32 rows/pair is ~22.6 DISTINCT games/pair
   (0.706 distinct/row measured), so the gap is 2.3 combined SE rather than 2.7; and s169 gained
-  the title while LOSING 36% of its games, which is not understood `[Now]`
+  the title while LOSING 36% of its games, which is not understood `[Now]` {cpu: seconds, dev: low}
 - **Still unexplained: why s169 GAINED the openless title while losing 36% of its games.**
-  The chip counter's fall is now accounted for, its rise is not `[Now]`
-- **Decide whether `rate --regime-balanced` should become the canonical fit** `[Now]`.
+  The chip counter's fall is now accounted for, its rise is not `[Now]` {cpu: hours, dev: high}
+- **Decide whether `rate --regime-balanced` should become the canonical fit** `[Now]` {cpu: seconds, dev: high}.
   Implemented 2026-08-01 and writing `ranking/*_balanced.*`; not promoted, because promoting
   it re-certifies every champion. It moves the table a lot: at head `ab(deep=6,tt,ord,nodes=200k)@1`
   the openless order becomes s602 / s169 / s76 / s349 / classic@2 (1259 / 1249 / 1240 / 1239 /
@@ -425,26 +425,26 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   cohort games REMOVED from classic@2's record but kept for everyone else; check whether the
   cohort was a non-transitive matchup for classic@2 specifically (head-to-head vs the 9 dropped
   candidates); check whether the effect is connectivity (pairs lost) or volume (games lost) by
-  topping the surviving pairs back up to the old game counts `[Now]`
+  topping the surviving pairs back up to the old game counts `[Now]` {cpu: hours, dev: medium}
 - Bracket the TD-Leaf game-count peak: the ladder jumps 500/1000/2000 so the optimum is located
-  only within 2x, and the post-peak decline is unexplained. Add 700/1400 rungs + a decayed-lr arm `[Next]`
+  only within 2x, and the post-peak decline is unexplained. Add 700/1400 rungs + a decayed-lr arm `[Next]` {cpu: hours, dev: low}
 - Extend the TD-Leaf from-scratch arm past 2000 games: it was still climbing (+134 from 500->2000)
-  while champ-init had already peaked, and the gap had narrowed from -222 to -103 `[Next]`
+  while champ-init had already peaked, and the gap had narrowed from -222 to -103 `[Next]` {cpu: hours, dev: low}
 - Re-run the TD-Leaf lr and generator-depth arms at 4+ seeds: both are n=1, so the lr ordering and
-  the d4 == d6 equivalence (theory 44) are suggestive only `[Next]`
+  the d4 == d6 equivalence (theory 44) are suggestive only `[Next]` {cpu: hours, dev: low}
 - Run the TD-Leaf batched-update path (`--batch`), implemented but never exercised; the
-  online-vs-batched question is still open `[Next]`
-- Run a TD-Leaf MLP arm: the whole cohort was the 130-param linear model `[Next]`
+  online-vs-batched question is still open `[Next]` {cpu: hours, dev: low}
+- Run a TD-Leaf MLP arm: the whole cohort was the 130-param linear model `[Next]` {cpu: hours, dev: medium}
 - Backfill `Docs/hyperparameter-log.md`: only the `tdleaf` section is populated so far.
   Transcribe real values (not re-derived from memory) from `plans/training-sweep-results-1-luminous-snail.md`
   (the 78-candidate sweep's full axis list, `--gen-random`/`--gen-random-floor`/`--gen-random-decay-plies`,
   `--residual-skip`, `--val-split`), the position-oracle pipeline (posgen/label/labelfit ladder design,
   `--elo-se`, calibration sample size), and `tools/hill_climb.ps1`'s step-size/reset/flip-probability
-  history in `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md` `[Next]`
+  history in `plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md` `[Next]` {cpu: seconds, dev: low}
 - Population / other-play tournaments as a data source, including an evolutionary variant:
   each round, mutate the top-couple-Elo agents (unique random perturbations of their weights)
   into new agents, add them to the round-robin, drop the weakest, and iterate -- so the
-  population crawls the weight surface by selection `[Now]`
+  population crawls the weight surface by selection `[Now]` {cpu: days, dev: high}
 - ~~Explore new agent types built from the mu/sigma distribution instead of just mu-as-eval:
   (a) SAMPLE a value from N(mu, sigma) at each leaf instead of using mu directly -- a
   genuinely new stochasticity source (the model's own learned uncertainty) distinct from the
@@ -461,11 +461,11 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   the mu-only baseline (1007), monotonically worse with |k|, negative k less damaging than
   positive at matched magnitude. (a) sampling from N(mu,sigma) remains open, and so does
   screening (b) on the other 9 rostered position_elo cores and at k below 0.1 (see the results
-  doc's Future Work) `[Next]`
+  doc's Future Work) `[Next]` {cpu: hours, dev: medium}
 - Activate --elo-se (rating-SE variance is plumbed, off by default); an adaptive second
   labeling pass (per position, add pairings whose gap centers on -mu_hat from the first
   labels, where sigma is best identified); relabel-free retrain after each future ratings
-  refit (rerun labelfit + dist-value on the same raw stores, documented in ML.md) `[Next]`
+  refit (rerun labelfit + dist-value on the same raw stores, documented in ML.md) `[Next]` {cpu: hours, dev: medium}
 - Position-oracle input-feature alternatives (developer question 2026-07-20, feature v2's
   129 raw piece-square bits are not the only reasonable encoding). Test candidates on the
   CHEAP linear model first via the same log-triplet position-count-sweep discipline used to
@@ -480,7 +480,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     and combine with everything else, and it was tested where data was plentiful, not where a
     model is capacity-starved relative to its data (which the MLP position-count sweep just
     showed is true here for the mlp128-64/mlp32 config below ~6800 positions). Worth a fresh,
-    honestly-scoped test, not assumed refuted by the old result `[Next]`
+    honestly-scoped test, not assumed refuted by the old result `[Next]` {cpu: hours, dev: medium}
   - Ternary board encoding (-1/0/+1 per square, 64 features instead of 128) -- considered and
     NOT recommended, reasoning captured so it is not re-proposed blind: a single shared weight
     per square forces white-here and black-here to be exact negatives of each other, which is
@@ -495,7 +495,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     the two axes). Canonicalizing this way makes a White-played position and its exact
     color-swapped mirror the SAME input, roughly doubling usable data for free -- directly
     attacks the MLP's demonstrated data appetite. Untested anywhere in the project; the
-    strongest candidate on this list `[Next]`
+    strongest candidate on this list `[Next]` {cpu: hours, dev: medium}
   - Forward-progress sum per side (Advanced evaluator's Forward term / the capacity axiom,
     `Docs/axioms.md` Lemma B) -- a race-tempo signal distinct from raw material
   - Per-row piece histogram -- the engine already maintains this incrementally (`g_rowCountW`/
@@ -511,7 +511,7 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   - Ply / game-phase as an input -- already tracked in the position pool (`"ply"` field) but
     never fed to the model; volatility plausibly differs by phase (quiet openings, sharp
     midgames, near-decided endgames), so this may matter more for sigma than for mu
-- Distillation from deep search or from a teacher model `[Later]`
+- Distillation from deep search or from a teacher model `[Later]` {cpu: hours, dev: medium}
 
 ## Weight optimization / geometry mapping
 A single per-weight sweep is insufficient: each weight only matters RELATIVE to the others
@@ -519,7 +519,7 @@ A single per-weight sweep is insufficient: each weight only matters RELATIVE to 
 (forward may need to be HIGHER when structure is high, to offset the structure lost by
 advancing; forward could even be NEGATIVE to keep pieces back and advance together), and the
 optimum is a surface, not a point. Replace single sweeps with a search that maps the geometry:
-- Report a response surface, not a single recommended value `[Next]`
+- Report a response surface, not a single recommended value `[Next]` {cpu: hours, dev: medium}
 
 ## Strength Dilution (to spread an Elo ladder)
 - Measure how often stochastic depth dilution (`dil(rP,dN)`) actually changes the move: for a
@@ -531,7 +531,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   round trip, a horizon-style asymmetry -- compare odd vs even depth agreement rates to check.
   Motivated by a question about `dil(prob=15,deep=6)`/`dil(prob=30,deep=6)` (the position-oracle campaign's d8
   ladder rungs, `Docs/Memories/position-oracle-campaign.md`) but stands alone as a general
-  dilution-quality question, deliberately deferred to its own session `[Later]`
+  dilution-quality question, deliberately deferred to its own session `[Later]` {cpu: minutes, dev: medium}
 
 ## Elo / Tournaments
 - Recreate the `s9` linear v2 value model retired 2026-07-30 (`ranking/roster.txt`,
@@ -542,7 +542,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   it, so this can only be a NEW agent trained to fill a similar role (linear v2,
   same head family), not a literal reproduction of the old weights/identity. Low
   priority: the roster is fine without it, and its historical Elo/match record
-  already stands as-is regardless `[Later]`
+  already stands as-is regardless `[Later]` {cpu: hours, dev: low}
 - ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
   pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
   each wearing `.opener(rand,moves=4)@1`, played with `rank.exe ... --paired-openings` into
@@ -557,7 +557,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   still worth doing for the FIXED-START pool, which keeps its defect. Option 2
   (`ttClear()` per game) is also still open and is what would make the fixed-start
   pool reproducible.
-- **Can a book be mined to RECOVER from bad random openings? `[Next]`**
+- **Can a book be mined to RECOVER from bad random openings? `[Next]`** {cpu: hours, dev: low}
   Developer question, 2026-07-26. In the diversified pool a book is inert, because it
   is keyed on exact position hashes that a random opening never reaches, so book
   agents were left out. But that assumes a book mined the way `bookgen` mines them:
@@ -569,14 +569,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   mine from `ranking/matches_open.jsonl` (which now has 2912 diversified games) with
   `--plies` covering the post-opening window, roster the result, and see whether it
   beats its own bare core in the diversified pool. Cheap, the games already exist.
-- **Grow the diversified pool. `[Next]`**
+- **Grow the diversified pool. `[Next]`** {cpu: hours, dev: medium}
   Currently 14 agents, chosen as one strongest representative per evaluator family
   plus the scale (see the header of `ranking/roster_open.txt` for the selection rule).
   Candidates to add: more seed replicas per recipe so the training-seed-noise band is
   visible inside this pool, the remaining `adv` hill-climb finds, and a second dist
   seed (only `learned(model=111,...)` is in). Also decide whether `.opener(rand,moves=4)` is the
   right depth: 4 own half-moves means 8 plies of random play, never swept.
-- **Give the rating path real sample diversity (original entry, superseded above).**
+- **Give the rating path real sample diversity (original entry, superseded above).** {cpu: hours, dev: low}
   Found 2026-07-26 (`plans/book-opener-audit-results-1-vivid-lantern.md`, defect 3 in
   `Docs/benchmarking.md`). `rankSchedule` seeds every game, but `rand()` is only consumed
   by dilution and random-move agents, so for a pair with no `dil(...)` and no `rand`
@@ -607,7 +607,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   3. Report effective sample size instead of fixing it: have `rank.exe rate` emit a
      distinct-trajectory count per pair and an effective-n column, so a reader can see
      that a 32-game pair is 2 games. Cheapest, and worth doing regardless of 1 and 2.
-- **Boost the category-champion pools to 32 games/pair. `[Next]`**
+- **Boost the category-champion pools to 32 games/pair. `[Next]`** {cpu: hours, dev: low}
   Round 1 (2026-07-28, 24 agents, 116->140 active) and round 2 (2026-07-29, 18
   more agents incl. `s3`/`adv` own-books at 4/8-ply, 140->158 active) both
   screened at only 8-11 games/pair, short of this project's own 32-games/pair
@@ -622,7 +622,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   target); the wide dist-mlp cores (`s77`/`s78`/`s79`/`s110`/`s112`/`s114`/
   `s115`, 350-1670 ms/move) were deliberately skipped from the random
   categories for cost, same call as `book5`'s exclusion.
-- **Explain the 30-ply book depth rung. `[Next]`**
+- **Explain the 30-ply book depth rung. `[Next]`** {cpu: hours, dev: medium}
   Book depth was varied for the first time (6/16/30/60 ply, `models/book7..12`). On the
   `classic` core the lift rises with depth (+54, +45, +71, +110 over bare). On the `s98`
   core it does not (+70, +82, +9, +55), and the 30-ply rung sits 73 Elo below its 16-ply
@@ -630,7 +630,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   the brain mid-middlegame is worse than handing off early or carrying to the endgame.
   Test by mining intermediate depths (20, 24, 36, 44) on the same pair and looking for a
   trough, and by instrumenting `openerBook` with a per-game in-book ply counter.
-- **Re-evaluate every Elo claim under the new comparison hygiene, then clear its banner. `[Now]`**
+- **Re-evaluate every Elo claim under the new comparison hygiene, then clear its banner. `[Now]`** {cpu: hours, dev: high}
   On 2026-07-25 two defects were found in this project's Elo reporting: (a) numbers read
   from `ranking/ratings.tsv` mixed RETIRED agents (`active = gone`, superseded `@N`
   identities frozen at old game counts) in with live ones, and (b) agents were compared
@@ -658,7 +658,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   5. `plans/position-oracle-results-1`, `plans/heuristic-eval-overhaul-results-1`,
      `plans/bounded-jitter-results-1`, `plans/vs-champion-training-results-1`
   6. the remainder of `plans/`
-- **Loadout-parity study: stop comparing bare cores against an equipped champion. `[Next]`**
+- **Loadout-parity study: stop comparing bare cores against an equipped champion. `[Next]`** {cpu: days, dev: medium}
   The reigning champion is a `classic` core wearing one loadout item (`.opener(book,book=2)`),
   and that item is worth **+124 Elo** on that core (990 bare -> 1114 equipped, 2026-07-25
   fit, head `ab(deep=6,tt,ord,nodes=200k)`). Every learned/dist/hill-climbed agent it has been
@@ -684,21 +684,21 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - Standing project loop: on every new agent, check whether it lowers the current #1's
   Elo, by outrating it outright or by countering its specific build (see the
   adversarial counter-agent idea above). Treat "dethrone the champion" as the
-  recurring success criterion, not just "raise some Elo" in isolation `[Now]`
+  recurring success criterion, not just "raise some Elo" in isolation `[Now]` {cpu: seconds, dev: high}
 - Roster curation policy (interim, until the classifier below exists): keep `on` the
   anchor, the dilution ladder, the reigning champion family, one oracle, the best agent
   per distinct data-source family (replay, self-play, vs-champion, oracle-mimic,
   branch-mined), and any agent with a distinctive opponent-bucket profile (e.g. a
   counter-agent that beats the champ but loses broadly). Retire (`off`) near-duplicates
   whose head-to-head profiles match an existing agent, since their games stay in
-  `matches.jsonl` forever `[Now]`
+  `matches.jsonl` forever `[Now]` {cpu: minutes, dev: high}
 - Agent behavioral classifier: characterize agents by how they PLAY, not just Elo, and
   use it to decide which agents are interesting enough to keep active. Features:
   position-distribution overlap between agents (shared `positionKey` histograms over
   their stored games, so two agents reaching the same positions 99% of the time rate as
   near-identical), a left-right symmetry measure, and responses against a fixed
   discriminator agent as a feature vector. Cluster k-means-style and keep the most
-  interesting few per cluster. Big project, deliberately deferred `[Later]`
+  interesting few per cluster. Big project, deliberately deferred `[Later]` {cpu: days, dev: high}
 
 ## Books (openers and mid-game)
 
@@ -715,7 +715,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     (`plans/book-opener-audit-results-1-vivid-lantern.md`) found a mined book's lift is
     a memorized-line artifact that collapses under opening diversification. A win-rate
     book drawn from many agents may or may not inherit that failure, and finding out
-    is most of the value here. `[Next]`
+    is most of the value here. `[Next]` {cpu: hours, dev: medium}
 
 - **Mid-game book: identify difficult positions and the best response.** Key the book on
   positions where an agent went on to lose, ranked by how many games the correction
@@ -729,14 +729,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     --branch-tries` already rewinds to a snapshot and substitutes a move, so the
     replay machinery exists.
   - Sort entries by games saved, so the book can be truncated to whatever is worth
-    carrying. `[Next]`
+    carrying. `[Next]` {cpu: hours, dev: medium}
 
 ## Position and agent analysis
 
 - **Do strong agents recognise the lines a random agent beat them on?** Collect games
   where a random agent beat an agent rated 500+ Elo above it, then check whether the
   strong agents' own evaluators score those lines as strong. If they do not, the losses
-  are an evaluation or search blind spot rather than variance. `[Next]`
+  are an evaluation or search blind spot rather than variance. `[Next]` {cpu: minutes, dev: high}
 
 - **Position similarity score.** For a given position, find or generate another position
   with a similar win rate for EVERY agent pair. A position's signature is the whole
@@ -746,14 +746,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     the score by how common that distribution of pairwise win rates is, so an
     unremarkable signature counts for less.
   - Worth splitting: the likelihood an agent REACHES a position versus the likelihood
-    it WINS from it. Different questions, possibly uncorrelated. `[Later]`
+    it WINS from it. Different questions, possibly uncorrelated. `[Later]` {cpu: hours, dev: high}
 
 - **Agent similarity score: the proportion of positions where two agents play the same
   move.** Scores agents on how they PLAY rather than on how they were trained, which is
   what actually determines a matchup. `rank.exe posgen` already builds deduped, ply and
   material stratified pools, so the benchmark set exists. Would settle empirically what
   provenance cannot, for example whether a TD-Leaf model initialised from another
-  agent's weights belongs with its ancestor or with the other TD-Leaf models. `[Next]`
+  agent's weights belongs with its ancestor or with the other TD-Leaf models. `[Next]` {cpu: hours, dev: medium}
 
 - **Model to predict which agent pair generated a board position.**
   - Baseline first, no model: search the history for that exact position, or the one
@@ -764,7 +764,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   - Hold out ENTIRE GAMES, not individual positions: positions from one game are not
     independent samples.
   - Related measurement this would need anyway: how different does a random opening
-    actually make the games? `[Later]`
+    actually make the games? `[Later]` {cpu: days, dev: high}
 
 ## Agent Composition + Play
 - Determinism classification: classify each agent component (explorer, evaluator, chooser,
@@ -778,10 +778,10 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   misleadingly exact 50/50 split. Unit test: build a randomly-configured deterministic agent,
   play it against itself/an opponent twice, assert repeated games are identical (final
   position at minimum; the full move sequence if cheap, since compute is dominated by the
-  search itself, not the check) `[Next]`
+  search itself, not the check) `[Next]` {cpu: seconds, dev: low}
 
 ## Data + Infrastructure
-- **Make the Bradley-Terry SE honest, then schedule to a target SE** `[Now]`. The fit
+- **Make the Bradley-Terry SE honest, then schedule to a target SE** `[Now]` {cpu: hours, dev: medium}. The fit
   counts stored rows as independent samples, but a deterministic pair replays one game
   per colour, so store-wide only 0.438 distinct games per row -- every printed `pm` is
   understated by roughly 1.5x. Fix the fit to weight a pair by DISTINCT games, then
@@ -791,7 +791,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   most of its compute on settled matchups. Sparsity then falls out instead of being
   hand-tuned. Scheduling half is done (deterministic pairs pinned at 2); the fit half
   is not.
-- **Regime-level pooling: ordering confirmed, magnitude not** `[Next]`. Measured
+- **Regime-level pooling: ordering confirmed, magnitude not** `[Next]` {cpu: hours, dev: medium}. Measured
   2026-08-03 over 209 agents' matchup-residual profiles: same regime + same opener
   r=0.150, same regime different opener r=0.059, different regime same opener r=-0.010,
   different both r=-0.045. So the grouping is real and REGIME separates more strongly
@@ -800,7 +800,7 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   are measured on 8-game samples whose noise attenuates correlation toward zero, so
   the true value is an unknown amount higher. Re-run after the SE fix before building
   a hierarchical fit or regime-sparse scheduling on it.
-- **Running the test suite overwrites `models/manifest.{json,md}`** `[Next]`. The
+- **Running the test suite overwrites `models/manifest.{json,md}`** `[Next]` {cpu: seconds, dev: low}. The
   ML tests call `writeManifest` with their own scratch rows, so `tests.exe`
   replaces the real committed manifest with a single `build\dist_model_ckpt30.txt`
   entry. Noticed 2026-08-01 while reviewing a diff before committing, and the
@@ -814,35 +814,26 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   promotion, `rank.exe split` over the screening store separates the kept
   agents' games for merging into the ladder. **Other study scripts still write
   to the permanent store** -- `sweep_pst_v2.ps1`, `train_vs_champion.ps1`, and
-  `hill_climb.ps1`'s promote path should be audited for the same problem `[Next]`
-- Python analysis layer (DuckDB queries: top Elo, fairest positions, avg eval per position) `[Later]`
-- Python training (PyTorch) for MLP/NNUE/transformer, exporting C++-format weights `[Later]`
-- Optional Weights & Biases tracking (local metrics by default, W&B opt-in) `[Dream]`
+  `hill_climb.ps1`'s promote path should be audited for the same problem `[Next]` {cpu: minutes, dev: low}
+- Python analysis layer (DuckDB queries: top Elo, fairest positions, avg eval per position) `[Later]` {cpu: minutes, dev: low}
+- Python training (PyTorch) for MLP/NNUE/transformer, exporting C++-format weights `[Later]` {cpu: days, dev: high}
+- Optional Weights & Biases tracking (local metrics by default, W&B opt-in) `[Dream]` {cpu: minutes, dev: low}
 ## GUI
 - Add MLP models to the GUI (developer, 2026-07-21). `DrawPlayerConfig` generates its controls
   from the evaluator registry the same way the console's `getEvaluatorSettings` does (root
   `CLAUDE.md` Architecture Notes), so this is likely a model-slot-picker generalization rather
   than new UI machinery -- needs checking `gui/main_gui.cpp` for whatever currently limits
-  LearnedValue selection to linear models specifically `[Now]`
+  LearnedValue selection to linear models specifically `[Now]` {cpu: seconds, dev: high}
 - Set a dist MLP (`dist_mlp_wide` once incrementalized, or any dist model meanwhile) as the
-  GUI's default on-screen board-state evaluator `[Now]`
+  GUI's default on-screen board-state evaluator `[Now]` {cpu: seconds, dev: high}
 - Give the on-screen board-state evaluator iterative deepening: currently (needs confirming
   against `gui/main_gui.cpp`) it looks like a static immediate leaf eval; make it a live,
   progressively-deepening background search the way a chess GUI's analysis panel updates as it
-  thinks, rather than a single flat number `[Now]`
-- ~~Overhaul the GUI's player/agent configuration to match the console and `rank.exe`'s
-  modularity: instead of the GUI's own more limited config path, let the user type a full
-  canonical agent ID directly (a text box parsed via the same `rankAgentFromId` every other
-  tool already uses), so any agent expressible on the command line is playable/watchable in
-  the GUI without a dedicated UI control per axis `[Now]`~~ (shipped 2026-08-08: the "Edit
-  Agent..." popup gives both a canonical-ID text box, validated + history-backed, AND a full
-  structured dropdown/slider editor generic over the grammar -- see
-  `plans/gui-agent-selection-results-1-sharded-swimming-petal.md`. Native-only; the web build
-  gets the structured editor but not the text box/history, see that doc.)
+  thinks, rather than a single flat number `[Now]` {cpu: seconds, dev: high}
 - Sharding to evaluate multiple lines at once in the GUI without freezing it (a multi-PV-style
   analysis view). Real architectural tension to resolve first: the engine's board/eval state is
   global (root `CLAUDE.md` Architecture Notes), which is exactly why every other parallel
   workload in this project (rank.exe, tournaments) shards across separate OS processes rather
   than threads. A GUI analysis panel showing several lines at once likely needs the same
   process-per-line approach with results streamed back to the GUI process, not an in-process
-  thread pool over the current global-state engine `[Now]`
+  thread pool over the current global-state engine `[Now]` {cpu: minutes, dev: high}

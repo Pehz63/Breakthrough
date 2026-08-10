@@ -21,6 +21,15 @@ Completed items moved out of todo.md, in the same order/sections they came from.
   the AI search on a background `std::thread` and renders from a main-thread view snapshot, so
   the window stays responsive (measured 0 freezes over 12s of depth-12 AI-vs-AI vs a fully
   frozen synchronous control). See `plans/gui-ai-thread-results-1-quiet-heron.md`.
+- ~~Overhaul the GUI's player/agent configuration to match the console and `rank.exe`'s
+  modularity: instead of the GUI's own more limited config path, let the user type a full
+  canonical agent ID directly (a text box parsed via the same `rankAgentFromId` every other
+  tool already uses), so any agent expressible on the command line is playable/watchable in
+  the GUI without a dedicated UI control per axis~~ (shipped 2026-08-08: the "Edit
+  Agent..." popup gives both a canonical-ID text box, validated + history-backed, AND a full
+  structured dropdown/slider editor generic over the grammar -- see
+  `plans/gui-agent-selection-results-1-sharded-swimming-petal.md`. Native-only; the web build
+  gets the structured editor but not the text box/history, see that doc.)
 
 ## Agent Track
 - ~~Asymmetric opener for `pairgen`: add `--open-plies-side a|b|both` so only ONE named agent plays random moves during the opener window while the other plays its own normal policy throughout.~~ Shipped as `pairgen --open-side a|b|both` (Theory 6 test, `plans/opener-bias-results-1-synchronous-stearns.md`). Finding: the symmetric opener DID inflate the champdil/dilution result (65% -> 40% once the champion plays its true policy) but NOT the oracle headline result (survives at ~66%). A third layer retrained the oracle on asymmetric-opener data and saw a large d6 drop (1137 -> 832), but that turned out to be confounded by training-label skew (win:loss ratio 2.55:1 -> 4.46:1), not a clean confirmation -- see the results doc. Also added the `rank.exe opener-bias` mechanism measure and the two study scripts (`tools/opener_bias_study.ps1`, `tools/opener_bias_retrain.ps1`)
