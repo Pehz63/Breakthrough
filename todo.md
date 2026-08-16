@@ -562,6 +562,20 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   same head family), not a literal reproduction of the old weights/identity. Low
   priority: the roster is fine without it, and its historical Elo/match record
   already stands as-is regardless `[Later]` {cpu: hours, dev: low}
+- **Same loss recurred for `models/sweep/slot6.txt` and `slot7.txt`, found
+  2026-08-16.** Both are live, active (`on`) roster agents
+  (`ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,...)@1` and
+  `model=7,c7f7ce61`). `tests/test_ranking.cpp`'s `rankLoadAgentModels` test
+  uses those exact slot numbers as scratch (overwrites slot 6, deletes slot 7)
+  to exercise its load-success/load-failure cases, with no check that they
+  were already live -- the identical unverified-slot-number defect class as
+  the `s9` entry above. Neither file is git-tracked, so neither is
+  recoverable. Developer decision 2026-08-16: accept the loss the same way as
+  `s9` rather than fix the test now. Historical Elo/match record for both
+  agents stands as-is; no NEW games can be played for either until the roster
+  lines are repointed at retrained models or the weights are restored from
+  outside this repo. Full detail: `plans/gumbel-mcts-results-1-hidden-greeting-mist.md`
+  `[Later]` {cpu: hours, dev: low}
 - ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
   pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
   each wearing `.opener(rand,moves=4)@1`, played with `rank.exe ... --paired-openings` into
