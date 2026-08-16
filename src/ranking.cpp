@@ -184,9 +184,10 @@ static const char* const LBL_PLY[]     = { "ply=", "ply_", "ply" };
 static const char* const LBL_MODEL[]   = { "model=", "model_", "model", "s" };
 static const char* const LBL_CONN[]    = { "conn=", "conn_", "conn", "con" };
 static const char* const LBL_RISK[]    = { "risk=" };   // no legacy spelling: new field, one form only
+static const char* const LBL_SIMS[]    = { "sims=" };   // no legacy spelling: new field, one form only
 static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
 static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
-static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1;
+static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1, LBLN_SIMS = 1;
 
 // ============================================================
 // ID CODEC
@@ -210,8 +211,9 @@ static const RankNameCodec g_rkChoosers[] = {
 };
 static const int g_rkChooserCount = sizeof(g_rkChoosers) / sizeof(g_rkChoosers[0]);
 static const RankNameCodec g_rkExplorers[] = {
-    { "Greedy",    "greedy", 1 },
-    { "AlphaBeta", "ab",     1 },
+    { "Greedy",     "greedy", 1 },
+    { "AlphaBeta",  "ab",     1 },
+    { "GumbelMCTS", "gaz",    1 },
 };
 static const int g_rkExplorerCount = sizeof(g_rkExplorers) / sizeof(g_rkExplorers[0]);
 
@@ -442,6 +444,15 @@ static string archDescForSlot(int slot) {
                 + ",mu_shape="    + L::shape(kv.count("mu_layers") ? kv["mu_layers"] : "", feat)
                 + ",sigma_shape=" + L::shape(kv.count("s_layers")  ? kv["s_layers"]  : "", feat);
             (void)st;
+        } else if (type == "joint") {
+            // Two heads over DIFFERENT feature layouts (board value vs. per-move
+            // policy), unlike dist's two heads over the same layout, so each
+            // shape needs its own feature count rather than sharing `feat`.
+            string vFeat = kv.count("v_feature_count") ? kv["v_feature_count"] : feat;
+            string pFeat = kv.count("p_feature_count") ? kv["p_feature_count"] : "9";
+            out = regime + ",joint"
+                + ",value_shape="  + L::shape(kv.count("v_layers") ? kv["v_layers"] : "", vFeat)
+                + ",policy_shape=" + L::shape(kv.count("p_layers") ? kv["p_layers"] : "", pFeat);
         } else {
             out = regime + "," + string(type == "mlp" ? "mlp" : "lin")
                 + ",shape=" + L::shape(kv.count("layers") ? kv["layers"] : "", feat);
@@ -561,6 +572,12 @@ string rankAgentId(const AgentSpec& a) {
             if (a.timeBudgetMs > 0.0)   s += ",time=" + std::to_string((long long)a.timeBudgetMs) + "ms";
             if (a.depthCap > 0)         s += ",maxdeep=" + std::to_string(a.depthCap);
             s += ")";
+        } else if (idn == "gaz") {
+            // Gumbel MCTS: a.depth carries the total simulation budget, the same
+            // reuse ab() makes of it for search depth. cvisit/cscale/m are fixed
+            // internal constants in this slice (see ai_gumbel.cpp), not per-agent
+            // knobs, so the id stays as short as greedy's.
+            s = "gaz(sims=" + std::to_string(a.depth) + ")";
         } else {
             s = idn;   // greedy (always 1-ply, no arguments)
         }
@@ -899,9 +916,25 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
                 return false;
             }
         }
+    } else if (headWord == "gaz") {
+        if (!parens || args.size() != 1) {
+            err = "gaz needs one argument, e.g. gaz(sims=50)";
+            return false;
+        }
+        isSearch = true;
+        explorerIdx = explorerIndexByName("GumbelMCTS");
+        if (explorerIdx < 0) { err = "explorer 'GumbelMCTS' not in registry"; return false; }
+        long long s;
+        string sTail;
+        if (!labelledNum(args[0], LBL_SIMS, LBLN_SIMS, sTail)
+            || !lenientInt(sTail, false, s) || s < 1) {
+            err = "gaz()'s argument must be a simulation budget like sims=50 (got '" + args[0] + "')";
+            return false;
+        }
+        depth = (int)s;   // total simulation budget, reusing the same field ab() uses for depth
     } else {
         err = "unknown head '" + headWord
-            + "' (expected rand, tiered, smart(N), policy, greedy, or ab(...), each with @<version>)";
+            + "' (expected rand, tiered, smart(N), policy, greedy, ab(...), or gaz(...), each with @<version>)";
         return false;
     }
 
@@ -1087,8 +1120,8 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
                     err = "learned() regime '" + recipe + "' is not a known token";
                     return false;
                 }
-                if (mut != "mlp" && mut != "lin") {
-                    err = "learned() mu type must be 'mlp' or 'lin', got '" + mut + "'";
+                if (mut != "mlp" && mut != "lin" && mut != "joint") {
+                    err = "learned() mu type must be 'mlp', 'lin', or 'joint', got '" + mut + "'";
                     return false;
                 }
                 // Connectivity is OPTIONAL: it is 100% for every model built so
@@ -2012,6 +2045,12 @@ bool rankAgentIsDeterministic(const AgentSpec& spec) {
         // The random family draws; LearnedPolicy is an argmax and does not.
         if (spec.chooser >= 0 && spec.chooser < g_chooserCount &&
             std::strcmp(g_choosers[spec.chooser].name, "LearnedPolicy") != 0) return false;
+    } else {
+        // GumbelMCTS draws a Gumbel variate per legal move on every root
+        // search (gumbelTopK, src/ai_gumbel.cpp), so it is never deterministic
+        // -- unlike AlphaBeta/Greedy, which are pure functions of the board.
+        if (spec.explorer >= 0 && spec.explorer < g_explorerCount &&
+            std::strcmp(g_explorers[spec.explorer].name, "GumbelMCTS") == 0) return false;
     }
     return true;
 }

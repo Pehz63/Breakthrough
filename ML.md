@@ -40,14 +40,17 @@ Explorer  Evaluator        heuristic  OR  learned move-rater
   `g_evaluators[]` in [src/ai_eval.cpp](src/ai_eval.cpp). Includes `LearnedValue`,
   which delegates to a value model.
 - **Move-tree explorer (search):** decides *how* an evaluator is used. Registry
-  `g_explorers[]` in [src/explorers.cpp](src/explorers.cpp): `Greedy` (1-ply) and
-  `AlphaBeta` (wraps the existing minimax).
+  `g_explorers[]` in [src/explorers.cpp](src/explorers.cpp): `Greedy` (1-ply),
+  `AlphaBeta` (wraps the existing minimax), and `GumbelMCTS` (Gumbel-top-k root
+  sampling + Sequential Halving, [src/ai_gumbel.cpp](src/ai_gumbel.cpp); needs a
+  `joint` value+policy model, see "Gumbel MCTS" below).
 - **Move chooser / policy (no search):** picks a move directly. Registry
   `g_choosers[]` in [src/choosers.cpp](src/choosers.cpp): the random family plus
   `LearnedPolicy`, a learned move-rater that scores each legal move and plays the best.
 - **Model:** the architecture behind a learned evaluator or policy. Registry
-  `g_modelTypes[]` in [src/ml_model.cpp](src/ml_model.cpp): `linear` is implemented;
-  `mlp` / `nnue` / `transformer` are registered for later.
+  `g_modelTypes[]` in [src/ml_model.cpp](src/ml_model.cpp): `linear`/`mlp`/
+  `residual`/`dist`/`joint` are implemented; `nnue`/`transformer` are registered
+  for later.
 
 An [`AgentSpec`](src/agents.h) ties these together (explorer + evaluator, or a
 chooser) plus **strength dilution** (`randomMoveProb`, `depthCap`). One function,
@@ -199,6 +202,58 @@ w1=...
 
 `mlValueScore` applies the shared near-win shortcut, then maps the model output
 through `tanh * out_scale` and clamps it strictly inside the `+/-WIN` sentinels.
+
+## Gumbel MCTS: search + joint policy/value model (search substrate, no trainer yet)
+
+An MCTS explorer, `GumbelMCTS` (`src/ai_gumbel.h`/`.cpp`), implementing
+Danihelka, Pohlen, Rowland, Hessel, Ozair, Silver & van Hasselt, "Policy
+improvement by planning with Gumbel" (ICLR 2022): **Gumbel-top-k sampling**
+picks a handful of root candidate actions (replacing Dirichlet-noise
+exploration), **Sequential Halving** spends the simulation budget across them
+in halving rounds down to one survivor, and every non-root node during a
+simulation's descent uses a **deterministic action-selection rule** whose
+empirical visit distribution provably converges to
+`softmax(logits + sigma(completedQ))`. This is what gives the method a
+policy-improvement guarantee at very low simulation counts (tens, not
+thousands), unlike plain PUCT/AlphaZero-style MCTS.
+
+The explorer needs both a policy (per-move priors) and a value (leaf
+evaluation), so its evaluator slot (threaded through the existing
+`LearnedValue`/`params[0]` convention) must hold a **`joint` model**
+(`JointModel` in `src/ml_model.h`): a value head over board features (v1/v2,
+`HEAD_VALUE`) plus a policy head over per-move features (v1, `HEAD_POLICY`,
+the same layout `LearnedPolicy`/`mlRateMoves` already score), two different
+feature layouts unlike `DistModel`'s two heads over one shared layout.
+`forward()`/`head()`/`featureVersion()` all delegate to the value head, so a
+`joint` model drops into `LearnedValue`/`mlValueScore` exactly like a `dist`
+model does; the explorer reads the policy head directly via the non-virtual
+`policyForward()` (a `typeName()`-checked cast, the same idiom
+`mlIncrementalBegin` already uses for `Residual`/`DistModel`), bypassing
+`mlRateMoves` (single-head-only). Both heads default to `LinearModel` per
+this project's "default to linear for a first pass" guidance.
+
+**Roster ID:** `gaz(sims=N)@1` (the total simulation budget, reusing the same
+field `ab()` uses for depth); other constants (`c_visit`, `c_scale`, the root
+candidate count) are fixed internally in this slice, not exposed per-agent.
+Its `learned()` segment carries mutype `joint` with
+`value_shape=`/`policy_shape=` instead of a single `shape=`. **Always
+non-deterministic** (`rankAgentIsDeterministic`): Gumbel-top-k draws a Gumbel
+variate per legal move on every search, unlike `ab`/`greedy`.
+
+**What exists today (Pass-1 sanity slice):** the search engine and the model
+type, validated by unit tests (`tests/test_gumbel.cpp`: closed-form checks on
+the sigma transform, the deterministic selection rule against an independent
+reference computation, Gumbel-top-k's use of the logits, Sequential Halving's
+round schedule; an end-to-end full-game legality test; a saved-model-loads-
+through-the-real-search-path test) and playable via `rank.exe`/`train.exe`
+with a hand-built or randomly-initialized model. **What does not exist yet:**
+a self-play training regime that actually trains the two heads (a planned
+follow-up slice, using a bootstrapped search-value target -- the search's own
+improved value estimate, not just game outcome -- per the developer's stated
+preference for that slice). No Elo has been measured for this agent; per
+`Docs/model-training-playbook.md` it must not be described as strong or
+promoted until it has a full-roster certified rating, and a random-weight
+model provably is not one.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 
@@ -492,7 +547,7 @@ _Auto-generated by `train.exe docs` from the live registries. Do not edit by han
 |------|--------|-------------|
 | Classic | 4 | yes |
 | Experimental | 5 | yes |
-| LearnedValue | 1 | no |
+| LearnedValue | 2 | no |
 | Advanced | 16 | yes |
 
 ### Move-tree explorers
@@ -501,6 +556,7 @@ _Auto-generated by `train.exe docs` from the live registries. Do not edit by han
 |------|-------------|
 | Greedy | 1-ply: play the move the evaluator scores best (no lookahead). |
 | AlphaBeta | Alpha-beta minimax to a fixed depth (budget = depth). |
+| GumbelMCTS | Gumbel-top-k root sampling + Sequential Halving MCTS (Danihelka et al. 2022); budget = total simulations. Needs a joint value+policy model in its evaluator slot. |
 
 ### Move choosers / policies
 
@@ -519,6 +575,7 @@ _Auto-generated by `train.exe docs` from the live registries. Do not edit by han
 | mlp | yes | Multilayer perceptron (1-2 hidden layers), hand-written forward + backprop; ReLU hidden, linear output. |
 | residual | yes | Frozen chip-count skip + an inner model (linear or mlp): output = skipW*matDiff + inner. Learns the residual. |
 | dist | yes | Two-headed distributional value model: mu head (White advantage in logits, the evaluator output) + log-sigma head (volatility), probit-BCE trained on rated-gap playout outcomes. |
+| joint | yes | Two-headed value+policy model: a board value head (feature v1/v2) + a per-move policy head (move features), different feature layouts. Gumbel MCTS search substrate. |
 | nnue | no | Efficiently updatable NN; designed to plug into the g_evalPos accumulator. |
 | transformer | no | Squares-as-tokens self-attention; teacher / offline label generator only. |
 
@@ -532,7 +589,7 @@ _Auto-generated by `train.exe docs` from the live registries. Do not edit by han
 | dist-value | Distributional (mu, sigma) position-strength model fit on rated-gap playout outcomes from the label store (rank.exe posgen/label/labelfit). |
 | score | Score positions with a saved model, ranked by mean White advantage (a dist model prints mean +- SD in Elo). |
 | dist-eval | Evaluate a dist model against the calibrated d8 oracle, pst_value, and Classic baselines on the held-out eval tier. |
-| tdleaf | TD-Leaf(lambda) self-play bootstrap of a value model. (future) |
+| tdleaf | TD-Leaf(lambda) self-play bootstrap: the target is the model's OWN evaluation of a later position backed up through the search, applied online at the principal-variation leaf. lambda=1 reduces exactly to outcome-supervised training on PV leaves. |
 | population | Other-play tournaments, Elo-tie labeling, multi-condition runs. (future) |
 | tournament | Round-robin of composed agents; prints an Elo table. |
 | docs | Regenerate the auto-doc tables from the live registries. |

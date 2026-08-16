@@ -68,7 +68,7 @@ for visually and how to capture matchup-gated controls.
 | `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation; value features v1 (dense aggregates) and v2 (sparse piece-square) |
 | `ml_model.cpp` | `Model` base + `LinearModel`, model-type registry, save/load (`type=` format) |
 | `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy), incremental v2 accumulator (`mlIncrementalBegin`/`mlLeafScore`) |
-| `explorers.cpp` | Move-tree explorer registry (`Greedy`, `AlphaBeta`) |
+| `explorers.cpp` | Move-tree explorer registry (`Greedy`, `AlphaBeta`, `GumbelMCTS`) |
 | `choosers.cpp` | Direct move-chooser registry (random family + `LearnedPolicy`) |
 | `agents.cpp` | `AgentSpec` composition + `agentChooseMove` (search/policy + dilution) |
 | `datastore.cpp` | Append-only JSONL writer + canonical position keys (also the TT hash) |

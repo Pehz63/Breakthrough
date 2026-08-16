@@ -5,6 +5,7 @@
 #include "ai_random.h"
 #include "ml_model.h"
 #include "ml_eval.h"
+#include "explorers.h"
 #include "datastore.h"
 #include <algorithm>
 #include <sstream>
@@ -369,6 +370,62 @@ TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
 
     // A slot beyond ML_SLOTS is rejected, not silently accepted.
     REQUIRE(parseErr("greedy@1.learned(s" + std::to_string(ML_SLOTS) + "," + h + ")@1").find("slot") != string::npos);
+}
+
+TEST_CASE("ranking id - GumbelMCTS (gaz) head round trip") {
+    RankAgent a = parseOk("gaz(sims=50)@1.classic(chip=100)@2");
+    REQUIRE(a.spec.brain == BRAIN_SEARCH);
+    REQUIRE(a.spec.depth == 50);   // total simulation budget, reusing the same field ab() uses for depth
+    REQUIRE(a.spec.explorer >= 0);
+    REQUIRE(string(g_explorers[a.spec.explorer].name) == "GumbelMCTS");
+
+    REQUIRE(parseErr("gaz@1.classic(chip=100)@2").find("gaz needs") != string::npos);
+    REQUIRE(parseErr("gaz(sims=0)@1.classic(chip=100)@2").find("simulation budget") != string::npos);
+}
+
+// A JointModel (value + policy heads over DIFFERENT feature layouts) gets its
+// own mutype token "joint" and a value_shape=/policy_shape= pair instead of
+// dist's mu_shape=/sigma_shape= (which share ONE feature layout) or the
+// single shape= every other architecture uses -- see archDescForSlot's
+// type=="joint" branch in ranking.cpp.
+TEST_CASE("ranking id - joint mutype round trip (learned() over a real GumbelMCTS agent)") {
+    // Slot 640: inside the 634-649 block this feature claims in src/CLAUDE.md's
+    // slot ledger, well clear of any production/roster agent. archDescForSlot()
+    // caches per-slot for the process lifetime, so reusing a low slot number
+    // that some OTHER test's roster load already touched would silently read a
+    // stale cached descriptor instead of this test's own file.
+    const int slot = 640;
+    const string path = "models/sweep/slot640.txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    JointModel jm(value, policy);
+    REQUIRE(jm.save(path));
+
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+
+    // Legacy 2-arg form parses and expands to the rich joint() descriptor.
+    RankAgent a;
+    string err;
+    REQUIRE(rankAgentFromId("gaz(sims=32)@1.learned(s" + std::to_string(slot) + "," + h + ")@1", a, err));
+    REQUIRE(a.spec.brain == BRAIN_SEARCH);
+    REQUIRE(a.spec.modelSlot == slot);
+    REQUIRE(a.spec.depth == 32);
+    string canon = rankAgentId(a.spec);
+    REQUIRE(canon.find(",joint,value_shape=") != string::npos);
+    REQUIRE(canon.find(",policy_shape=") != string::npos);
+    REQUIRE(a.id == canon);
+
+    // The canonical (rich) form round-trips exactly.
+    RankAgent b;
+    string err2;
+    REQUIRE(rankAgentFromId(canon, b, err2));
+    REQUIRE(rankAgentId(b.spec) == canon);
 }
 
 // rankLoadAgentModels is the GUI's single-agent counterpart to the internal
@@ -1245,6 +1302,10 @@ TEST_CASE("ranking determinism - derived from the spec, not stored") {
     // The random chooser family draws; the anchor is one of them.
     REQUIRE(!rankAgentIsDeterministic(mkActive("rand@1").spec));
     REQUIRE(!rankAgentIsDeterministic(mkActive("smart(pieces=4)@1").spec));
+    // GumbelMCTS draws a Gumbel variate per legal move on every search (see
+    // gumbelTopK, src/ai_gumbel.cpp), so it is never deterministic even with
+    // no dilution and no random opener -- unlike ab()/greedy.
+    REQUIRE(!rankAgentIsDeterministic(mkActive("gaz(sims=50)@1.classic(chip=100)@2").spec));
 }
 
 TEST_CASE("ranking scheduler - a deterministic pair is REQUIRED to play exactly 2") {

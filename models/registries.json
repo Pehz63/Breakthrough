@@ -1,8 +1,8 @@
 {
   "evaluators": ["Classic", "Experimental", "LearnedValue", "Advanced"],
-  "explorers": ["Greedy", "AlphaBeta"],
+  "explorers": ["Greedy", "AlphaBeta", "GumbelMCTS"],
   "choosers": ["UniformRandom", "TieredRandom", "SmartRandom", "LearnedPolicy"],
-  "model_types": ["linear", "mlp", "residual", "dist", "nnue", "transformer"],
+  "model_types": ["linear", "mlp", "residual", "dist", "joint", "nnue", "transformer"],
   "regimes": ["selfplay-supervised", "ensemble", "imitate", "dist-value", "score", "dist-eval", "tdleaf", "population", "tournament", "docs"],
   "value_feature_version": 1,
   "move_feature_version": 1

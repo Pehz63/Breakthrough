@@ -3,6 +3,7 @@
 #include "moves.h"
 #include "ai_eval.h"
 #include "ai_minimax.h"
+#include "ai_gumbel.h"
 
 // ============================================================
 // GREEDY (1-ply)
@@ -54,7 +55,10 @@ static int alphaBetaExplore(int side, int evaluator, const int* params, int budg
 // REGISTRY
 // ============================================================
 const ExplorerDef g_explorers[] = {
-    { "Greedy",    "1-ply: play the move the evaluator scores best (no lookahead).", greedyExplore   },
-    { "AlphaBeta", "Alpha-beta minimax to a fixed depth (budget = depth).",          alphaBetaExplore },
+    { "Greedy",     "1-ply: play the move the evaluator scores best (no lookahead).", greedyExplore   },
+    { "AlphaBeta",  "Alpha-beta minimax to a fixed depth (budget = depth).",          alphaBetaExplore },
+    { "GumbelMCTS", "Gumbel-top-k root sampling + Sequential Halving MCTS (Danihelka et al. 2022); "
+                    "budget = total simulations. Needs a joint value+policy model in its evaluator slot.",
+                    gumbelExplore },
 };
 const int g_explorerCount = (int)(sizeof(g_explorers) / sizeof(g_explorers[0]));

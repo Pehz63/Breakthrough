@@ -20,7 +20,7 @@ cl tools\rank_main.cpp ^
    src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
    src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp ^
-   src\transposition.cpp src\ranking.cpp ^
+   src\transposition.cpp src\ranking.cpp src\ai_gumbel.cpp ^
    /I src /EHsc /O2 /Fo"build\\" /Fe:rank.exe
 
 if errorlevel 1 (

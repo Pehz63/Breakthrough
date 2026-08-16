@@ -866,6 +866,35 @@ TEST_CASE("DistModel - save/load round trip (linear and mlp heads)") {
     }
 }
 
+TEST_CASE("JointModel - save/load round trip (value + policy heads, different feature layouts)") {
+    LinearModel* value = makeV2Model();
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    policy->bias = 0.3f;
+    for (int i = 0; i < policy->n; i++) policy->w[i] = 0.1f * (i + 1);
+    JointModel jm(value, policy);
+    REQUIRE(jm.save("build\\test_joint.tmp"));
+
+    Model* loaded = loadModel("build\\test_joint.tmp");
+    REQUIRE(loaded != nullptr);
+    REQUIRE(string(loaded->typeName()) == "joint");
+    REQUIRE(loaded->head() == HEAD_VALUE);              // drops into LearnedValue like DistModel
+    JointModel* jl = dynamic_cast<JointModel*>(loaded);
+    REQUIRE(jl != nullptr);
+    REQUIRE(jl->featureVersion() == 2);
+    REQUIRE(jl->featureCount() == MLV2_FEATURES);
+
+    float vx[MLV2_FEATURES];
+    clearBoard(); board[1][2] = WHITE; board[6][5] = BLACK;
+    mlExtractValueFeaturesV2(White, vx);
+    REQUIRE(jl->forward(vx, MLV2_FEATURES) == Approx(jm.forward(vx, MLV2_FEATURES)).margin(1e-5));
+
+    float mx[MLM_FEATURES];
+    for (int i = 0; i < MLM_FEATURES; i++) mx[i] = 0.05f * (i + 1);
+    REQUIRE(jl->policyForward(mx, MLM_FEATURES) == Approx(jm.policyForward(mx, MLM_FEATURES)).margin(1e-5));
+
+    delete loaded;
+}
+
 TEST_CASE("DistModel - trainStepRow matches finite differences through both heads") {
     srand(99);
     std::vector<int> hidden(1, 3);

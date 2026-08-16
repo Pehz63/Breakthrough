@@ -435,6 +435,37 @@ bool DistModel::save(const string& path) const {
 }
 
 // ============================================================
+// JOINT MODEL (value head + policy head, different feature layouts)
+// ============================================================
+void JointModel::writeWeights(std::ostream& f) const {
+    writePrefixedWeights(f, "v_", valueHead);
+    writePrefixedWeights(f, "p_", policyHead);
+}
+
+bool JointModel::save(const string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) return false;
+    f << std::setprecision(9);
+    f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
+    f << "type=joint\n";
+    f << "head=value\n";
+    // Uniform v_/p_ prefix for BOTH the meta keys here and the weight-block
+    // keys writeWeights() emits (mirrors DistModel's mu_/s_ convention, where
+    // one prefix names everything belonging to a head).
+    f << "v_type=" << valueHead->typeName() << "\n";
+    f << "v_feature_version=" << valueHead->featureVersion() << "\n";
+    f << "v_feature_count=" << valueHead->featureCount() << "\n";
+    f << "v_out_scale=" << valueHead->outputScale() << "\n";
+    f << "p_type=" << policyHead->typeName() << "\n";
+    f << "p_feature_version=" << policyHead->featureVersion() << "\n";
+    f << "p_feature_count=" << policyHead->featureCount() << "\n";
+    f << "p_out_scale=" << policyHead->outputScale() << "\n";
+    writeWeights(f);
+    return true;
+}
+
+// ============================================================
 // FACTORY / LOADER
 // ============================================================
 Model* makeModel(const string& type, int head, int featVersion, int featCount, float scale) {
@@ -551,6 +582,34 @@ Model* loadModel(const string& path) {
         if (kv.count("teacher")) m->teacher = kv["teacher"];
         return m;
     }
+    if (type == "joint") {
+        string vType = kv.count("v_type") ? kv["v_type"] : "linear";
+        string pType = kv.count("p_type") ? kv["p_type"] : "linear";
+        int   vFeatVer = kv.count("v_feature_version") ? std::stoi(kv["v_feature_version"]) : 2;
+        int   vFeatN   = kv.count("v_feature_count")   ? std::stoi(kv["v_feature_count"])   : 0;
+        float vScale   = kv.count("v_out_scale")        ? std::stof(kv["v_out_scale"])        : 900.0f;
+        int   pFeatVer = kv.count("p_feature_version") ? std::stoi(kv["p_feature_version"]) : 1;
+        int   pFeatN   = kv.count("p_feature_count")   ? std::stoi(kv["p_feature_count"])   : 0;
+        float pScale   = kv.count("p_out_scale")        ? std::stof(kv["p_out_scale"])        : 1.0f;
+        // Split the flat key space into the two heads' prefixed sub-maps, mirroring
+        // dist's mu_/s_ split -- but unlike dist, each head keeps its OWN feature
+        // layout (value = board features, policy = move features), so there is no
+        // shared featVer/n/scale to reuse from the top-level generic keys.
+        map<string, string> vKv, pKv;
+        for (map<string, string>::const_iterator it = kv.begin(); it != kv.end(); ++it) {
+            const string& k = it->first;
+            if (k.compare(0, 2, "v_") == 0)      vKv[k.substr(2)] = it->second;
+            else if (k.compare(0, 2, "p_") == 0) pKv[k.substr(2)] = it->second;
+        }
+        Model* v = (vType == "mlp") ? (Model*)buildMLPFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale)
+                                     : (Model*)buildLinearFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale);
+        Model* p = (pType == "mlp") ? (Model*)buildMLPFromKV(pKv, HEAD_POLICY, pFeatVer, pFeatN, pScale)
+                                     : (Model*)buildLinearFromKV(pKv, HEAD_POLICY, pFeatVer, pFeatN, pScale);
+        if (!v || !p) { delete v; delete p; return nullptr; }
+        JointModel* m = new JointModel(v, p);
+        if (kv.count("teacher")) m->teacher = kv["teacher"];
+        return m;
+    }
     return nullptr;   // unimplemented architecture
 }
 
@@ -562,6 +621,7 @@ const ModelTypeDef g_modelTypes[] = {
     { "mlp",         "Multilayer perceptron (1-2 hidden layers), hand-written forward + backprop; ReLU hidden, linear output.", true },
     { "residual",    "Frozen chip-count skip + an inner model (linear or mlp): output = skipW*matDiff + inner. Learns the residual.", true },
     { "dist",        "Two-headed distributional value model: mu head (White advantage in logits, the evaluator output) + log-sigma head (volatility), probit-BCE trained on rated-gap playout outcomes.", true },
+    { "joint",       "Two-headed value+policy model: a board value head (feature v1/v2) + a per-move policy head (move features), different feature layouts. Gumbel MCTS search substrate.", true },
     { "nnue",        "Efficiently updatable NN; designed to plug into the g_evalPos accumulator.", false },
     { "transformer", "Squares-as-tokens self-attention; teacher / offline label generator only.", false },
 };

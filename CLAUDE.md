@@ -140,12 +140,26 @@ which is NOT force-loaded, so read it before writing a doc or a strength claim.
 
 **`cl` is not on the default PATH.** Every `cl` build must first load the MSVC
 environment via `vcvars64.bat`. From PowerShell, wrap the build in
-`cmd /c '"<vcvars64.bat>" && cl ...'` as shown below (path matches README; adjust
-the Visual Studio edition/version if yours differs).
+`cmd /c '"<vcvars64.bat>" && cl ...'` as shown below. The exact `vcvars64.bat`
+path depends on which Visual Studio edition is installed on the machine (find
+it with `Get-ChildItem -Path "C:\Program Files*" -Filter vcvars64.bat -Recurse`
+if the path below doesn't exist) -- on this project's current dev machine it is
+the BuildTools edition, not Community.
+
+**`run_tests.ps1 -Build` / `build_tests.bat` / `build_rank.bat` / `build_train.bat`
+locate Visual Studio via `vswhere.exe` on PATH, which is not resolvable in
+every shell environment** (observed 2026-08-16: `vswhere.exe` and even a bare
+`build_tests.bat` become "not recognized" once `vcvars64.bat` has already run
+in the same batch context, in an environment where they resolved fine before
+it -- consistent with `vcvars64.bat` disabling cmd's implicit current-directory
+command search). Workaround: source `vcvars64.bat` directly by its full path,
+`cd /d` to the project root, then invoke the compiler directly (skip the
+`vswhere`-based wrapper batch scripts), using an explicit `.\` prefix on every
+subsequent batch/script invocation in the same chain rather than a bare name.
 
 ### Console engine (`breakthrough.exe`)
 ```
-cmd /c '"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 The `ml_*`, `datastore`, and `transposition` files are required by every build
 target (see `src/CLAUDE.md`, "Engine link set"). Run with `.\breakthrough.exe`

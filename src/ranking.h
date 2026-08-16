@@ -35,15 +35,26 @@
 //   id      := head [ "." evalseg ] [ "." dilseg ] [ "." openseg ]
 //                                          (policy: head [ "." linpol ] [ ... ])
 //   head    := ( "rand" | "tiered" | "smart(pieces=" N ")" | "policy"  (policy brains)
-//              | "greedy" | "ab(deep=" N { "," flag } ")" ) "@" V      (search brains)
+//              | "greedy" | "ab(deep=" N { "," flag } ")"             (search brains)
+//              | "gaz(sims=" N ")" ) "@" V
 //   flag    := "noab" | "tt" | "ord" | "qs" | "part" | "margin=" N
 //            | "nodes=" budget | "time=" N "ms" | "maxdeep=" N    (budget: 200k, 2m, raw)
+//   gaz     := Gumbel MCTS (Danihelka et al. 2022, src/ai_gumbel.cpp): Gumbel-top-k
+//              root sampling + Sequential Halving, "sims=" is the total simulation
+//              budget (the same field ab() uses for depth). Its evaluator slot must
+//              hold a "joint" model (a value head + a policy head); other tuning
+//              constants (c_visit, c_scale, the root candidate count) are fixed
+//              internally rather than exposed per-agent in this slice. Always
+//              non-deterministic (rankAgentIsDeterministic), since Gumbel sampling
+//              draws from rand() on every move.
 //   evalseg := ( "classic(" weights ")" | "exp(" weights ")"      (search brains only)
 //              | "adv(" weights ")"
 //              | "learned(model=" slot "," hash8 [ "," arch ] ")" ) "@" V  (LearnedValue)
 //   arch    = regime "," mutype "," shapes [ ",conn=" pct ]
 //   shapes  = "shape=" shape                                     (single-head models)
 //           | "mu_shape=" shape ",sigma_shape=" shape            (dist: mean + volatility)
+//           | "value_shape=" shape ",policy_shape=" shape        (joint: value + policy,
+//                                                                 different feature layouts)
 //   regime  = HOW THE MODEL WAS PRODUCED, read from its file's `teacher=` line:
 //             "tdleaf_self"   TD-Leaf(lambda) on self-play games
 //             "pool_games"    outcomes from games replayed out of the ranked pool
@@ -53,7 +64,9 @@
 //             "weight_merge"  weight averaging and/or mirror symmetrisation
 //             "unknown"       provenance lost with the model file
 //             "value"|"dist"  SUPERSEDED model-type tokens: parsed, never emitted
-//   mutype  = "mlp" | "lin"      shape = dash-separated layer widths, e.g. 129-512-8-1
+//   mutype  = "mlp" | "lin" | "joint"   shape = dash-separated layer widths, e.g.
+//             129-512-8-1. "joint" (src/ml_model.h's JointModel) always pairs with
+//             value_shape=/policy_shape=, never a single shape=.
 //   conn=N  = percent connectivity, reserved for sparsity. Omitted at its default
 //             of 100 (fully connected), which is every model shipped so far.
 //   The arch fields are DESCRIPTIVE: identity is still (slot, hash), and they are

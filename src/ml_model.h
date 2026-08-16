@@ -248,6 +248,40 @@ struct DistModel : public Model {
     void writeWeights(std::ostream& f) const override;
 };
 
+// ---- Joint model: two-headed value + policy model (Gumbel search substrate) ----
+// Unlike DistModel (two heads over the SAME features, mean + volatility), the two
+// heads here are over DIFFERENT feature layouts: valueHead scores a board (value
+// features, HEAD_VALUE) and policyHead scores a single candidate move (move
+// features, HEAD_POLICY). forward()/head()/featureVersion() all delegate to
+// valueHead, so a JointModel drops into LearnedValue/mlValueScore exactly like
+// DistModel does (this is what a search built for a plain value evaluator needs).
+// policyForward() is the extra, non-virtual accessor a Gumbel-style search calls
+// directly (via a typeName() check + static_cast, the same unwrapping idiom
+// ml_eval.cpp's mlIncrementalBegin already uses for Residual/DistModel) to score
+// one legal move at a time -- this deliberately bypasses mlRateMoves, which
+// requires head()==HEAD_POLICY and is single-head-only. Owns both heads.
+struct JointModel : public Model {
+    Model* valueHead;    // board features (v1 or v2) -> scalar, HEAD_VALUE
+    Model* policyHead;   // move features (v1)         -> scalar, HEAD_POLICY
+
+    JointModel(Model* value, Model* policy) : valueHead(value), policyHead(policy) {}
+    ~JointModel() override { delete valueHead; delete policyHead; }
+    const char* typeName()  const override { return "joint"; }
+    int  head()              const override { return HEAD_VALUE; }
+    int  featureVersion()    const override { return valueHead->featureVersion(); }
+    int  featureCount()      const override { return valueHead->featureCount(); }
+    float outputScale()      const override { return valueHead->outputScale(); }
+    float forward(const float* x, int m) const override { return valueHead->forward(x, m); }
+
+    // Score one move's feature vector through the policy head. Not part of the
+    // Model virtual interface (no other model needs it); callers that know they
+    // hold a JointModel (typeName()=="joint") call it directly.
+    float policyForward(const float* x, int m) const { return policyHead->forward(x, m); }
+
+    bool save(const string& path) const override;
+    void writeWeights(std::ostream& f) const override;
+};
+
 // ---- Factory / loader ----
 // Construct an empty model of the named type (caller fills weights), or nullptr
 // for an unimplemented / unknown type. (mlp/residual need extra structure and are
