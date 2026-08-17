@@ -6,12 +6,15 @@
 // ============================================================
 // ML inference glue: model slots + scoring
 // ============================================================
-// Models live in a small fixed set of "slots" so that, in one process, White and
+// Models live under integer "slot" handles so that, in one process, White and
 // Black (or many tournament agents) can each use a different model at once. The
 // LearnedValue evaluator and the LearnedPolicy chooser both reference a slot.
+// Storage (ml_eval.cpp) is a sparse map, not a fixed array: ML_SLOTS below is
+// a validation ceiling for slot numbers (which are still part of an agent's
+// canonical identity), not an allocation bound.
 
 // Slots 0/1/2 have fixed file conventions (lin_value/lin_policy/pst_value, see
-// ranking.cpp's slotFile()); slots 3.. are generic sweep/experiment slots
+// ranking.cpp's rankSlotFile()); slots 3.. are generic sweep/experiment slots
 // (models/sweep/slot<N>.txt) so a large hyperparameter sweep can hold many
 // independently-trained candidates rated together in one process, instead of
 // serially swapping one shared file. The trainer's internal quick-score-vs-random
@@ -21,9 +24,9 @@
 // slots (25 draws x up to 6 seeds x 6 checkpoint rungs), since a slot number is
 // part of an agent's canonical identity and every rated agent must be loadable
 // at once; 1024 leaves headroom past that so the next study need not raise this
-// again. Safe to raise: every use is a bounds check or a generic loop, the array
-// is pointers only, and IDs carry explicit slot numbers so nothing is
-// re-identified.
+// again. Safe to raise: every use is a bounds check or a generic loop, storage is
+// a sparse map (not an array sized by this constant), and IDs carry explicit
+// slot numbers so nothing is re-identified.
 #define ML_SLOTS 1024
 
 // The top ML_RESERVED_SLOTS slot numbers (ML_SLOTS-ML_RESERVED_SLOTS .. ML_SLOTS-1)

@@ -1,6 +1,7 @@
 #include "ml_eval.h"
 #include "ai_eval.h"
 #include <cmath>
+#include <unordered_map>
 #if defined(__AVX2__)
 #include <immintrin.h>
 #endif
@@ -8,11 +9,17 @@
 // ============================================================
 // MODEL SLOTS
 // ============================================================
-static Model* g_mlModels[ML_SLOTS] = { nullptr };
+// Backed by a sparse map rather than a fixed Model*[ML_SLOTS] array: the slot
+// number is still the runtime handle every call site threads through (see
+// ml_eval.h), but nothing about storage depends on ML_SLOTS being an upper
+// bound any more, so ML_SLOTS is validation-only now (a sanity ceiling on a
+// parsed roster/test slot number), not an allocation size.
+static std::unordered_map<int, Model*> g_mlModels;
 
 void mlSetModel(int slot, Model* m) {
     if (slot < 0 || slot >= ML_SLOTS) { delete m; return; }
-    if (g_mlModels[slot] && g_mlModels[slot] != m) delete g_mlModels[slot];
+    auto it = g_mlModels.find(slot);
+    if (it != g_mlModels.end() && it->second != m) delete it->second;
     g_mlModels[slot] = m;
 }
 bool mlLoadSlot(int slot, const string& path) {
@@ -23,11 +30,12 @@ bool mlLoadSlot(int slot, const string& path) {
     return true;
 }
 Model* mlGetModel(int slot) {
-    if (slot < 0 || slot >= ML_SLOTS) return nullptr;
-    return g_mlModels[slot];
+    auto it = g_mlModels.find(slot);
+    return it == g_mlModels.end() ? nullptr : it->second;
 }
 void mlClearSlots() {
-    for (int i = 0; i < ML_SLOTS; i++) { delete g_mlModels[i]; g_mlModels[i] = nullptr; }
+    for (auto& kv : g_mlModels) delete kv.second;
+    g_mlModels.clear();
 }
 
 void mlAutoLoadDefaultSlots() {
