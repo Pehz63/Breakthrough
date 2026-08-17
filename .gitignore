@@ -182,6 +182,13 @@ ranking/*_pinned.md
 ranking/*_balanced.tsv
 ranking/*_balanced.md
 
+# Reserved scratch slots (ML_RESERVED_SLOTS, src/ml_eval.h): the test suite's
+# throwaway model load/save writes, structurally separated from models/sweep/
+# so a test can never collide with a roster-referenced model file no matter
+# what slot number it picks. Nothing here is ever roster-referenced, so unlike
+# models/sweep/ below there are no exceptions to track.
+models/scratch/*
+
 # Training hyperparameter sweeps (tools/sweep_pst.ps1): throwaway model
 # checkpoints + generated report, regenerable by re-running the sweep.
 # Exceptions: the vs-champion study's promoted family models (slots 94..99)

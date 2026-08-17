@@ -1,5 +1,42 @@
 #pragma once
 #include "globals.h"
+#include "ml_eval.h"
+#include <fstream>
+#include <string>
+
+// Portable existence check for a test guarding against clobbering a file it
+// does not own (e.g. before writing scratch data to a slot path).
+inline bool fileExists(const std::string& path) {
+    std::ifstream f(path.c_str());
+    return f.good();
+}
+
+// ============================================================
+// Test-suite scratch model slots
+// ============================================================
+// Every test that writes a throwaway model file to a slot MUST take its slot
+// number from this list, not a bare `ML_SLOTS - N` expression written inline.
+// This is the whole fix: a slot number picked ad hoc in each test file is a
+// number nobody can grep reliably (this list itself replaced a set of
+// ML_SLOTS-N literals that, despite a careful audit, still collided twice --
+// ML_SLOTS-5 and ML_SLOTS-6 were each independently claimed by two different
+// tests). One enumerated list in one header is what a reviewer -- or the
+// compiler, via ODR on the enumerator names -- can't fail to see. All values
+// fall inside the reserved scratch range (ML_RESERVED_SLOTS, ml_eval.h), which
+// rankSlotFile() (src/ranking.h) routes to models/scratch/ instead of
+// models/sweep/, so even a mistaken reuse here can never touch a live roster
+// agent's model file the way slot 6/7/9 were lost (see todo.md's
+// Elo/Tournaments section). Add a new enumerator, at the next unused offset,
+// when a new test needs a scratch slot; never reuse another test's value
+// unless that test's own comment says it deliberately shares it.
+enum TestScratchSlot {
+    kScratchSlotScheduler      = ML_SLOTS - 1,  // "ranking scheduler - legacy-form..." + "...cohort filter..." (deliberately shared: the second test reads the model the first one saved)
+    kScratchSlotRegimeTokenA   = ML_SLOTS - 2,  // "ranking id - regime token replaces..." (first slot)
+    kScratchSlotRegimeTokenB   = ML_SLOTS - 3,  // "ranking id - regime token replaces..." (second slot)
+    kScratchSlotRisk           = ML_SLOTS - 4,  // "ranking id - learned() optional risk= weight"
+    kScratchSlotLoadModelsOk   = ML_SLOTS - 5,  // "ranking - rankLoadAgentModels" (loads-successfully case)
+    kScratchSlotLoadModelsMiss = ML_SLOTS - 6,  // "ranking - rankLoadAgentModels" (missing-file case)
+};
 
 // Copy layout[x][y] into board[][] and recalculate all global counters.
 // Sets PRNT=0 to silence all output during tests.

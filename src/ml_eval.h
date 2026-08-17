@@ -26,6 +26,21 @@
 // re-identified.
 #define ML_SLOTS 1024
 
+// The top ML_RESERVED_SLOTS slot numbers (ML_SLOTS-ML_RESERVED_SLOTS .. ML_SLOTS-1)
+// are permanently reserved for ephemeral scratch use: the test suite's model
+// load/save tests. ranking.cpp's rankSlotFile() resolves this range to
+// models/scratch/ instead of models/sweep/, a directory no roster-tracked agent
+// identity is ever assigned into, so a test writing to any number in this range
+// can never collide with a live agent's permanent model file no matter how large
+// the sweep ranges in src/CLAUDE.md's slot-ownership table grow. This is
+// structural, not a numbering convention to remember: a roster agent must never
+// be given a slot in this range (tests/test_ranking.cpp has a tripwire test that
+// fails if one ever is), and a test needing a throwaway model slot should pick
+// one from this range rather than a low/plausible-looking number (a test that
+// hardcoded slot 6/7 as "surely unused" scratch overwrote two live agents' model
+// files instead -- see todo.md's Elo/Tournaments section).
+#define ML_RESERVED_SLOTS 16
+
 // Best-effort: load the default trained models into their conventional slots
 // (models/lin_value.txt -> slot 0, models/lin_policy.txt -> slot 1) if present, so
 // the engine binaries can use LearnedValue / LearnedPolicy without extra wiring.

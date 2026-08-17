@@ -12,6 +12,7 @@
 #include <set>
 #include <cstdlib>
 #include <cstdio>
+#include <cctype>
 #include <fstream>
 #ifdef _WIN32
 #include <direct.h>
@@ -345,13 +346,20 @@ TEST_CASE("ranking id - learned model hashes (when model files exist)") {
     REQUIRE(rankFileHash8("models/no_such_model_file.txt") == "");
 }
 
-// Sweep/experiment slots (3..ML_SLOTS-1) use a generic models/sweep/slot<N>.txt
-// convention (see slotFile() in ranking.cpp) instead of a fixed named file, so a
-// large hyperparameter sweep can give each independently-trained candidate its
-// own permanent identity and be rated together in one process.
+// Sweep/experiment slots (3..ML_SLOTS-ML_RESERVED_SLOTS-1) use a generic
+// models/sweep/slot<N>.txt convention (see rankSlotFile() in ranking.cpp)
+// instead of a fixed named file, so a large hyperparameter sweep can give each
+// independently-trained candidate its own permanent identity and be rated
+// together in one process. This test deliberately exercises that GENERAL
+// (non-reserved) branch, so unlike the rest of this file's slot-writing tests
+// it cannot use a reserved-range slot -- slot 5 sits in the same numbering
+// space real roster agents do. It is covered instead by the roster tripwire
+// test below ("test-suite scratch slots never collide with a live roster
+// agent"), which fails loudly if slot 5 is ever claimed by a real agent,
+// rather than this test silently overwriting that agent's model.
 TEST_CASE("ranking id - sweep slot convention (slot >= 3)") {
     const int slot = 5;
-    const string path = "models/sweep/slot5.txt";
+    const string path = rankSlotFile(slot);
 #ifdef _WIN32
     _mkdir("models/sweep");
 #else
@@ -441,14 +449,22 @@ TEST_CASE("ranking - rankLoadAgentModels") {
         REQUIRE(err.empty());
     }
 
-    // A LearnedValue agent naming a real sweep-slot model loads successfully.
+    // A LearnedValue agent naming a real model loads successfully. Uses a named
+    // constant from the test-suite scratch-slot registry (tests/helpers.h),
+    // which rankSlotFile() resolves to models/scratch/ instead of models/sweep/
+    // -- a directory no roster-tracked agent identity is ever assigned into, so
+    // this write can never collide with a live agent's permanent model file. A
+    // prior version of this test used slot 6, a live roster agent's actual
+    // model, and LinearModel::save() silently overwrote it (see todo.md's
+    // Elo/Tournaments section). Never use a bare slot number for scratch; take
+    // one from tests/helpers.h's TestScratchSlot registry instead.
     {
-        const int slot = 6;
-        const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+        const int slot = kScratchSlotLoadModelsOk;
+        const string path = rankSlotFile(slot);
 #ifdef _WIN32
-        _mkdir("models/sweep");
+        _mkdir("models/scratch");
 #else
-        mkdir("models/sweep", 0755);
+        mkdir("models/scratch", 0755);
 #endif
         LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
         m.bias = 0.1f;
@@ -463,9 +479,10 @@ TEST_CASE("ranking - rankLoadAgentModels") {
 
     // A LearnedValue agent naming a slot with no file on disk fails, with a
     // human-readable error, rather than silently loading stale slot content.
+    // A second, distinct registry slot (see above).
     {
-        const int slot = 7;
-        std::remove(("models/sweep/slot" + std::to_string(slot) + ".txt").c_str());
+        const int slot = kScratchSlotLoadModelsMiss;
+        std::remove(rankSlotFile(slot).c_str());
         AgentSpec s = agentMakeSearch("t", 0, rkEvalIdx("LearnedValue"), 4, slot);
         string err;
         REQUIRE_FALSE(rankLoadAgentModels(s, err));
@@ -504,12 +521,15 @@ static RankAgent parseOkLearnedRisk(const string& id, int expectRisk) {
 }
 
 TEST_CASE("ranking id - learned() optional risk= weight") {
-    const int slot = ML_SLOTS - 6;
-    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+    // Registry slot (tests/helpers.h): rankSlotFile() routes it to
+    // models/scratch/, never models/sweep/, so this write can't collide with a
+    // live roster agent's model file.
+    const int slot = kScratchSlotRisk;
+    const string path = rankSlotFile(slot);
 #ifdef _WIN32
-    _mkdir("models/sweep");
+    _mkdir("models/scratch");
 #else
-    mkdir("models/sweep", 0755);
+    mkdir("models/scratch", 0755);
 #endif
     LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
     m.bias = 0.2f;
@@ -549,21 +569,23 @@ TEST_CASE("ranking id - learned() optional risk= weight") {
 // Isolated live repro that first caught it: a 3-agent, 1-game store where pending
 // stayed at 24 instead of dropping to 23 after a real, correctly stored game.
 TEST_CASE("ranking scheduler - legacy-form roster entry matches a canonical-form stored row") {
-    // Slot 1023 (ML_SLOTS-1): the reserved throwaway-test slot, as far as possible
-    // from any real study's range. A prior version of this test used slot 9, which
-    // (unlike the "sweep slot convention" test's slot 5, genuinely never claimed)
-    // turned out to be an ACTIVE roster agent's real model -- LinearModel::save()
-    // silently overwrote it, and since models/sweep/*.txt is gitignored, the
-    // original weights were unrecoverable (see the retirement note this forced in
-    // ranking/roster.txt, 2026-07-30). Never reuse a low/plausible-looking slot
-    // number for scratch data without checking `grep learned\(s<N>, ranking/roster.txt`
-    // first; use this reserved slot for exactly this purpose instead.
-    const int slot = ML_SLOTS - 1;
-    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+    // Registry slot (tests/helpers.h), inside the reserved scratch range
+    // (ML_RESERVED_SLOTS, ml_eval.h), which rankSlotFile() resolves to
+    // models/scratch/ -- a directory structurally separate from models/sweep/,
+    // so no roster-tracked identity can ever live there regardless of slot
+    // number. A prior version of this test used slot 9 (a plain models/sweep/
+    // number), which turned out to be an ACTIVE roster agent's real model --
+    // LinearModel::save() silently overwrote it, and since models/sweep/*.txt
+    // is gitignored, the original weights were unrecoverable (see the
+    // retirement note this forced in ranking/roster.txt, 2026-07-30). Always
+    // build a scratch slot's path via rankSlotFile() and a registry slot
+    // number, never a hand-built models/sweep/ path or a bare ML_SLOTS-N.
+    const int slot = kScratchSlotScheduler;
+    const string path = rankSlotFile(slot);
 #ifdef _WIN32
-    _mkdir("models/sweep");
+    _mkdir("models/scratch");
 #else
-    mkdir("models/sweep", 0755);
+    mkdir("models/scratch", 0755);
 #endif
     LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
     m.bias = 0.2f;
@@ -619,9 +641,9 @@ TEST_CASE("ranking scheduler - legacy-form roster entry matches a canonical-form
 // NOTHING, silently filtering out every pair and reporting "0 pending" for an
 // entirely unplayed 468-agent cohort.
 TEST_CASE("ranking scheduler - cohort filter matches canonical ids, not legacy short forms") {
-    string h = rankFileHash8("models/sweep/slot" + std::to_string(ML_SLOTS - 1) + ".txt");
+    string h = rankFileHash8(rankSlotFile(kScratchSlotScheduler));
     REQUIRE_FALSE(h.empty());   // reuses the model the previous test just saved
-    string legacyId = "greedy@1.learned(s" + std::to_string(ML_SLOTS - 1) + "," + h + ")@1";
+    string legacyId = "greedy@1.learned(s" + std::to_string((int)kScratchSlotScheduler) + "," + h + ")@1";
 
     std::istringstream in("anchor rand@1\non " + legacyId + "\n");
     std::vector<RankAgent> roster;
@@ -657,18 +679,17 @@ TEST_CASE("ranking scheduler - cohort filter matches canonical ids, not legacy s
 // migration: stored rows written under the old token must still match a roster
 // carrying the new one, or every learned agent silently loses its game history.
 TEST_CASE("ranking id - regime token replaces the superseded model-type token") {
-    // Dedicated slots for THIS test. Deliberately not ML_SLOTS-1 or ML_SLOTS-2:
-    // both are live trainer scratch slots (quickScoreVsRandom uses ML_SLOTS-1,
-    // trainTDLeaf and the gen-model path use ML_SLOTS-2), and ML_SLOTS-1 is also
-    // used by the scheduler tests above. archDescForSlot() caches per slot for the
-    // process lifetime, so two tests sharing a slot silently read each other's
-    // descriptor -- whichever ran first wins. Give every slot-writing test its own.
-    const int slot = ML_SLOTS - 4;
-    const string path = "models/sweep/slot" + std::to_string(slot) + ".txt";
+    // Registry slots (tests/helpers.h): archDescForSlot() caches per slot for
+    // the process lifetime, so two tests sharing a slot silently read each
+    // other's descriptor -- whichever ran first wins -- which is why every
+    // slot-writing test takes its own name from the shared registry rather than
+    // picking a number.
+    const int slot = kScratchSlotRegimeTokenA;
+    const string path = rankSlotFile(slot);
 #ifdef _WIN32
-    _mkdir("models/sweep");
+    _mkdir("models/scratch");
 #else
-    mkdir("models/sweep", 0755);
+    mkdir("models/scratch", 0755);
 #endif
     // A model whose teacher= line marks it as TD-Leaf self-play.
     LinearModel m(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
@@ -707,8 +728,8 @@ TEST_CASE("ranking id - regime token replaces the superseded model-type token") 
     // production (sweeps write slot files, then rank.exe runs as a separate
     // process) but a test that swaps a model in place would silently assert
     // against the previous model's descriptor.
-    const int slot2 = ML_SLOTS - 5;
-    const string path2 = "models/sweep/slot" + std::to_string(slot2) + ".txt";
+    const int slot2 = kScratchSlotRegimeTokenB;
+    const string path2 = rankSlotFile(slot2);
     LinearModel m2(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
     m2.bias = 0.4f;
     for (int i = 0; i < m2.n; i++) m2.w[i] = 0.04f * i;
@@ -831,6 +852,53 @@ TEST_CASE("ranking roster - parse, toggles, and validation") {
         string err;
         REQUIRE_FALSE(rankLoadRoster(in, r, err));
     }
+}
+
+// Tripwire for the reserved-scratch-range invariant (ML_RESERVED_SLOTS,
+// ml_eval.h) and for the specific low-numbered slots this test suite still
+// writes scratch data into outside that range (see the "sweep slot convention"
+// test above). If a real training/sweep script ever assigns a roster agent one
+// of these numbers, this fails loudly and immediately here, instead of some
+// later test run silently overwriting that agent's model file -- the exact
+// failure mode that lost the slot6/slot7/slot9 models (todo.md, Elo/Tournaments).
+TEST_CASE("ranking roster - test-suite scratch slots never collide with a live roster agent") {
+    // Low/general-range slots the test suite writes scratch model files into
+    // outside the reserved range (used to test the GENERAL sweep-slot convention
+    // itself, which reserved-range slots can't exercise). Extend this list if a
+    // future test adds another one.
+    static const int kGeneralRangeScratchSlots[] = { 5 };
+
+    // A plain-text scan for "model=<N>" tokens, deliberately NOT a
+    // rankLoadRosterFile() parse: that also re-validates every learned model's
+    // content hash against disk, a separate invariant that can legitimately be
+    // broken independent of slot-NUMBER collisions (e.g. the already-known
+    // slot6/slot7 loss, todo.md's Elo/Tournaments section, which currently
+    // fails rankLoadRosterFile entirely). This test's only job is the slot
+    // number, so it must not be blocked by an unrelated content-hash defect.
+    std::ifstream f("ranking/roster.txt");
+    REQUIRE(f.is_open());
+    std::string line;
+    int checked = 0;
+    while (std::getline(f, line)) {
+        size_t h = line.find('#');
+        if (h != string::npos) line = line.substr(0, h);
+        size_t pos = 0;
+        while ((pos = line.find("model=", pos)) != string::npos) {
+            pos += 6;
+            size_t end = pos;
+            while (end < line.size() && isdigit((unsigned char)line[end])) end++;
+            REQUIRE(end > pos);
+            int s = std::atoi(line.substr(pos, end - pos).c_str());
+            checked++;
+            INFO("roster line: " << line << "  modelSlot=" << s);
+            bool inReserved = (s >= ML_SLOTS - ML_RESERVED_SLOTS && s < ML_SLOTS);
+            REQUIRE_FALSE(inReserved);
+            for (size_t k = 0; k < sizeof(kGeneralRangeScratchSlots) / sizeof(int); k++)
+                REQUIRE_FALSE(s == kGeneralRangeScratchSlots[k]);
+            pos = end;
+        }
+    }
+    REQUIRE(checked > 0);
 }
 
 // ============================================================

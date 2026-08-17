@@ -430,6 +430,15 @@ int rankBookGen(const std::string& storeFile, const std::string& board,
 // no-op success. False + err (human-readable) on a missing/unreadable file.
 bool rankLoadAgentModels(const AgentSpec& spec, std::string& err);
 
+// The on-disk file a model slot resolves to (models/lin_value.txt for slot 0,
+// .../lin_policy.txt for 1, .../pst_value.txt for 2, models/sweep/slot<N>.txt
+// for a general sweep slot, models/scratch/slot<N>.txt for a slot in the
+// reserved range -- see ML_RESERVED_SLOTS, ml_eval.h). Exported so any caller
+// that needs to read or write a slot's file (the test suite included) uses the
+// SAME derivation rank.exe itself does, rather than re-deriving the naming
+// convention and risking it drifting out of sync.
+std::string rankSlotFile(int slot);
+
 // ---- Pair-play training-data generation (pairgen) ----
 // A dilution override applied on top of the two agents' own specs during
 // generation, so games between deterministic agents still vary without

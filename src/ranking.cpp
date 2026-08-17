@@ -115,14 +115,23 @@ static int gameOutcome(int victor) {
 }
 
 // The model file behind a slot. Slots 0/1/2 are the project's fixed, named
-// conventions; slots 3.. are a generic sweep/experiment convention so many
-// independently-trained candidates can each get a permanent identity (a slot +
-// file) and be rated together in one process, instead of one shared file being
-// swapped serially between gauntlet calls.
-static string slotFile(int slot) {
+// conventions; slots 3..(ML_SLOTS-ML_RESERVED_SLOTS-1) are a generic
+// sweep/experiment convention so many independently-trained candidates can each
+// get a permanent identity (a slot + file) and be rated together in one process,
+// instead of one shared file being swapped serially between gauntlet calls. The
+// top ML_RESERVED_SLOTS slots are permanently reserved scratch space (see
+// ML_RESERVED_SLOTS, ml_eval.h) and resolve to a SEPARATE models/scratch/
+// directory that no roster-tracked identity is ever written into, so ephemeral
+// test/tooling writes there can never collide with a live agent's model file.
+// Exported (not file-local) so callers building a scratch path -- the test
+// suite included -- go through this one implementation rather than each
+// re-deriving the naming convention themselves and risking divergence.
+string rankSlotFile(int slot) {
     if (slot == 0) return "models/lin_value.txt";
     if (slot == 1) return "models/lin_policy.txt";
     if (slot == 2) return "models/pst_value.txt";   // sparse piece-square value model (feature v2, incremental)
+    if (slot >= ML_SLOTS - ML_RESERVED_SLOTS && slot < ML_SLOTS)
+        return "models/scratch/slot" + std::to_string(slot) + ".txt";
     if (slot >= 3 && slot < ML_SLOTS) return "models/sweep/slot" + std::to_string(slot) + ".txt";
     return "";
 }
@@ -332,7 +341,7 @@ static string archDescForSlot(int slot) {
     std::map<int, string>::iterator c = cache.find(slot);
     if (c != cache.end()) return c->second;
     string out;
-    std::ifstream f(slotFile(slot).c_str());
+    std::ifstream f(rankSlotFile(slot).c_str());
     if (f.is_open()) {
         std::map<string, string> kv;
         string line;
@@ -552,7 +561,7 @@ string rankAgentId(const AgentSpec& a) {
         s += "@" + std::to_string(row ? row->version : 1);
         if (idn == "policy")
             s += ".linpol(model=" + std::to_string(a.modelSlot) + ","
-               + rankFileHash8(slotFile(a.modelSlot)) + ")";
+               + rankFileHash8(rankSlotFile(a.modelSlot)) + ")";
     } else {
         const char* ename = (a.explorer >= 0 && a.explorer < g_explorerCount)
                           ? g_explorers[a.explorer].name : "";
@@ -588,7 +597,7 @@ string rankAgentId(const AgentSpec& a) {
         if (ev && ev->letters[0] == '\0') {
             string arch = archDescForSlot(a.modelSlot);
             s += ".learned(model=" + std::to_string(a.modelSlot) + ","
-               + rankFileHash8(slotFile(a.modelSlot))
+               + rankFileHash8(rankSlotFile(a.modelSlot))
                + (arch.empty() ? "" : "," + arch);
             // Risk (evalParams[1]): tenths-of-sigma multiplier in mu + k*sigma
             // (risk=5 -> k=0.5), DistModel slots only. Always last, omitted at
@@ -1223,7 +1232,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     // Learned agents: the model file on disk must match the ID's content hash, so
     // the match history stays truthful (a retrain is a new identity).
     if (modelSlot >= 0) {
-        string mf = slotFile(modelSlot);
+        string mf = rankSlotFile(modelSlot);
         if (mf.empty()) { err = "no model file convention for slot " + std::to_string(modelSlot); return false; }
         string actual = rankFileHash8(mf);
         if (actual.empty()) { err = "model file " + mf + " not found (needed by this id)"; return false; }
@@ -2558,7 +2567,7 @@ static bool loadModelSlots(const std::vector<const RankAgent*>& agents, string& 
             slots.insert(a.modelSlot);
     }
     for (std::set<int>::iterator it = slots.begin(); it != slots.end(); ++it) {
-        string f = slotFile(*it);
+        string f = rankSlotFile(*it);
         if (f.empty() || !mlLoadSlot(*it, f)) {
             err = "cannot load model " + f + " into slot " + std::to_string(*it);
             return false;
@@ -5036,9 +5045,9 @@ int rankCheck(const string& rosterFile, const string& storeFile, int gamesPerPai
     // Model hashes first: they are what a user needs to paste into a learned
     // agent's id, and they help even when the roster fails to parse.
     for (int slot = 0; slot < ML_SLOTS; slot++) {
-        string h = rankFileHash8(slotFile(slot));
+        string h = rankFileHash8(rankSlotFile(slot));
         if (!h.empty())
-            cout << "model hash: " << slotFile(slot) << " = " << h << " (slot " << slot << ")\n";
+            cout << "model hash: " << rankSlotFile(slot) << " = " << h << " (slot " << slot << ")\n";
     }
 
     std::vector<RankAgent> roster;

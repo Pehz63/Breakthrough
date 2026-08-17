@@ -575,7 +575,25 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   agents stands as-is; no NEW games can be played for either until the roster
   lines are repointed at retrained models or the weights are restored from
   outside this repo. Full detail: `plans/gumbel-mcts-results-1-hidden-greeting-mist.md`
-  `[Later]` {cpu: hours, dev: low}
+  ~~`[Later]` {cpu: hours, dev: low}~~
+  ~~**Root-cause defect class (test picking an unverified slot number) fixed
+  2026-08-16.**~~ The reserved-scratch-range mechanism below closes this
+  category structurally: it is no longer possible for a test to pick a slot
+  number that lands on a live roster agent, because the scratch range resolves
+  to a directory (`models/scratch/`) no roster identity is ever written into.
+  **Severity correction, same day:** the paragraph above undersold the
+  consequence. Confirmed by running `rank.exe check` against the live repo: the
+  hash mismatch on `models/sweep/slot6.txt` does not just block new games for
+  the two affected agents, it makes `rankLoadRoster` reject `ranking/roster.txt`
+  IN FULL (a single bad line aborts the whole parse, `src/ranking.cpp`), so
+  every `rank.exe` subcommand that loads the roster -- `check`, `play`, `rate`,
+  `gauntlet`, all of them -- currently fails outright. This has been true since
+  the 2026-08-16 loss and was not previously verified end to end (see the
+  project's own "Validate the instrument before quoting the reading" rule,
+  `CLAUDE.md`). Repair requires a roster-data decision (repoint `model=6`/
+  `model=7` at retrained replacements, or restore the original weights from
+  outside this repo) that stays with the developer; not attempted here.
+  `[Next]` {cpu: hours, dev: low}
 - ~~**Give the rating path real sample diversity.**~~ Done 2026-07-26, via a second
   pool rather than by changing the first. `ranking/roster_open.txt` holds 14 agents
   each wearing `.opener(rand,moves=4)@1`, played with `rank.exe ... --paired-openings` into
