@@ -56,19 +56,24 @@ transcribed. See todo.)*
 ## `gumbelzero` (`train.exe gumbelzero`, `src/ml_gumbelzero.cpp`)
 
 Source: `plans/gumbel-mcts-results-2-hidden-greeting-mist.md` (Pass 1 sanity,
-2026-08-17). One configuration run so far -- everything below is an "untested
-axis" in the sense Pass 2 needs to sweep it, not a settled value.
+2026-08-17) and `plans/gumbel-mcts-results-3-amber-thicket.md` (Pass 2 broad
+sweep, Round A + Round B + the compute-matched sims follow-up, 2026-08-17).
+Round A: 21 draws (random search, 1 seed, rungs 100/400/1500). Round B: the
+top 8 Round-A draws seed-replicated x3 with an extended ladder
+(100/400/1500/4000). All screening-level (pinned fit vs `ranking/standings.tsv`,
+never certified against the unpinned pool).
 
 | Hyperparameter | Values tried | Finding | Settled? |
 |---|---|---|---|
-| `--sims` (simulations/move) | 8 (unit tests), 50 (manual Pass-1 run) | plumbing only; no strength signal at either value | No -- never swept for strength |
-| `--lr` | 0.01 (default) | -- | No -- never varied |
-| `--l2` | 0.0 (default) | -- | No -- never varied |
-| `--replay-capacity` / `--replay-warmup` | 2000/32 (manual run), 40/4 (unit tests) | -- | No -- never varied for strength |
-| `--batch-size` | 32 (manual run), 4 (unit tests) | -- | No -- never varied |
-| `--open-plies` | 4 (default) | -- | No -- never varied |
-| games / `--ckpt-at` ladder | 40 games, rungs 20/40 | plumbing only (rung mechanism produces two distinct, correctly-hashed checkpoints) | No -- ladder never extended, no Elo measured at either rung |
-| model architecture (both heads) | linear only | developer's explicit Pass-1 choice (faster convergence, proven not to saturate at this project's scale) | Deliberate default, not itself compared against MLP in this regime |
+| `--sims` (simulations/move) | 25, 50, 100, 200 (Round A draws); 25/50/100/200/400/800 compute-matched at one fixed config (theory 48) | **Interior optimum under fixed total training compute**: 585 (50) -> 646 (100) -> 673 (200) -> peak 683 (400) -> 617 (800), all +/- ~21; 25 sims separately ruled out (485 +/- 24). Round A's raw rung-matched table also shows sims rising with Elo, but that comparison is CONFOUNDED (higher sims costs more compute per game at a fixed game count) -- use the compute-matched result, not the rung-matched one | **Yes for the productive range: 100-400.** 25 too low, 800 too high, exact interior peak within [100,400] not pinned down |
+| `--lr` | 0.003, 0.01, 0.03 (Round A) | Round A's raw group means look monotonic (386/421/572 rung-1500 pooled), but the lr=0.03 bucket also has 2.4x the mean `sims` of the lr=0.003 bucket (133 vs 56) in this single-seed random-search sample, so the apparent effect is substantially confounded with sims, not isolated | No -- confounded, needs a fixed-sims isolated sweep |
+| `--l2` | 0.0, 0.0003, 0.001 (Round A) | l2=0.0 wins outright (rung-1500 pooled means 595/422/362, monotonic) and survives a sims-confound check (bucket mean sims 94/69/83, not correlated with the l2 ordering) | Yes -- l2=0.0 is the best value found and is the tested floor |
+| `--replay-capacity` / `--replay-warmup` | (500,16), (2000,32), (8000,128) (Round A) | No clean trend (rung-1500 pooled means 372/447/384 by capacity) | No -- flat within noise, not flagged for further sweeping |
+| `--batch-size` | 8, 32, 64 (Round A) | No clean trend (rung-1500 pooled means 440/447/395) | No -- flat within noise, not flagged for further sweeping |
+| `--open-plies` | 0, 4, 8 (Round A; grounded on `ranking/CHAMPION.md`'s openless/4-random/8-random categories, not arbitrary) | Weak monotonic trend, open=8 best (rung-1500 pooled means 388/446/464), but confounded with sims/lr in the same way as the lr finding above; capped at 8 by design since no serving category exists above it | No -- confounded, and not extendable past 8 without a new category |
+| games / `--ckpt-at` ladder | Round A: 100/400/1500. Round B: 100/400/1500/4000 (top 8 draws, 3 seeds each) | Most Round-A draws were still rising at rung 1500 (12/21 monotonic rising, only 3/21 showing an interior peak by rung 400), so Round A alone understates ceiling. Round B's leader (R17) is still rising in 2 of 3 seeds even at rung 4000; REF and R3 are also still rising at rung 4000. Seed-to-seed spread at rung 4000 (R17: 603-738, a 135-Elo range) is at the high end of the project's documented 50-150 Elo training-seed-noise band | No -- ceiling not yet reached for the leading configurations |
+| model architecture (both heads) | linear only | developer's explicit Pass-1 choice (faster convergence, proven not to saturate at this project's scale); not revisited in Pass 2 | Deliberate default, not compared against MLP in this regime |
+| root breadth / `cVisit` / `cScale` / halving schedule (search-time, not training-time) | hardcoded internals in `ai_gumbel.cpp`, never exposed as agent-level knobs | not a training hyperparameter axis at all in the current code -- raised as a possible future lever, not yet implemented or tested | No -- not yet exposed |
 
 ## `dist-value` (`train.exe dist-value`, position-oracle pipeline)
 

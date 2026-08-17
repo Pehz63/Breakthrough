@@ -337,11 +337,34 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   sweep, not yet scoped) and Pass 3 produce a checkpoint that clears a
   full-roster refit. See `ML.md`'s "Gumbel MCTS" section for the full
   picture `[Now]` {cpu: seconds, dev: high}
-  - **Pass 2 (broad sweep) and Pass 3 (optimize)**: sweep sims budget,
-    replay capacity/warmup, batch size, lr, and seeds as a presented
-    configuration grid (`Docs/model-training-playbook.md`), then certify the
-    best-supported configuration's Elo via a full-roster refit before any
-    strength claim `[Next]` {cpu: hours, dev: high}
+  - ~~**Pass 2 (broad sweep)** shipped 2026-08-17
+    (`plans/gumbel-mcts-results-3-amber-thicket.md`): Round A (21 draws,
+    random search over sims/lr/l2/replay/batch/open-plies, 1 seed, rungs
+    100/400/1500) + Round B (top 8 draws seed-replicated x3, extended to
+    rung 4000) + a compute-matched sims follow-up. Findings: sims has an
+    interior optimum under fixed training compute (100-400 productive, 25
+    too low, 800 too high -- theory 48); l2=0.0 is the best value found and
+    survives a sims-confound check; lr and open-plies show apparent trends
+    that are confounded with sims in the single-seed sample and are NOT
+    settled; replay-capacity/warmup and batch-size show no clean trend.
+    Leading configuration (R17: sims=200, lr=0.03, l2=0.0,
+    replay=8000/128, batch=8, open=8) still rising at rung 4000 in 2 of 3
+    seeds -- ceiling not reached. **Still screening-level only** (pinned
+    fits, never an unpinned full-roster refit) -- no Elo is certified. A
+    direct 32-game match of R17's best checkpoint against the plain
+    `ab(deep=6)@1.classic(chip=100)@2` chip counter went 32-0 to the chip
+    counter (both colors), at roughly 1/10th the compute per move, so this
+    regime remains far from competitive even against the simplest
+    non-learned baseline.~~ `[Done]` {cpu: hours, dev: high}
+  - **Pass 3 (optimize)**: not yet scoped. Candidates raised so far: an
+    isolated fixed-sims lr sweep to settle the lr/sims confound from Pass 2,
+    extending the Round B ladder past rung 4000 for R17/R3/REF (none had
+    plateaued), and exposing `ai_gumbel.cpp`'s hardcoded search-time
+    constants (root Gumbel-top-k breadth, `kGumbelCVisit`/`kGumbelCScale`,
+    the Sequential-Halving round schedule) as agent-level knobs so search
+    shape becomes a lever independent of `sims`, testable directly against
+    already-trained checkpoints with no retraining `[Next]` {cpu: hours,
+    dev: high}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

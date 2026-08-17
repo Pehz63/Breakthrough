@@ -280,13 +280,38 @@ randomness is genuinely live. A manual `train.exe gumbelzero` run (40 games,
 `slot651.txt`) that round-trip through `rank.exe check` with the
 `gumbel_self` regime tag.
 
-**What Pass 1 is not:** a strength claim. No Elo has been measured for any
-checkpoint this trainer has produced; per
-`Docs/model-training-playbook.md`'s certification gate it must not be
-described as strong or promoted until it clears a full-roster refit. Pass 2
-(a broad hyperparameter sweep -- sims budget, replay capacity/warmup, batch
-size, lr, seeds, presented as a grid before running) and Pass 3 (optimize)
-are future work, not yet scoped.
+**Pass 2 (broad sweep, screening-level, shipped 2026-08-17,
+`plans/gumbel-mcts-results-3-amber-thicket.md`).** Round A: 21 random-search
+draws over sims (25/50/100/200), lr, l2, replay capacity/warmup, batch size,
+and open-plies (grounded on `ranking/CHAMPION.md`'s openless/4-random/8-random
+categories), 1 seed each, rated at rungs 100/400/1500 via a pinned screening
+fit (`ranking/matches_screen_gz.jsonl`, never the canonical ladder). Round B:
+the top 8 Round-A draws seed-replicated x3 with the ladder extended to rung
+4000. A separate compute-matched follow-up (one fixed config, sims held as
+the only varying axis, game count chosen so total training compute matches
+across arms) found sims has an **interior optimum**: 100-400 is the
+productive range (theory 48 in `Docs/theories.md`), 25 sims is too low
+(485 +/- 24), 800 is past the peak (617 +/- 21 vs 683 +/- 21 at 400). l2=0.0
+is the best value found and holds up under a check for confounding with
+sims; the apparent lr and open-plies trends do NOT hold up under the same
+check (in the single-seed Round-A sample, higher-lr and higher-open-plies
+buckets also drew higher mean sims, so their apparent effect is at least
+partly a sims artifact) and are not settled. Full axis-by-axis findings:
+`Docs/hyperparameter-log.md`'s `gumbelzero` section.
+
+**What Pass 2 is not:** a strength claim, and not close to one. The leading
+configuration found (R17: sims=200, lr=0.03, l2=0.0, replay=8000/128,
+batch=8, open=8) was still rising at rung 4000 in 2 of 3 seed replicas, so
+even its own screening ceiling is not yet located. A direct 32-game match
+between R17's best checkpoint and the plain, non-learned
+`ab(deep=6)@1.classic(chip=100)@2` chip counter went 32-0 to the chip
+counter, in both colors, at roughly 10x less compute per move. Pass 3
+(optimize) is future work, not yet scoped; candidates raised so far are an
+isolated fixed-sims lr sweep (to settle the lr/sims confound) and exposing
+`ai_gumbel.cpp`'s hardcoded search-time constants (root Gumbel-top-k
+breadth, `c_visit`/`c_scale`, the Sequential-Halving round schedule) as
+agent-level knobs, which would add a search-shape lever independent of
+`sims` and testable against already-trained checkpoints with no retraining.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 

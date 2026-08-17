@@ -148,6 +148,24 @@ ranking/standings_screen.tsv
 ranking/games_screen.tsv
 ranking/report_screen.md
 
+# Gumbel-Zero Pass-2 screening pool (tools/gumbelzero_study.ps1 /
+# gumbelzero_study_roundb.ps1). Same pattern as the TD-Leaf screening pool
+# above: Round A + Round B cohort games share this store instead of the
+# permanent ladder. Its pinned-fit outputs are already covered by
+# ranking/*_pinned.*.
+ranking/matches_screen_gz.jsonl
+ranking/matches_screen_gz.jsonl.*
+ranking/matches_screen_gz.*.jsonl
+
+# One-off ad hoc match stores (e.g. a single direct-pairing query played into
+# its own isolated store so it never touches the canonical ladder). Named
+# per query, not a fixed pattern -- add one line per store the first time
+# it's created, since these are scratch by construction.
+ranking/matches_ab6_vs_gz.jsonl
+ranking/*_ab6_vs_gz.tsv
+ranking/*_ab6_vs_gz.md
+ranking/roster_ab6_vs_gz.txt
+
 # One-off screening cohort store (risk-weight study, see
 # plans/risk-weight-results-1-dusty-kestrel.md). Same rationale as the
 # matches_screen.* block above (a study's games kept out of the permanent
