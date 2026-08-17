@@ -87,6 +87,23 @@ int gumbelHalvingRounds(int m, int budget, int* simsPerRound) {
     return rounds;
 }
 
+void gumbelImprovedPolicy(const GumbelRootInfo& info, double* out) {
+    int n = info.moveCount;
+    if (n <= 0) return;
+    int maxN = 0;
+    for (int i = 0; i < n; i++) if (info.visitCounts[i] > maxN) maxN = info.visitCounts[i];
+    double adj[ML_MAX_MOVES];
+    double top = -1e300;
+    for (int i = 0; i < n; i++) {
+        adj[i] = info.logits[i] + gumbelSigma(info.completedQ[i], maxN, kGumbelCVisit, kGumbelCScale);
+        if (adj[i] > top) top = adj[i];
+    }
+    double sum = 0.0;
+    for (int i = 0; i < n; i++) { out[i] = exp(adj[i] - top); sum += out[i]; }
+    if (sum <= 0.0) sum = 1.0;   // degenerate guard, never hit in practice (exp of the max term is 1)
+    for (int i = 0; i < n; i++) out[i] /= sum;
+}
+
 // ============================================================
 // BOARD-COUPLED HELPERS
 // ============================================================
@@ -243,7 +260,10 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
     for (int i = 0; i < n; i++) {
         bool wins = (side == White) ? (rootMoves[i].dy == SIZE - 1) : (rootMoves[i].dy == 0);
         if (!wins) continue;
-        if (info) { info->moveCount = 0; info->rootValue = (side == White) ? 1.0 : -1.0; }
+        if (info) {
+            info->moveCount = 0;
+            info->rootValue = info->searchValue = (side == White) ? 1.0 : -1.0;
+        }
         return (side == White)
             ? playMoveWhite(rootMoves[i].sx, rootMoves[i].sy, rootMoves[i].dx)
             : playMoveBlack(rootMoves[i].sx, rootMoves[i].sy, rootMoves[i].dx);
@@ -263,7 +283,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
         if (info) {
             info->moveCount = 1; info->logits[0] = root.logits[0];
             info->completedQ[0] = moverRelative(rootLeafValue, side);
-            info->visitCounts[0] = 0; info->rootValue = rootLeafValue;
+            info->visitCounts[0] = 0; info->rootValue = info->searchValue = rootLeafValue;
         }
         return (side == White)
             ? playMoveWhite(root.moves[0].sx, root.moves[0].sy, root.moves[0].dx)
@@ -322,6 +342,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
     if (info) {
         info->moveCount = n;
         info->rootValue = rootLeafValue;
+        info->searchValue = root.meanValue();
         for (int i = 0; i < n; i++) {
             info->logits[i] = root.logits[i];
             GNode* ch = root.children[i];

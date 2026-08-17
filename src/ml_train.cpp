@@ -2631,6 +2631,7 @@ const RegimeDef g_regimes[] = {
     { "score",               "Score positions with a saved model, ranked by mean White advantage (a dist model prints mean +- SD in Elo)." },
     { "dist-eval",           "Evaluate a dist model against the calibrated d8 oracle, pst_value, and Classic baselines on the held-out eval tier." },
     { "tdleaf",              "TD-Leaf(lambda) self-play bootstrap: the target is the model's OWN evaluation of a later position backed up through the search, applied online at the principal-variation leaf. lambda=1 reduces exactly to outcome-supervised training on PV leaves." },
+    { "gumbelzero",          "Gumbel-Zero self-play (Pass 1): trains a joint value+policy model against GumbelMCTS's own search-improved value estimate and Gumbel-improved policy target at every ply, online with a replay buffer. No game-outcome label. Sanity only -- no Elo certified." },
     { "population",          "Other-play tournaments, Elo-tie labeling, multi-condition runs. (future)" },
     { "tournament",          "Round-robin of composed agents; prints an Elo table." },
     { "docs",                "Regenerate the auto-doc tables from the live registries." },

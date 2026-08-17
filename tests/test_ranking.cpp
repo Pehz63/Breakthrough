@@ -436,6 +436,46 @@ TEST_CASE("ranking id - joint mutype round trip (learned() over a real GumbelMCT
     REQUIRE(rankAgentId(b.spec) == canon);
 }
 
+// The regime word is derived from the model file's OWN teacher= provenance
+// line by archDescForSlot's R::of() (a "gumbelzero(...)" prefix -> the
+// "gumbel_self" tag, mirroring tdleaf_self), and separately validated on
+// PARSE against ranking.cpp's kRegimes[] allowlist -- two places that must
+// agree, and only the first one is exercised by src/ml_gumbelzero.cpp itself
+// actually writing a teacher= string, so this test is what would catch the
+// two drifting apart (as they briefly did while this regime was added: R::of
+// emitted "gumbel_self" but kRegimes[] didn't yet accept it back on parse).
+TEST_CASE("ranking id - gumbel_self regime round trip (learned() over a real GumbelMCTS agent)") {
+    // Slot 652: inside the 650-659 block src/CLAUDE.md's slot ledger gives
+    // Gumbel-Zero's Pass-1 checkpoints, clear of the real slot650/651 agents
+    // this session's manual verification run published.
+    const int slot = 652;
+    const string path = "models/sweep/slot652.txt";
+#ifdef _WIN32
+    _mkdir("models/sweep");
+#else
+    mkdir("models/sweep", 0755);
+#endif
+    LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    JointModel jm(value, policy);
+    jm.teacher = "gumbelzero(sims=50,lr=0.01,l2=0,replay=2000,warmup=32,batch=32,games=40,open=4,seed=1001) init:scratch";
+    REQUIRE(jm.save(path));
+
+    string h = rankFileHash8(path);
+    REQUIRE_FALSE(h.empty());
+
+    RankAgent a;
+    string err;
+    REQUIRE(rankAgentFromId("gaz(sims=50)@1.learned(s" + std::to_string(slot) + "," + h + ")@1", a, err));
+    string canon = rankAgentId(a.spec);
+    REQUIRE(canon.find(",gumbel_self,joint,value_shape=") != string::npos);
+
+    RankAgent b;
+    string err2;
+    REQUIRE(rankAgentFromId(canon, b, err2));
+    REQUIRE(rankAgentId(b.spec) == canon);
+}
+
 // rankLoadAgentModels is the GUI's single-agent counterpart to the internal
 // loadModelSlots used by every rank.exe subcommand that plays games: load
 // whichever model slot one hand-picked AgentSpec needs (see gui/main_gui.cpp's

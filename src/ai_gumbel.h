@@ -89,6 +89,11 @@ struct GumbelRootInfo {
     double completedQ[ML_MAX_MOVES];      // mover-relative, in [-1,1]
     int    visitCounts[ML_MAX_MOVES];
     double rootValue;                     // the joint model's own root value estimate, white-centric [-1,1]
+    double searchValue;                   // the root's mean backed-up value over every simulation run
+                                           // (white-centric [-1,1]) -- the search's OWN improved estimate,
+                                           // as opposed to rootValue's single pre-search network read. Equal
+                                           // to rootValue when no simulations ran (the immediate-win shortcut,
+                                           // or a forced single legal move).
 };
 
 // Runs the search for `side` using the joint model in `slot`, plays the
@@ -97,6 +102,15 @@ struct GumbelRootInfo {
 // (>= 1; values < 1 are treated as 1). `info`, if non-null, receives the
 // root search's final statistics.
 int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info = nullptr);
+
+// The Gumbel-improved policy target: softmax(logits[i] + sigma(completedQ[i],
+// maxVisitCount, cVisit, cScale)) over info.moveCount legal root moves, using
+// the search's FINAL logits/completedQ/visitCounts (reuses this file's own
+// internal cVisit/cScale constants, so a caller never has to duplicate or
+// re-derive the search's own math). Writes into `out` (capacity >=
+// info.moveCount), which sums to 1. A future self-play training regime's
+// policy-head target; unused by the plain registered explorer.
+void gumbelImprovedPolicy(const GumbelRootInfo& info, double* out);
 
 // Thin wrapper matching ExplorerDef::fn's (side, evaluator, params, budget)
 // signature (params[0] = model slot, the LearnedValue convention), registered

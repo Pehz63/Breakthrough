@@ -389,6 +389,7 @@ static string archDescForSlot(int slot) {
             }
             static string of(const string& t, const string& type) {
             if (t.compare(0, 7, "tdleaf(") == 0)              return "tdleaf_self";
+            if (t.compare(0, 11, "gumbelzero(") == 0)         return "gumbel_self";
             if (t.compare(0, 11, "labelstore:") == 0)         return "position_elo";
             if (t.compare(0, 7, "replay:") == 0)              return "pool_games";
             if (t.compare(0, 9, "ensemble(") == 0)            return "weight_merge";
@@ -1114,6 +1115,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
                 // re-derived and keep their old strings permanently.
                 static const char* kRegimes[] = {
                     "tdleaf_self",    // TD-Leaf(lambda) on self-play games
+                    "gumbel_self",    // Gumbel-Zero self-play (src/ml_gumbelzero.cpp)
                     "pool_games",     // outcomes from games replayed out of the ranked pool
                     "teacher_games",  // outcomes from a fixed heuristic teacher's self-play
                     "model_games",    // outcomes from a previously-trained model's self-play

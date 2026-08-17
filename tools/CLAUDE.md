@@ -23,6 +23,7 @@ Copy-paste forms beyond the root's short list:
 .\tools\opener_bias_retrain.ps1             # Theory 6: retrain the oracle arm on asymmetric-opener data (Layer 3; -DryRun for a tiny check)
 .\tools\hill_climb.ps1 -Iters 20 -Promote -PromoteTop 2    # climb, then promote winners to the roster
 .\train.exe tdleaf --out models/sweep/tdl --init models/pst_value.txt --ckpt-at "100,250,500,1000,2000" --lambda 0.7 --lr 0.01 --seed 1001
+.\train.exe gumbelzero --out models/sweep/slot650 --games 40 --sims 50 --ckpt-at "20,40" --seed 1001   # Pass-1 sanity only, no Elo certified
 .\tools\tdleaf_study.ps1 -Workers 12 -Phase all --GamesPerPair 8   # the full TD-Leaf cohort study
 .\rank.exe play --roster ranking/roster_tdleaf.txt --cohort ranking/cohort_tdleaf.txt --games 32
 .\rank.exe rate --roster ranking/roster_tdleaf.txt --pin ranking/standings.tsv   # screen on a FROZEN scale

@@ -11,6 +11,7 @@
 #include "globals.h"
 #include "ml_train.h"
 #include "ml_tdleaf.h"
+#include "ml_gumbelzero.h"
 #include "ml_eval.h"
 #include <cstring>
 #include <cstdlib>
@@ -168,6 +169,15 @@ static void usage() {
     cout << "  --model-type linear|mlp --mlp-hidden \"32\"   architecture when starting from scratch\n";
     cout << "  --feature-version 1|2  scratch-init only (default 2, sparse); ignored with --init, where\n";
     cout << "                      the loaded model's own feature version governs\n";
+    cout << "\nGumbel-Zero self-play (Pass 1 sanity; joint value+policy model, from scratch only):\n";
+    cout << "  train.exe gumbelzero --out models/sweep/slot650 --games 50 --sims 50 --seed 1001\n";
+    cout << "      --lr 0.01 --replay-capacity 2000 --replay-warmup 32 --batch-size 32 --ckpt-at \"10,30,50\"\n";
+    cout << "  --sims <n>          GumbelMCTS simulations per move (both sides -- one model self-plays)\n";
+    cout << "  --replay-capacity <n> --replay-warmup <n> --batch-size <n>  ring buffer of self-play plies;\n";
+    cout << "                      training starts once warmup plies have been generated, one sampled\n";
+    cout << "                      minibatch trained per new ply (strictly online update cadence)\n";
+    cout << "  --open-plies <n>    uniform-random opening plies per side, for position diversity\n";
+    cout << "  --ckpt-at \"10,30,50\"  save a checkpoint after exactly these game counts (-> _gN.txt)\n";
     cout << "\nTournament options:\n";
     cout << "  --only \"n1,n2,..\"  restrict the roster to these agent names (default: full roster)\n";
     cout << "  --run <id>         archive the run under runs/<id>/ (rate phase)\n";
@@ -339,6 +349,23 @@ int main(int argc, char** argv) {
         c.ckptAt      = getIntList(argc, argv, "--ckpt-at");
         c.reportEvery = getInt(argc, argv, "--report-every", c.reportEvery);
         rc = trainTDLeaf(c);
+    } else if (cmd == "gumbelzero") {
+        GumbelZeroConfig c = gumbelZeroDefaults();
+        c.outPath        = getOpt(argc, argv, "--out", c.outPath.c_str());
+        c.boardFile      = board;
+        c.games          = getInt(argc, argv, "--games", c.games);
+        c.simBudget      = getInt(argc, argv, "--sims", c.simBudget);
+        c.seed           = seed;
+        c.openPlies      = getInt(argc, argv, "--open-plies", c.openPlies);
+        c.lr             = getDbl(argc, argv, "--lr", c.lr);
+        c.l2             = getDbl(argc, argv, "--l2", c.l2);
+        c.replayCapacity = getInt(argc, argv, "--replay-capacity", c.replayCapacity);
+        c.replayWarmup   = getInt(argc, argv, "--replay-warmup", c.replayWarmup);
+        c.batchSize      = getInt(argc, argv, "--batch-size", c.batchSize);
+        c.ckptEvery      = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
+        c.ckptAt         = getIntList(argc, argv, "--ckpt-at");
+        c.reportEvery    = getInt(argc, argv, "--report-every", c.reportEvery);
+        rc = trainGumbelZero(c);
     } else if (cmd == "run-config") {
         const char* rid = getOpt(argc, argv, "--run", nullptr);
         string runId = rid ? string(rid) : makeRunId();

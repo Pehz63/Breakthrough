@@ -21,6 +21,7 @@ cl tools\train_main.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp ^
    src\explorers.cpp src\choosers.cpp src\agents.cpp src\datastore.cpp ^
    src\transposition.cpp src\ml_train.cpp src\ml_tdleaf.cpp src\ai_gumbel.cpp ^
+   src\ml_gumbelzero.cpp ^
    /I src /EHsc /O2 /Fo"build\\" /Fe:train.exe
 
 if errorlevel 1 (

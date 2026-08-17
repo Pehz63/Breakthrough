@@ -321,22 +321,27 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
   Gumbel MCTS (Danihelka et al. 2022; `Docs/works-cited.md`): the `GumbelMCTS`
   explorer (`src/ai_gumbel.cpp`, Gumbel-top-k root sampling + Sequential
   Halving) and the `joint` value+policy model type (`src/ml_model.h`),
-  `gaz(sims=N)@1` in the roster ID grammar. Validated by unit tests and
-  playable via `rank.exe`/`train.exe` with a hand-built or randomly-initialized
-  model; no self-play training regime exists yet, so no Elo has been measured
-  and it must not be described as strong (`Docs/model-training-playbook.md`'s
-  certification gate). See `ML.md`'s "Gumbel MCTS" section for what exists vs.
-  what is deferred `[Now]` {cpu: seconds, dev: high}
-  - **Self-play training regime** (the deferred slice): generate games with
-    `GumbelMCTS`, train the value head against a bootstrapped search-value
-    target (the search's own improved value estimate, not just game outcome
-    -- the developer's stated preference for this slice) and the policy head
-    against the Gumbel-improved policy target
-    (`softmax(logits + sigma(completedQ))` over the root's final visit
-    counts/completedQ, already exposed via `GumbelRootInfo`). Needs its own
-    plan per `Docs/model-training-playbook.md` (three-pass process,
-    initialization/update-schedule questions, a presented configuration grid)
-    `[Next]` {cpu: hours, dev: high}
+  `gaz(sims=N)@1` in the roster ID grammar. **Self-play trainer (Pass 1
+  sanity) shipped 2026-08-17** as the `gumbelzero` regime
+  (`src/ml_gumbelzero.cpp`): value head trained against
+  `GumbelRootInfo::searchValue` (the search's own improved value estimate,
+  bootstrapped, not game outcome -- the developer's stated preference) and
+  policy head against `gumbelImprovedPolicy`'s Gumbel-improved target,
+  strictly online updates drawn from a replay buffer, from scratch only,
+  linear heads only. Validated by unit tests (`tests/test_gumbelzero.cpp`)
+  and a manual 40-game run published to `models/sweep/slot650.txt`/
+  `slot651.txt` (regime tag `gumbel_self`), round-tripping through
+  `rank.exe check`. **Still no Elo measured** -- Pass 1 is sanity only, per
+  `Docs/model-training-playbook.md`'s certification gate this agent must not
+  be described as strong or promoted until Pass 2 (a broad hyperparameter
+  sweep, not yet scoped) and Pass 3 produce a checkpoint that clears a
+  full-roster refit. See `ML.md`'s "Gumbel MCTS" section for the full
+  picture `[Now]` {cpu: seconds, dev: high}
+  - **Pass 2 (broad sweep) and Pass 3 (optimize)**: sweep sims budget,
+    replay capacity/warmup, batch size, lr, and seeds as a presented
+    configuration grid (`Docs/model-training-playbook.md`), then certify the
+    best-supported configuration's Elo via a full-roster refit before any
+    strength claim `[Next]` {cpu: hours, dev: high}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

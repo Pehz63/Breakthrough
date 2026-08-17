@@ -53,6 +53,23 @@ Source: `plans/training-sweep-results-1-luminous-snail.md` (78-candidate sweep),
 `--gen-random-decay-plies`, `--residual-skip`, `--val-split` -- not yet
 transcribed. See todo.)*
 
+## `gumbelzero` (`train.exe gumbelzero`, `src/ml_gumbelzero.cpp`)
+
+Source: `plans/gumbel-mcts-results-2-hidden-greeting-mist.md` (Pass 1 sanity,
+2026-08-17). One configuration run so far -- everything below is an "untested
+axis" in the sense Pass 2 needs to sweep it, not a settled value.
+
+| Hyperparameter | Values tried | Finding | Settled? |
+|---|---|---|---|
+| `--sims` (simulations/move) | 8 (unit tests), 50 (manual Pass-1 run) | plumbing only; no strength signal at either value | No -- never swept for strength |
+| `--lr` | 0.01 (default) | -- | No -- never varied |
+| `--l2` | 0.0 (default) | -- | No -- never varied |
+| `--replay-capacity` / `--replay-warmup` | 2000/32 (manual run), 40/4 (unit tests) | -- | No -- never varied for strength |
+| `--batch-size` | 32 (manual run), 4 (unit tests) | -- | No -- never varied |
+| `--open-plies` | 4 (default) | -- | No -- never varied |
+| games / `--ckpt-at` ladder | 40 games, rungs 20/40 | plumbing only (rung mechanism produces two distinct, correctly-hashed checkpoints) | No -- ladder never extended, no Elo measured at either rung |
+| model architecture (both heads) | linear only | developer's explicit Pass-1 choice (faster convergence, proven not to saturate at this project's scale) | Deliberate default, not itself compared against MLP in this regime |
+
 ## `dist-value` (`train.exe dist-value`, position-oracle pipeline)
 
 Source: `plans/position-oracle-results-1-lazy-popping-simon.md`,

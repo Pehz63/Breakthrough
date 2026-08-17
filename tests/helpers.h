@@ -36,6 +36,8 @@ enum TestScratchSlot {
     kScratchSlotRisk           = ML_SLOTS - 4,  // "ranking id - learned() optional risk= weight"
     kScratchSlotLoadModelsOk   = ML_SLOTS - 5,  // "ranking - rankLoadAgentModels" (loads-successfully case)
     kScratchSlotLoadModelsMiss = ML_SLOTS - 6,  // "ranking - rankLoadAgentModels" (missing-file case)
+    kScratchSlotGumbelZeroSearch = ML_SLOTS - 7,  // "GumbelRootInfo::searchValue - diverges from rootValue..."
+    kScratchSlotGumbelZeroLoad   = ML_SLOTS - 8,  // "trainGumbelZero - Pass 1 sanity..." (post-training reload)
 };
 
 // Copy layout[x][y] into board[][] and recalculate all global counters.
