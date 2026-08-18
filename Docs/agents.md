@@ -22,9 +22,6 @@ arguments. This complements, and doesn't replace:
 - `Docs/terminology.md` -- general concepts (agent, evaluator, dilution, canonical
   ID grammar) with one-line definitions.
 - `Docs/theories.md` -- the open questions these agents were built to test.
-- `agents/registry.md` -- an auto-generated, mechanically-complete list of every
-  agent ever rated in a full tournament (a different Elo scale from the ranking
-  pool below; see the note at the bottom).
 - `ranking/roster.txt` / `ranking/ratings.tsv` -- the live, authoritative source of
   which agents are active and their current rating.
 
@@ -201,9 +198,11 @@ Two separate, non-comparable rating systems appear in this project:
 1. **The ranking pool** (`rank.exe`, `ranking/ratings.tsv`), anchored at
    `rand@1` (UniformRandom) = Elo 0. All the numbers above are on this scale; the
    Champion sits at roughly 1140 here.
-2. **The full tournament** (`train.exe tournament-rate`, `agents/champion.txt`,
-   `agents/registry.md`), which uses a different agent pool and anchor and reports
-   the Champion at Elo 2244.
+2. **The old tournament system** (`train.exe tournament-rate`, `agents/champion.txt`),
+   frozen since its one and only run on 2026-06-28 and superseded by the ranking
+   pool above. It used a different agent pool and anchor and reported the Champion
+   at Elo 2244. Its rollup file (`agents/registry.md`) has been deleted as stale;
+   the raw observations remain in `agents/registry.jsonl` for history.
 
 Never compare a number from one system to the other directly; only compare within
 the same system (all the d6 Elo figures above are ranking-pool numbers, safe to

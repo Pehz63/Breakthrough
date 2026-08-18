@@ -134,10 +134,13 @@ and `tournament-rate` so the two phases build the same roster.
 | `notes.md` | the pre-run note plus any later notes appended with `run-note` |
 
 `runs/index.jsonl` keeps one summary line per run (champion + Elo + counts). The agent
-**registry** (`agents/registry.jsonl` append-only, `agents/registry.md` regenerated) is
-the union of every agent ever rated, so a subset run never erases knowledge of the rest.
+**registry** (`agents/registry.jsonl`, append-only) is the union of every agent ever
+rated in the old tournament system, so a subset run never erases knowledge of the rest.
 Each row carries a `spec_hash` over the agent's structural fields **and**, for learned
 agents, its model file content, so a retrain / param change / bugfix flags as `changed`.
+This system is frozen since its one 2026-06-28 run and superseded by `rank.exe` /
+`ranking/` (see `Docs/ranking-workflow.md`); its regenerated rollup (`agents/registry.md`)
+has been deleted as stale.
 
 Attach a realization to a past run without re-running it:
 

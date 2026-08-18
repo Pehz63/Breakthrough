@@ -154,17 +154,22 @@ Notes:
   full system and the "how to add more" workflow.
 
 **Parallel depth-laddered tournament** (the `run_tournament.ps1` command in the
-root `CLAUDE.md`, process-sharded across all CPUs, then rated). Under the hood
-it runs `train.exe tournament-play --shard i --of K ...` (each shard writes
-`data/tourney.jsonl.<i>`) then `train.exe tournament-rate ...` (merges, fits Elo, prints the
-`Elo | ms/move | max ms | games | agent` table, writes `agents/champion*.txt`). Threads are
-not used because the engine's board/eval state is global; processes each get their own copy.
-Add `-Only "name1,name2,..."` to restrict the roster to those agent names (include their
-depths in `-Depths` so the names exist); a subset run leaves `agents/library.txt` +
-`champion*.txt` untouched. Every run is archived under `runs/<id>/` (`config.json`,
-`elo.tsv`, `notes.md`, `results.jsonl`), logged in `runs/index.jsonl`, and folded into the
-agent registry (`agents/registry.{jsonl,md}`, a union with a `spec_hash` that flags retrains
-/ changes); `-Note "..."` records a pre-run note and `train.exe run-note --run <id> --note
+root `CLAUDE.md`, process-sharded across all CPUs, then rated). This is the old,
+frozen tournament system, superseded by `rank.exe` / `ranking/` below (see
+`Docs/ranking-workflow.md`) -- it has not run since its 2026-06-28 introduction and
+its Elo scale is not comparable to the ranking pool's. Kept documented here only
+because the binary still works; prefer `rank.exe` for any new agent evaluation.
+Under the hood it runs `train.exe tournament-play --shard i --of K ...` (each shard
+writes `data/tourney.jsonl.<i>`) then `train.exe tournament-rate ...` (merges, fits Elo,
+prints the `Elo | ms/move | max ms | games | agent` table, writes `agents/champion*.txt`).
+Threads are not used because the engine's board/eval state is global; processes each get
+their own copy. Add `-Only "name1,name2,..."` to restrict the roster to those agent names
+(include their depths in `-Depths` so the names exist); a subset run leaves
+`agents/library.txt` + `champion*.txt` untouched. Every run is archived under `runs/<id>/`
+(`config.json`, `elo.tsv`, `notes.md`, `results.jsonl`), logged in `runs/index.jsonl`, and
+folded into the agent registry (`agents/registry.jsonl`, a union with a `spec_hash` that
+flags retrains / changes; its regenerated rollup `agents/registry.md` has been deleted as
+stale); `-Note "..."` records a pre-run note and `train.exe run-note --run <id> --note
 "..."` attaches one later.
 
 ## Ranker (`rank.exe`)
@@ -346,5 +351,5 @@ its 16 wins collapse to about 7 distinct games, while `book4` is large (519 entr
 | `ranking/` (store) | **The match store is a set of PARTS plus a live tail**, not one file. `matches.index.txt` (committed) lists the parts in load order, one filename per line, `#` comments allowed; a listed part whose file is absent is skipped rather than being an error. Writers always append to `matches.jsonl`, the tail, which is loaded last. Parts are grouped by WHO played the game (`rank.exe split`). **Loaded and committed:** `matches.roster.NNNN.jsonl` (games between rostered agents, 132,769 rows / 55 MB) and `matches.retired_other.NNNN.jsonl` (59,054 rows / 23 MB, tracked so re-rostering one of those agents needs no file transfer). **Not loaded, not committed:** `matches.retired_tdleaf_self.NNNN.jsonl` (457,611 rows / 193 MB), the TD-Leaf Pass-2 candidates that were screened and never promoted. Their index lines were removed on 2026-08-01 by developer decision: a permanent ladder should not be dominated by games against transient candidates, and 60% of some rostered agents' games were against that cohort. **Those files were DELETED 2026-08-02** to reclaim the space. They were never committed and never pushed, so no copy survives: that population is unrecoverable except by replaying the Pass-2 campaign. Re-adding their index lines would name files that no longer exist, which the loader skips silently. **This was a methodology change that moved the ranking**, so it required re-certifying `ranking/CHAMPION.md`; do not re-add the lines without re-certifying in the same session. **A retired agent's games are not dead weight:** Bradley-Terry fits every rating jointly, so a game against a retired agent is evidence about the ROSTERED agent that played it. Dropping this part moved 153 of 170 rostered agents (Spearman rho 0.9526, mean error bar 7.2 -> 10.2 Elo). Screening cohorts now play into their own store instead (see below), so this cannot recur. `rank.exe seal` separately rolls an oversized tail into `matches.NNNN.jsonl` shards (and appends them to the index when one exists). Both cap every part with `--max-mb` so no single file can outgrow what a host accepts (GitHub rejects blobs over 100 MB). |
 | `ranking/` (2nd pool) | **Diversified-opening pool**, a self-contained second instrument added 2026-07-26: `roster_open.txt` (14 agents, each wearing `.opener(rand,moves=4)@1`), `matches_open.jsonl` (its own store, never mixed with `matches.jsonl`), and generated `ratings_open.tsv` / `standings_open.tsv` / `games_open.tsv` / `report_open.md`. Rating outputs are named after the store, so `matches<X>.jsonl` writes `ratings<X>.tsv` and so on, and the default store keeps the historical unsuffixed names. |
 | `runs/` | Per-run archive (one timestamped dir per tournament): `config.json` (exact config + pre-run note), `elo.tsv` (that run's ranked table), `notes.md` (pre-run + `run-note`-appended notes), `results.jsonl` (gitignored copy). `runs/index.jsonl` is the master log, one summary line per run. |
-| `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the agent registry `agents/registry.{jsonl,md}` (union of every agent ever rated, with a `spec_hash`). |
+| `data/`, `models/`, `agents/` | ML outputs: append-only JSONL datastore, model checkpoints + `manifest.{json,md}` + `registries.json`, the Elo-rated `agents/library.txt` (full-roster snapshot), and the old tournament system's agent registry `agents/registry.jsonl` (union of every agent ever rated, with a `spec_hash`; frozen since 2026-06-28, its `registry.md` rollup deleted as stale -- superseded by `ranking/`). |
 | `data/labels/` | Position-oracle campaign home: committed pools (`pool_train/eval.jsonl`), ladder specs, fitted labels (`labels_train/eval.jsonl`), raw-store `.meta.json` sidecars (the frozen rung-id mapping), `ratings_snapshot.tsv` (the study's fixed Elo basis), and `study.csv` (the resume ledger). The raw stores themselves (`raw_train/eval.jsonl`, ~hundreds of MB, the durable asset that re-labels under any future ratings fit) are gitignored -- back them up outside git. `dry/` and `logs/` are scratch. |
