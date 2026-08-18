@@ -204,6 +204,56 @@ TEST_CASE("trainGumbelZero - Pass 1 sanity: runs, moves weights off zero-init, c
     mlClearSlots();
 }
 
+TEST_CASE("trainGumbelZero - mlp model-type builds MLP heads for both value and policy, and the checkpoint plays through the real search path") {
+    GumbelZeroConfig cfg = gumbelZeroDefaults();
+    cfg.outPath        = "build\\test_gz_mlp";
+    cfg.boardFile      = "boards\\board1.txt";
+    cfg.games          = 6;
+    cfg.simBudget      = 8;
+    cfg.seed           = 777;
+    cfg.openPlies      = 1;
+    cfg.replayCapacity = 40;
+    cfg.replayWarmup   = 4;
+    cfg.batchSize      = 4;
+    cfg.reportEvery    = 0;
+    cfg.modelType      = "mlp";
+    cfg.mlpHidden.push_back(4);   // tiny hidden layer, just enough to exercise the architecture
+
+    REQUIRE(trainGumbelZero(cfg) == 0);
+
+    Model* loaded = loadModel("build\\test_gz_mlp.txt");
+    REQUIRE(loaded != nullptr);
+    REQUIRE(string(loaded->typeName()) == "joint");
+    JointModel* jm = dynamic_cast<JointModel*>(loaded);
+    REQUIRE(jm != nullptr);
+    MLPModel* v = dynamic_cast<MLPModel*>(jm->valueHead);
+    MLPModel* p = dynamic_cast<MLPModel*>(jm->policyHead);
+    REQUIRE(v != nullptr);   // architecture actually applied, not silently left linear
+    REQUIRE(p != nullptr);
+    REQUIRE(v->sizes.size() == 3);
+    REQUIRE(v->sizes[0] == MLV2_FEATURES);
+    REQUIRE(v->sizes[1] == 4);
+    REQUIRE(v->sizes[2] == 1);
+    REQUIRE(p->sizes.size() == 3);
+    REQUIRE(p->sizes[0] == MLM_FEATURES);
+    REQUIRE(p->sizes[1] == 4);
+    REQUIRE(p->sizes[2] == 1);
+
+    bool anyNonzero = false;
+    for (size_t k = 0; k < v->W.size() && !anyNonzero; k++)
+        for (size_t t = 0; t < v->W[k].size() && !anyNonzero; t++)
+            if (v->W[k][t] != 0.0f) anyNonzero = true;
+    REQUIRE(anyNonzero);   // symmetry-broken by initRandom, not left at zero-init (which could never learn)
+
+    mlSetModel(kScratchSlotGumbelZeroMlpLoad, loaded);   // takes ownership
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    GumbelRootInfo info;
+    int victor = gumbelSearch(White, kScratchSlotGumbelZeroMlpLoad, 8, &info);
+    REQUIRE(victor < WhiteWin);   // the standard opening, not a decided win
+
+    mlClearSlots();
+}
+
 TEST_CASE("trainGumbelZero - two seeds produce different trained weights (knob validation)") {
     GumbelZeroConfig cfg = gumbelZeroDefaults();
     cfg.boardFile      = "boards\\board1.txt";

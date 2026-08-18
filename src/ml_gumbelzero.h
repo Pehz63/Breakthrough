@@ -30,11 +30,17 @@
 // recent plies, not only the one just generated) are two independent axes
 // that compose rather than conflict -- see GumbelZeroReplayBuffer.
 //
-// Initialization is from-scratch only in this pass (both heads are
-// zero-initialized LinearModels, the same construction Slice 1's own
-// smoke test used): no --init flag, since the developer confirmed
-// from-scratch during Slice 1's planning and Pass 1 is deliberately the
-// smallest reviewable unit.
+// Initialization is from-scratch only in this pass: no --init flag, since the
+// developer confirmed from-scratch during Slice 1's planning and Pass 1 is
+// deliberately the smallest reviewable unit. The architecture is selectable
+// (GumbelZeroConfig::modelType/mlpHidden, mirroring ml_train.cpp's
+// selfplay-supervised --model-type/--mlp-hidden), applied to BOTH heads --
+// value and policy are separate Model instances of the same architecture, not
+// a shared one. A "linear" head is zero-initialized (Slice 1's own smoke-test
+// construction, so existing linear checkpoints reproduce exactly); an "mlp"
+// head calls MLPModel::initRandom() to break weight symmetry (zero-init
+// hidden layers can never learn, ml_model.h), so linear and mlp runs draw
+// from different points in the rand() stream even at the same seed.
 
 // ---- Policy gradient core (pure, unit-testable) ----
 
@@ -90,6 +96,8 @@ struct GumbelZeroConfig {
     int    simBudget;         // gaz sims/move (both sides -- one model self-plays)
     unsigned seed;
     int    openPlies;         // uniform-random opening plies per side (diversity)
+    string modelType;         // "linear" (default) or "mlp" -- applies to BOTH heads
+    std::vector<int> mlpHidden;  // hidden-layer widths when modelType=="mlp" (default {32} if empty)
     double lr;
     double l2;
     int    replayCapacity;

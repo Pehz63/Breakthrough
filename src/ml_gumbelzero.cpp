@@ -85,6 +85,7 @@ GumbelZeroConfig gumbelZeroDefaults() {
     c.simBudget      = 50;    // matches Slice 1's own smoke-tested gaz(sims=50) value
     c.seed           = 1001;
     c.openPlies      = 4;     // matches TD-Leaf's own default diversity window
+    c.modelType      = "linear";
     c.lr             = 0.01;
     c.l2             = 0.0;
     c.replayCapacity = 2000;
@@ -102,12 +103,26 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     srand(cfg.seed);
     PRNT = 0;
 
-    // ---- Model: from scratch only in this pass -- both heads are
-    // zero-initialized LinearModels, the same construction Slice 1's own
-    // smoke test used (tests/test_gumbel.cpp).
-    LinearModel* valueHead  = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
-    LinearModel* policyHead = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
-    JointModel*  model      = new JointModel(valueHead, policyHead);
+    // ---- Model: from scratch only in this pass. Architecture is selectable
+    // (cfg.modelType/mlpHidden, mirroring ml_train.cpp's selfplay-supervised
+    // --model-type/--mlp-hidden), applied to BOTH heads as separate Model
+    // instances. "linear" heads stay zero-initialized (Slice 1's own
+    // smoke-tested construction, tests/test_gumbelzero.cpp); an "mlp" head
+    // needs MLPModel::initRandom() to break weight symmetry, since a
+    // zero-initialized hidden layer can never learn (ml_model.h).
+    const bool useMlp = (cfg.modelType == "mlp");
+    std::vector<int> hidden = cfg.mlpHidden;
+    if (useMlp && hidden.empty()) hidden.push_back(32);   // default one 32-wide hidden layer
+
+    Model* valueHead  = useMlp ? (Model*)new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden)
+                                : (Model*)new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    Model* policyHead = useMlp ? (Model*)new MLPModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f, hidden)
+                                : (Model*)new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    if (useMlp) {
+        static_cast<MLPModel*>(valueHead)->initRandom();
+        static_cast<MLPModel*>(policyHead)->initRandom();
+    }
+    JointModel*  model = new JointModel(valueHead, policyHead);
 
     {
         std::ostringstream prov;
@@ -115,6 +130,11 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
              << ",replay=" << cfg.replayCapacity << ",warmup=" << cfg.replayWarmup
              << ",batch=" << cfg.batchSize << ",games=" << cfg.games
              << ",open=" << cfg.openPlies << ",seed=" << cfg.seed << ") init:scratch";
+        if (useMlp) {
+            prov << " mlp(";
+            for (size_t i = 0; i < hidden.size(); i++) { if (i) prov << ","; prov << hidden[i]; }
+            prov << ")";
+        }
         model->teacher = prov.str();
     }
     cout << "Gumbel-Zero: " << model->teacher << "\n";

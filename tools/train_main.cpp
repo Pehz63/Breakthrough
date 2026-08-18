@@ -172,7 +172,10 @@ static void usage() {
     cout << "\nGumbel-Zero self-play (Pass 1 sanity; joint value+policy model, from scratch only):\n";
     cout << "  train.exe gumbelzero --out models/sweep/slot650 --games 50 --sims 50 --seed 1001\n";
     cout << "      --lr 0.01 --replay-capacity 2000 --replay-warmup 32 --batch-size 32 --ckpt-at \"10,30,50\"\n";
+    cout << "  train.exe gumbelzero --out models/sweep/slot650 --games 50 --sims 50 --model-type mlp --mlp-hidden \"64,32\"\n";
+    cout << "      (mlp applies to BOTH the value and policy heads; default one 32-wide hidden layer if --mlp-hidden omitted)\n";
     cout << "  --sims <n>          GumbelMCTS simulations per move (both sides -- one model self-plays)\n";
+    cout << "  --model-type linear|mlp --mlp-hidden \"32\"|\"32,16\"   architecture for both heads (default linear)\n";
     cout << "  --replay-capacity <n> --replay-warmup <n> --batch-size <n>  ring buffer of self-play plies;\n";
     cout << "                      training starts once warmup plies have been generated, one sampled\n";
     cout << "                      minibatch trained per new ply (strictly online update cadence)\n";
@@ -357,6 +360,8 @@ int main(int argc, char** argv) {
         c.simBudget      = getInt(argc, argv, "--sims", c.simBudget);
         c.seed           = seed;
         c.openPlies      = getInt(argc, argv, "--open-plies", c.openPlies);
+        c.modelType      = getOpt(argc, argv, "--model-type", c.modelType.c_str());
+        c.mlpHidden      = getIntList(argc, argv, "--mlp-hidden");
         c.lr             = getDbl(argc, argv, "--lr", c.lr);
         c.l2             = getDbl(argc, argv, "--l2", c.l2);
         c.replayCapacity = getInt(argc, argv, "--replay-capacity", c.replayCapacity);
