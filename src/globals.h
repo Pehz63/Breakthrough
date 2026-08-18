@@ -150,6 +150,16 @@ extern bool g_useQuiescence;    // captures-only stand-pat extension at depth le
 extern bool g_keepPartial;      // keep a budget-cut iteration's best move instead of discarding
 extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width at the root
 
+// Gumbel MCTS search-shape constants (src/ai_gumbel.cpp), set by agentChooseMove
+// (saved/restored around the call, same convention as the AB toggles above) from
+// AgentSpec's gumbelCVisit/gumbelCScaleTenths/gumbelRootM. Inert for every other
+// explorer. Defaults reproduce the paper's own defaults (c_visit=50, c_scale=1.0,
+// m=16), so a gaz(sims=N)@1 id with no cvisit=/cscale=/m= flags behaves exactly as
+// before these were made per-agent.
+extern double g_gumbelCVisit;
+extern double g_gumbelCScale;
+extern int    g_gumbelRootM;
+
 // Per-move search telemetry, written by miniMaxWhite/Black and read by the UIs and the
 // tournament. g_lastEffDepth is fractional: completedDepth + (root moves searched in the
 // cut iteration / total legal root moves), so 5.7 = depth 5 done, 70% into depth 6.

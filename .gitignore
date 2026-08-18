@@ -166,6 +166,15 @@ ranking/*_ab6_vs_gz.tsv
 ranking/*_ab6_vs_gz.md
 ranking/roster_ab6_vs_gz.txt
 
+# Gumbel MCTS cvisit/cscale/m search-shape sweep (4 self-contained round
+# robins, see plans/gumbel-mcts-results-4-copper-lantern.md): free 3-axis
+# draw, m=16-fixed cvisit/cscale grid, pushing the winning diagonal further,
+# and m re-isolated at the new best corner.
+ranking/matches_gaz_knobs*.jsonl
+ranking/*_gaz_knobs*.tsv
+ranking/*_gaz_knobs*.md
+ranking/roster_gaz_knobs*.txt
+
 # One-off screening cohort store (risk-weight study, see
 # plans/risk-weight-results-1-dusty-kestrel.md). Same rationale as the
 # matches_screen.* block above (a study's games kept out of the permanent

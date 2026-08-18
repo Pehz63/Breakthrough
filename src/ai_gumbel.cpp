@@ -8,14 +8,17 @@
 #include <algorithm>
 
 // ============================================================
-// TUNING CONSTANTS (not exposed via the roster ID grammar in this slice --
-// see ai_gumbel.h's header comment and the gaz(sims=N)@1 grammar in
-// src/ranking.cpp; only the total simulation budget is per-agent).
+// TUNING CONSTANTS
 // ============================================================
-static const double kGumbelCVisit = 50.0;   // paper default
-static const double kGumbelCScale = 1.0;    // paper default
-static const int    kGumbelM      = 16;     // root candidates before Sequential Halving
-static const int    kGumbelMaxSimPlies = 200;   // safety depth guard per simulation, like QS_MAX_PLY
+// c_visit, c_scale, and the root candidate count m are per-agent knobs (see
+// g_gumbelCVisit/g_gumbelCScale/g_gumbelRootM in globals.h/.cpp and the
+// gaz(sims=N,cvisit=C,cscale=S,m=M)@1 grammar in src/ranking.cpp), set by
+// agentChooseMove before the explorer call. Direct callers of gumbelSearch
+// that bypass agentChooseMove (the self-play trainer in ml_gumbelzero.cpp,
+// unit tests) get the globals' paper-default values (50.0, 1.0, 16) since
+// nothing else in those call paths touches them.
+static const int kGumbelMaxSimPlies = 200;   // safety depth guard per simulation, like QS_MAX_PLY;
+                                              // not a per-agent knob (a headroom guard, not a search-shape lever)
 
 // ============================================================
 // PURE CORE MATH
@@ -95,7 +98,7 @@ void gumbelImprovedPolicy(const GumbelRootInfo& info, double* out) {
     double adj[ML_MAX_MOVES];
     double top = -1e300;
     for (int i = 0; i < n; i++) {
-        adj[i] = info.logits[i] + gumbelSigma(info.completedQ[i], maxN, kGumbelCVisit, kGumbelCScale);
+        adj[i] = info.logits[i] + gumbelSigma(info.completedQ[i], maxN, g_gumbelCVisit, g_gumbelCScale);
         if (adj[i] > top) top = adj[i];
     }
     double sum = 0.0;
@@ -234,7 +237,7 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
                       : moverRelative(node->meanValue(), side);
     }
     int sel = gumbelSelectAction(node->logits, completedQ, visitCounts, node->moveCount,
-                                 kGumbelCVisit, kGumbelCScale);
+                                 g_gumbelCVisit, g_gumbelCScale);
     if (sel < 0) sel = 0;
     if (!node->children[sel]) node->children[sel] = new GNode();
     const Move& mv = node->moves[sel];
@@ -290,7 +293,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
             : playMoveBlack(root.moves[0].sx, root.moves[0].sy, root.moves[0].dx);
     }
 
-    int m = (kGumbelM < n) ? kGumbelM : n;
+    int m = (g_gumbelRootM < n) ? g_gumbelRootM : n;
     int cand[ML_MAX_MOVES];
     int survivorCount = gumbelTopK(root.logits, n, m, cand);
 
@@ -325,7 +328,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
             GNode* ch = root.children[mi];
             double q = (ch && ch->visitCount > 0) ? moverRelative(ch->meanValue(), side)
                                                    : moverRelative(root.meanValue(), side);
-            rank[c] = root.logits[mi] + gumbelSigma(q, maxN, kGumbelCVisit, kGumbelCScale);
+            rank[c] = root.logits[mi] + gumbelSigma(q, maxN, g_gumbelCVisit, g_gumbelCScale);
         }
         int order[ML_MAX_MOVES];
         for (int c = 0; c < survivorCount; c++) order[c] = c;

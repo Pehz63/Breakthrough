@@ -356,15 +356,37 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     counter (both colors), at roughly 1/10th the compute per move, so this
     regime remains far from competitive even against the simplest
     non-learned baseline.~~ `[Done]` {cpu: hours, dev: high}
-  - **Pass 3 (optimize)**: not yet scoped. Candidates raised so far: an
-    isolated fixed-sims lr sweep to settle the lr/sims confound from Pass 2,
+  - ~~Exposed `ai_gumbel.cpp`'s search-shape constants (root Gumbel-top-k
+    breadth, `c_visit`/`c_scale`) as per-agent roster knobs, shipped
+    2026-08-17: `gaz(sims=N,cvisit=C,cscale=S,m=M)@1`, only appended when
+    non-default (50/10/16), no version bump needed. Implemented as new
+    `g_gumbelCVisit`/`g_gumbelCScale`/`g_gumbelRootM` globals
+    (`globals.h`/`.cpp`), set/restored by `agentChooseMove` from new
+    `AgentSpec` fields, mirroring `AlphaBeta`'s `g_useTT`-style convention
+    exactly (no signature changes needed anywhere, including
+    `gumbelSearch`/`gumbelExplore`). Serving-time only in this pass: the
+    Gumbel-Zero self-play trainer (`ml_gumbelzero.cpp`) still trains against
+    the paper defaults, unaffected. Knob-validation test confirms `m=1`
+    visibly narrows the root candidate set vs `m=16` under an identical sim
+    budget.~~ `[Done]` {cpu: hours, dev: high}
+  - ~~**Swept cvisit/cscale/m** (theory 49, `Docs/theories.md`), shipped
+    2026-08-17: 4-round screening investigation on the R17/rung-4000
+    checkpoint (slot746) at `sims=200`, self-contained round robins (never
+    the canonical ladder), 2,960 games total. Found: `m<=2` costs 300+ Elo
+    regardless of `cvisit`/`cscale` (not confounded -- a wide range was
+    tried at `m=2`, all scored low); with `m=16` fixed, `cvisit` and
+    `cscale` both independently rise past the paper defaults (50/1.0),
+    peaking near `cvisit=500, cscale=5.0` (903 Elo vs REF's 800-804, a real,
+    non-confounded ~100 Elo gain); `m=16`/`m=8` are statistically tied as
+    best at that corner, `m=32` no better, `m=4` measurably worse. One
+    checkpoint, one `sims` value -- not yet checked for generality across
+    checkpoints.~~ `[Done]` {cpu: minutes, dev: medium}
+  - **Pass 3 (optimize)**: not yet scoped. Candidates: an isolated
+    fixed-sims lr sweep to settle the lr/sims confound from Pass 2,
     extending the Round B ladder past rung 4000 for R17/R3/REF (none had
-    plateaued), and exposing `ai_gumbel.cpp`'s hardcoded search-time
-    constants (root Gumbel-top-k breadth, `kGumbelCVisit`/`kGumbelCScale`,
-    the Sequential-Halving round schedule) as agent-level knobs so search
-    shape becomes a lever independent of `sims`, testable directly against
-    already-trained checkpoints with no retraining `[Next]` {cpu: hours,
-    dev: high}
+    plateaued), and checking whether the cvisit=500/cscale=5.0 corner found
+    above generalizes to other checkpoints/sims values, or is specific to
+    R17 `[Next]` {cpu: hours, dev: high}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

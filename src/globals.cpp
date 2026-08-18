@@ -47,6 +47,10 @@ bool g_useQuiescence = false;
 bool g_keepPartial = false;
 int  g_aspirationWindow = 0;
 
+double g_gumbelCVisit = 50.0;
+double g_gumbelCScale = 1.0;
+int    g_gumbelRootM  = 16;
+
 double g_lastEffDepth = 0.0;
 int    g_lastBudgetKind = BUDGET_NONE;
 unsigned long long g_lastNodes = 0;

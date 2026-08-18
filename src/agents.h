@@ -46,6 +46,12 @@ struct AgentSpec {
     bool   keepPartial;                 // keep a budget-cut iteration's best move
     int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
 
+    // Gumbel MCTS search-shape knobs (src/ai_gumbel.cpp), inert for every other
+    // explorer. Defaults reproduce the paper's own defaults (see seedAgentDefaults).
+    int    gumbelCVisit;                // c_visit constant (paper default 50)
+    int    gumbelCScaleTenths;          // c_scale constant, in TENTHS (paper default 1.0 -> 10)
+    int    gumbelRootM;                 // root Gumbel-top-k candidate count (paper default 16)
+
     // Identity-level opener (openerKind < 0 = off): during the opening phase this
     // agent plays via the selected opener (an index into g_openers, see
     // src/ai_random.h) instead of its brain, with an opener-specific integer

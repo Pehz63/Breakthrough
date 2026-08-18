@@ -232,10 +232,18 @@ model does; the explorer reads the policy head directly via the non-virtual
 `mlRateMoves` (single-head-only). Both heads default to `LinearModel` per
 this project's "default to linear for a first pass" guidance.
 
-**Roster ID:** `gaz(sims=N)@1` (the total simulation budget, reusing the same
-field `ab()` uses for depth); other constants (`c_visit`, `c_scale`, the root
-candidate count) are fixed internally in this slice, not exposed per-agent.
-Its `learned()` segment carries mutype `joint` with
+**Roster ID:** `gaz(sims=N[,cvisit=C][,cscale=S][,m=M])@1`. `sims=` is the
+total simulation budget, reusing the same field `ab()` uses for depth.
+`cvisit=`/`cscale=`/`m=` are optional search-shape knobs -- `c_visit`,
+`c_scale` (spelled in TENTHS, `cscale=10` -> 1.0, matching `learned()`'s
+`risk=<tenths>` convention), and the root Gumbel-top-k candidate count --
+only appended when non-default (50/10/16), so a plain `gaz(sims=N)@1` id
+means exactly what it always has. No version bump was needed: an id without
+these flags is unaffected, the same way `ab()`'s own optional flags grew
+without bumping its version. Set per-agent via `agentChooseMove`, which
+threads them into `g_gumbelCVisit`/`g_gumbelCScale`/`g_gumbelRootM`
+(`globals.h`/`.cpp`), the same save/restore-around-the-call convention as
+`AlphaBeta`'s `g_useTT` etc. Its `learned()` segment carries mutype `joint` with
 `value_shape=`/`policy_shape=` instead of a single `shape=`. **Always
 non-deterministic** (`rankAgentIsDeterministic`): Gumbel-top-k draws a Gumbel
 variate per legal move on every search, unlike `ab`/`greedy`.
@@ -306,12 +314,28 @@ even its own screening ceiling is not yet located. A direct 32-game match
 between R17's best checkpoint and the plain, non-learned
 `ab(deep=6)@1.classic(chip=100)@2` chip counter went 32-0 to the chip
 counter, in both colors, at roughly 10x less compute per move. Pass 3
-(optimize) is future work, not yet scoped; candidates raised so far are an
-isolated fixed-sims lr sweep (to settle the lr/sims confound) and exposing
-`ai_gumbel.cpp`'s hardcoded search-time constants (root Gumbel-top-k
-breadth, `c_visit`/`c_scale`, the Sequential-Halving round schedule) as
-agent-level knobs, which would add a search-shape lever independent of
-`sims` and testable against already-trained checkpoints with no retraining.
+(optimize) is future work, not yet scoped. `ai_gumbel.cpp`'s search-shape
+constants (root Gumbel-top-k breadth, `c_visit`/`c_scale`) are now exposed as
+per-agent `cvisit=`/`cscale=`/`m=` roster knobs (2026-08-17, serving-time
+only -- the self-play trainer still uses the paper defaults, see the Roster
+ID paragraph above), a search-shape lever independent of `sims` and testable
+against already-trained checkpoints with no retraining.
+
+**Search-shape knob values (theory 49, `Docs/theories.md`).** A 4-round
+screening sweep on the R17/rung-4000 checkpoint (slot746) at `sims=200`
+found: `m<=2` costs 300+ Elo regardless of `cvisit`/`cscale` (a wide range
+was tried at `m=2`, all scored low, so this is not confounded); holding
+`m=16` fixed, `cvisit` and `cscale` both independently rise past the paper
+defaults (50, 1.0), peaking near `cvisit=500, cscale=5.0` (903 Elo vs REF's
+800-804 in the same controlled comparison, roughly flat to declining beyond
+that); re-isolating `m` at that corner found `m=16`/`m=8` statistically
+tied as best, `m=32` no better, `m=4` measurably worse. Self-contained round
+robins against a `rand@1` anchor (2,960 games total, own scratch stores,
+never the canonical ladder) -- screening only, one checkpoint and one
+`sims` value, not yet checked for generality. Remaining Pass-3 candidates:
+an isolated fixed-sims lr sweep (to settle the training-side lr/sims
+confound) and checking whether this cvisit/cscale corner generalizes to
+other checkpoints.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 

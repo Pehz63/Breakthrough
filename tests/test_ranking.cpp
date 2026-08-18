@@ -386,9 +386,39 @@ TEST_CASE("ranking id - GumbelMCTS (gaz) head round trip") {
     REQUIRE(a.spec.depth == 50);   // total simulation budget, reusing the same field ab() uses for depth
     REQUIRE(a.spec.explorer >= 0);
     REQUIRE(string(g_explorers[a.spec.explorer].name) == "GumbelMCTS");
+    // Defaults (paper values) with no flags present: no version bump was needed for
+    // this grammar's growth since an existing bare gaz(sims=N)@1 id is unaffected.
+    REQUIRE(a.spec.gumbelCVisit == 50);
+    REQUIRE(a.spec.gumbelCScaleTenths == 10);
+    REQUIRE(a.spec.gumbelRootM == 16);
 
     REQUIRE(parseErr("gaz@1.classic(chip=100)@2").find("gaz needs") != string::npos);
     REQUIRE(parseErr("gaz(sims=0)@1.classic(chip=100)@2").find("simulation budget") != string::npos);
+}
+
+TEST_CASE("ranking id - GumbelMCTS (gaz) cvisit/cscale/m knobs") {
+    RankAgent a = parseOk("gaz(sims=50,cvisit=25,cscale=5,m=8)@1.classic(chip=100)@2");
+    REQUIRE(a.spec.gumbelCVisit == 25);
+    REQUIRE(a.spec.gumbelCScaleTenths == 5);   // cscale is spelled in TENTHS: 5 -> 0.5
+    REQUIRE(a.spec.gumbelRootM == 8);
+
+    // Like ab()'s own flags, cvisit/cscale/m must appear in canonical order
+    // (cvisit, cscale, m) to round-trip: rankAgentFromId always enforces the
+    // full canonical form, not just successful parsing (see parseAgentId's
+    // "id is not canonical" check) -- no head in this grammar tolerates
+    // reordered flags at the public API, ab() included.
+    REQUIRE(parseErr("gaz(sims=50,m=8,cscale=5,cvisit=25)@1.classic(chip=100)@2").find("not canonical") != string::npos);
+
+    // A single non-default flag alone still round trips (each is independent).
+    parseOk("gaz(sims=50,cvisit=100)@1.classic(chip=100)@2");
+    parseOk("gaz(sims=50,cscale=20)@1.classic(chip=100)@2");
+    parseOk("gaz(sims=50,m=4)@1.classic(chip=100)@2");
+
+    REQUIRE(parseErr("gaz(sims=50,cvisit=25,cvisit=30)@1.classic(chip=100)@2").find("duplicate") != string::npos);
+    REQUIRE(parseErr("gaz(sims=50,cscale=5,cscale=6)@1.classic(chip=100)@2").find("duplicate") != string::npos);
+    REQUIRE(parseErr("gaz(sims=50,m=8,m=4)@1.classic(chip=100)@2").find("duplicate") != string::npos);
+    REQUIRE(parseErr("gaz(sims=50,bogus=1)@1.classic(chip=100)@2").find("unknown gaz() flag") != string::npos);
+    REQUIRE(parseErr("gaz(sims=50,m=0)@1.classic(chip=100)@2").find("root breadth") != string::npos);
 }
 
 // A JointModel (value + policy heads over DIFFERENT feature layouts) gets its

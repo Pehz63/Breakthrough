@@ -35,6 +35,9 @@ static void seedAgentDefaults(AgentSpec& a) {
     a.useQuiescence = false;
     a.keepPartial = false;
     a.aspirationWindow = 0;
+    a.gumbelCVisit = 50;
+    a.gumbelCScaleTenths = 10;
+    a.gumbelRootM = 16;
 }
 
 AgentSpec agentMakeSearch(const char* name, int explorer, int evaluator, int depth, int modelSlot) {
@@ -112,6 +115,8 @@ int agentChooseMove(const AgentSpec& a, int side) {
     bool savedAB = g_useAlphaBeta, savedTT = g_useTT, savedMO = g_useMoveOrder, savedKP = g_keepPartial;
     bool savedQS = g_useQuiescence;
     int savedAsp = g_aspirationWindow;
+    double savedCVisit = g_gumbelCVisit, savedCScale = g_gumbelCScale;
+    int savedRootM = g_gumbelRootM;
     if (a.nodeBudget)        g_nodeBudget = a.nodeBudget;
     if (a.timeBudgetMs > 0.0) g_timeBudgetMs = a.timeBudgetMs;
     g_useAlphaBeta = a.useAlphaBeta;
@@ -120,6 +125,9 @@ int agentChooseMove(const AgentSpec& a, int side) {
     g_useQuiescence = a.useQuiescence;
     g_keepPartial = a.keepPartial;
     g_aspirationWindow = a.aspirationWindow;
+    g_gumbelCVisit = (double)a.gumbelCVisit;
+    g_gumbelCScale = (double)a.gumbelCScaleTenths / 10.0;
+    g_gumbelRootM = a.gumbelRootM;
 
     int victor = g_explorers[e].fn(side, a.evaluator, params, depth);
 
@@ -127,6 +135,7 @@ int agentChooseMove(const AgentSpec& a, int side) {
     g_useAlphaBeta = savedAB; g_useTT = savedTT; g_useMoveOrder = savedMO;
     g_useQuiescence = savedQS;
     g_keepPartial = savedKP; g_aspirationWindow = savedAsp;
+    g_gumbelCVisit = savedCVisit; g_gumbelCScale = savedCScale; g_gumbelRootM = savedRootM;
     return victor;
 }
 
@@ -170,6 +179,9 @@ string agentDescribe(const AgentSpec& a) {
         if (a.useQuiescence)       flags += "qs,";
         if (a.keepPartial)         flags += "part,";
         if (a.aspirationWindow > 0) flags += "asp" + std::to_string(a.aspirationWindow) + ",";
+        if (a.gumbelCVisit != 50)         flags += "cvisit" + std::to_string(a.gumbelCVisit) + ",";
+        if (a.gumbelCScaleTenths != 10)   flags += "cscale" + std::to_string(a.gumbelCScaleTenths) + ",";
+        if (a.gumbelRootM != 16)          flags += "m" + std::to_string(a.gumbelRootM) + ",";
         if (!flags.empty()) { flags.pop_back(); s += " [" + flags + "]"; }
     }
     return s;

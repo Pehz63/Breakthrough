@@ -194,6 +194,70 @@ TEST_CASE("GumbelMCTS - plays a full legal game to completion with a random-weig
     mlClearSlots();
 }
 
+TEST_CASE("gumbelSearch - g_gumbelRootM actually narrows the root candidate set (validates the knob has an effect)") {
+    srand(910);
+    LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    for (int i = 0; i < policy->n; i++) policy->w[i] = 0.1f * (((i * 3) % 5) - 2);
+    JointModel* jm = new JointModel(value, policy);
+    mlSetModel(705, jm);
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+
+    double savedCVisit = g_gumbelCVisit, savedCScale = g_gumbelCScale;
+    int savedRootM = g_gumbelRootM;
+
+    g_gumbelRootM = 1;
+    GumbelRootInfo infoNarrow;
+    gumbelSearch(White, 705, 64, &infoNarrow);
+    int visitedNarrow = 0;
+    for (int i = 0; i < infoNarrow.moveCount; i++) if (infoNarrow.visitCounts[i] > 0) visitedNarrow++;
+
+    g_gumbelRootM = 16;
+    GumbelRootInfo infoWide;
+    gumbelSearch(White, 705, 64, &infoWide);
+    int visitedWide = 0;
+    for (int i = 0; i < infoWide.moveCount; i++) if (infoWide.visitCounts[i] > 0) visitedWide++;
+
+    g_gumbelCVisit = savedCVisit; g_gumbelCScale = savedCScale; g_gumbelRootM = savedRootM;
+
+    REQUIRE(infoNarrow.moveCount > 1);        // the starting position has many legal moves
+    REQUIRE(visitedNarrow <= 1);              // m=1 keeps exactly one candidate, no halving round runs
+    REQUIRE(visitedWide > visitedNarrow);     // m=16 spreads the same budget over more candidates
+    mlClearSlots();
+}
+
+TEST_CASE("agentChooseMove - per-agent gumbel knobs set g_gumbel* during the call and restore them after") {
+    int gaz = findExplorer("GumbelMCTS");
+    REQUIRE(gaz >= 0);
+    AgentSpec a = agentMakeSearch("gumbel-knob-test", gaz, evalIdx("LearnedValue"), 4, 0);
+    a.gumbelCVisit = 7;
+    a.gumbelCScaleTenths = 25;   // 2.5
+    a.gumbelRootM = 3;
+
+    g_gumbelCVisit = 999.0; g_gumbelCScale = 999.0; g_gumbelRootM = 999;   // sentinels
+
+    clearBoard();
+    board[3][SIZE - 2] = WHITE;   // immediate-win shortcut: no model needed, still goes through agentChooseMove
+    int victor = agentChooseMove(a, White);
+    REQUIRE(victor == WhiteWin);
+
+    // Restored to the sentinels afterward: the call must not leak its own values out.
+    bool restoredCVisit = (g_gumbelCVisit == 999.0);
+    bool restoredCScale = (g_gumbelCScale == 999.0);
+    bool restoredRootM = (g_gumbelRootM == 999);
+
+    // Reset to the real defaults before returning control to the rest of the test
+    // binary: these are process-wide globals, and every OTHER test (including
+    // test_gumbelzero.cpp's gumbelImprovedPolicy test) assumes the paper defaults
+    // unless it sets them itself. Leaving a sentinel here would silently corrupt
+    // whichever test happens to run next in the same process.
+    g_gumbelCVisit = 50.0; g_gumbelCScale = 1.0; g_gumbelRootM = 16;
+
+    REQUIRE(restoredCVisit);
+    REQUIRE(restoredCScale);
+    REQUIRE(restoredRootM);
+}
+
 TEST_CASE("GumbelMCTS - a saved JointModel loads and plays through the real search path") {
     LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
     for (int i = 0; i < value->n; i++) value->w[i] = 0.02f * (((i * 23) % 19) - 9);

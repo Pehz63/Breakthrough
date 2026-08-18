@@ -17,7 +17,7 @@
 //
 // Algorithm shape:
 //   - Root: Gumbel-top-k sampling over the legal moves' prior logits selects
-//     up to kGumbelM candidate root actions (replaces Dirichlet-noise
+//     up to g_gumbelRootM candidate root actions (replaces Dirichlet-noise
 //     exploration).
 //   - Root: Sequential Halving spends the simulation budget across those
 //     candidates in halving rounds. Every survivor gets an equal share of
@@ -44,7 +44,8 @@
 // sigma(q) = (c_visit + maxVisitCount) * c_scale * q -- the transform that
 // turns a completed Q-value (mover-relative, in [-1,1]) into a logit-scale
 // bonus comparable to a prior logit. Paper defaults: c_visit=50, c_scale=1.0
-// (see kGumbelCVisit/kGumbelCScale in ai_gumbel.cpp).
+// (see g_gumbelCVisit/g_gumbelCScale in globals.h/.cpp, per-agent knobs set
+// by agentChooseMove).
 double gumbelSigma(double q, int maxVisitCount, double cVisit, double cScale);
 
 // Deterministic action-selection rule. Among `n` actions with prior logits
@@ -105,9 +106,9 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info = nullp
 
 // The Gumbel-improved policy target: softmax(logits[i] + sigma(completedQ[i],
 // maxVisitCount, cVisit, cScale)) over info.moveCount legal root moves, using
-// the search's FINAL logits/completedQ/visitCounts (reuses this file's own
-// internal cVisit/cScale constants, so a caller never has to duplicate or
-// re-derive the search's own math). Writes into `out` (capacity >=
+// the search's FINAL logits/completedQ/visitCounts (reuses g_gumbelCVisit/
+// g_gumbelCScale, so a caller never has to duplicate or re-derive the
+// search's own math). Writes into `out` (capacity >=
 // info.moveCount), which sums to 1. A future self-play training regime's
 // policy-head target; unused by the plain registered explorer.
 void gumbelImprovedPolicy(const GumbelRootInfo& info, double* out);

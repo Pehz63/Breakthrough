@@ -194,9 +194,13 @@ static const char* const LBL_MODEL[]   = { "model=", "model_", "model", "s" };
 static const char* const LBL_CONN[]    = { "conn=", "conn_", "conn", "con" };
 static const char* const LBL_RISK[]    = { "risk=" };   // no legacy spelling: new field, one form only
 static const char* const LBL_SIMS[]    = { "sims=" };   // no legacy spelling: new field, one form only
+static const char* const LBL_CVISIT[]  = { "cvisit=" };  // no legacy spelling: new field, one form only
+static const char* const LBL_CSCALE[]  = { "cscale=" };  // no legacy spelling: new field, one form only
+static const char* const LBL_ROOTM[]   = { "m=" };        // no legacy spelling: new field, one form only
 static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
 static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
 static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1, LBLN_SIMS = 1;
+static const int LBLN_CVISIT = 1, LBLN_CSCALE = 1, LBLN_ROOTM = 1;
 
 // ============================================================
 // ID CODEC
@@ -584,10 +588,16 @@ string rankAgentId(const AgentSpec& a) {
             s += ")";
         } else if (idn == "gaz") {
             // Gumbel MCTS: a.depth carries the total simulation budget, the same
-            // reuse ab() makes of it for search depth. cvisit/cscale/m are fixed
-            // internal constants in this slice (see ai_gumbel.cpp), not per-agent
-            // knobs, so the id stays as short as greedy's.
-            s = "gaz(sims=" + std::to_string(a.depth) + ")";
+            // reuse ab() makes of it for search depth. cvisit/cscale/m are optional
+            // search-shape knobs (src/ai_gumbel.cpp's g_gumbelCVisit/g_gumbelCScale/
+            // g_gumbelRootM), only appended when non-default so a plain gaz(sims=N)@1
+            // id stays unchanged. cscale is spelled in TENTHS (cscale=10 -> 1.0),
+            // matching learned()'s risk=<tenths> convention.
+            s = "gaz(sims=" + std::to_string(a.depth);
+            if (a.gumbelCVisit != 50)       s += ",cvisit=" + std::to_string(a.gumbelCVisit);
+            if (a.gumbelCScaleTenths != 10) s += ",cscale=" + std::to_string(a.gumbelCScaleTenths);
+            if (a.gumbelRootM != 16)        s += ",m=" + std::to_string(a.gumbelRootM);
+            s += ")";
         } else {
             s = idn;   // greedy (always 1-ply, no arguments)
         }
@@ -832,6 +842,8 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false;
     long long asp = 0, cap = 0, tbMs = 0;
     unsigned long long nb = 0;
+    bool haveCVisit = false, haveCScale = false, haveRootM = false;
+    long long gCVisit = 0, gCScale = 0, gRootM = 0;
 
     if (headWord == "rand" || headWord == "tiered" || headWord == "policy") {
         if (parens) { err = "'" + headWord + "' takes no arguments"; return false; }
@@ -927,8 +939,8 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
             }
         }
     } else if (headWord == "gaz") {
-        if (!parens || args.size() != 1) {
-            err = "gaz needs one argument, e.g. gaz(sims=50)";
+        if (!parens || args.empty()) {
+            err = "gaz needs at least one argument, e.g. gaz(sims=50)";
             return false;
         }
         isSearch = true;
@@ -938,10 +950,40 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         string sTail;
         if (!labelledNum(args[0], LBL_SIMS, LBLN_SIMS, sTail)
             || !lenientInt(sTail, false, s) || s < 1) {
-            err = "gaz()'s argument must be a simulation budget like sims=50 (got '" + args[0] + "')";
+            err = "gaz()'s first argument must be a simulation budget like sims=50 (got '" + args[0] + "')";
             return false;
         }
         depth = (int)s;   // total simulation budget, reusing the same field ab() uses for depth
+        for (size_t i = 1; i < args.size(); i++) {
+            const string& f = args[i];
+            long long n;
+            string fTail;
+            if (labelledNum(f, LBL_CVISIT, LBLN_CVISIT, fTail)) {
+                if (haveCVisit) { err = "duplicate gaz() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail, false, n) || n < 0) {
+                    err = "bad cvisit '" + f + "' (expected like cvisit=50)";
+                    return false;
+                }
+                gCVisit = n; haveCVisit = true;
+            } else if (labelledNum(f, LBL_CSCALE, LBLN_CSCALE, fTail)) {
+                if (haveCScale) { err = "duplicate gaz() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail, false, n) || n < 0) {
+                    err = "bad cscale '" + f + "' (expected TENTHS, like cscale=10 for 1.0)";
+                    return false;
+                }
+                gCScale = n; haveCScale = true;
+            } else if (labelledNum(f, LBL_ROOTM, LBLN_ROOTM, fTail)) {
+                if (haveRootM) { err = "duplicate gaz() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail, false, n) || n < 1) {
+                    err = "bad root breadth '" + f + "' (expected like m=16)";
+                    return false;
+                }
+                gRootM = n; haveRootM = true;
+            } else {
+                err = "unknown gaz() flag '" + f + "'";
+                return false;
+            }
+        }
     } else {
         err = "unknown head '" + headWord
             + "' (expected rand, tiered, smart(N), policy, greedy, ab(...), or gaz(...), each with @<version>)";
@@ -1266,6 +1308,9 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         a.nodeBudget = nb;
         a.timeBudgetMs = (double)tbMs;
         a.depthCap = (int)cap;
+        a.gumbelCVisit = haveCVisit ? (int)gCVisit : 50;
+        a.gumbelCScaleTenths = haveCScale ? (int)gCScale : 10;
+        a.gumbelRootM = haveRootM ? (int)gRootM : 16;
     } else {
         a = agentMakePolicy("", chooserIdx, chooserParam, modelSlot >= 0 ? modelSlot : 0);
     }
