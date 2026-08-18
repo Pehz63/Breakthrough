@@ -102,6 +102,7 @@ $BaseRoster = Join-Path $Root "ranking\roster_screening_pool.txt"
 $Standings  = Join-Path $Root "ranking\standings.tsv"
 $PinnedStandings = Join-Path $Root "ranking\standings_screen_gzjoint_pinned.tsv"
 $ResultsOut = Join-Path $Root "plans\gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv"
+$ResultsWideOut = Join-Path $Root "plans\gumbel-mcts-joint-sweep-agents-5-violet-harbor.wide.tsv"
 
 # Shared across EVERY draw (the consistency rule): no draw gets finer or
 # coarser resolution than another.
@@ -312,18 +313,20 @@ function ScreenCohort {
 # generic tool reused across cohort studies -- see tools/CLAUDE.md). This is
 # the standard last step of any cohort study here, not specific to this one.
 function ExportResults {
+    $notes = @(
+        "Gumbel-Zero joint training x search-shape sweep (plans/gumbel-mcts-results-5-violet-harbor.md). One row per checkpoint (404 total: 101 draws x 4 rungs).",
+        "cvisit/cscale/m columns are RATING-time search shape only (the gaz(...) serving head). Training self-play never reads them: ml_gumbelzero.cpp calls",
+        "gumbelSearch() directly and never touches g_gumbelCVisit/g_gumbelCScale/g_gumbelRootM, so every row's actual self-play search shape is the fixed engine",
+        "default (cvisit=50, cscale=1.0, m=16), regardless of the swept cvisit/cscale/m values below.",
+        "elo/games/cpu_ms_move/playstyle columns are from a PINNED screening fit against ranking/roster_screening_pool.txt (Docs/ranking-workflow.md Workflow A):",
+        "screening only, not certification -- see the results doc's Caveats section before treating any single row's Elo as a reliable ranking."
+    )
     & (Join-Path $PSScriptRoot "export_cohort_results.ps1") `
         -Ledger $Ledger `
         -PinnedStandings $PinnedStandings `
         -Out $ResultsOut `
-        -HeaderComment @(
-            "Gumbel-Zero joint training x search-shape sweep (plans/gumbel-mcts-results-5-violet-harbor.md). One row per checkpoint (404 total: 101 draws x 4 rungs).",
-            "cvisit/cscale/m columns are RATING-time search shape only (the gaz(...) serving head). Training self-play never reads them: ml_gumbelzero.cpp calls",
-            "gumbelSearch() directly and never touches g_gumbelCVisit/g_gumbelCScale/g_gumbelRootM, so every row's actual self-play search shape is the fixed engine",
-            "default (cvisit=50, cscale=1.0, m=16), regardless of the swept cvisit/cscale/m values below.",
-            "elo/games/cpu_ms_move/playstyle columns are from a PINNED screening fit against ranking/roster_screening_pool.txt (Docs/ranking-workflow.md Workflow A):",
-            "screening only, not certification -- see the results doc's Caveats section before treating any single row's Elo as a reliable ranking."
-        )
+        -HeaderComment $notes `
+        -GroupBy block,seed -WideBy rung -WideOut $ResultsWideOut
 }
 
 switch ($Phase) {

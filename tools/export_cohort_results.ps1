@@ -54,18 +54,40 @@
   defaults for every row"). One array element per line; do not include the
   leading `#` yourself.
 
+.PARAMETER GroupBy
+  Column name(s) that identify one training RUN, as opposed to one
+  checkpoint -- e.g. @("block","seed") for a study whose ledger checkpoints
+  a shared rung ladder per run. Required if -WideBy is given.
+
+.PARAMETER WideBy
+  Optional column name (e.g. "rung") whose distinct values become column
+  suffixes in a second, wide-format output (-WideOut): one row per -GroupBy
+  key instead of one row per checkpoint. Any other column found to vary
+  within a group (not just the obvious result columns like elo -- a
+  checkpoint's own slot/hash vary per rung too) is pivoted the same way;
+  any column that is constant within every group collapses to a single
+  column. Requires -GroupBy and -WideOut.
+
+.PARAMETER WideOut
+  Output path for the wide-format pivot. Only written when -WideBy is given.
+
 .EXAMPLE
   .\tools\export_cohort_results.ps1 `
       -Ledger models/sweep/gumbelzero_joint_study.csv `
       -PinnedStandings ranking/standings_screen_gzjoint_pinned.tsv `
-      -Out plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv
+      -Out plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv `
+      -GroupBy block,seed -WideBy rung `
+      -WideOut plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.wide.tsv
 #>
 param(
     [Parameter(Mandatory=$true)][string]$Ledger,
     [Parameter(Mandatory=$true)][string]$PinnedStandings,
     [string]$PinnedReport = $null,
     [Parameter(Mandatory=$true)][string]$Out,
-    [string[]]$HeaderComment = @()
+    [string[]]$HeaderComment = @(),
+    [string[]]$GroupBy = @(),
+    [string]$WideBy = "",
+    [string]$WideOut = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -197,3 +219,76 @@ try {
 }
 
 Write-Host "wrote $($outRows.Count) rows ($($allCols.Count) columns) to $Out"
+
+# ---- optional wide pivot: one row per -GroupBy key, -WideBy values spread into columns ----
+if ($WideBy) {
+    if ($GroupBy.Count -eq 0) { throw "-WideBy requires -GroupBy" }
+    if (-not $WideOut) { throw "-WideBy requires -WideOut" }
+    if (-not ($allCols -contains $WideBy)) { throw "-WideBy column '$WideBy' not found among: $($allCols -join ', ')" }
+    foreach ($g in $GroupBy) {
+        if (-not ($allCols -contains $g)) { throw "-GroupBy column '$g' not found among: $($allCols -join ', ')" }
+    }
+
+    # Group rows by GroupBy key, preserving first-seen order.
+    $groupOrder = @()
+    $groups = [ordered]@{}
+    foreach ($row in $outRows) {
+        $key = ($GroupBy | ForEach-Object { $row.$_ }) -join "|"
+        if (-not $groups.Contains($key)) { $groups[$key] = New-Object System.Collections.ArrayList; $groupOrder += $key }
+        [void]$groups[$key].Add($row)
+    }
+
+    # A column collapses to one value if it is constant WITHIN every group
+    # (e.g. training config, identical across a run's rungs); otherwise it
+    # is pivoted, since it genuinely differs per checkpoint (elo, but also
+    # the checkpoint's own slot/model hash/cpu-per-move/playstyle).
+    $otherCols = @($allCols | Where-Object { $_ -ne $WideBy -and -not ($GroupBy -contains $_) })
+    $collapseCols = @()
+    $pivotCols = @()
+    foreach ($c in $otherCols) {
+        $constant = $true
+        foreach ($key in $groupOrder) {
+            $vals = @($groups[$key] | ForEach-Object { $_.$c } | Select-Object -Unique)
+            if ($vals.Count -gt 1) { $constant = $false; break }
+        }
+        if ($constant) { $collapseCols += $c } else { $pivotCols += $c }
+    }
+
+    $wideByValues = @($outRows | ForEach-Object { $_.$WideBy } | Select-Object -Unique)
+    $wideByValues = @($wideByValues | Sort-Object { try { [double]$_ } catch { $_ } })
+
+    $wideHeader = @() + $GroupBy + $collapseCols
+    foreach ($c in $pivotCols) {
+        foreach ($v in $wideByValues) { $wideHeader += "${c}_${WideBy}${v}" }
+    }
+
+    $wideRows = @()
+    foreach ($key in $groupOrder) {
+        $rows = $groups[$key]
+        $wr = [ordered]@{}
+        foreach ($g in $GroupBy) { $wr[$g] = $rows[0].$g }
+        foreach ($c in $collapseCols) { $wr[$c] = $rows[0].$c }
+        foreach ($c in $pivotCols) {
+            foreach ($v in $wideByValues) {
+                $match = $rows | Where-Object { $_.$WideBy -eq $v } | Select-Object -First 1
+                $wr["${c}_${WideBy}${v}"] = if ($match) { $match.$c } else { "" }
+            }
+        }
+        $wideRows += [PSCustomObject]$wr
+    }
+
+    $sw2 = New-Object System.IO.StreamWriter($WideOut, $false, [System.Text.Encoding]::ASCII)
+    try {
+        foreach ($c in $HeaderComment) { $sw2.WriteLine("# $c") }
+        $sw2.WriteLine("# Wide pivot of ${Out}: one row per {$($GroupBy -join ', ')}, $WideBy values spread into columns.")
+        $sw2.WriteLine("# Columns constant across a group's $WideBy values are not suffixed; columns that vary are '<col>_${WideBy}<value>'.")
+        $sw2.WriteLine("# Generated by tools/export_cohort_results.ps1.")
+        $sw2.WriteLine(($wideHeader -join "`t"))
+        foreach ($row in $wideRows) {
+            $sw2.WriteLine((($wideHeader | ForEach-Object { $row.$_ }) -join "`t"))
+        }
+    } finally {
+        $sw2.Close()
+    }
+    Write-Host "wrote $($wideRows.Count) rows ($($wideHeader.Count) columns) to $WideOut"
+}
