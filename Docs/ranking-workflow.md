@@ -64,6 +64,19 @@ also uses **cohort-vs-cohort** games, so it resolves the new agents' ordering
 candidates that score identically against the roster come out tied even when one
 beats the other every time. A test covers exactly that case.
 
+### Default gauntlet pool
+
+When a gauntlet (or any other single-candidate screening check) is the right
+instrument, `rank.exe gauntlet` needs a pool of opponents to play. Use
+`ranking/roster_screening_pool.txt` as the default pool rather than hand-picking
+opponents each time: 26 agents plus the `rand@1` anchor, spanning all 5 opener
+categories (openless/4-book/8-book/4-random/8-random) and a deliberate Elo
+spread from 1000+ down to ~100, built 2026-08-17 for exactly this purpose. Its
+own header comment documents composition and how to extend it. This is
+distinct from `ranking/roster_top.txt`, which exists to boost the openless
+top-of-table to certification fill (Workflow B) rather than to give a new,
+possibly-weak candidate an interpretable point on the scale.
+
 ### The hard limit
 
 **A pinned fit can never dethrone a champion.** The champions' ratings are

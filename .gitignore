@@ -157,6 +157,16 @@ ranking/matches_screen_gz.jsonl
 ranking/matches_screen_gz.jsonl.*
 ranking/matches_screen_gz.*.jsonl
 
+# Gumbel-Zero joint training x search-shape sweep screening pool
+# (tools/gumbelzero_joint_study.ps1, see plans/gumbel-mcts-results-5-violet-
+# harbor.md). Pool-only gauntlet games (rank.exe gauntlet --keep) go into
+# this store, never the permanent ladder; per-worker shards are merged and
+# deleted by the script, but ignored here too in case a run is interrupted
+# mid-merge. Its pinned-fit outputs are already covered by ranking/*_pinned.*.
+ranking/matches_screen_gzjoint.jsonl
+ranking/matches_screen_gzjoint.jsonl.*
+ranking/matches_screen_gzjoint.*.jsonl
+
 # One-off ad hoc match stores (e.g. a single direct-pairing query played into
 # its own isolated store so it never touches the canonical ladder). Named
 # per query, not a fixed pattern -- add one line per store the first time

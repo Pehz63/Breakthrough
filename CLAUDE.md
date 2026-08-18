@@ -157,6 +157,33 @@ command search). Workaround: source `vcvars64.bat` directly by its full path,
 `vswhere`-based wrapper batch scripts), using an explicit `.\` prefix on every
 subsequent batch/script invocation in the same chain rather than a bare name.
 
+**Root cause identified 2026-08-18, when invoking `cmd /c` from the Bash
+tool specifically (Git Bash / MSYS):** MSYS auto-converts Unix-looking
+arguments to Windows paths before exec, and this mangles `cmd /c`'s `/c`
+flag, so `cmd.exe` starts an idle interactive shell instead of running the
+given command (it hangs or silently no-ops rather than erroring). Fix:
+prefix the invocation with `MSYS_NO_PATHCONV=1`, e.g. `MSYS_NO_PATHCONV=1
+cmd /c '"<full path to vcvars64.bat>" && cl ...'`, and always pass an
+absolute Windows path to the batch file being invoked -- a bare or relative
+filename still fails to resolve as `cmd /c`'s first argument even with the
+env var set. This does not arise when the same `cmd /c` is run from
+PowerShell, only from the Bash tool.
+
+**A `src/` header change is not built until every binary that links it is
+rebuilt, not just the one you happened to test.** `breakthrough.exe`,
+`tests.exe`, `rank.exe`, and `train.exe` are four separate link targets that
+all pull in shared headers (see "Engine link set" in `src/CLAUDE.md`).
+Rebuilding and validating `tests.exe` alone after a header change (e.g. a
+constant like `ML_SLOTS`) leaves `rank.exe`/`train.exe` stale, and a stale
+binary does not error at build time -- it runs against the OLD constant and
+can fail (or silently misbehave) only later, at a point far from the actual
+edit. Concrete instance: raising `ML_SLOTS` and rebuilding only `tests.exe`
+let a stale `rank.exe` silently resolve model slots against the old bound,
+which surfaced as a roster-building failure across 97.5% of a cohort well
+after the header edit itself (`plans/gumbel-mcts-results-5-violet-harbor.md`).
+Rebuild and smoke-test every linked binary after any shared-header change,
+not just the one under active test.
+
 ### Console engine (`breakthrough.exe`)
 ```
 cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'

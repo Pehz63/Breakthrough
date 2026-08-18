@@ -1,0 +1,181 @@
+# Gumbel-Zero: joint training x search-shape sweep -- Results
+
+Plan: `gumbel-mcts-plan-5-violet-harbor.md`. Head throughout:
+`ab(deep=6,tt,ord,nodes=200k)@1` for pool agents; cohort agents are
+`gaz(sims=N,cvisit=C,cscale=S,m=M)@1.learned(...)@1`. Fit date for every Elo
+number below: 2026-08-18, `ranking/standings_screen_gzjoint_pinned.tsv`
+(pinned fit, screening pool frozen at `ranking/standings.tsv`, cohort agents
+resolved only through pool games -- see `Docs/ranking-workflow.md`, "Default
+gauntlet pool", and the plan doc's "pool-only gauntlet" rationale for why
+this run has no cohort-vs-cohort games).
+
+## What ran
+
+101 draws (1 REF + 100 random, seed 8817) x 4 checkpoint rungs
+(100/400/1500/4000 games) = 404 checkpoints, linear architecture / from-
+scratch init (see plan doc for why MLP/init were dropped before launch).
+Every checkpoint gauntlet-rated at 16 games/opponent against the 27-agent
+`ranking/roster_screening_pool.txt` (no cohort-internal games).
+
+## Timing (measured, 12 workers / 12 logical cores)
+
+| Phase | Measured | Games/units |
+|---|---|---|
+| Train (101 arms x 4 rungs) | 1834 s (~30.6 min) | 404 checkpoints |
+| Play (gauntlet, pool-only) | 14557 s (~4.04 hr) | 174,528 games (404 x 27 x 16, exact) |
+| Screen (pinned fit) | < 1 min | fit only, no new games |
+
+The 1-arm timing check (train+play+screen on REF alone) had projected ~5.6hr
+for the play phase from a 4-checkpoint sample; the full run came in faster
+at ~4.04hr.
+
+## Elo distribution across all 404 checkpoints
+
+Min 308, max 816, median 560, mean 563 (pm not aggregated here; per-checkpoint
+pm ranges ~19-32, `games=432` each).
+
+**Top 20 checkpoints (any rung, all draws), full config:**
+
+| Block | Rung | Elo | l2 | lr | batch | open | cvisit | cscale | m |
+|---|---|---|---|---|---|---|---|---|---|
+| R87 | 1500 | 816 | 0 | 0.003 | 32 | 0 | 400 | 130 | 12 |
+| R26 | 4000 | 781 | 0 | 0.003 | 32 | 8 | 1000 | 100 | 20 |
+| R4 | 400 | 777 | 0 | 0.03 | 128 | 8 | 400 | 70 | 20 |
+| R49 | 1500 | 771 | 0 | 0.03 | 128 | 8 | 1000 | 70 | 20 |
+| R21 | 4000 | 771 | 0 | 0.03 | 8 | 8 | 400 | 70 | 16 |
+| R91 | 1500 | 771 | 0 | 0.01 | 8 | 0 | 600 | 100 | 16 |
+| R77 | 4000 | 769 | 0 | 0.01 | 8 | 0 | 600 | 130 | 8 |
+| R37 | 1500 | 765 | 0 | 0.01 | 32 | 4 | 800 | 70 | 20 |
+| R24 | 4000 | 754 | 0 | 0.003 | 8 | 4 | 1000 | 70 | 20 |
+| R17 | 400 | 752 | 0 | 0.003 | 128 | 8 | 400 | 130 | 8 |
+| R49 | 4000 | 752 | 0 | 0.03 | 128 | 8 | 1000 | 70 | 20 |
+| R56 | 400 | 748 | 0 | 0.03 | 32 | 8 | 1000 | 130 | 12 |
+| R93 | 4000 | 748 | 0 | 0.003 | 128 | 0 | 600 | 40 | 12 |
+| R10 | 400 | 739 | 0 | 0.01 | 128 | 4 | 400 | 70 | 12 |
+| R56 | 1500 | 739 | 0 | 0.03 | 32 | 8 | 1000 | 130 | 12 |
+| R10 | 1500 | 737 | 0 | 0.01 | 128 | 4 | 400 | 70 | 12 |
+| R99 | 400 | 735 | 0.0003 | 0.03 | 8 | 8 | 1000 | 70 | 16 |
+| R36 | 1500 | 733 | 0 | 0.003 | 32 | 4 | 800 | 100 | 8 |
+| R4 | 1500 | 733 | 0 | 0.03 | 128 | 8 | 400 | 70 | 20 |
+| R20 | 1500 | 730 | 0 | 0.003 | 32 | 8 | 800 | 40 | 12 |
+
+**Winner**: `gaz(sims=400,cvisit=400,cscale=130,m=12)@1.learned(model=1348,2cb9ef56,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1`
+(draw R87, rung 1500), Elo 816 +/- 19. Training recipe: sims=400, lr=0.003,
+l2=0.0, replay=(8000,128), batch=32, open=0.
+
+**Bottom of the range**: worst checkpoint 308 (R94 rung=?, see the CSV
+ledger for exact config), still well above `rand@1`'s anchor 0 and the
+weakest pool dilution rungs (107/281), confirming the screening pool gives
+every checkpoint in this sweep an interpretable, non-saturated point on the
+scale -- the design goal `roster_screening_pool.txt` was built for.
+
+**l2 observation** (report only, not a causal claim -- see caveat below): l2=0
+was drawn in 32/101 arms (~32% of draws, expected under uniform sampling from
+{0, 0.0003, 0.001}) but accounts for 19/20 of the top-20 checkpoints. l2=0.001
+(42/101 draws, the most heavily sampled l2 value) accounts for 0/20 of the
+top-20.
+
+## Rung monotonicity: the interior-optimum pattern is the norm here, not the exception
+
+Classified each of the 101 arms' 4-rung Elo sequence:
+
+| Pattern | Count |
+|---|---|
+| Monotonic increasing (100<=400<=1500<=4000) | 7 |
+| Monotonic decreasing | 1 |
+| Non-monotonic (peak then decline, or dip then rise) | 93 |
+
+Among the 93 non-monotonic arms, the peak rung is spread across the whole
+ladder, not concentrated at either end:
+
+| Peak rung | Count (non-monotonic arms only) |
+|---|---|
+| 100 | 10 |
+| 400 | 30 |
+| 1500 | 29 |
+| 4000 | 24 |
+
+Combined with the 7 monotonic-increasing (peak trivially at 4000) and the 1
+monotonic-decreasing (peak trivially at 100), the overall peak-rung
+distribution across all 101 arms is roughly even: 11 at rung 100, 30 at rung
+400, 29 at rung 1500, 31 at rung 4000. **92% of arms (93/101) are
+non-monotonic**, and the single best checkpoint in the whole sweep (R87,
+Elo 816) peaks at rung 1500 and DROPS to 604 by rung 4000 -- the same
+checkpoint would have been missed entirely by a study that screened only the
+final rung, and its rung-4000 successor would have looked like a much
+weaker result (604, rank ~30th) than the run's actual peak.
+
+This is the same interior-optimum pattern flagged in `gumbel-mcts-results-3-
+amber-thicket.md` ("most draws (12/21) were still rising monotonically at
+rung 1500, motivating Round B") and in the Pass-1 `sims` sweep commit
+message, but sharper here: it is not merely "still rising", the majority of
+arms actively decline after an interior peak. No causal mechanism is claimed
+here (see caveat).
+
+## Caveats
+
+- **Not a controlled factorial.** 101 random draws across 9 jointly-varied
+  axes cannot isolate any single axis's causal effect -- the l2 and
+  interior-optimum observations above are correlational, reported as data
+  per this project's "report the data, do not characterize it" convention,
+  not conclusions. A controlled follow-up (Round 2/3 style, as the Slice-2
+  search-knob study did for cvisit/cscale) would be needed to isolate l2's
+  effect specifically.
+- **1 seed per draw.** Per-draw Elo sits inside the project's documented
+  50-150 Elo seed-noise band; a single seed's rank among the 101 draws is not
+  a reliable ordering by itself. The pm column in
+  `ranking/standings_screen_gzjoint_pinned.tsv` (~19-32 per checkpoint) is
+  the gauntlet fit's own uncertainty, not a stand-in for seed variance.
+- **Screening only, not certification.** This is a pinned-fit-equivalent
+  gauntlet against the frozen screening pool (`ranking/standings.tsv`'s
+  Elo scale as of 2026-08-17). None of these checkpoints are in
+  `ranking/roster.txt`; nothing here can or does move `ranking/CHAMPION.md`.
+- **Architecture/init untested.** Linear-only, from-scratch-only (see plan
+  doc). Whether MLP or a warm-started init changes any of the above is
+  unknown.
+
+## Process notes
+
+Full account of the infrastructure work (new sampler/study scripts, the
+`vswhere`/MSYS path-conversion build gotcha, the stale-binary slot-hash
+failure, the `Start-Process -PassThru` exit-code gotcha, the `rank.exe canon`
+subcommand) is in the plan doc's "Process gotchas hit while building this"
+section, not repeated here.
+
+## Future Work
+
+- **Isolate l2's effect** (ties to the l2 observation above): a controlled
+  3-value l2 sweep at fixed sims/lr/cvisit/cscale/m, several seeds each,
+  would confirm or refute whether l2=0 is actually better here or just
+  correlated with something else in this random sample.
+- **Confirm R87 with more seeds** (ties to "winner" above): a single seed's
+  816 could be seed noise; the seed-noise band alone (50-150 Elo) is enough
+  to move R87 off the top spot. Re-run R87's exact recipe at 2-3 more seeds,
+  matching this project's Round A -> Round B pattern, before treating R87 as
+  a real winner rather than an artifact of the sample.
+- **Explain the non-monotonicity mechanistically** (ties to the rung-
+  monotonicity finding): is the decline driven by the replay buffer aging
+  out early, informative self-play data as training continues (buffer
+  capacity/warmup interacts with rung count), by the value/policy heads
+  overfitting a still-small self-play distribution, or something else? The
+  current data can show THAT it happens, not WHY.
+- **MLP + a second init**, deferred from this round's original design (see
+  plan doc) -- the natural next round once `train.exe gumbelzero` gains
+  `--model-type`/`--mlp-hidden`/`--init` support.
+
+## Ideas This Inspired
+
+- The pool-only gauntlet vs pinned-cohort tradeoff (linear-in-cohort-size vs
+  quadratic) is general, not specific to this study -- worth a short note in
+  `Docs/ranking-workflow.md`'s Workflow A section flagging the crossover
+  cohort size where gauntlet becomes cheaper, so a future large-cohort study
+  doesn't rediscover the same ~48hr surprise.
+- `rank.exe canon` is useful well beyond this study (e.g. migrating an old
+  roster file after a codec change) but was previously undocumented in
+  `tools/CLAUDE.md`'s subcommand list; worth a small standalone mention there
+  independent of this sweep.
+- Given how much of this sweep's screening compute went to distinguishing
+  checkpoints in the 600-820 Elo band, a cheaper mid-training proxy signal
+  (e.g. a small fixed eval set scored directly, no games) could pre-filter
+  arms before spending gauntlet games on all 404 -- worth considering for the
+  next round's scale if it grows again.

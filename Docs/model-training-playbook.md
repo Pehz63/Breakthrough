@@ -254,7 +254,12 @@ will have grown.
    design discussion: `Docs/ranking-workflow.md`. One line worth repeating
    here because it bounds what Pass 2/3 can conclude: **a pinned fit can never
    dethrone anything** — it's a screening instrument, and its output lives in
-   `ranking/*_pinned.*`, never the canonical files.
+   `ranking/*_pinned.*`, never the canonical files. When a single-candidate
+   gauntlet (`rank.exe gauntlet`) is the right instrument instead of a pinned
+   group fit, use `ranking/roster_screening_pool.txt` as the default opponent
+   pool — a fixed, regime-diverse, Elo-spread set of 26 agents (+ `rand@1`)
+   across all 5 opener categories, built so any new agent's screening Elo
+   lands on an interpretable point of the scale regardless of its strength.
 8. **Certify** (after Pass 3, and only for the configuration(s) chosen to
    keep): edit the real `ranking/roster.txt`, fill contenders to >= 32
    games/pair, run a plain unpinned `rank.exe run`. This is the only step that

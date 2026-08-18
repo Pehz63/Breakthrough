@@ -23,11 +23,19 @@
 // on 2026-07-30: TD-Leaf Pass 2's random-search sweep alone needs 468 concurrent
 // slots (25 draws x up to 6 seeds x 6 checkpoint rungs), since a slot number is
 // part of an agent's canonical identity and every rated agent must be loadable
-// at once; 1024 leaves headroom past that so the next study need not raise this
-// again. Safe to raise: every use is a bounds check or a generic loop, storage is
-// a sparse map (not an array sized by this constant), and IDs carry explicit
-// slot numbers so nothing is re-identified.
-#define ML_SLOTS 1024
+// at once. Raised 1024 -> 4096 on 2026-08-17 for the Gumbel-Zero joint training
+// x search-shape sweep (101 draws x 4 rungs = 404 checkpoints), with the
+// highest slot claimed so far at 997 leaving only ~117 free under the old 1024
+// cap. The raise was sized for a larger 1600-checkpoint design (2 inits x 2
+// architectures) that got dropped back to 1-init/linear-only before launch --
+// train.exe's gumbelzero subcommand turned out to have no --model-type/
+// --mlp-hidden/--init flag at all, confirmed 2026-08-17 -- so 4096 has more
+// headroom than this study alone needs; left as is rather than re-lowered,
+// since MLP/init support is expected as a follow-up round. Safe to raise:
+// every use is a bounds check or a generic loop, storage is a sparse map (not
+// an array sized by this constant), and IDs carry explicit slot numbers so
+// nothing is re-identified.
+#define ML_SLOTS 4096
 
 // The top ML_RESERVED_SLOTS slot numbers (ML_SLOTS-ML_RESERVED_SLOTS .. ML_SLOTS-1)
 // are permanently reserved for ephemeral scratch use: the test suite's model
