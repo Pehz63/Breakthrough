@@ -259,7 +259,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `build_tests.bat` / `build_train.bat` / `build_rank.bat` | MSVC batch builds for `tests.exe` / `train.exe` / `rank.exe` |
 | `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
 | `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md`. The match store is PARTS + a live tail listed in `ranking/matches.index.txt`, and the rating outputs are gitignored (regenerate with `rank.exe rate`) |
-| `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract |
+| `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract, interpretable peak-Elo prediction over a cohort sweep (`analysis/predict_peak_elo.py`) |
 | `plans/` | Archived session plans + companion results docs |
 | `.claude/skills/run-tests.md` | Skill: always run tests via `run_tests.ps1 -Build`, never bare `cl` |
 
