@@ -29,6 +29,31 @@ fairly-matched positions, and the aggregate/average evaluation of any board stat
 all by joining `positions` <- `labels` / `evaluations` on the canonical position
 hash.
 
+## Predict a cohort's peak Elo from its swept config axes
+
+Given a long-format cohort export from `tools/export_cohort_results.ps1` (one
+row per checkpoint, a rung ladder per training run), collapse each run to its
+peak Elo and fit an interpretable model over the swept config axes -- a
+shallow decision tree (depth chosen by cross-validation) plus a random forest
+for a more stable feature-importance ranking, a linear baseline for contrast,
+and plain per-value bucket means with no model at all. Emits a markdown
+report and a rendered tree-diagram PNG:
+
+```
+python analysis/predict_peak_elo.py \
+    --in ../plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv \
+    --group-by block --target elo --rung-col rung \
+    --out-report ../plans/gumbel-mcts-peak-elo-predictor-5-violet-harbor.md \
+    --out-tree-image ../plans/gumbel-mcts-peak-elo-tree-5-violet-harbor.png
+```
+
+`--features` (default `sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m`)
+and `--rung-col` (pass `""` to disable if the cohort has no checkpoint ladder)
+make it reusable for a differently-shaped cohort study. The report auto-flags
+any pair of axes that turn out to be perfectly coupled in the sweep (not
+actually independent draws) rather than silently double-counting one
+underlying effect as two.
+
 ## Export a model for the C++ engine
 
 Heavy models train in Python and export into the engine's text model format, which

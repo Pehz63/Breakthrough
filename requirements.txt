@@ -3,6 +3,8 @@
 duckdb>=0.10        # SQL queries over the data/*.jsonl datastore (analysis/analyze.py)
 numpy>=1.24
 pandas>=2.0         # convenient for ad-hoc analysis
+scikit-learn>=1.3   # decision tree / RF / linear fits (analysis/predict_peak_elo.py)
+matplotlib>=3.7     # tree diagram rendering (analysis/predict_peak_elo.py)
 
 # Optional, uncomment as needed:
 # torch>=2.0        # train MLP / NNUE / transformer models (train_py/)
