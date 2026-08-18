@@ -60,7 +60,8 @@
   Parallel training processes, and shards for the play phase.
 
 .PARAMETER Phase
-  all | train | roster | play | screen. Phases are resumable and idempotent.
+  all | train | roster | play | screen | export. Phases are resumable and
+  idempotent.
 
 .PARAMETER GamesPerPair
   Games per pair for the play phase (gauntlet-equivalent games/opponent).
@@ -79,7 +80,7 @@
 #>
 param(
     [int]$Workers = 12,
-    [ValidateSet("all","train","roster","play","screen")]
+    [ValidateSet("all","train","roster","play","screen","export")]
     [string]$Phase = "all",
     [int]$GamesPerPair = 16,
     [int]$N = 100,
@@ -99,6 +100,8 @@ $RosterOut  = Join-Path $Root "ranking\roster_gumbelzero_joint.txt"
 $CohortOut  = Join-Path $Root "ranking\cohort_gumbelzero_joint.txt"
 $BaseRoster = Join-Path $Root "ranking\roster_screening_pool.txt"
 $Standings  = Join-Path $Root "ranking\standings.tsv"
+$PinnedStandings = Join-Path $Root "ranking\standings_screen_gzjoint_pinned.tsv"
+$ResultsOut = Join-Path $Root "plans\gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv"
 
 # Shared across EVERY draw (the consistency rule): no draw gets finer or
 # coarser resolution than another.
@@ -303,10 +306,31 @@ function ScreenCohort {
     Write-Host "CERTIFICATION is a separate, deliberate step, not run by this script."
 }
 
+# ---- Phase: export ----
+# Merges the training ledger against the pinned screening fit into one flat
+# "agents trained x results" table (tools/export_cohort_results.ps1, a
+# generic tool reused across cohort studies -- see tools/CLAUDE.md). This is
+# the standard last step of any cohort study here, not specific to this one.
+function ExportResults {
+    & (Join-Path $PSScriptRoot "export_cohort_results.ps1") `
+        -Ledger $Ledger `
+        -PinnedStandings $PinnedStandings `
+        -Out $ResultsOut `
+        -HeaderComment @(
+            "Gumbel-Zero joint training x search-shape sweep (plans/gumbel-mcts-results-5-violet-harbor.md). One row per checkpoint (404 total: 101 draws x 4 rungs).",
+            "cvisit/cscale/m columns are RATING-time search shape only (the gaz(...) serving head). Training self-play never reads them: ml_gumbelzero.cpp calls",
+            "gumbelSearch() directly and never touches g_gumbelCVisit/g_gumbelCScale/g_gumbelRootM, so every row's actual self-play search shape is the fixed engine",
+            "default (cvisit=50, cscale=1.0, m=16), regardless of the swept cvisit/cscale/m values below.",
+            "elo/games/cpu_ms_move/playstyle columns are from a PINNED screening fit against ranking/roster_screening_pool.txt (Docs/ranking-workflow.md Workflow A):",
+            "screening only, not certification -- see the results doc's Caveats section before treating any single row's Elo as a reliable ranking."
+        )
+}
+
 switch ($Phase) {
     "train"  { RunTraining }
     "roster" { BuildRoster }
     "play"   { PlayCohort }
     "screen" { ScreenCohort }
-    "all"    { RunTraining; BuildRoster; PlayCohort; ScreenCohort }
+    "export" { ExportResults }
+    "all"    { RunTraining; BuildRoster; PlayCohort; ScreenCohort; ExportResults }
 }
