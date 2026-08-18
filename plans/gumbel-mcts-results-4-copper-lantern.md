@@ -7,11 +7,13 @@ Companion to `plans/gumbel-mcts-plan-4-copper-lantern.md`.
 1. `ai_gumbel.cpp`'s three search-shape constants (`kGumbelCVisit`,
    `kGumbelCScale`, `kGumbelM`) are now per-agent roster knobs:
    `gaz(sims=N[,cvisit=C][,cscale=S][,m=M])@1`.
-2. A 4-round screening sweep on one already-trained checkpoint found the
+2. A 5-round screening sweep on one already-trained checkpoint found the
    paper's own defaults (50, 1.0, 16) are not the strength optimum for this
-   weak, undertrained network: `cvisit~500, cscale~5.0, m in [8,16]` beats
-   the defaults by roughly 100 Elo in a controlled, self-contained
-   comparison (theory 49, `Docs/theories.md`).
+   weak, undertrained network: `cvisit` in [500,1000], `cscale` in [5.0,10.0],
+   `m` in [8,16] beats the defaults by roughly 85-100 Elo, with the top of
+   that range forming a broad, statistically flat plateau rather than one
+   sharp point (theory 49, `Docs/theories.md`). Recommended default:
+   `gaz(sims=200,cvisit=500,cscale=50)@1`.
 
 ## Part 1: implementation
 
@@ -205,6 +207,39 @@ measurably worse (800, close to 2 error bars below 892) -- consistent with
 Round 1's "narrow m hurts" finding, just less extreme than `m=2`'s 300+ Elo
 cost.
 
+### Round 5 -- final head-to-head of the leading candidates, one shared fit
+
+Rounds 1-4 each fit their own pool, so their Elo numbers are not directly
+comparable to each other (only order and error bands transfer). To answer
+"what's the single best config" directly, 4 reasoned picks plus REF plus
+`rand@1` were rated together in ONE round robin: the Round 3 peak at both
+tied-best `m` values, Round 3's runner-up re-checked fresh, and Round 2's
+cheaper/less-extreme strong point. Same checkpoint (slot746), `sims=200`, 32
+games/pair, `ranking/matches_gaz_knobs_final4.jsonl`.
+
+| rank | cvisit | cscale | m | Elo | +/- |
+|---|---|---|---|---|---|
+| 1 | 1000 | 10.0 | 16 | 893 | 31 |
+| 2 | 500 | 5.0 | 16 | 879 | 31 |
+| 3 | 500 | 5.0 | 8 | 875 | 31 |
+| 4 | 200 | 3.0 | 16 | 806 | 31 |
+| 5 (REF) | 50 | 1.0 | 16 | 793 | 31 |
+
+**Finding: the top of the landscape is a broad plateau, not a single point.**
+The top 3 (893, 879, 875) all sit within one error band of each other --
+statistically indistinguishable in this fit. `cvisit=200,cscale=3.0` beat REF
+by only +13 here (806 vs 793), inside the error bars and weaker than the
++26 to +96 Round 2/3 found for the same point in their own separate fits --
+read as fit-to-fit noise (different opponent pool each round), not a
+contradiction, since this project's own hygiene rule is to never compare
+absolute Elo across fits.
+
+**Practical recommendation: `gaz(sims=200,cvisit=500,cscale=50)@1`** (`m=16`,
+the default) -- tied for best in this head-to-head and needs no `m=` flag.
+`cvisit=1000,cscale=100` numerically edged it out (893 vs 879) but the 14-Elo
+gap is well inside both points' +/-31 error bars, so this is not a basis to
+prefer it over the simpler config.
+
 ### Combined picture
 
 - **`m`**: needs to be at least ~8. `m<=2` costs 300+ Elo outright,
@@ -215,16 +250,18 @@ cost.
   defaults (Round 2, `m` held fixed, non-confounded), peaking near
   `cvisit=500, cscale=5.0` -- about 10x the paper's own values -- with no
   further gain out to 20-40x (Round 3).
-- **Best config found**: `gaz(sims=200,cvisit=500,cscale=50,m=16)@1` (or
-  `m=8`, statistically tied) on slot746, roughly +100 Elo over
-  `gaz(sims=200)@1` (the paper-default id) in a controlled, self-contained
-  comparison.
+- **Best config found**: `gaz(sims=200,cvisit=500,cscale=50)@1` (`m=16`, or
+  `m=8`, or `cvisit=1000,cscale=100` -- all four statistically tied per
+  Round 5's shared-fit head-to-head below) on slot746, roughly +85 to +100
+  Elo over `gaz(sims=200)@1` (the paper-default id) in a controlled,
+  self-contained comparison.
 
-Total: 2,960 games across the 4 rounds, all played in well under a minute
-of wall clock (linear-model checkpoint, `sims=200` search), against
-`rand@1` as the sole external anchor -- these Elo numbers are internal to
-this cohort and not comparable to `ranking/standings.tsv` or Pass 2's own
-gauntlet numbers.
+Total: 3,440 games across the 5 rounds, all played in well under a minute
+of wall clock per round (linear-model checkpoint, `sims=200` search),
+against `rand@1` as the sole external anchor -- these Elo numbers are
+internal to their own cohort/fit and not comparable to `ranking/standings.tsv`,
+Pass 2's own gauntlet numbers, or each other's round (Round 5 exists
+specifically to give the leading candidates one shared fit).
 
 ## Correctness notes
 

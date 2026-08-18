@@ -370,17 +370,20 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     visibly narrows the root candidate set vs `m=16` under an identical sim
     budget.~~ `[Done]` {cpu: hours, dev: high}
   - ~~**Swept cvisit/cscale/m** (theory 49, `Docs/theories.md`), shipped
-    2026-08-17: 4-round screening investigation on the R17/rung-4000
+    2026-08-17: 5-round screening investigation on the R17/rung-4000
     checkpoint (slot746) at `sims=200`, self-contained round robins (never
-    the canonical ladder), 2,960 games total. Found: `m<=2` costs 300+ Elo
+    the canonical ladder), 3,440 games total. Found: `m<=2` costs 300+ Elo
     regardless of `cvisit`/`cscale` (not confounded -- a wide range was
     tried at `m=2`, all scored low); with `m=16` fixed, `cvisit` and
-    `cscale` both independently rise past the paper defaults (50/1.0),
-    peaking near `cvisit=500, cscale=5.0` (903 Elo vs REF's 800-804, a real,
-    non-confounded ~100 Elo gain); `m=16`/`m=8` are statistically tied as
-    best at that corner, `m=32` no better, `m=4` measurably worse. One
-    checkpoint, one `sims` value -- not yet checked for generality across
-    checkpoints.~~ `[Done]` {cpu: minutes, dev: medium}
+    `cscale` both independently rise past the paper defaults (50/1.0); Round
+    5 rated the leading candidates together in one shared fit and found a
+    broad, statistically flat plateau at the top rather than one sharp
+    point -- `cvisit=1000,cscale=10.0` (893), `cvisit=500,cscale=5.0` at
+    `m=16` (879) and `m=8` (875) all within one error band of each other,
+    beating REF (793) by 85-100 Elo, non-confounded. Recommended default:
+    `gaz(sims=200,cvisit=500,cscale=50)@1`. One checkpoint, one `sims`
+    value -- not yet checked for generality across checkpoints.~~ `[Done]`
+    {cpu: minutes, dev: medium}
   - **Pass 3 (optimize)**: not yet scoped. Candidates: an isolated
     fixed-sims lr sweep to settle the lr/sims confound from Pass 2,
     extending the Round B ladder past rung 4000 for R17/R3/REF (none had

@@ -321,21 +321,25 @@ only -- the self-play trainer still uses the paper defaults, see the Roster
 ID paragraph above), a search-shape lever independent of `sims` and testable
 against already-trained checkpoints with no retraining.
 
-**Search-shape knob values (theory 49, `Docs/theories.md`).** A 4-round
+**Search-shape knob values (theory 49, `Docs/theories.md`).** A 5-round
 screening sweep on the R17/rung-4000 checkpoint (slot746) at `sims=200`
 found: `m<=2` costs 300+ Elo regardless of `cvisit`/`cscale` (a wide range
 was tried at `m=2`, all scored low, so this is not confounded); holding
 `m=16` fixed, `cvisit` and `cscale` both independently rise past the paper
-defaults (50, 1.0), peaking near `cvisit=500, cscale=5.0` (903 Elo vs REF's
-800-804 in the same controlled comparison, roughly flat to declining beyond
-that); re-isolating `m` at that corner found `m=16`/`m=8` statistically
-tied as best, `m=32` no better, `m=4` measurably worse. Self-contained round
-robins against a `rand@1` anchor (2,960 games total, own scratch stores,
-never the canonical ladder) -- screening only, one checkpoint and one
-`sims` value, not yet checked for generality. Remaining Pass-3 candidates:
-an isolated fixed-sims lr sweep (to settle the training-side lr/sims
-confound) and checking whether this cvisit/cscale corner generalizes to
-other checkpoints.
+defaults (50, 1.0); pushing further and then rating the leading candidates
+together in one shared fit (Round 5) found the top of the landscape is a
+broad, statistically flat plateau rather than one sharp point --
+`cvisit=1000,cscale=10.0` (893), `cvisit=500,cscale=5.0` at `m=16` (879) and
+at `m=8` (875) are all within one error band of each other, beating REF
+(793) by 85-100 Elo; re-isolating `m` at the `cvisit=500,cscale=5.0` corner
+separately confirmed `m=32` no better and `m=4` measurably worse than
+`m=8`/`m=16`. **Recommended default: `gaz(sims=200,cvisit=500,cscale=50)@1`**
+(`m=16`, tied for best, no extra flag needed). Self-contained round robins
+against a `rand@1` anchor (3,440 games total, own scratch stores, never the
+canonical ladder) -- screening only, one checkpoint and one `sims` value, not
+yet checked for generality. Remaining Pass-3 candidates: an isolated
+fixed-sims lr sweep (to settle the training-side lr/sims confound) and
+checking whether this cvisit/cscale corner generalizes to other checkpoints.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 
