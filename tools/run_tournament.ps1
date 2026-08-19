@@ -6,7 +6,7 @@
 # then rate once all workers finish.
 #
 # Usage (from project root; build train.exe first with .\tools\run_train.ps1 -Build ...):
-#   .\tools\run_tournament.ps1                       # K = CPU count, default depths/games
+#   .\tools\run_tournament.ps1                       # K = CPU count - 2, default depths/games
 #   .\tools\run_tournament.ps1 -Workers 8 -Depths "2,4,6,8,10" -Games 10 -NodeBudget 300000
 #   .\tools\run_tournament.ps1 -Depths "4,6,8,10" -NodeBudget 600000 `
 #       -Only "AB6-Classic-chip,LearnedPolicy" -Note "first restricted run"
@@ -32,7 +32,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path ".\train.exe")) { Write-Error "train.exe not found. Build it: .\tools\run_train.ps1 -Build"; exit 1 }
-if ($Workers -le 0) { $Workers = [int]$env:NUMBER_OF_PROCESSORS; if ($Workers -le 0) { $Workers = 4 } }
+if ($Workers -le 0) { $Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2) }
 if ($RunId -eq "") { $RunId = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ") }
 
 # Write the run config + notes header once, up front (one source of truth, in C++).

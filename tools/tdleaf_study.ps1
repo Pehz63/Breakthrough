@@ -63,7 +63,7 @@
   draws) was reviewed and deliberately accepted rather than re-rolled.
 #>
 param(
-    [int]$Workers = 12,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [ValidateSet("all","train","roster","play","screen")]
     [string]$Phase = "all",
     [int]$GamesPerPair = 8,

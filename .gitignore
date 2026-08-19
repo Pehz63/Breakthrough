@@ -167,6 +167,12 @@ ranking/matches_screen_gzjoint.jsonl
 ranking/matches_screen_gzjoint.jsonl.*
 ranking/matches_screen_gzjoint.*.jsonl
 
+# Gumbel-Zero mlp/conv architecture sweep screening pool (follow-up round to
+# the joint sweep above, tools/gumbelzero_arch_study.ps1). Same rationale.
+ranking/matches_screen_gzarch.jsonl
+ranking/matches_screen_gzarch.jsonl.*
+ranking/matches_screen_gzarch.*.jsonl
+
 # One-off ad hoc match stores (e.g. a single direct-pairing query played into
 # its own isolated store so it never touches the canonical ladder). Named
 # per query, not a fixed pattern -- add one line per store the first time

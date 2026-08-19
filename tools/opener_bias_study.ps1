@@ -22,7 +22,7 @@
 # Usage: .\tools\opener_bias_study.ps1 [-Games 80] [-Workers 8] [-Seed 220]
 param(
     [int]$Games = 80,
-    [int]$Workers = 8,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [int]$Seed = 220,
     [int]$OpenPlies = 6,
     [int]$MechGames = 60,

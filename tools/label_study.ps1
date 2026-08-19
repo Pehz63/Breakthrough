@@ -20,7 +20,7 @@
 # snapshot at fit/train time.
 
 param(
-    [int]$Workers = 12,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [string[]]$Phases = @("prep","posgen","label-train","label-eval","fit","train","eval","rate"),
     [switch]$DryRun,
     [int]$Seed = 20260718,

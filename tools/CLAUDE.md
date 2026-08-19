@@ -5,6 +5,22 @@ artifact directories they write. Loaded when working on files in `tools/`.
 The always-loaded overview and the most common command lines live in the root
 `CLAUDE.md`. Engine/ML/ranking internals live in `src/CLAUDE.md`.
 
+**`-Workers` default: leave 2 cores free.** Scripts that fan out parallel
+`train.exe`/`rank.exe` processes (`gumbelzero_*_study.ps1`, `label_study.ps1`,
+`opener_bias_study.ps1`, `opener_bias_retrain.ps1`, `tdleaf_study.ps1`,
+`train_vs_champion.ps1`, `run_tournament.ps1`) default `-Workers` to
+`[Math]::Max(1, [Environment]::ProcessorCount - 2)` rather than a hardcoded
+number or full core count, so the machine stays usable for other work during a
+multi-hour or multi-day run. Pass `-Workers` explicitly to override.
+Developer instruction, 2026-08-19, after a hardcoded `-Workers 12` run on this
+project's 12-core machine left nothing free.
+
+`run_rank.ps1` and `sweep_pst_v2.ps1` are the exception: their `-Workers`
+default is `1` on purpose (serial play gives clean, unshared ms/move timing;
+see `run_rank.ps1`'s own header comment), and parallel play is an explicit
+opt-in via `-Workers N`, not the default to begin with. That default is
+unrelated to core-count headroom, so it is not changed by this rule.
+
 ## Common commands
 
 Copy-paste forms beyond the root's short list:

@@ -43,7 +43,7 @@ param(
     [int]$Epochs = 6,
     [double]$Lr = 0.05,
     [int]$GauntletGames = 4,
-    [int]$Workers = 8,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [string]$Wrapper = "ab(d4,tt,ord,nb200k)@1",
     [string]$D6Wrapper = "ab(d6,tt,ord,nb200k)@1",
     [string]$Csv = "models/sweep/vs_champ.csv",

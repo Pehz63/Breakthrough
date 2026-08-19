@@ -22,7 +22,7 @@ param(
     [int]$Epochs = 6,
     [double]$Lr = 0.05,
     [int]$GauntletGames = 4,
-    [int]$Workers = 12,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [int]$OpenPlies = 6,
     [string]$Wrapper = "ab(d4,tt,ord,nb200k)@1",
     [string]$D6Wrapper = "ab(d6,tt,ord,nb200k)@1",

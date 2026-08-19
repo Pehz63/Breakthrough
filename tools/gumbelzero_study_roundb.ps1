@@ -26,7 +26,7 @@
   all | train | roster | play | screen. Phases are resumable and idempotent.
 #>
 param(
-    [int]$Workers = 12,
+    [int]$Workers = [Math]::Max(1, [Environment]::ProcessorCount - 2),
     [ValidateSet("all","train","roster","play","screen")]
     [string]$Phase = "all",
     [int]$GamesPerPair = 8,
