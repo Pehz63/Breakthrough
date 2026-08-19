@@ -86,6 +86,9 @@ GumbelZeroConfig gumbelZeroDefaults() {
     c.seed           = 1001;
     c.openPlies      = 4;     // matches TD-Leaf's own default diversity window
     c.modelType      = "linear";
+    // c.mlpHidden and c.convChannels default-empty (populated with the
+    // regime's own defaults inside trainGumbelZero when the relevant
+    // modelType is selected and the list was left empty).
     c.lr             = 0.01;
     c.l2             = 0.0;
     c.replayCapacity = 2000;
@@ -104,23 +107,38 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     PRNT = 0;
 
     // ---- Model: from scratch only in this pass. Architecture is selectable
-    // (cfg.modelType/mlpHidden, mirroring ml_train.cpp's selfplay-supervised
-    // --model-type/--mlp-hidden), applied to BOTH heads as separate Model
-    // instances. "linear" heads stay zero-initialized (Slice 1's own
-    // smoke-tested construction, tests/test_gumbelzero.cpp); an "mlp" head
-    // needs MLPModel::initRandom() to break weight symmetry, since a
-    // zero-initialized hidden layer can never learn (ml_model.h).
-    const bool useMlp = (cfg.modelType == "mlp");
+    // (cfg.modelType/mlpHidden/convChannels, mirroring ml_train.cpp's
+    // selfplay-supervised --model-type/--mlp-hidden). "linear"/"mlp" apply to
+    // BOTH heads as separate Model instances of the same architecture. "conv"
+    // applies to the VALUE head only -- its v2 board features are a real
+    // 8x8/2-plane image, but the policy head's 9 handcrafted move features
+    // are not spatial, so a conv run's policy head stays the linear scorer
+    // (see ml_model.h's ConvModel doc comment). "linear" heads stay
+    // zero-initialized (Slice 1's own smoke-tested construction,
+    // tests/test_gumbelzero.cpp); "mlp"/"conv" heads need their model's
+    // initRandom() to break weight symmetry, since a zero-initialized hidden
+    // layer can never learn (ml_model.h).
+    const bool useMlp  = (cfg.modelType == "mlp");
+    const bool useConv = (cfg.modelType == "conv");
     std::vector<int> hidden = cfg.mlpHidden;
     if (useMlp && hidden.empty()) hidden.push_back(32);   // default one 32-wide hidden layer
 
-    Model* valueHead  = useMlp ? (Model*)new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden)
-                                : (Model*)new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    std::vector<int> convChannels = cfg.convChannels;
+    if (useConv && convChannels.empty()) { convChannels.push_back(16); convChannels.push_back(16); }
+    const std::vector<int>& convFcHidden = cfg.mlpHidden;   // reused: conv FC head's own hidden layers (empty = direct linear read-out)
+
+    Model* valueHead;
+    if (useConv)      valueHead = new ConvModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, convChannels, convFcHidden);
+    else if (useMlp)  valueHead = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
+    else              valueHead = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+
     Model* policyHead = useMlp ? (Model*)new MLPModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f, hidden)
                                 : (Model*)new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
     if (useMlp) {
         static_cast<MLPModel*>(valueHead)->initRandom();
         static_cast<MLPModel*>(policyHead)->initRandom();
+    } else if (useConv) {
+        static_cast<ConvModel*>(valueHead)->initRandom();
     }
     JointModel*  model = new JointModel(valueHead, policyHead);
 
@@ -133,6 +151,12 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
         if (useMlp) {
             prov << " mlp(";
             for (size_t i = 0; i < hidden.size(); i++) { if (i) prov << ","; prov << hidden[i]; }
+            prov << ")";
+        } else if (useConv) {
+            prov << " conv(ch=";
+            for (size_t i = 0; i < convChannels.size(); i++) { if (i) prov << ","; prov << convChannels[i]; }
+            prov << ";fc=";
+            for (size_t i = 0; i < convFcHidden.size(); i++) { if (i) prov << ","; prov << convFcHidden[i]; }
             prov << ")";
         }
         model->teacher = prov.str();

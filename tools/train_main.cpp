@@ -174,8 +174,14 @@ static void usage() {
     cout << "      --lr 0.01 --replay-capacity 2000 --replay-warmup 32 --batch-size 32 --ckpt-at \"10,30,50\"\n";
     cout << "  train.exe gumbelzero --out models/sweep/slot650 --games 50 --sims 50 --model-type mlp --mlp-hidden \"64,32\"\n";
     cout << "      (mlp applies to BOTH the value and policy heads; default one 32-wide hidden layer if --mlp-hidden omitted)\n";
+    cout << "  train.exe gumbelzero --out models/sweep/slot650 --games 50 --sims 50 --model-type conv --conv-channels \"16,16\" --mlp-hidden \"32\"\n";
+    cout << "      (conv applies to the VALUE head only -- a residual tower over the v2 board planes; the policy\n";
+    cout << "      head's move features aren't spatial, so it stays linear; --mlp-hidden sets the conv FC head's\n";
+    cout << "      own hidden layers here, default {16,16} channels / direct linear read-out if both omitted)\n";
     cout << "  --sims <n>          GumbelMCTS simulations per move (both sides -- one model self-plays)\n";
-    cout << "  --model-type linear|mlp --mlp-hidden \"32\"|\"32,16\"   architecture for both heads (default linear)\n";
+    cout << "  --model-type linear|mlp|conv   architecture (default linear; mlp = both heads, conv = value head only)\n";
+    cout << "  --mlp-hidden \"32\"|\"32,16\"       mlp: both heads' hidden layers; conv: the FC head's hidden layers\n";
+    cout << "  --conv-channels \"16,16\"         conv: output-channel count per conv layer (repeat a width for a residual block)\n";
     cout << "  --replay-capacity <n> --replay-warmup <n> --batch-size <n>  ring buffer of self-play plies;\n";
     cout << "                      training starts once warmup plies have been generated, one sampled\n";
     cout << "                      minibatch trained per new ply (strictly online update cadence)\n";
@@ -362,6 +368,7 @@ int main(int argc, char** argv) {
         c.openPlies      = getInt(argc, argv, "--open-plies", c.openPlies);
         c.modelType      = getOpt(argc, argv, "--model-type", c.modelType.c_str());
         c.mlpHidden      = getIntList(argc, argv, "--mlp-hidden");
+        c.convChannels   = getIntList(argc, argv, "--conv-channels");
         c.lr             = getDbl(argc, argv, "--lr", c.lr);
         c.l2             = getDbl(argc, argv, "--l2", c.l2);
         c.replayCapacity = getInt(argc, argv, "--replay-capacity", c.replayCapacity);

@@ -9,11 +9,11 @@
 // A Model maps a feature vector to a scalar. The SAME model class can back either
 //   * a VALUE head  (board features  -> board score), used by LearnedValue, or
 //   * a POLICY head (move features   -> move score),  used by the move-rater,
-// distinguished by head(). Architectures (linear / mlp / nnue / transformer) are
-// registered in g_modelTypes[]; only the type's name + a flag are needed for docs,
-// the factory constructs the real object. Model files are text (see loadModel) with
-// a `type=` line the factory dispatches on, so adding an architecture is one
-// subclass + one factory case + one registry row.
+// distinguished by head(). Architectures (linear / mlp / conv / residual / dist /
+// joint / nnue / transformer) are registered in g_modelTypes[]; only the type's
+// name + a flag are needed for docs, the factory constructs the real object. Model
+// files are text (see loadModel) with a `type=` line the factory dispatches on, so
+// adding an architecture is one subclass + one factory case + one registry row.
 
 enum ModelHead { HEAD_VALUE = 0, HEAD_POLICY = 1 };
 
@@ -170,6 +170,82 @@ private:
     float computeForward(const float* x, int m) const;
     // Backprop an output gradient through act[]/pre[] (must be freshly filled by
     // computeForward for the same x) and apply the SGD update in place.
+    void backprop(float gOut, float lr, float l2);
+};
+
+// ---- Conv model: small residual conv tower over the v2 board planes + FC head ----
+// AlphaZero-style architecture, scaled to this project's 8x8/2-plane board: a stack
+// of 3x3 same-padding conv layers (channel counts from `channels`, one layer per
+// list entry) reading the v2 sparse features' white/black occupancy planes DIRECTLY
+// (features 0..63 / 64..127 are already a flattened 2x8x8 image -- x[i] IS the
+// pixel at channel i/64, row (i%64)/8, col (i%64)%8, needing no reshape copy),
+// followed by flatten + the side-to-move scalar (feature 128, not spatial, so it
+// rides in only at the FC stage, never convolved) + a dense head (same
+// hidden-layer-list convention as MLPModel: fcHidden empty = direct linear
+// read-out). A layer is a plain conv (e.g. the first layer, widening from the fixed
+// 2 input planes) unless its channel count matches the PREVIOUS layer's, in which
+// case output = ReLU(conv(x) + x) -- a residual block, AlphaZero's tower is
+// entirely such blocks, so repeating a width in `channels` is what makes a layer
+// residual here. Requires featVer==2, featCount==MLV2_FEATURES: the only
+// spatially-reshapable layout, and VALUE-head only in practice (the policy head's
+// move features are 9 handcrafted, non-spatial numbers, so it keeps its existing
+// linear/mlp architecture instead -- see ml_gumbelzero.cpp). Backprop is
+// hand-written, not incrementally updatable (mlIncrementalBegin's dynamic_cast
+// dispatch simply doesn't recognize it, so a value slot holding one falls back to
+// the full-scan leaf path, same as any other unrecognized core).
+struct ConvModel : public Model {
+    int   headType;
+    int   featVer;      // must be 2 to mean anything (spatial reshape assumes v2)
+    int   n;             // == MLV2_FEATURES
+    float outScale;
+
+    std::vector<int> channels;   // output channel count per conv layer (may be empty: no conv, FC over raw planes)
+    std::vector<int> fcHidden;   // FC head hidden-layer widths (empty = direct linear read-out)
+
+    // Conv weights: convW[k] is outCh*inCh*9, oc-major (idx = ((oc*inCh+ic)*3+ky)*3+kx, ky/kx in 0..2 = offset-1);
+    // convB[k] is outCh.
+    std::vector<std::vector<float> > convW;
+    std::vector<std::vector<float> > convB;
+    // FC weights over flatten(trunk output) + stm scalar. Same layout convention as
+    // MLPModel::W/B (fcW[k]: fcSizes[k+1] x fcSizes[k], output-major).
+    std::vector<int> fcSizes;    // [flatDim, h1, (h2,) 1]
+    std::vector<std::vector<float> > fcW;
+    std::vector<std::vector<float> > fcB;
+
+    // Scratch for forward/backward, reused across calls (single-threaded engine,
+    // same convention as MLPModel's act/pre).
+    mutable std::vector<std::vector<float> > act;   // act[0..K]: act[0]=input planes (2*64), act[k]=post-ReLU trunk output (channels[k-1]*64)
+    mutable std::vector<std::vector<float> > pre;   // pre[0..K-1]: true pre-activation of conv layer k (conv+bias+skip if residual), channels[k]*64
+    mutable std::vector<float> flat;                // flattened trunk output + stm scalar, size fcSizes[0]
+    mutable std::vector<std::vector<float> > fcAct;
+    mutable std::vector<std::vector<float> > fcPre;
+
+    ConvModel(int head, int featVersion, int featCount, float scale,
+              const std::vector<int>& convChannels, const std::vector<int>& fcHiddenSizes);
+    const char* typeName()  const override { return "conv"; }
+    int  head()             const override { return headType; }
+    int  featureVersion()   const override { return featVer; }
+    int  featureCount()     const override { return n; }
+    float outputScale()     const override { return outScale; }
+    float forward(const float* x, int m) const override;
+    bool save(const string& path) const override;
+    void writeWeights(std::ostream& f) const override;
+    float trainStep(const float* x, int m, float target, float lr, float l2, float offset) override;
+    void gradStep(const float* x, int m, float gOut, float lr, float l2) override;
+
+    // Break weight symmetry before training (mirrors MLPModel::initRandom): conv
+    // layers get fan-in (inCh*9) scaled random weights, FC layers fan-in scaled.
+    void initRandom();
+
+    // Layer k adds a residual skip iff it isn't the first layer and its channel
+    // count matches the previous layer's (same shape needed for the elementwise add).
+    bool residualLayer(int k) const { return k > 0 && channels[k] == channels[k-1]; }
+
+private:
+    // Fill act[]/pre[]/flat[]/fcAct[]/fcPre[] from x and return the output logit.
+    float computeForward(const float* x, int m) const;
+    // Backprop an output gradient through the FC head, then the conv trunk (incl.
+    // the residual pass-through term), applying the SGD update in place.
     void backprop(float gOut, float lr, float l2);
 };
 

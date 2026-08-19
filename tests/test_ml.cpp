@@ -512,6 +512,156 @@ TEST_CASE("MLP save/load round trip") {
     delete m;
 }
 
+// ============================================================
+// CONV MODEL (residual conv tower over the v2 board planes + FC head)
+// ============================================================
+
+TEST_CASE("Conv forward differs between two random initializations (knob validation)") {
+    std::vector<int> channels; channels.push_back(4); channels.push_back(4);
+    std::vector<int> fcHidden;
+    float f[MLV2_FEATURES];
+    clearBoard();
+    board[1][1] = WHITE; board[4][4] = WHITE; board[6][6] = BLACK; board[3][2] = BLACK;
+    mlExtractValueFeaturesV2(White, f);
+
+    srand(11);
+    ConvModel a(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, channels, fcHidden);
+    a.initRandom();
+    srand(22);
+    ConvModel b(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, channels, fcHidden);
+    b.initRandom();
+
+    REQUIRE(std::fabs(a.forward(f, MLV2_FEATURES) - b.forward(f, MLV2_FEATURES)) > 1e-4);
+}
+
+// Gold-standard safety net for the hand-written conv backprop (mirrors the MLP
+// finite-difference test above): channels={3,3} exercises BOTH a plain
+// projection layer (layer 0, 2->3) and a residual block (layer 1, 3->3 with the
+// skip add), so a broken residual gradient path would show up here as a
+// layer-0 weight mismatch (its gradient only reaches it through layer 1).
+TEST_CASE("Conv backprop gradient matches finite differences (incl. a residual layer)") {
+    srand(456);
+    std::vector<int> channels; channels.push_back(3); channels.push_back(3);
+    std::vector<int> fcHidden; fcHidden.push_back(4);
+    ConvModel m(HEAD_VALUE, 2, MLV2_FEATURES, 1.0f, channels, fcHidden);
+    m.initRandom();
+
+    // A checkerboard fill, not the sparse 4-piece board the other model tests use:
+    // with only a few pieces and zero-initialized biases, most 3x3 receptive fields
+    // see an all-empty (all-zero) window, landing pre = bias + 0 = 0 EXACTLY at the
+    // ReLU kink for many of a channel's 64 positions -- a genuine finite-difference
+    // subgradient ambiguity there (not a backprop bug), reproduced and confirmed by
+    // hand before this fix. A full board leaves no all-empty window.
+    float x[MLV2_FEATURES];
+    clearBoard();
+    for (int yy = 0; yy < SIZE; yy++) for (int xx = 0; xx < SIZE; xx++) board[xx][yy] = ((xx+yy) % 2 == 0) ? WHITE : BLACK;
+    mlExtractValueFeaturesV2(White, x);
+    float target = 1.0f;
+    const float lr = 1.0f;
+
+    std::vector<std::vector<float> > Wsnap = m.convW, Bsnap = m.convB;
+    std::vector<std::vector<float> > FWsnap = m.fcW, FBsnap = m.fcB;
+    m.trainStep(x, MLV2_FEATURES, target, lr, 0.0f, 0.0f);
+    std::vector<std::vector<float> > Wafter = m.convW, Bafter = m.convB;
+    std::vector<std::vector<float> > FWafter = m.fcW, FBafter = m.fcB;
+
+    auto lossNow = [&]() {
+        double z = m.forward(x, MLV2_FEATURES);
+        double p = 1.0 / (1.0 + std::exp(-z));
+        return -(target * std::log(p + 1e-7) + (1.0 - target) * std::log(1.0 - p + 1e-7));
+    };
+    auto restore = [&]() { m.convW = Wsnap; m.convB = Bsnap; m.fcW = FWsnap; m.fcB = FBsnap; };
+    const float eps = 1e-3f;
+    int mism = 0;
+    for (size_t k = 0; k < m.convW.size(); k++) {
+        for (size_t t = 0; t < m.convW[k].size(); t++) {
+            double analytic = (Wsnap[k][t] - Wafter[k][t]) / lr;
+            restore();
+            m.convW[k][t] = Wsnap[k][t] + eps; double lp = lossNow();
+            m.convW[k][t] = Wsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+        for (size_t t = 0; t < m.convB[k].size(); t++) {
+            double analytic = (Bsnap[k][t] - Bafter[k][t]) / lr;
+            restore();
+            m.convB[k][t] = Bsnap[k][t] + eps; double lp = lossNow();
+            m.convB[k][t] = Bsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+    }
+    for (size_t k = 0; k < m.fcW.size(); k++) {
+        for (size_t t = 0; t < m.fcW[k].size(); t++) {
+            double analytic = (FWsnap[k][t] - FWafter[k][t]) / lr;
+            restore();
+            m.fcW[k][t] = FWsnap[k][t] + eps; double lp = lossNow();
+            m.fcW[k][t] = FWsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+        for (size_t t = 0; t < m.fcB[k].size(); t++) {
+            double analytic = (FBsnap[k][t] - FBafter[k][t]) / lr;
+            restore();
+            m.fcB[k][t] = FBsnap[k][t] + eps; double lp = lossNow();
+            m.fcB[k][t] = FBsnap[k][t] - eps; double lm = lossNow();
+            double numeric = (lp - lm) / (2.0 * eps);
+            if (std::fabs(analytic - numeric) > 1e-2 + 1e-2 * std::fabs(numeric)) mism++;
+        }
+    }
+    restore();
+    REQUIRE(mism == 0);
+}
+
+TEST_CASE("Conv backprop reduces loss on a fixed example") {
+    srand(7);
+    std::vector<int> channels; channels.push_back(4); channels.push_back(4);
+    std::vector<int> fcHidden; fcHidden.push_back(6);
+    ConvModel m(HEAD_VALUE, 2, MLV2_FEATURES, 1.0f, channels, fcHidden);
+    m.initRandom();
+    float x[MLV2_FEATURES];
+    clearBoard();
+    board[1][1] = WHITE; board[4][4] = WHITE; board[6][6] = BLACK; board[3][2] = BLACK;
+    mlExtractValueFeaturesV2(White, x);
+    float first = m.trainStep(x, MLV2_FEATURES, 1.0f, 0.3f, 0.0f, 0.0f);
+    float last = first;
+    for (int i = 0; i < 300; i++) last = m.trainStep(x, MLV2_FEATURES, 1.0f, 0.3f, 0.0f, 0.0f);
+    REQUIRE(last < first);
+}
+
+TEST_CASE("Conv save/load round trip") {
+    srand(99);
+    std::vector<int> channels; channels.push_back(4); channels.push_back(4);
+    std::vector<int> fcHidden; fcHidden.push_back(5);
+    ConvModel* m = new ConvModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, channels, fcHidden);
+    m->initRandom();
+    REQUIRE(m->save("build\\test_conv.tmp"));
+    Model* loaded = loadModel("build\\test_conv.tmp");
+    REQUIRE(loaded != nullptr);
+    REQUIRE(string(loaded->typeName()) == "conv");
+    REQUIRE(loaded->featureVersion() == 2);
+    REQUIRE(loaded->featureCount() == MLV2_FEATURES);
+
+    float f[MLV2_FEATURES];
+    clearBoard();
+    board[1][1] = WHITE; board[4][4] = WHITE; board[6][6] = BLACK; board[3][2] = BLACK;
+    mlExtractValueFeaturesV2(White, f);
+    REQUIRE(loaded->forward(f, MLV2_FEATURES) == Approx(m->forward(f, MLV2_FEATURES)).margin(1e-3));
+    delete loaded;
+    delete m;
+}
+
+TEST_CASE("Conv save/load rejects a feature_count that doesn't match the spatial layout") {
+    // buildConvFromKV's guard: a hand-edited/corrupted file claiming type=conv
+    // with the wrong feature_count must fail to load, not construct a model
+    // that would read/write past its fixed-size board-plane buffers.
+    std::ofstream f("build\\test_conv_badcount.tmp");
+    f << "type=conv\nhead=value\nfeature_version=2\nfeature_count=9\nout_scale=900\n";
+    f << "channels=4\nfc_layers=65,1\n";
+    f.close();
+    REQUIRE(loadModel("build\\test_conv_badcount.tmp") == nullptr);
+}
+
 TEST_CASE("ResidualModel forward = skip*matDiff + inner (linear and mlp inner)") {
     clearBoard();
     board[0][0] = WHITE; board[3][4] = WHITE; board[5][5] = WHITE; board[7][7] = BLACK;  // matDiff = 3-1 = 2

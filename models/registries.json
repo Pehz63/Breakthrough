@@ -2,7 +2,7 @@
   "evaluators": ["Classic", "Experimental", "LearnedValue", "Advanced"],
   "explorers": ["Greedy", "AlphaBeta", "GumbelMCTS"],
   "choosers": ["UniformRandom", "TieredRandom", "SmartRandom", "LearnedPolicy"],
-  "model_types": ["linear", "mlp", "residual", "dist", "joint", "nnue", "transformer"],
+  "model_types": ["linear", "mlp", "conv", "residual", "dist", "joint", "nnue", "transformer"],
   "regimes": ["selfplay-supervised", "ensemble", "imitate", "dist-value", "score", "dist-eval", "tdleaf", "gumbelzero", "population", "tournament", "docs"],
   "value_feature_version": 1,
   "move_feature_version": 1

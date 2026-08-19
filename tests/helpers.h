@@ -39,6 +39,7 @@ enum TestScratchSlot {
     kScratchSlotGumbelZeroSearch = ML_SLOTS - 7,  // "GumbelRootInfo::searchValue - diverges from rootValue..."
     kScratchSlotGumbelZeroLoad   = ML_SLOTS - 8,  // "trainGumbelZero - Pass 1 sanity..." (post-training reload)
     kScratchSlotGumbelZeroMlpLoad = ML_SLOTS - 9,  // "trainGumbelZero - mlp model-type..." (post-training reload)
+    kScratchSlotGumbelZeroConvLoad = ML_SLOTS - 10, // "trainGumbelZero - conv model-type..." (post-training reload)
 };
 
 // Copy layout[x][y] into board[][] and recalculate all global counters.

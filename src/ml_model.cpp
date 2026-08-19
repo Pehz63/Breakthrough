@@ -340,6 +340,274 @@ bool MLPModel::save(const string& path) const {
 }
 
 // ============================================================
+// CONV MODEL
+// ============================================================
+ConvModel::ConvModel(int head, int featVersion, int featCount, float scale,
+                     const std::vector<int>& convChannels, const std::vector<int>& fcHiddenSizes)
+    : headType(head), featVer(featVersion), n(featCount), outScale(scale),
+      channels(convChannels), fcHidden(fcHiddenSizes) {
+    int K = (int)channels.size();
+    convW.resize(K); convB.resize(K);
+    for (int k = 0; k < K; k++) {
+        int inCh  = (k == 0) ? 2 : channels[k-1];
+        int outCh = channels[k];
+        convW[k].assign((size_t)outCh * inCh * 9, 0.0f);
+        convB[k].assign(outCh, 0.0f);
+    }
+    act.resize(K + 1);
+    act[0].assign(2 * SIZE * SIZE, 0.0f);
+    for (int k = 0; k < K; k++) act[k+1].assign((size_t)channels[k] * SIZE * SIZE, 0.0f);
+    pre.resize(K);
+    for (int k = 0; k < K; k++) pre[k].assign((size_t)channels[k] * SIZE * SIZE, 0.0f);
+
+    int flatDim = (K == 0) ? (2 * SIZE * SIZE + 1) : (channels.back() * SIZE * SIZE + 1);
+    fcSizes.push_back(flatDim);
+    for (size_t i = 0; i < fcHidden.size(); i++) if (fcHidden[i] > 0) fcSizes.push_back(fcHidden[i]);
+    fcSizes.push_back(1);
+    int L = (int)fcSizes.size() - 1;
+    fcW.resize(L); fcB.resize(L);
+    for (int k = 0; k < L; k++) {
+        fcW[k].assign((size_t)fcSizes[k] * fcSizes[k+1], 0.0f);
+        fcB[k].assign(fcSizes[k+1], 0.0f);
+    }
+    fcAct.resize(L + 1); fcPre.resize(L + 1);
+    for (int k = 0; k <= L; k++) { fcAct[k].assign(fcSizes[k], 0.0f); fcPre[k].assign(fcSizes[k], 0.0f); }
+    flat.assign(flatDim, 0.0f);
+}
+
+void ConvModel::initRandom() {
+    for (size_t k = 0; k < convW.size(); k++) {
+        int inCh = (k == 0) ? 2 : channels[k-1];
+        float scaleW = (float)sqrt(1.0 / (double)(inCh * 9));   // fan-in = inCh*3*3
+        for (size_t t = 0; t < convW[k].size(); t++)
+            convW[k][t] = (float)(((double)rand() / RAND_MAX) * 2.0 - 1.0) * scaleW;
+        for (size_t t = 0; t < convB[k].size(); t++) convB[k][t] = 0.0f;
+    }
+    int L = (int)fcSizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        int in = fcSizes[k];
+        float scaleW = (in > 0) ? (float)sqrt(1.0 / (double)in) : 1.0f;
+        for (size_t t = 0; t < fcW[k].size(); t++)
+            fcW[k][t] = (float)(((double)rand() / RAND_MAX) * 2.0 - 1.0) * scaleW;
+        for (size_t t = 0; t < fcB[k].size(); t++) fcB[k][t] = 0.0f;
+    }
+}
+
+float ConvModel::computeForward(const float* x, int m) const {
+    int in0 = 2 * SIZE * SIZE;
+    int lim = (m < in0) ? m : in0;
+    for (int i = 0; i < in0; i++) act[0][i] = (i < lim) ? x[i] : 0.0f;
+
+    int K = (int)channels.size();
+    for (int k = 0; k < K; k++) {
+        int inCh  = (k == 0) ? 2 : channels[k-1];
+        int outCh = channels[k];
+        const float* in = act[k].data();
+        const std::vector<float>& Wk = convW[k];
+        const std::vector<float>& Bk = convB[k];
+        float* preK = pre[k].data();
+        for (int oc = 0; oc < outCh; oc++) {
+            for (int y = 0; y < SIZE; y++) {
+                for (int xx = 0; xx < SIZE; xx++) {
+                    float z = Bk[oc];
+                    for (int ic = 0; ic < inCh; ic++) {
+                        const float* inPlane = in + (size_t)ic * SIZE * SIZE;
+                        const float* wbase = &Wk[((size_t)oc * inCh + ic) * 9];
+                        for (int ky = -1; ky <= 1; ky++) {
+                            int iy = y + ky;
+                            if (iy < 0 || iy >= SIZE) continue;
+                            for (int kx = -1; kx <= 1; kx++) {
+                                int ix = xx + kx;
+                                if (ix < 0 || ix >= SIZE) continue;
+                                z += wbase[(ky+1)*3 + (kx+1)] * inPlane[iy*SIZE + ix];
+                            }
+                        }
+                    }
+                    preK[oc*SIZE*SIZE + y*SIZE + xx] = z;
+                }
+            }
+        }
+        if (residualLayer(k)) {
+            // Same shape guaranteed (inCh == outCh when residual), so this is a
+            // plain elementwise add of the block's own input.
+            for (int i = 0; i < outCh*SIZE*SIZE; i++) preK[i] += in[i];
+        }
+        float* outAct = act[k+1].data();
+        for (int i = 0; i < outCh*SIZE*SIZE; i++) outAct[i] = (preK[i] > 0.0f) ? preK[i] : 0.0f;
+    }
+
+    const float* trunkOut = (K > 0) ? act[K].data() : act[0].data();
+    int trunkLen = (K > 0) ? channels.back() * SIZE * SIZE : 2 * SIZE * SIZE;
+    for (int i = 0; i < trunkLen; i++) flat[i] = trunkOut[i];
+    flat[trunkLen] = (m > in0) ? x[in0] : 0.0f;   // side-to-move (feature 128), not convolved
+
+    int L = (int)fcSizes.size() - 1;
+    for (int i = 0; i < fcSizes[0]; i++) fcAct[0][i] = flat[i];
+    for (int k = 0; k < L; k++) {
+        int in = fcSizes[k], out = fcSizes[k+1];
+        const std::vector<float>& Wk = fcW[k];
+        const std::vector<float>& Bk = fcB[k];
+        const float* a = fcAct[k].data();
+        bool hidden = (k + 1 < L);
+        for (int j = 0; j < out; j++) {
+            const float* wrow = &Wk[(size_t)j * in];
+            float z = Bk[j];
+            for (int i = 0; i < in; i++) z += wrow[i] * a[i];
+            fcPre[k+1][j] = z;
+            fcAct[k+1][j] = hidden ? (z > 0.0f ? z : 0.0f) : z;
+        }
+    }
+    return fcAct[L][0];
+}
+
+float ConvModel::forward(const float* x, int m) const {
+    return computeForward(x, m);
+}
+
+float ConvModel::trainStep(const float* x, int m, float target, float lr, float l2, float offset) {
+    float outv = computeForward(x, m);
+    float z = outv + offset;
+    float p = sigmoidf(z);
+    float eps = 1e-7f;
+    float loss = -(target * logf(p + eps) + (1.0f - target) * logf(1.0f - p + eps));
+    backprop(p - target, lr, l2);
+    return loss;
+}
+
+void ConvModel::gradStep(const float* x, int m, float gOut, float lr, float l2) {
+    computeForward(x, m);
+    backprop(gOut, lr, l2);
+}
+
+void ConvModel::backprop(float gOut, float lr, float l2) {
+    // ---- FC head, top to bottom, also computing dL/d(flat) at k==0 (unlike
+    // MLPModel::backprop, which never needs its input gradient) ----
+    int L = (int)fcSizes.size() - 1;
+    std::vector<float> g(1, gOut);
+    std::vector<float> dFlat;
+    for (int k = L - 1; k >= 0; k--) {
+        int in = fcSizes[k], out2 = fcSizes[k+1];
+        std::vector<float>& Wk = fcW[k];
+        std::vector<float>& Bk = fcB[k];
+        const float* a = fcAct[k].data();
+        std::vector<float> gPrev(in, 0.0f);
+        for (int j = 0; j < out2; j++) {
+            float gj = g[j];
+            float* wrow = &Wk[(size_t)j * in];
+            for (int i = 0; i < in; i++) {
+                gPrev[i] += gj * wrow[i];               // pre-update weight
+                wrow[i] -= lr * (gj * a[i] + l2 * wrow[i]);
+            }
+            Bk[j] -= lr * gj;
+        }
+        if (k > 0) {
+            const float* pk = fcPre[k].data();
+            for (int i = 0; i < in; i++) gPrev[i] *= (pk[i] > 0.0f) ? 1.0f : 0.0f;   // ReLU'
+            g.swap(gPrev);
+        } else {
+            dFlat.swap(gPrev);   // input has no activation function: pass through raw
+        }
+    }
+
+    int K = (int)channels.size();
+    if (K == 0) return;   // no conv layers to backprop into
+    int trunkLen = channels.back() * SIZE * SIZE;
+    std::vector<float> dOut(dFlat.begin(), dFlat.begin() + trunkLen);   // dFlat's last entry (stm) has no upstream
+
+    // ---- Conv trunk, top to bottom ----
+    for (int k = K - 1; k >= 0; k--) {
+        int inCh  = (k == 0) ? 2 : channels[k-1];
+        int outCh = channels[k];
+        bool res  = residualLayer(k);
+        const float* preK  = pre[k].data();
+        const float* inAct = act[k].data();
+        std::vector<float>& Wk = convW[k];
+        std::vector<float>& Bk = convB[k];
+
+        std::vector<float> dPre((size_t)outCh * SIZE * SIZE);
+        for (size_t i = 0; i < dPre.size(); i++) dPre[i] = dOut[i] * (preK[i] > 0.0f ? 1.0f : 0.0f);
+
+        std::vector<float> dW(Wk.size(), 0.0f);
+        std::vector<float> dB(outCh, 0.0f);
+        std::vector<float> dIn((size_t)inCh * SIZE * SIZE, 0.0f);
+
+        for (int oc = 0; oc < outCh; oc++) {
+            const float* dPreOc = &dPre[(size_t)oc * SIZE * SIZE];
+            float bsum = 0.0f;
+            for (int y = 0; y < SIZE; y++) {
+                for (int xx = 0; xx < SIZE; xx++) {
+                    float dp = dPreOc[y*SIZE + xx];
+                    bsum += dp;
+                    if (dp == 0.0f) continue;
+                    for (int ic = 0; ic < inCh; ic++) {
+                        const float* inPlane = inAct + (size_t)ic * SIZE * SIZE;
+                        float* dWbase = &dW[((size_t)oc * inCh + ic) * 9];
+                        const float* wbase = &Wk[((size_t)oc * inCh + ic) * 9];
+                        float* dInPlane = &dIn[(size_t)ic * SIZE * SIZE];
+                        for (int ky = -1; ky <= 1; ky++) {
+                            int iy = y + ky;
+                            if (iy < 0 || iy >= SIZE) continue;
+                            for (int kx = -1; kx <= 1; kx++) {
+                                int ix = xx + kx;
+                                if (ix < 0 || ix >= SIZE) continue;
+                                int widx = (ky+1)*3 + (kx+1);
+                                dWbase[widx] += dp * inPlane[iy*SIZE + ix];
+                                dInPlane[iy*SIZE + ix] += wbase[widx] * dp;
+                            }
+                        }
+                    }
+                }
+            }
+            dB[oc] = bsum;
+        }
+
+        if (res) {
+            // pre = conv(x)+bias + x (skip), so d(pre)/dx also gets a direct
+            // identity term (valid since res implies inCh == outCh, same shape).
+            for (size_t i = 0; i < dIn.size(); i++) dIn[i] += dPre[i];
+        }
+
+        for (size_t i = 0; i < Wk.size(); i++) Wk[i] -= lr * (dW[i] + l2 * Wk[i]);
+        for (int oc = 0; oc < outCh; oc++) Bk[oc] -= lr * dB[oc];
+
+        dOut = dIn;   // becomes the upstream gradient for layer k-1
+    }
+}
+
+void ConvModel::writeWeights(std::ostream& f) const {
+    f << std::setprecision(9);
+    f << "channels=";
+    for (size_t i = 0; i < channels.size(); i++) { if (i) f << ","; f << channels[i]; }
+    f << "\n";
+    f << "fc_layers=";
+    for (size_t i = 0; i < fcSizes.size(); i++) { if (i) f << ","; f << fcSizes[i]; }
+    f << "\n";
+    for (size_t k = 0; k < convW.size(); k++) {
+        for (size_t t = 0; t < convW[k].size(); t++) f << "c" << k << "w" << t << "=" << convW[k][t] << "\n";
+        for (size_t t = 0; t < convB[k].size(); t++) f << "c" << k << "b" << t << "=" << convB[k][t] << "\n";
+    }
+    int L = (int)fcSizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        for (size_t t = 0; t < fcW[k].size(); t++) f << "f" << k << "w" << t << "=" << fcW[k][t] << "\n";
+        for (size_t t = 0; t < fcB[k].size(); t++) f << "f" << k << "b" << t << "=" << fcB[k][t] << "\n";
+    }
+}
+
+bool ConvModel::save(const string& path) const {
+    std::ofstream f(path);
+    if (!f.is_open()) return false;
+    f << "# Breakthrough ML model\n";
+    if (!teacher.empty()) f << "teacher=" << teacher << "\n";
+    f << "type=conv\n";
+    f << "head=" << (headType == HEAD_POLICY ? "policy" : "value") << "\n";
+    f << "feature_version=" << featVer << "\n";
+    f << "feature_count=" << n << "\n";
+    f << "out_scale=" << outScale << "\n";
+    writeWeights(f);
+    return true;
+}
+
+// ============================================================
 // RESIDUAL MODEL (frozen chip-count skip + inner model)
 // ============================================================
 bool ResidualModel::save(const string& path) const {
@@ -524,6 +792,48 @@ static MLPModel* buildMLPFromKV(const map<string, string>& kv, int head, int fea
     return m;
 }
 
+// Build a conv model's weights from a parsed key/value map (needs `channels=` and
+// `fc_layers=`). Reused by the direct `type=conv` case and the joint loader's
+// value-head branch. Guards featVer/n against the spatial layout ConvModel
+// hardcodes (2 planes of SIZE*SIZE + 1 stm scalar) rather than trusting the file --
+// a hand-edited or corrupted `feature_count` here would otherwise read/write past
+// the fixed-size board-plane buffers computeForward/backprop assume.
+static ConvModel* buildConvFromKV(const map<string, string>& kv, int head, int featVer, int n, float scale) {
+    if (featVer != 2 || n != 2*SIZE*SIZE + 1) return nullptr;
+    map<string, string>::const_iterator it = kv.find("channels");
+    if (it == kv.end()) return nullptr;
+    std::vector<int> channels = parseIntList(it->second);
+    it = kv.find("fc_layers");
+    if (it == kv.end()) return nullptr;
+    std::vector<int> fcSz = parseIntList(it->second);
+    if ((int)fcSz.size() < 2) return nullptr;
+    std::vector<int> fcHidden(fcSz.begin() + 1, fcSz.end() - 1);
+    ConvModel* m = new ConvModel(head, featVer, n, scale, channels, fcHidden);
+    if (m->fcSizes.size() != fcSz.size() || m->fcSizes[0] != fcSz[0]) { delete m; return nullptr; }
+    for (size_t k = 0; k < m->convW.size(); k++) {
+        for (size_t t = 0; t < m->convW[k].size(); t++) {
+            it = kv.find("c" + std::to_string(k) + "w" + std::to_string(t));
+            if (it != kv.end()) m->convW[k][t] = std::stof(it->second);
+        }
+        for (size_t t = 0; t < m->convB[k].size(); t++) {
+            it = kv.find("c" + std::to_string(k) + "b" + std::to_string(t));
+            if (it != kv.end()) m->convB[k][t] = std::stof(it->second);
+        }
+    }
+    int L = (int)m->fcSizes.size() - 1;
+    for (int k = 0; k < L; k++) {
+        for (size_t t = 0; t < m->fcW[k].size(); t++) {
+            it = kv.find("f" + std::to_string(k) + "w" + std::to_string(t));
+            if (it != kv.end()) m->fcW[k][t] = std::stof(it->second);
+        }
+        for (size_t t = 0; t < m->fcB[k].size(); t++) {
+            it = kv.find("f" + std::to_string(k) + "b" + std::to_string(t));
+            if (it != kv.end()) m->fcB[k][t] = std::stof(it->second);
+        }
+    }
+    return m;
+}
+
 Model* loadModel(const string& path) {
     std::ifstream f(path);
     if (!f.is_open()) return nullptr;
@@ -549,6 +859,11 @@ Model* loadModel(const string& path) {
     }
     if (type == "mlp") {
         MLPModel* m = buildMLPFromKV(kv, head, featVer, n, scale);
+        if (m && kv.count("teacher")) m->teacher = kv["teacher"];
+        return m;
+    }
+    if (type == "conv") {
+        ConvModel* m = buildConvFromKV(kv, head, featVer, n, scale);
         if (m && kv.count("teacher")) m->teacher = kv["teacher"];
         return m;
     }
@@ -601,8 +916,9 @@ Model* loadModel(const string& path) {
             if (k.compare(0, 2, "v_") == 0)      vKv[k.substr(2)] = it->second;
             else if (k.compare(0, 2, "p_") == 0) pKv[k.substr(2)] = it->second;
         }
-        Model* v = (vType == "mlp") ? (Model*)buildMLPFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale)
-                                     : (Model*)buildLinearFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale);
+        Model* v = (vType == "mlp")  ? (Model*)buildMLPFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale)
+                 : (vType == "conv") ? (Model*)buildConvFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale)
+                                      : (Model*)buildLinearFromKV(vKv, HEAD_VALUE, vFeatVer, vFeatN, vScale);
         Model* p = (pType == "mlp") ? (Model*)buildMLPFromKV(pKv, HEAD_POLICY, pFeatVer, pFeatN, pScale)
                                      : (Model*)buildLinearFromKV(pKv, HEAD_POLICY, pFeatVer, pFeatN, pScale);
         if (!v || !p) { delete v; delete p; return nullptr; }
@@ -619,6 +935,7 @@ Model* loadModel(const string& path) {
 const ModelTypeDef g_modelTypes[] = {
     { "linear",      "Linear: bias + weighted sum of features. Fast; value or policy head.", true  },
     { "mlp",         "Multilayer perceptron (1-2 hidden layers), hand-written forward + backprop; ReLU hidden, linear output.", true },
+    { "conv",        "Small residual conv tower (3x3 same-pad layers) over the v2 board's white/black occupancy planes + a dense head; side-to-move rides in at the FC stage. Value head only (the policy head's move features aren't spatial). AlphaZero-style capacity arm.", true },
     { "residual",    "Frozen chip-count skip + an inner model (linear or mlp): output = skipW*matDiff + inner. Learns the residual.", true },
     { "dist",        "Two-headed distributional value model: mu head (White advantage in logits, the evaluator output) + log-sigma head (volatility), probit-BCE trained on rated-gap playout outcomes.", true },
     { "joint",       "Two-headed value+policy model: a board value head (feature v1/v2) + a per-move policy head (move features), different feature layouts. Gumbel MCTS search substrate.", true },
