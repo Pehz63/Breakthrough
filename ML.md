@@ -273,9 +273,16 @@ fixed-capacity replay buffer (`GumbelZeroReplayBuffer`) that mixes recent
 plies rather than training only on the one just generated -- the two are
 independent axes, not in tension. No separate `--explore` knob is needed the
 way TD-Leaf needs one: Gumbel-top-k already draws fresh randomness at the
-root of every move. From-scratch initialization only in this pass (both
-heads zero-initialized `LinearModel`s); model architecture is linear for
-both heads (this project's established Pass-1 default). Provenance is
+root of every move. From-scratch initialization only (no warm-started init
+exists yet). Model architecture is selectable via `--model-type
+linear|mlp|conv` (Pass-1 shipped linear-only, zero-initialized for both
+heads; `mlp` and `conv` were added 2026-08-18 and swept at scale in Round 6
+below): `linear`/`mlp` apply to both heads as separate models of the same
+type (`mlp` uses `MLPModel::initRandom()` to break symmetry, since a
+zero-initialized hidden layer can never learn); `conv` applies to the value
+head only (`ConvModel`, a 3x3-kernel conv tower over the v2 board's
+occupancy planes) since the policy head's 9 handcrafted move features are
+not spatial, so a conv run's policy head stays the linear scorer. Provenance is
 recorded as a `gumbelzero(...)` `teacher=` line, classified by
 `rankAgentRegime` as `gumbel_self`.
 
@@ -343,6 +350,33 @@ canonical ladder) -- screening only, one checkpoint and one `sims` value, not
 yet checked for generality. Remaining Pass-3 candidates: an isolated
 fixed-sims lr sweep (to settle the training-side lr/sims confound) and
 checking whether this cvisit/cscale corner generalizes to other checkpoints.
+
+**Round 5 (joint training x search-shape sweep, screening-level, shipped
+2026-08-18, `plans/gumbel-mcts-results-5-violet-harbor.md`).** 101 draws (1
+REF + 100 random, linear architecture / from-scratch only), 4 shared
+checkpoint rungs (100/400/1500/4000), `cvisit`/`cscale`/`m` drawn JOINTLY
+with the 6 training axes rather than swept on one fixed checkpoint, pool-only
+gauntlet screening against `ranking/roster_screening_pool.txt` (cohort-vs-
+cohort play is quadratic in cohort size and was projected at ~48hr at this
+scale, vs ~4hr pool-only). Best checkpoint: Elo 816 +/- 19. 92% of arms
+(93/101) were non-monotonic across the rung ladder with peaks spread roughly
+evenly across all 4 rungs (theory 50), so a final-rung-only screen would have
+missed the winner (it peaks at rung 1500, falls to 604 by rung 4000). l2=0.0
+again dominates the top of the table (19/20 of the top-20 checkpoints).
+
+**Round 6 (mlp/conv architecture sweep, screening-level, shipped 2026-08-22,
+`plans/gumbel-mcts-arch-results-6-silver-thistle.md`).** Same 9 shared
+training/search-shape axes as Round 5, plus `--mlp-hidden`/`--conv-channels`:
+92 draws (45 mlp + 45 conv + 2 REF), same 4 rungs, same pool-only screening.
+**mlp clearly outperforms both conv and Round 5's best linear checkpoint at
+this scale** (theory 51, `Docs/theories.md`): best-of-46 mlp checkpoint
+reached 1023 +/- 20 Elo, rank #2 of 395 active pool agents, beaten only by
+the pool's single best `ab(deep=6)` linear agent (1039); best-of-46 conv
+reached only 806. The 217-Elo mlp-vs-conv gap is population-level (46
+independent draws per architecture), well outside the project's seed-noise
+band, though each individual cell is still 1 seed. l2=0.0 dominates the top
+of the table a third time (18/20 of Round 6's top-20). Full findings,
+caveats, and future work: the results doc above.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 
