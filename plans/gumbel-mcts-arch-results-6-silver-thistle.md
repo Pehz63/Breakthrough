@@ -65,6 +65,12 @@ pool agents (behind only `ab(deep=6,tt,ord,nodes=200k).learned(model=169,...,tdl
 every other `ab(deep=6)` baseline). Training recipe: sims=500, lr=0.01,
 l2=0.0, replay=(8000,128), batch=128, open=8.
 
+> **Seed-corrected note (2026-08-22, same day):** this single seed's 1023 does
+> NOT hold up under replication -- see "Seed-replication follow-up" below.
+> M34's recipe's 3-seed mean at rung=4000 is 971.7, with the two fresh
+> replicas at 913 and 979. Treat 1023 as a favorable single-seed draw, not
+> this recipe's expected strength.
+
 **Bottom of the range**: worst checkpoint 352 (M28, mlp hidden=64, rung=1500),
 still well above `rand@1`'s anchor 0 and the weakest pool dilution rungs
 (107/281), confirming the screening pool remains non-saturated at this
@@ -194,6 +200,49 @@ here (Round 5: 31/101 = 31% peaked at the final rung).
   5's plan doc) was already fixed in the template this study copied from;
   no repeat of that failure mode here.
 
+## Seed-replication follow-up (same day, 2026-08-22)
+
+The "Confirm the mlp winner with more seeds" future-work item above was run
+immediately: the top 5 mlp blocks by rung=4000 Elo (M34, M14, M39, M10, M31)
+were each re-trained at 2 additional seeds (offsets +10000/+20000 from the
+original, matching Round 5's Round B convention), search-shape held fixed
+per block, screened the same way (`tools/gumbelzero_arch_seedcheck.ps1`).
+Elo at rung=4000, original seed marked with `*`:
+
+| Block | Seed* (original) | Seed +10000 | Seed +20000 | Mean of 3 | Spread |
+|---|---|---|---|---|---|
+| M34 | 1023 | 913 | 979 | 971.7 | 110 |
+| M14 | 1001 | 939 | 925 | 955.0 | 76 |
+| M39 | 979 | 862 | 775 | 872.0 | 204 |
+| M10 | 975 | 939 | 905 | 939.7 | 70 |
+| M31 | 960 | 895 | 956 | 937.0 | 65 |
+
+**The original seed was the highest of its own 3-seed group in all 5 of 5
+blocks.** This is exactly the regression-to-the-mean signature the caution
+above was written to catch: each block's original seed was selected FOR
+being the best-of-45 mlp draws in the first place, so a fresh replicate
+regresses toward the recipe's true mean rather than confirming the extreme
+draw. **M34's 1023 specifically does not hold up** -- its own two replicas
+(913, 979) sit 44-110 Elo below it, and its 3-seed mean (971.7) is a more
+honest estimate of the recipe's actual strength than the single-seed 1023
+quoted as the round's headline number above.
+
+**What DOES hold up: the architecture-level finding.** Every one of the 15
+new data points (5 blocks x 3 seeds, rung=4000) is >= 775 -- all but one
+(M39's 775) still clear conv's best-of-46 (806), and all 15 clear or
+approach Round 5's best pure-linear checkpoint (816). The mlp-vs-conv and
+mlp-vs-linear population-level gaps reported above survive seed-noise
+correction even though the single best NUMBER (1023) does not. Read the
+"Winner" Elo (1023) and this table's means side by side: 1023 is what a
+single favorable seed produced, ~940-970 is a better estimate of the top
+mlp region's actual strength at this cohort's scale.
+
+Full per-seed, per-rung data (40 rows, one per checkpoint) and a wide
+companion (10 rows, one per block/seed): `plans/gumbel-mcts-arch-seedcheck-
+agents-6-silver-thistle.tsv` / `.wide.tsv`. Timing: 6846s (~1.9hr) for the
+full train->roster->play->screen->export pipeline, 10 training runs / 40
+checkpoints, well under a day.
+
 ## Process notes
 
 New tooling this round: `tools/gumbelzero_arch_sample.ps1` (draw generator)
@@ -210,11 +259,9 @@ restarting the background sweep) is in the plan doc.
   checkpoint's existing game count before re-submitting its gauntlet, so an
   interrupted-and-resumed run doesn't silently double-count a subset of the
   cohort.
-- **Confirm the mlp winner with more seeds** (ties to "Winner" above): a
-  single seed's 1023 could itself be inflated by seed noise, same caution as
-  Round 5's R87. Re-run M34's exact recipe (mlp hidden=32, sims=500,
-  lr=0.01, l2=0, replay=(8000,128), batch=128, open=8) at 2-3 more seeds
-  before treating 1023 as a stable number rather than a favorable draw.
+- ~~**Confirm the mlp winner with more seeds**~~ Done same day -- see "Seed-
+  replication follow-up" above. 1023 does not hold up (3-seed mean 971.7),
+  but the architecture-level mlp-vs-conv/linear gap does.
 - **Sweep conv's FC head** (ties to "Conv's FC head untested" above): a
   follow-up round jointly sweeping `--conv-channels` and `--mlp-hidden`
   together for conv checkpoints, to see whether conv's gap to mlp narrows
@@ -224,12 +271,14 @@ restarting the background sweep) is in the plan doc.
   table): 8-17 draws per cell is too few to separate depth's effect from
   the other 9 jointly-varied axes; a controlled depth-only sweep at fixed
   training/search-shape hyperparameters would isolate it.
-- **Certification path for the top mlp checkpoints**: if the developer wants
-  to pursue this further, the natural next step is either (a) an unpinned
-  certification refit with the top few mlp checkpoints added to
-  `ranking/roster.txt` to see if rank #2 holds under a real (non-pinned) fit,
-  or (b) the seed-replication study above first, before spending a
-  certification refit on what might be a favorable single seed.
+- **Certification path for the top mlp checkpoints**: now that seed
+  replication is done, if the developer wants to pursue this further, the
+  natural next step is an unpinned certification refit with a handful of
+  the mlp cohort's best/most-representative checkpoints (e.g. one from each
+  of the 5 replicated blocks, chosen by 3-seed mean rather than single-seed
+  peak) added to `ranking/roster.txt`, to see whether mlp's strength holds
+  under a real (non-pinned) fit against the full roster, not just the
+  screening pool.
 
 ## Ideas This Inspired
 

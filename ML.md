@@ -369,14 +369,20 @@ again dominates the top of the table (19/20 of the top-20 checkpoints).
 training/search-shape axes as Round 5, plus `--mlp-hidden`/`--conv-channels`:
 92 draws (45 mlp + 45 conv + 2 REF), same 4 rungs, same pool-only screening.
 **mlp clearly outperforms both conv and Round 5's best linear checkpoint at
-this scale** (theory 51, `Docs/theories.md`): best-of-46 mlp checkpoint
-reached 1023 +/- 20 Elo, rank #2 of 395 active pool agents, beaten only by
-the pool's single best `ab(deep=6)` linear agent (1039); best-of-46 conv
-reached only 806. The 217-Elo mlp-vs-conv gap is population-level (46
-independent draws per architecture), well outside the project's seed-noise
-band, though each individual cell is still 1 seed. l2=0.0 dominates the top
-of the table a third time (18/20 of Round 6's top-20). Full findings,
-caveats, and future work: the results doc above.
+this scale, at the population level** (theory 51, `Docs/theories.md`):
+best-of-46 mlp checkpoint reached 1023 +/- 20 Elo (rank #2 of 395 active
+pool agents, beaten only by the pool's single best `ab(deep=6)` linear
+agent at 1039); best-of-46 conv reached only 806. **That single 1023 number
+does not survive seed replication**, though -- a same-day follow-up
+re-trained the top 5 mlp blocks at 2 more seeds each and found the original
+seed was the highest of its own 3-seed group in 5/5 blocks (regression to
+the mean, since it was selected for being the best of 45 draws); the
+winning block's 3-seed mean is 971.7, not 1023. What DOES survive: all 15
+new seed x block data points clear-or-approach both conv's best (806) and
+Round 5's best linear (816), so the ARCHITECTURE-level gap (46 independent
+draws per side) is solid even though the specific extreme number was not.
+l2=0.0 dominates the top of the table a third time (18/20 of Round 6's
+top-20). Full findings, caveats, and future work: the results doc above.
 
 ## TD-Leaf(lambda): the online, bootstrapped value regime
 

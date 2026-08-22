@@ -173,6 +173,12 @@ ranking/matches_screen_gzarch.jsonl
 ranking/matches_screen_gzarch.jsonl.*
 ranking/matches_screen_gzarch.*.jsonl
 
+# Gumbel-Zero mlp/conv architecture sweep seed-replication follow-up
+# (tools/gumbelzero_arch_seedcheck.ps1). Same rationale.
+ranking/matches_screen_gzarchseed.jsonl
+ranking/matches_screen_gzarchseed.jsonl.*
+ranking/matches_screen_gzarchseed.*.jsonl
+
 # One-off ad hoc match stores (e.g. a single direct-pairing query played into
 # its own isolated store so it never touches the canonical ladder). Named
 # per query, not a fixed pattern -- add one line per store the first time
