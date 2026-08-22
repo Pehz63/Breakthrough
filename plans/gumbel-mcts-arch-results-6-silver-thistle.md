@@ -63,7 +63,7 @@ the 2 REF blocks at `games=864` -- see Correctness Gotchas below).
 (draw M34, mlp hidden=32, rung 4000), Elo 1023 +/- 20, rank #2 of 395 active
 pool agents (behind only `ab(deep=6,tt,ord,nodes=200k).learned(model=169,...,tdleaf_self,lin)` at 1039, ahead of every other agent in the pool including
 every other `ab(deep=6)` baseline). Training recipe: sims=500, lr=0.01,
-l2=0.0, replay=(2000,32), batch=128, open=8.
+l2=0.0, replay=(8000,128), batch=128, open=8.
 
 **Bottom of the range**: worst checkpoint 352 (M28, mlp hidden=64, rung=1500),
 still well above `rand@1`'s anchor 0 and the weakest pool dilution rungs
@@ -213,7 +213,7 @@ restarting the background sweep) is in the plan doc.
 - **Confirm the mlp winner with more seeds** (ties to "Winner" above): a
   single seed's 1023 could itself be inflated by seed noise, same caution as
   Round 5's R87. Re-run M34's exact recipe (mlp hidden=32, sims=500,
-  lr=0.01, l2=0, replay=(2000,32), batch=128, open=8) at 2-3 more seeds
+  lr=0.01, l2=0, replay=(8000,128), batch=128, open=8) at 2-3 more seeds
   before treating 1023 as a stable number rather than a favorable draw.
 - **Sweep conv's FC head** (ties to "Conv's FC head untested" above): a
   follow-up round jointly sweeping `--conv-channels` and `--mlp-hidden`
