@@ -49,10 +49,15 @@ python analysis/predict_peak_elo.py \
 
 `--features` (default `sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m`)
 and `--rung-col` (pass `""` to disable if the cohort has no checkpoint ladder)
-make it reusable for a differently-shaped cohort study. The report auto-flags
-any pair of axes that turn out to be perfectly coupled in the sweep (not
-actually independent draws) rather than silently double-counting one
-underlying effect as two.
+make it reusable for a differently-shaped cohort study. Any non-numeric
+feature column (e.g. `modeltype`) is one-hot encoded automatically. `--target`
+accepts any per-checkpoint column, not just `elo` -- e.g. `cpu_ms_move` or
+`eff_elo_per_log2cpu` (Elo per unit log-compute) to analyze speed/efficiency
+instead of strength; pass `--minimize` for a cost metric where the best value
+is the lowest (each draw is then collapsed to its cheapest checkpoint instead
+of its strongest). The report auto-flags any pair of axes that turn out to be
+perfectly coupled in the sweep (not actually independent draws) rather than
+silently double-counting one underlying effect as two.
 
 ## Export a model for the C++ engine
 

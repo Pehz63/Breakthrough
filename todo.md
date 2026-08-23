@@ -415,12 +415,22 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     categories (book=15/16, rand moves=4/8) and screened all 360 variants the
     same pinned way. Result: the same top-4 (M34/M14/M10/M31) lead every
     division, no reshuffling, and mlp still beats conv in all 4 (one seed
-    per variant, not seed-replicated under openers yet). **Still not
+    per variant, not seed-replicated under openers yet). M34/M14/M10/M31
+    registered in `ranking/roster.txt` 2026-08-23 as `off` (benched, no new
+    games) so the identities exist ahead of a future push. **Still not
     certified**: every number above is a screening-level pinned fit against
     the one hand-picked screening pool, never touching the other 135 roster
-    agents or the d8/nb2m oracle -- a Workflow B unpinned refit is the
-    remaining step if the developer wants to pursue certification, not yet
-    started `[Now]` {cpu: hours, dev: medium}
+    agents or the d8/nb2m oracle -- a Workflow B unpinned refit (flip to
+    `on`, run an unpinned `rank.exe rate`) is the remaining step if the
+    developer wants to pursue certification, not yet started. **Peak-Elo /
+    speed / efficiency predictors** (`analysis/predict_peak_elo.py`,
+    extended 2026-08-23 to accept any target + `--minimize` + categorical
+    features) run over the round-6 sweep: `modeltype` and `l2` dominate Elo;
+    `modeltype` alone (mlp ~7ms/move vs conv ~91ms/move) dominates speed;
+    the Elo-optimal (`lr`=0.003) and efficiency-optimal (`lr`=0.01,
+    `sims`=300) recipes diverge, unresolved pending a controlled follow-up
+    -- see the results doc's new predictor section `[Now]` {cpu: hours, dev:
+    medium}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

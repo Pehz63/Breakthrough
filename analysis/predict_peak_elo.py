@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Fit an interpretable peak-Elo predictor over a cohort's swept config axes.
+"""Fit an interpretable predictor over a cohort's swept config axes, for any
+per-checkpoint result column (Elo, but equally cpu_ms_move or another cost/
+efficiency metric -- see --target/--minimize below).
 
 Given a long-format cohort export (one row per checkpoint, e.g.
 plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv from
 tools/export_cohort_results.ps1), collapses each training run's checkpoint
-ladder down to its peak Elo, then fits:
+ladder down to its peak (or, with --minimize, its min) target value, then
+fits:
 
   - a shallow decision tree (depth chosen by cross-validation) for a
     human-readable rule set that captures interactions and the
@@ -29,7 +32,10 @@ Usage:
 All arguments except --in have the defaults shown above baked in as the
 common case for a rung-ladder cohort study; override any of them for a
 differently-shaped cohort (e.g. no rung ladder: pass --rung-col "" and
---target directly at the per-run Elo).
+--target directly at the per-run Elo). Any non-numeric feature column (e.g.
+a modeltype axis) is one-hot encoded automatically. For a cost/speed target
+where lower is better (e.g. --target cpu_ms_move), pass --minimize so each
+draw is collapsed to its cheapest checkpoint instead of its strongest.
 """
 import argparse
 import sys
@@ -75,14 +81,15 @@ def render_tree_text(tree, feature_names):
     return "\n".join(lines)
 
 
-def load_peaks(path, group_by, target, rung_col, features):
+def load_peaks(path, group_by, target, rung_col, features, minimize):
     df = pd.read_csv(path, sep="\t", comment="#")
     rows = []
+    prefix = "min_" if minimize else "peak_"
     for key, g in df.groupby(group_by):
-        peak_idx = g[target].idxmax()
-        row = {group_by: key, "peak_" + target: g.loc[peak_idx, target]}
+        peak_idx = g[target].idxmin() if minimize else g[target].idxmax()
+        row = {group_by: key, prefix + target: g.loc[peak_idx, target]}
         if rung_col and rung_col in g.columns:
-            row["peak_" + rung_col] = g.loc[peak_idx, rung_col]
+            row[prefix + rung_col] = g.loc[peak_idx, rung_col]
         for f in features:
             vals = g[f].unique()
             if len(vals) != 1:
@@ -90,6 +97,24 @@ def load_peaks(path, group_by, target, rung_col, features):
             row[f] = vals[0]
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def encode_categoricals(peaks, features):
+    """Expand any non-numeric feature column into 0/1 dummies (drop_first,
+    so a k-level category becomes k-1 columns with no redundant/collinear
+    encoding), added in place to peaks. Returns the updated feature list --
+    downstream code (models, univariate tables, coupling check) then sees
+    only numeric columns and needs no further changes."""
+    new_features = []
+    for f in features:
+        if pd.api.types.is_numeric_dtype(peaks[f]):
+            new_features.append(f)
+            continue
+        dummies = pd.get_dummies(peaks[f], prefix=f, drop_first=True, dtype=float)
+        for c in dummies.columns:
+            peaks[c] = dummies[c]
+            new_features.append(c)
+    return new_features
 
 
 def cv_r2(model, X, y, kf):
@@ -144,21 +169,23 @@ def univariate_tables(peaks, features, target_col):
 
 
 def render_report(
-    peaks, features, target_col, rung_col, kf, tree_depth, depth_results,
+    peaks, features, target_col, target, rung_col, kf, tree_depth, depth_results,
     tree, rf, rf_perm_mean, rf_perm_std, lin, lin_r2, tree_r2, rf_r2,
-    uni_tables, source_path, out_tree_image, coupled,
+    uni_tables, source_path, out_tree_image, coupled, minimize,
 ):
     n = len(peaks)
+    direction = "lowest" if minimize else "highest"
+    extremum = "min" if minimize else "peak"
     lines = []
-    lines.append("# Peak-Elo predictor: decision tree / feature importance")
+    lines.append(f"# {extremum.capitalize()}-{target} predictor: decision tree / feature importance")
     lines.append("")
     lines.append(
         f"Source: `{source_path}`, {n} draws (one row per `{peaks.columns[0]}`, "
-        f"collapsing each draw's checkpoint ladder to its peak `{target_col}`)."
+        f"collapsing each draw's checkpoint ladder to its {extremum} `{target}`)."
     )
     lines.append(
-        "Purpose: identify, per swept config axis, which values tend to produce "
-        "the highest peak Elo, to bias the next (MLP) round's sweep ranges rather "
+        f"Purpose: identify, per swept config axis, which values tend to produce "
+        f"the {direction} {target}, to bias the next round's sweep ranges rather "
         "than searching from scratch. This is descriptive/exploratory, not a "
         "certification -- see Caveats."
     )
@@ -166,9 +193,9 @@ def render_report(
     lines.append("## Method")
     lines.append("")
     lines.append(
-        "Three models fit on the same 10 swept axes -> peak Elo, compared by "
-        f"5-fold cross-validated R2 (`sklearn.model_selection.KFold`, "
-        "shuffle, seed 0):"
+        f"Three models fit on the same {len(features)} swept axes -> {extremum} "
+        f"{target}, compared by 5-fold cross-validated R2 "
+        "(`sklearn.model_selection.KFold`, shuffle, seed 0):"
     )
     lines.append("")
     lines.append("| Model | CV R2 (mean +/- std) | Why fit it |")
@@ -246,12 +273,12 @@ def render_report(
     lines.append("## Linear regression (standardized coefficients)")
     lines.append("")
     lines.append(
-        "Elo change per +1 standard deviation of the feature, holding the "
-        f"others fixed (R2={lin_r2[0]:.3f}, see caution above about how much "
-        "this linear fit actually explains):"
+        f"{target} change per +1 standard deviation of the feature, holding "
+        f"the others fixed (R2={lin_r2[0]:.3f}, see caution above about how "
+        "much this linear fit actually explains):"
     )
     lines.append("")
-    lines.append("| Feature | Std. coefficient (Elo / 1 sd) |")
+    lines.append(f"| Feature | Std. coefficient ({target} / 1 sd) |")
     lines.append("|---|---|")
     coef_order = sorted(
         zip(features, lin.coef_), key=lambda kv: abs(kv[1]), reverse=True
@@ -263,8 +290,8 @@ def render_report(
     lines.append("")
     lines.append(
         "Every swept axis here is a small discrete grid, so the plain "
-        f"per-value mean peak `{target_col}` is itself readable, with no model "
-        "in the loop:"
+        f"per-value mean {extremum} `{target_col}` is itself readable, with no "
+        "model in the loop:"
     )
     lines.append("")
     for f in features:
@@ -279,10 +306,11 @@ def render_report(
                 f"{row['std']:.0f} | {int(row['count'])} |"
             )
         lines.append("")
-    if rung_col and ("peak_" + rung_col) in peaks.columns:
-        lines.append(f"**peak_{rung_col} distribution** (which rung the peak landed on)")
+    rung_prefix = "min_" if minimize else "peak_"
+    if rung_col and (rung_prefix + rung_col) in peaks.columns:
+        lines.append(f"**{rung_prefix}{rung_col} distribution** (which rung the {extremum} landed on)")
         lines.append("")
-        vc = peaks["peak_" + rung_col].value_counts().sort_index()
+        vc = peaks[rung_prefix + rung_col].value_counts().sort_index()
         lines.append("| rung | count |")
         lines.append("|---|---|")
         for idx, c in vc.items():
@@ -300,7 +328,7 @@ def render_report(
     coupled_partner = {a: b for a, b, _ in coupled}
     coupled_partner.update({b: a for a, b, _ in coupled})
     already_emitted = set()
-    lines.append("| Axis | Best level (highest mean peak Elo) | OOF perm. importance | Read |")
+    lines.append(f"| Axis | Best level ({direction} mean {target_col}) | OOF perm. importance | Read |")
     lines.append("|---|---|---|---|")
     for i in order:
         f = features[i]
@@ -312,7 +340,7 @@ def render_report(
             already_emitted.add(coupled_partner[f])
         already_emitted.add(f)
         t = uni_tables[f]
-        best_level = t["mean"].idxmax()
+        best_level = t["mean"].idxmin() if minimize else t["mean"].idxmax()
         best_mean = t.loc[best_level, "mean"]
         imp = rf_perm_mean[i]
         if imp > 0.03:
@@ -325,12 +353,28 @@ def render_report(
     lines.append("")
     lines.append("## Caveats")
     lines.append("")
+    if target == "elo":
+        seed_noise_note = (
+            " Per-draw Elo sits inside this project's documented 50-150 Elo "
+            "seed-noise band, so the target variable itself is noisy;"
+        )
+    elif "elo" in target.lower():
+        seed_noise_note = (
+            " This target has an Elo component, which sits inside this "
+            "project's documented 50-150 Elo seed-noise band, so the target "
+            "variable is noisy on that account even though it is not Elo "
+            "itself;"
+        )
+    else:
+        seed_noise_note = (
+            " This target has no Elo component, but is still a single "
+            "measurement per draw (one gauntlet's worth of games), so it "
+            "carries its own per-draw sampling noise, unquantified here;"
+        )
     lines.append(
-        "- **n=" + str(n) + ", single seed per draw.** Per-draw Elo sits inside "
-        "this project's documented 50-150 Elo seed-noise band, so the target "
-        "variable itself is noisy; the CV R2 above is the honest ceiling on "
-        "how much of that noise these models can actually explain, not just "
-        "the training-set fit."
+        "- **n=" + str(n) + ", single seed per draw.**" + seed_noise_note + " "
+        "the CV R2 above is the honest ceiling on how much of that noise "
+        "these models can actually explain, not just the training-set fit."
     )
     coupled_note = (
         " Exception: " + "; ".join(f"`{a}`/`{b}`" for a, b, _ in coupled) + " are perfectly coupled in this sweep (see the Feature importance note), so they are not independent of each other."
@@ -339,20 +383,29 @@ def render_report(
     lines.append(
         "- **Not a controlled factorial.** Most axes were drawn "
         "independently per draw, which keeps them roughly uncorrelated in "
-        "expectation (unlike a hand-picked grid), but 101 draws over this "
+        f"expectation (unlike a hand-picked grid), but {n} draws over this "
         "many axes still leaves each importance estimate wide. Treat "
         "rankings as directional, not precise." + coupled_note
     )
     lines.append(
-        "- **Predicts peak Elo, not final-rung Elo.** The target is the max "
-        "over each draw's 4-rung ladder, so `peak_" + rung_col + "` is an "
-        "output of the search, not a controlled input -- do not read a "
-        "feature's importance here as telling you which rung to train to."
+        f"- **Predicts {extremum} {target}, not final-rung {target}.** The "
+        f"target is the {'min' if minimize else 'max'} over each draw's "
+        f"4-rung ladder, so `{rung_prefix}{rung_col}` is an output of the "
+        "search, not a controlled input -- do not read a feature's "
+        "importance here as telling you which rung to train to."
     )
     lines.append(
-        "- **Architecture/init scope.** Fit only on linear, from-scratch "
-        "checkpoints (this cohort's only architecture). Extrapolating these "
-        "axis preferences to an MLP or a warm-started init is untested."
+        "- **Architecture/init scope.** " + (
+            "`modeltype` is included as a feature (one-hot, mlp vs conv), "
+            "but the architecture-specific width axis (`--mlp-hidden` / "
+            "`--conv-channels`) is excluded -- its values are not comparable "
+            "across the two model types, see the results doc's separate "
+            "per-architecture width table instead."
+            if "modeltype" in [f.split("_")[0] for f in features]
+            else "Fit only on linear, from-scratch checkpoints (this "
+            "cohort's only architecture). Extrapolating these axis "
+            "preferences to an MLP or a warm-started init is untested."
+        )
     )
     lines.append(
         "- **Correlational.** As with every observation in the results doc "
@@ -377,11 +430,17 @@ def main():
     ap.add_argument("--min-samples-leaf", type=int, default=8)
     ap.add_argument("--rf-trees", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--minimize", action="store_true",
+        help="select each draw's MIN target value instead of its max (e.g. "
+        "for a cost/speed metric like cpu_ms_move where lower is better)",
+    )
     args = ap.parse_args()
 
-    features = [f.strip() for f in args.features.split(",") if f.strip()]
-    peaks = load_peaks(args.in_path, args.group_by, args.target, args.rung_col, features)
-    target_col = "peak_" + args.target
+    raw_features = [f.strip() for f in args.features.split(",") if f.strip()]
+    peaks = load_peaks(args.in_path, args.group_by, args.target, args.rung_col, raw_features, args.minimize)
+    features = encode_categoricals(peaks, raw_features)
+    target_col = ("min_" if args.minimize else "peak_") + args.target
     X = peaks[features]
     y = peaks[target_col]
 
@@ -410,9 +469,9 @@ def main():
     coupled = find_coupled_features(peaks, features)
 
     report = render_report(
-        peaks, features, target_col, args.rung_col, kf, tree_depth, depth_results,
+        peaks, features, target_col, args.target, args.rung_col, kf, tree_depth, depth_results,
         tree, rf, rf_perm_mean, rf_perm_std, lin, lin_r2, tree_r2, rf_r2,
-        uni_tables, args.in_path, args.out_tree_image, coupled,
+        uni_tables, args.in_path, args.out_tree_image, coupled, args.minimize,
     )
     with open(args.out_report, "w", encoding="utf-8") as f:
         f.write(report)

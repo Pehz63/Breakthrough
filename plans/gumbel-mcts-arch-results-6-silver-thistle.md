@@ -316,6 +316,58 @@ the mlp #5 finisher in every category).
   8-ply random openers being a harder starting condition across the whole
   cohort, not specific to any one block.
 
+## Peak-Elo / speed / efficiency predictors (2026-08-23)
+
+`analysis/predict_peak_elo.py` (decision tree + random forest + linear
+baseline + raw bucket means over the swept config axes, see
+`analysis/README.md`) was extended to accept any per-checkpoint target
+column (not just Elo) and a `--minimize` direction for cost metrics, plus
+automatic one-hot encoding for the new `modeltype` axis this round adds.
+Run three ways over `plans/gumbel-mcts-arch-sweep-agents-6-silver-thistle.tsv`
+(92 draws, 11 axes: the 10 shared training/search axes plus `modeltype`;
+`arch` itself excluded, see each report's caveats):
+
+| Target | Direction | Report |
+|---|---|---|
+| `elo` | maximize | `plans/gumbel-mcts-arch-peak-elo-predictor-6-silver-thistle.md` |
+| `cpu_ms_move` | minimize | `plans/gumbel-mcts-arch-speed-predictor-6-silver-thistle.md` |
+| `eff_elo_per_log2cpu` | maximize | `plans/gumbel-mcts-arch-efficiency-predictor-6-silver-thistle.md` |
+
+**Elo**: `modeltype` and `l2` dominate (OOF permutation importance 0.693 and
+0.927): mlp mean peak Elo 776 vs conv 705 (n=46 each); l2=0 mean 805 vs 730
+(l2=0.0003) vs 681 (l2=0.001). `lr`=0.003 is next (mean 770 vs 761 at 0.01 vs
+691 at 0.03). `replaycap`/`replaywarm` (coupled) and `batch` are weaker
+positive signals; `open`/`cscale` marginal; `cvisit`/`sims`/`m` show no
+detectable effect on Elo at this sample size.
+
+**Speed** (`cpu_ms_move`, lower is better): `modeltype` alone accounts for
+almost the entire signal (OOF permutation importance 0.938) -- mlp mean 7
+ms/move vs conv mean 91 ms/move, roughly 13x. `sims` is a distant second
+(0.277) but non-monotonic across its 3 levels (mean 40/32/78 at
+sims=300/400/500), likely confounded with other axes in this random-draw
+sample rather than a real reversal -- read directionally only, same caveat
+as every other axis here. `cscale` is a weaker third signal (mean 24 at
+cscale=40 rising to 80 at cscale=130, consistent with wider search-shape
+settings visiting more nodes). Nothing else clears a detectable effect.
+
+**Efficiency** (`eff_elo_per_log2cpu`, Elo per unit log-compute, higher is
+better): `modeltype` dominates again (OOF permutation importance 1.298) --
+mlp mean 63 vs conv mean 45, confirming mlp wins on both axes at once
+(stronger per the Elo predictor above, cheaper per the speed predictor
+above, so it leads the combined metric by more than either alone). `l2`=0
+is next (mean 57 vs 51 at l2=0.001, consistent with the Elo predictor).
+
+**Where the Elo-optimal and efficiency-optimal recipes disagree**: the Elo
+predictor's best `lr` is 0.003, but the efficiency predictor's best `lr` is
+0.01 (mean 56 vs 47 at lr=0.03, with 0.003 in between) -- a small Elo
+sacrifice apparently buys a disproportionate compute saving. Similarly,
+`sims` shows no detectable Elo effect but IS a real speed cost, so the
+efficiency lens picks the cheapest level (sims=300) where the Elo-only lens
+was indifferent. Neither predictor isolates causal effects (see each
+report's caveats), but this is the first quantification in this project of
+where "strongest" and "cheapest-per-Elo-point" configs diverge, rather than
+assuming they coincide.
+
 ## Process notes
 
 New tooling this round: `tools/gumbelzero_arch_sample.ps1` (draw generator)
@@ -344,20 +396,26 @@ restarting the background sweep) is in the plan doc.
   table): 8-17 draws per cell is too few to separate depth's effect from
   the other 9 jointly-varied axes; a controlled depth-only sweep at fixed
   training/search-shape hyperparameters would isolate it.
-- **Certification path for the top mlp checkpoints**: now that seed
-  replication and the opener-division check are both done, if the developer
-  wants to pursue this further, the natural next step is an unpinned
-  certification refit with a handful of the mlp cohort's best/most-
-  representative checkpoints (M34/M14/M10/M31, chosen by 3-seed mean rather
-  than single-seed peak, now confirmed to lead all 5 CHAMPION.md divisions
-  in this screen) added to `ranking/roster.txt`, to see whether mlp's
-  strength holds under a real (non-pinned) fit against the full roster, not
-  just the screening pool. Not yet started -- deferred by the developer
-  pending this opener-division check, which is now done.
+- **Certification path for the top mlp checkpoints**: M34/M14/M10/M31
+  (chosen by 3-seed mean rather than single-seed peak, confirmed to lead
+  all 5 CHAMPION.md divisions in the opener-division screen) are now
+  registered in `ranking/roster.txt` as `off` (2026-08-23, benched, no new
+  games) so the identities exist ahead of a future push. The remaining step
+  is flipping them to `on` and running an unpinned `rank.exe rate` refit --
+  not started yet, deferred by the developer pending explicit go-ahead.
 - **Seed-replicate the opener-division top checkpoints**: the "Opener-
   division follow-up" section above is one seed per variant; the same
   regression-to-the-mean risk that corrected the openless top-5 (single
   best seed 1023 -> 3-seed mean 971.7) has not been checked under openers.
+- **Isolate the lr/sims speed-vs-Elo divergence** (ties to the "Peak-Elo /
+  speed / efficiency predictors" section above): the efficiency predictor
+  picks `lr`=0.01 and `sims`=300 where the Elo-only predictor picks
+  `lr`=0.003 and is indifferent to `sims` -- both predictors are
+  correlational fits over the same 92 jointly-varied draws, so this
+  divergence could be a real cost/strength tradeoff or a sampling artifact
+  of the two targets weighting the same noisy draws differently. A
+  controlled sweep varying only `lr` (or only `sims`) at fixed everything
+  else, scored on both Elo and `eff_elo_per_log2cpu`, would settle which.
 
 ## Ideas This Inspired
 
@@ -379,3 +437,11 @@ restarting the background sweep) is in the plan doc.
   capacity help" question under two different training/search regimes and
   getting different answers, which is itself informative about where the
   regime-dependence comes from.
+- The speed predictor's headline number (mlp mean 7 ms/move vs conv mean 91
+  ms/move, ~13x) is bigger than intuition would suggest for a board this
+  small -- conv also loses on Elo, so it is strictly dominated rather than
+  offering a speed/strength tradeoff. Worth understanding WHY conv is that
+  much slower here (kernel/stride choice, this project's conv forward-pass
+  implementation, or just an inherent FLOPs disadvantage at this board
+  size) before writing conv off, since a fixable implementation cost would
+  change the picture more than an inherent one.
