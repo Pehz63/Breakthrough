@@ -378,3 +378,24 @@ on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=279,409dc0b3,tdleaf_self,ml
 on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
 on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
 on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1
+
+# --- Gumbel-Zero mlp/conv arch sweep (round 6), opener-division-confirmed top-4 ---
+# Added 2026-08-23 (plans/gumbel-mcts-arch-results-6-silver-thistle.md,
+# plans/gumbel-mcts-arch-opener-agents-6-silver-thistle.tsv). Head: gaz(...),
+# a different search head from ab(deep=6,...) above -- per CLAUDE.md's
+# one-head rule this cohort is not eligible for a CHAMPION.md title
+# regardless of Elo. Screening-only pinned fits so far: leads all 5 opener
+# divisions against roster_screening_pool.txt (3-seed mean for openless,
+# 1 seed under openers, see the results doc's caveats). Registered here as
+# "off" (benched, no games yet) so the identities exist ahead of a future
+# Workflow B certification refit. Flip to "on" and run an unpinned
+# rank.exe rate to actually certify -- not done yet per developer
+# instruction.
+#   M34  sims=500 cvisit=800 cscale=70 m=20  mlp32     3-seed mean 971.7
+#   M14  sims=300 cvisit=600 cscale=100 m=12 mlp64     3-seed mean 955.0
+#   M10  sims=500 cvisit=800 cscale=70 m=8   mlp64-32  3-seed mean 939.7
+#   M31  sims=300 cvisit=1000 cscale=40 m=8  mlp32     3-seed mean 937.0
+off     gaz(sims=500,cvisit=800,cscale=70,m=20)@1.learned(model=1545,4755d5f8,gumbel_self,joint,value_shape=129-32-1,policy_shape=9-32-1)@1
+off     gaz(sims=300,cvisit=600,cscale=100,m=12)@1.learned(model=1465,5d6df7c0,gumbel_self,joint,value_shape=129-64-1,policy_shape=9-64-1)@1
+off     gaz(sims=500,cvisit=800,cscale=70,m=8)@1.learned(model=1449,dc567440,gumbel_self,joint,value_shape=129-64-32-1,policy_shape=9-64-32-1)@1
+off     gaz(sims=300,cvisit=1000,cscale=40,m=8)@1.learned(model=1533,57845dcd,gumbel_self,joint,value_shape=129-32-1,policy_shape=9-32-1)@1
