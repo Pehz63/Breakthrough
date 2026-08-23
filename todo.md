@@ -390,6 +390,37 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     plateaued), and checking whether the cvisit=500/cscale=5.0 corner found
     above generalizes to other checkpoints/sims values, or is specific to
     R17 `[Next]` {cpu: hours, dev: high}
+  - **Round 5 (joint training x search-shape sweep)** shipped 2026-08-18
+    (`plans/gumbel-mcts-results-5-violet-harbor.md`): 101-draw random search
+    (linear architecture only) x 4 rungs = 404 checkpoints, screened pinned
+    against `ranking/roster_screening_pool.txt`. **Round 6 (mlp/conv
+    architecture sweep)** shipped 2026-08-22
+    (`plans/gumbel-mcts-arch-results-6-silver-thistle.md`): 92-draw random
+    search over `--model-type linear|mlp|conv` (45 mlp + 45 conv + 2 REF, x4
+    rungs = 368 checkpoints), same screening pool/method. mlp clearly beats
+    conv at the population level (median 713 vs 685, max 1023 vs 806) and
+    appears to beat round 5's best linear checkpoint (816). A follow-up
+    3-seed replication (`tools/gumbelzero_arch_seedcheck.ps1`) found the
+    single best mlp draw's 1023 Elo does NOT hold up (regression to the
+    mean, 5 of 5 replicated blocks), but the architecture-level finding
+    survives. Top 4 candidates by 3-seed mean, all within the seed-noise
+    band of each other: `gaz(sims=500,cvisit=800,cscale=70,m=20)`+joint
+    mlp32 (M34, mean 971.7), `gaz(sims=300,cvisit=600,cscale=100,m=12)`+
+    joint mlp64 (M14, 955.0), `gaz(sims=500,cvisit=800,cscale=70,m=8)`+
+    joint mlp64-32 (M10, 939.7), `gaz(sims=300,cvisit=1000,cscale=40,m=8)`+
+    joint mlp32 (M31, 937.0). **Opener-division follow-up shipped same day**
+    (`tools/gumbelzero_arch_opener_check.ps1`,
+    `plans/gumbel-mcts-arch-opener-agents-6-silver-thistle.tsv`): wrapped all
+    90 rung=4000 checkpoints with one opener per CHAMPION.md's 4 non-openless
+    categories (book=15/16, rand moves=4/8) and screened all 360 variants the
+    same pinned way. Result: the same top-4 (M34/M14/M10/M31) lead every
+    division, no reshuffling, and mlp still beats conv in all 4 (one seed
+    per variant, not seed-replicated under openers yet). **Still not
+    certified**: every number above is a screening-level pinned fit against
+    the one hand-picked screening pool, never touching the other 135 roster
+    agents or the d8/nb2m oracle -- a Workflow B unpinned refit is the
+    remaining step if the developer wants to pursue certification, not yet
+    started `[Now]` {cpu: hours, dev: medium}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

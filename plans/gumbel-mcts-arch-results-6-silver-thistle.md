@@ -243,6 +243,79 @@ agents-6-silver-thistle.tsv` / `.wide.tsv`. Timing: 6846s (~1.9hr) for the
 full train->roster->play->screen->export pipeline, 10 training runs / 40
 checkpoints, well under a day.
 
+## Opener-division follow-up (same day, 2026-08-22)
+
+`ranking/CHAMPION.md` splits the throne into 5 categories by opener:
+openless, 4-book, 8-book, 4-random, 8-random. Every result above, including
+the seed-replication table, is from the screening pool's games only, and
+that pool is 52% openless-opponent-weighted by construction (see
+`Docs/ranking-workflow.md` and the pool's own opener-category composition),
+so it speaks mainly to the openless division. The top-4 (M34/M14/M10/M31,
+selected purely from that openless-biased screen) were not assumed to
+transfer to the other 4 categories.
+
+`tools/gumbelzero_arch_opener_check.ps1` wrapped all 90 rung=4000
+checkpoints (45 mlp + 45 conv, no retraining, checkpoints already on disk)
+with one representative opener per non-openless category --
+`.opener(book,book=15)@1` (4-book), `.opener(book,book=16)@1` (8-book),
+`.opener(rand,moves=4)@1` (4-random), `.opener(rand,moves=8)@1` (8-random)
+-- and screened all 360 resulting variants the same way as the base sweep
+(16 games/opponent against `roster_screening_pool.txt`, pinned fit against
+`ranking/standings.tsv`). 155,520 games total. Full per-variant data:
+`plans/gumbel-mcts-arch-opener-agents-6-silver-thistle.tsv` (360 rows).
+
+**Result: the openless top-4 lead every division, no reshuffling.**
+
+| Category | #1 | #2 | #3 | #4 | #5 |
+|---|---|---|---|---|---|
+| 4-book | M34 1005 | M39 981 | M14 960 | M10 956 | M31 954 |
+| 8-book | M34 1032 | M14 994 | M10 958 | M31 941 | M39 919 |
+| 4-random | M34 996 | M10 950 | M14 941 | M39 907 | M37 903 |
+| 8-random | M10 834 | M34 814 | M14 781 | M39 777 | M31 762 |
+
+M34/M14/M10/M31 place in the top 5 of all 4 non-openless categories too.
+M39 (dropped from the openless top-4 after seed correction, 3-seed mean
+872.0, the weakest of the 5 replicated blocks above) is a consistent
+#2-#5 across every division here but never displaces the core four. No
+checkpoint outside these 5 draws appears in any category's top 5. **These
+opener-variant Elo numbers are one seed each** (no seed replication under
+openers), so read them as directionally consistent with the openless
+finding, not as a second independently-confirmed ranking -- the same
+regression-to-the-mean caution that applied to the pre-correction openless
+table applies here too, untested.
+
+**Architecture: mlp beats conv in every division too, no reshuffling there
+either.**
+
+| Category | mlp median (n=45) | mlp max | conv median (n=45) | conv max |
+|---|---|---|---|---|
+| 4-book | 690 | 1005 | 680 | 800 |
+| 8-book | 708 | 1032 | 687 | 787 |
+| 4-random | 690 | 996 | 649 | 750 |
+| 8-random | 581 | 834 | 541 | 654 |
+
+Consistent with the openless finding (mlp median 713 vs conv 685, max 1023
+vs 806): mlp leads conv on both median and max in every one of the 4
+additional categories, and no conv checkpoint reaches any category's top 5
+(best conv finish across all 4 categories: C3 at 800 in 4-book, still below
+the mlp #5 finisher in every category).
+
+**Caveats**:
+- One representative opener per category (book=15/16, rand moves=4/8), not
+  every book slot at the matching ply depth -- category-eligible per
+  CHAMPION.md's ply-depth rule, but a different book at the same ply depth
+  was not separately tested.
+- One seed per opener variant, unlike the openless top-5's 3-seed check.
+- Screening only. `gaz(...)` is a different search head from
+  `ab(deep=6,tt,ord,nodes=200k)@1`, so per CHAMPION.md's one-head rule these
+  can never hold a category title regardless of score here -- this
+  identifies candidates for a possible future certification push, it does
+  not itself compete for one.
+- Every block's 8-random score sits well below its own 4-book/8-book/
+  4-random scores (e.g. M34: 814 vs 1005/1032/996) -- consistent with
+  8-ply random openers being a harder starting condition across the whole
+  cohort, not specific to any one block.
+
 ## Process notes
 
 New tooling this round: `tools/gumbelzero_arch_sample.ps1` (draw generator)
@@ -272,13 +345,19 @@ restarting the background sweep) is in the plan doc.
   the other 9 jointly-varied axes; a controlled depth-only sweep at fixed
   training/search-shape hyperparameters would isolate it.
 - **Certification path for the top mlp checkpoints**: now that seed
-  replication is done, if the developer wants to pursue this further, the
-  natural next step is an unpinned certification refit with a handful of
-  the mlp cohort's best/most-representative checkpoints (e.g. one from each
-  of the 5 replicated blocks, chosen by 3-seed mean rather than single-seed
-  peak) added to `ranking/roster.txt`, to see whether mlp's strength holds
-  under a real (non-pinned) fit against the full roster, not just the
-  screening pool.
+  replication and the opener-division check are both done, if the developer
+  wants to pursue this further, the natural next step is an unpinned
+  certification refit with a handful of the mlp cohort's best/most-
+  representative checkpoints (M34/M14/M10/M31, chosen by 3-seed mean rather
+  than single-seed peak, now confirmed to lead all 5 CHAMPION.md divisions
+  in this screen) added to `ranking/roster.txt`, to see whether mlp's
+  strength holds under a real (non-pinned) fit against the full roster, not
+  just the screening pool. Not yet started -- deferred by the developer
+  pending this opener-division check, which is now done.
+- **Seed-replicate the opener-division top checkpoints**: the "Opener-
+  division follow-up" section above is one seed per variant; the same
+  regression-to-the-mean risk that corrected the openless top-5 (single
+  best seed 1023 -> 3-seed mean 971.7) has not been checked under openers.
 
 ## Ideas This Inspired
 
