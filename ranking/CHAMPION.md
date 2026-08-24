@@ -58,11 +58,9 @@ then on 2026-07-29 asked for the roster to be grown further for Elo diversity
 
 ## Category definitions and eligibility rule
 
-Within the standard head `ab(deep=6,tt,ord,nodes=200k)@1`, excluding
-reference-class agents (currently the d8/nb2m oracle,
-`ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2`, 1099 +/- 9 in this fit --
-ten times the node budget, never a target), a target-class agent's canonical ID
-places it in exactly one category by its `.opener(...)` ID segment:
+Excluding reference-class agents (defined below), a target-class agent's
+canonical ID places it in exactly one category by its `.opener(...)` ID
+segment:
 
 | Category | Rule |
 |---|---|
@@ -81,11 +79,50 @@ categories -- it holds no title. This deliberately retires the pre-split
 champion (`book11`, a 16-ply book) with no direct successor; see "Pre-split
 history" below.
 
-**One-head rule inside the categories.** A category's title is scoped to
-`ab(deep=6,tt,ord,nodes=200k)@1` only. `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,...)@1` wears
-its own 4-ply/8-ply books (`book=19`/`book=20`) for Elo-diversity purposes, but
-that head has no `tt` -- a different agent -- so those rows are reported for
-context (see the 4-book/8-book sections below) but are never category-eligible.
+> **[ELIGIBILITY RULE REVISED 2026-08-23]** Category eligibility previously
+> required an exact search-head match ("one-head rule inside the categories,"
+> scoped to `ab(deep=6,tt,ord,nodes=200k)@1` only). That requirement is
+> dropped. It had inherited CLAUDE.md's evaluator-attribution hygiene rule
+> (fix one search head to isolate an evaluator's contribution to an Elo gap,
+> "Champion declaration and ranking-claim hygiene," rule 6) as though it were
+> also a title-eligibility rule. It isn't: that rule governs what a written
+> comparison is allowed to conclude, not who may hold a title, and the two
+> were conflated when the category system was built (2026-07-28) and stayed
+> conflated until this revision. CLAUDE.md rule 6 is unchanged and still
+> applies in full to any claim that one evaluator beats another.
+
+**Reference class (the only eligibility exclusion, defined by compute, not
+head).** An agent is reference class, and excluded from all 5 categories
+regardless of its Elo, if its distinguishing advantage over the target-class
+field is spending more search compute on an already-established technique: a
+deeper depth, a bigger node or simulation budget, or otherwise scaling up
+resources on a search approach already represented in the roster, rather than
+a different approach. Currently: the d8/nb2m oracle,
+`ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2`, 1099 +/- 9 in the
+2026-08-01 fit, ten times the node budget of the standard head, never a
+target. This is the project's guard against a pure compute arms race that
+rewards spending more resources over finding a better technique, and it is
+the only reason an agent is excluded from category eligibility. A different
+search algorithm entirely (a different explorer, for example Gumbel MCTS,
+`gaz(...)`) is not reference class merely for being different, and is not
+excluded by head identity alone. It competes for the title on its own merits
+once it clears the general certification bar (32 games/pair, full-roster
+anchored refit) like any other target-class agent. If such an agent wins a
+category, that is evidence for investing further in that approach, not a
+result to exclude.
+
+**Open question, not yet resolved:** what counts as comparable compute when
+the techniques being compared use incompatible units (`ab`'s node budget
+against `gaz`'s simulation count) is undecided. Until it is, a reference-class
+judgment call on a novel search approach should be stated explicitly in the
+declaration, not inferred silently from a head-string mismatch.
+
+**Consequence for existing rows:** `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,...)@1`
+(the no-`tt` `adv` core wearing 4-ply/8-ply books) is no longer excluded by
+head identity. It is not reference class either, since dropping `tt` is not
+more compute, if anything less. It is category-eligible pending a re-check
+against the current fit rather than the historical numbers this file still
+quotes below. See "Category: 4-book" / "Category: 8-book" below.
 
 This is ONE roster (`ranking/roster.txt`), ONE match store
 (`ranking/matches.jsonl`), ONE Bradley-Terry fit -- not a second incompatible-
@@ -103,8 +140,13 @@ shared pool."
 3. Compare order and error bands within ONE fit; never absolute Elo across fits.
 4. Read `ranking/standings.tsv` (active only, grouped by head), never
    `ranking/ratings.tsv` (includes retired `gone` rows).
-5. Fix ONE search head (`ab(deep=6,tt,ord,nodes=200k)@1`) for every category.
-6. The d8/nb2m oracle is reference class in every category, never a target.
+5. Category eligibility has no search-head restriction (revised 2026-08-23).
+   Reference-class exclusion (item 6) is the only eligibility filter beyond
+   category membership by opener.
+6. Reference-class agents are excluded in every category, never a target:
+   currently the d8/nb2m oracle, and any future agent whose sole advantage
+   over the field is more search compute (depth, node or simulation budget)
+   on an already-established technique rather than a different one.
 7. Whenever the top may have changed, re-certify and update this file plus
    `todo.md`'s Agent Track goal paragraph in the same session.
 
@@ -236,10 +278,14 @@ this file's own rule 2 above.
   | 941 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1` (4-ply, classic-own; lift over classic's bare 921 = +20) |
   | 928 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=17)@1` (4-ply, s3-own, added round 2; lift over s3's bare 987 = **-59**, consistent with the existing on-record finding that s3's OWN book costs it Elo while a borrowed one doesn't, theory 38) |
 
-- **Off-head, not category-eligible (context only):**
+- **Previously excluded by head, eligibility revised 2026-08-23 (see the
+  category eligibility rule above):**
   `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=19)@1`
-  (4-ply, adv-own, added round 2), 952 +/- 11 -- different search head
-  (`ab(deep=6,ord,nodes=200k)@1`, no `tt`), so it can never hold this title.
+  (4-ply, adv-own, added round 2), 952 +/- 11 in the 2026-07-29 fit. No longer
+  excluded by head identity alone, and not reference class (dropping `tt` is
+  not more compute). Below this category's 972 champion in that same fit, so
+  the title does not change, but this needs re-checking against the current
+  fit rather than assumed.
 - **Lineage:** founding declaration 2026-07-28 (982 +/- 12), re-quoted
   2026-07-29 after round 2 (972 +/- 12, same agent, same rank).
 - **Defended challenges:** none yet.
@@ -259,10 +305,15 @@ this file's own rule 2 above.
   | 958 +/- 12 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1` (8-ply, classic-own; lift over classic's bare 921 = +37) |
   | 938 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=18)@1` (8-ply, s3-own, added round 2; lift over s3's bare 987 = **-49**, same direction as its 4-ply rung) |
 
-- **Off-head, not category-eligible (context only):**
+- **Previously excluded by head, eligibility revised 2026-08-23 (see the
+  category eligibility rule above):**
   `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=20)@1`
-  (8-ply, adv-own, added round 2), 988 +/- 12 -- would rate ABOVE this
-  category's champion if it were eligible, but it is a different search head.
+  (8-ply, adv-own, added round 2), 988 +/- 12 in the 2026-07-29 fit. No longer
+  excluded by head identity alone, and not reference class (dropping `tt` is
+  not more compute). This reads ABOVE that fit's 8-book champion (997), so
+  under the revised rule this category's title is unsettled pending a direct
+  re-check against the current standings, not still held by the listed
+  champion by default.
 - **Depth-ladder context (same fit, not a new claim -- consistent with the
   project's existing "book depth is not monotonic" finding, theory 38):** on
   the `s98` core, lift by depth reads 4ply -1 / 6ply / 8ply +24 / 16ply / 30ply

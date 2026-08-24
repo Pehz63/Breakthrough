@@ -281,8 +281,16 @@ below): `linear`/`mlp` apply to both heads as separate models of the same
 type (`mlp` uses `MLPModel::initRandom()` to break symmetry, since a
 zero-initialized hidden layer can never learn); `conv` applies to the value
 head only (`ConvModel`, a 3x3-kernel conv tower over the v2 board's
-occupancy planes) since the policy head's 9 handcrafted move features are
-not spatial, so a conv run's policy head stays the linear scorer. Provenance is
+occupancy planes) since `ConvModel` itself is never usable for the policy
+head (its 9 handcrafted move features aren't spatial) -- a conv run's policy
+head therefore defaults to the linear scorer. `--policy-mlp` (added
+2026-08-23, a conv-capacity follow-up to Round 6 below) is an independent
+knob that gives a conv run's policy head an `MLPModel` instead, over the
+same 9 move features `mlp` mode's own policy head already uses, sized by
+`--mlp-hidden` -- decoupling "value head architecture" from "does the
+policy head get hidden-layer capacity", which the plain `--model-type`
+selector can't express (it picks one architecture for both heads, or
+implicitly forces the policy head linear for conv). Provenance is
 recorded as a `gumbelzero(...)` `teacher=` line, classified by
 `rankAgentRegime` as `gumbel_self`.
 

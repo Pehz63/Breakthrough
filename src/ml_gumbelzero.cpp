@@ -118,10 +118,11 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     // tests/test_gumbelzero.cpp); "mlp"/"conv" heads need their model's
     // initRandom() to break weight symmetry, since a zero-initialized hidden
     // layer can never learn (ml_model.h).
-    const bool useMlp  = (cfg.modelType == "mlp");
-    const bool useConv = (cfg.modelType == "conv");
+    const bool useMlp       = (cfg.modelType == "mlp");
+    const bool useConv      = (cfg.modelType == "conv");
+    const bool usePolicyMlp = useMlp || cfg.policyMlp;
     std::vector<int> hidden = cfg.mlpHidden;
-    if (useMlp && hidden.empty()) hidden.push_back(32);   // default one 32-wide hidden layer
+    if (usePolicyMlp && hidden.empty()) hidden.push_back(32);   // default one 32-wide hidden layer
 
     std::vector<int> convChannels = cfg.convChannels;
     if (useConv && convChannels.empty()) { convChannels.push_back(16); convChannels.push_back(16); }
@@ -132,14 +133,11 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     else if (useMlp)  valueHead = new MLPModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f, hidden);
     else              valueHead = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
 
-    Model* policyHead = useMlp ? (Model*)new MLPModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f, hidden)
-                                : (Model*)new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
-    if (useMlp) {
-        static_cast<MLPModel*>(valueHead)->initRandom();
-        static_cast<MLPModel*>(policyHead)->initRandom();
-    } else if (useConv) {
-        static_cast<ConvModel*>(valueHead)->initRandom();
-    }
+    Model* policyHead = usePolicyMlp ? (Model*)new MLPModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f, hidden)
+                                      : (Model*)new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    if (useMlp)  static_cast<MLPModel*>(valueHead)->initRandom();
+    else if (useConv) static_cast<ConvModel*>(valueHead)->initRandom();
+    if (usePolicyMlp) static_cast<MLPModel*>(policyHead)->initRandom();
     JointModel*  model = new JointModel(valueHead, policyHead);
 
     {
@@ -157,6 +155,7 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
             for (size_t i = 0; i < convChannels.size(); i++) { if (i) prov << ","; prov << convChannels[i]; }
             prov << ";fc=";
             for (size_t i = 0; i < convFcHidden.size(); i++) { if (i) prov << ","; prov << convFcHidden[i]; }
+            prov << ";policy=" << (cfg.policyMlp ? "mlp" : "linear");
             prov << ")";
         }
         model->teacher = prov.str();

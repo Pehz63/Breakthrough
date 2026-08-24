@@ -185,6 +185,12 @@ ranking/matches_screen_gzarchopener.jsonl
 ranking/matches_screen_gzarchopener.jsonl.*
 ranking/matches_screen_gzarchopener.*.jsonl
 
+# Gumbel-Zero mlp/conv architecture sweep conv-capacity follow-up
+# (tools/gumbelzero_conv_capacity_check.ps1). Same rationale.
+ranking/matches_screen_gzconvcap.jsonl
+ranking/matches_screen_gzconvcap.jsonl.*
+ranking/matches_screen_gzconvcap.*.jsonl
+
 # One-off ad hoc match stores (e.g. a single direct-pairing query played into
 # its own isolated store so it never touches the canonical ladder). Named
 # per query, not a fixed pattern -- add one line per store the first time

@@ -37,11 +37,20 @@ is a registry, so adding one is a single table entry + a function body, and ever
 (UIs, tournaments, docs) picks it up automatically.
 
 **Goal:** a learned evaluator that beats the classic chip counter at EQUAL search
-depth, then at lower compute (deeper-for-cheaper). Since 2026-07-28 the throne is
-split into 5 parallel category champions by opener loadout (openless / 4-book /
-8-book / 4-random / 8-random), declared in `ranking/CHAMPION.md` (single source of
-truth; the numbers below are tagged to their fit dates and predate the split, so
-they describe the single-champion era's history, not a current category leader).
+depth, then at lower compute (deeper-for-cheaper). This is the project's core ML
+research question, and it is what same-head, loadout-matched comparisons are
+for. A second, broader goal sits alongside it and is what the category titles
+track directly (revised 2026-08-23): the strongest agent overall, any search
+technique included, excluding only reference-class agents that win purely by
+spending more search compute on an already-established technique rather than a
+different one (see `ranking/CHAMPION.md`'s reference-class rule). A different
+search algorithm, for example Gumbel MCTS (`gaz(...)`), winning a category is
+evidence for that approach, not a result excluded by head identity. Since
+2026-07-28 the throne is split into 5 parallel category champions by opener
+loadout (openless / 4-book / 8-book / 4-random / 8-random), declared in
+`ranking/CHAMPION.md` (single source of truth; the numbers below are tagged to
+their fit dates and predate the split, so they describe the single-champion
+era's history, not a current category leader).
 **The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
 after boosting the top pairs to 32 games each and refitting, a learned PST
@@ -425,12 +434,34 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     developer wants to pursue certification, not yet started. **Peak-Elo /
     speed / efficiency predictors** (`analysis/predict_peak_elo.py`,
     extended 2026-08-23 to accept any target + `--minimize` + categorical
-    features) run over the round-6 sweep: `modeltype` and `l2` dominate Elo;
-    `modeltype` alone (mlp ~7ms/move vs conv ~91ms/move) dominates speed;
-    the Elo-optimal (`lr`=0.003) and efficiency-optimal (`lr`=0.01,
+    features) run over the round-6 sweep: `modeltype` and `l2` dominate Elo,
+    `modeltype` alone (mlp ~7ms/move vs conv ~91ms/move) dominates speed,
+    and the Elo-optimal (`lr`=0.003) and efficiency-optimal (`lr`=0.01,
     `sims`=300) recipes diverge, unresolved pending a controlled follow-up
-    -- see the results doc's new predictor section `[Now]` {cpu: hours, dev:
-    medium}
+    -- see the results doc's new predictor section. **Conv-capacity
+    follow-up shipped 2026-08-23** (new `--policy-mlp` flag,
+    `src/ml_gumbelzero.h`/`.cpp`, `tools/train_main.cpp`, decouples the
+    policy head's architecture from the value head's): round 6 gave every
+    mlp draw nonlinear hidden layers on both heads but every conv draw a
+    direct-linear value readout and an unconditionally-linear policy head.
+    Fixing both on round 6's best conv recipe (block C15) raised its 3-seed
+    mean at rung=4000 from 748.7 to 953.0 (+204.3, super-additive over the
+    individual fixes' +72/+65), landing inside the seed-corrected mlp
+    top-4's own range (937.0-971.7) -- best single checkpoint 1003 +/- 20,
+    not yet added to `ranking/roster.txt`. Theory 52, `Docs/theories.md`.
+    Training is confirmed game-count-paced not wall-clock-paced, and
+    round 6's conv population was already flat (not still rising) from
+    rung 1500 to 4000, so undertraining from conv's slower forward pass is
+    ruled out as the explanation `[Now]` {cpu: hours, dev: medium}
+  - **Category-title eligibility for a certified GAZ agent is unresolved.**
+    Revised 2026-08-23 to drop the exact-search-head requirement (see
+    `ranking/CHAMPION.md`'s reference-class rule), so a `gaz(...)` agent is no
+    longer excluded from a category title by head identity alone. Still
+    undecided: what counts as comparable compute against `gaz`'s `sims`
+    budget versus `ab`'s node budget. That call should be made explicitly
+    before or alongside the Workflow B certification push above, not inferred
+    after the fact from whichever number comes out ahead `[Next]` {cpu:
+    minutes, dev: medium}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

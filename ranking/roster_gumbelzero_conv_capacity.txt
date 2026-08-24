@@ -1,0 +1,124 @@
+# Default gauntlet pool for rating a new/candidate agent during training or
+# screening (rank.exe gauntlet --pool this file, or equivalent). Not the full
+# roster and not a study-scratch file -- a standing, git-tracked reference
+# pool, analogous to roster_top.txt (openless top-of-table boosting) but built
+# for the opposite job: giving ANY new agent, at ANY strength, a fixed set of
+# opponents spanning the standings from top to near-bottom, across all 5
+# opener categories, so a screening gauntlet's Elo lands on an interpretable
+# point of the existing scale instead of only being measurable near the top.
+#
+# Built 2026-08-17 for the Gumbel-Zero cvisit/cscale/m joint-sweep study
+# (plans/gumbel-mcts-*), then adopted as the project default. Head throughout:
+# ab(deep=6,tt,ord,nodes=200k)@1. Elo quoted in comments is from the
+# 2026-08-17 ranking/standings.tsv fit -- re-check the current standings.tsv
+# before treating these numbers as current (never compare absolute Elo across
+# fits, see CLAUDE.md's ranking hygiene rules).
+#
+# Composition:
+#  - Top of each of the 5 opener categories (openless/4-book/8-book/4-random/
+#    8-random), one pick per distinct evaluator regime present near the top
+#    of that category (tdleaf_self, position_elo, pool_games, weight_merge),
+#    plus that category's chip-counter control -- weaker same-regime
+#    duplicates excluded.
+#  - A spread of weaker opponents (800s down to ~100 Elo) so the pool isn't
+#    all clustered at 900+: a few more regime-diverse learned() models in the
+#    800s and mid-range, then the chip-counter's own dilution ladder
+#    (dil(prob=N)) for a clean, single-regime path down to a near-floor
+#    opponent.
+#
+# To extend: keep the regime-diversity + Elo-spread principle above, re-derive
+# picks from a freshly regenerated ranking/standings.tsv (not this file's
+# stale comments), and update the Elo comments below to the new fit's date.
+
+anchor  rand@1
+
+# --- Top of each opener category (regime-diverse, ~900+ Elo) ---
+
+# openless
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1  # 1039, tdleaf_self
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1  # 1006, position_elo
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1  # pool_games
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2  # 924, chip counter control
+
+# 4-book
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1  # 965
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1  # 945
+
+# 8-book
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1  # 986
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1  # 962
+
+# 4-random
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1  # 963
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1  # 946
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=4)@1  # 926
+
+# 8-random
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1  # 778
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1  # 770, weight_merge
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=8)@1  # 758
+
+# --- Spread into the 800s and below ---
+
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1  # 883
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1  # 859
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1  # 832
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1  # 823
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1  # 748
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1  # 653
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=18)@1  # 591
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=28)@1  # 445
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=43)@1  # 281
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=63)@1  # 107
+
+# ---- Gumbel-Zero conv-capacity follow-up (48 agents), added 2026-08-23 ----
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1810,95800acf,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1811,1cfc8b35,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1812,895e41b0,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1813,7a82b465,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1814,2a27d229,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1815,d36ede85,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1816,a58329d9,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1817,1895052f,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1818,891326da,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1819,e55d222e,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1820,b2c50af5,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1821,9d566689,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1822,d68b6ee0,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1823,1cf769bf,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1824,abefb0b8,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1825,b7f02a50,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1826,964af68c,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1827,4b1f3332,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1828,a464277f,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1829,47bfe73b,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1830,2a1d80f4,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1831,e0844fe5,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1832,099d0ebc,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1833,75d4eaf0,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1834,7067283f,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1835,ed658729,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1836,b2a3dc77,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1837,0b1a0f1a,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1838,7d032ec4,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1839,a7aa7d54,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1840,866ed813,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1841,c24f03a2,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1842,f9c83c5a,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1843,55b541da,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1844,1b6b2e5e,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1845,d687fe09,gumbel_self,joint,value_shape=129-1,policy_shape=9-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1846,27b96c26,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1847,1df65774,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1848,28b89490,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1849,a1dea895,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1850,d1c636d4,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1851,4a5b9241,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1852,0a65b84f,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1853,e5779e12,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1854,94570b2b,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1855,069e33c8,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1856,ee6a20d9,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+on      gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1857,7ee6f611,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1

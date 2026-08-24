@@ -368,6 +368,117 @@ report's caveats), but this is the first quantification in this project of
 where "strongest" and "cheapest-per-Elo-point" configs diverge, rather than
 assuming they coincide.
 
+## Was conv undertrained? (2026-08-23)
+
+Checked directly, since conv's ~13x slower forward pass (see the speed
+predictor above) raises the question of whether it simply had less
+effective training time than mlp. Two independent checks both say no:
+
+**Mechanism**: `trainGumbelZero`'s self-play loop (`src/ml_gumbelzero.cpp`)
+is paced entirely by game count (`--games`/`--ckpt-at`), never by
+wall-clock, and one SGD step runs per new ply once the replay buffer clears
+warmup regardless of how long that ply's forward/backward pass took. A
+slower conv checkpoint's training run simply takes longer in wall-clock
+terms, it does not receive fewer gradient updates or land on coarser
+checkpoint rungs than an mlp run trained to the same `--games` value. This
+is a design property of the trainer, not something that had to be true.
+
+**Trajectory**: at the population level, conv's mean Elo across round 6's
+46 checkpoints is 563 (rung=100) -> 642 (rung=400) -> 682 (rung=1500) -> 682
+(rung=4000) -- it rises steeply early, then is FLAT (delta -0.1) over the
+final 2500 games, with the checkpoints that do rise over that span (25/45,
++31.2 Elo on average) roughly canceled out by the ones that fall (19/45,
+-41.3 Elo on average). mlp's population, by contrast, is still climbing
+over that same span (699.5 -> 739.7, +40.2 net, with its own rising subset
+averaging +92.8) -- the "still rising at the highest rung tested" caution
+this project's playbook flags applies to mlp here, not to conv. Conv's
+population-level trajectory is the signature of a plateaued architecture at
+its current capacity, not one cut short mid-improvement.
+
+## Conv-capacity follow-up (2026-08-23)
+
+Investigating WHY conv underperformed (developer question, same day) surfaced
+two capacity asymmetries the round-6 sweep never varied. Every mlp draw got
+2 nonlinear hidden layers on BOTH heads (`v_layers=129,64,32,1` and
+`p_layers=9,64,32,1` for a hidden=32 draw, confirmed from the saved model
+files' own headers). Every conv draw's value head went straight from the
+flattened conv output to ONE linear readout (`v_fc_layers=2049,1` for the
+32,32-channel arm -- `--mlp-hidden` was simply never passed to a conv draw
+by the sweep script, even though `ConvModel` already supports it), and its
+policy head was unconditionally linear (`p_type=linear`, 9 raw move features
+straight to output) -- not because `ConvModel` was tried and failed there
+(its 9 move features aren't spatial, so `ConvModel` itself was never usable
+for the policy head), but because no flag existed to give a conv run's
+policy head an `MLPModel` instead, the way `--model-type mlp` already does
+for its own policy head. Code-level confirmation: `src/ml_gumbelzero.cpp`'s
+`policyHead` construction was gated on `useMlp` alone (`cfg.modelType ==
+"mlp"`), so a conv value head could never pair with an MLP policy head
+through any existing flag.
+
+Both are fixable without a new model type: added `--policy-mlp`
+(`src/ml_gumbelzero.h`/`.cpp`, `tools/train_main.cpp`, `usePolicyMlp = useMlp
+|| cfg.policyMlp`), which gives a conv run's policy head an `MLPModel` too,
+sized by the same `--mlp-hidden` conv's FC head already reuses. Purely
+additive (new field defaults false, existing code paths behave identically),
+verified against the full test suite (3703 assertions) and a live gauntlet
+smoke test confirming the new value+policy combination loads and plays
+through the real `gaz(...)` search path.
+
+**Design**: C15's exact recipe (round 6's single best conv checkpoint, 806
+Elo at rung=4000, `conv(16,16,16)`, `sims=300 lr=0.003 l2=0 replay=500/16
+batch=8 open=0`, cert `cvisit=400 cscale=70 m=16`), crossed 2x2x3: FC head
+{none, hidden=32} x policy head {linear, mlp} x 3 seeds (8975 C15's own,
++10000, +20000) x the same 4-rung ladder. 12 training runs, 48 checkpoints,
+screened the same pool-only-gauntlet way. The (no-FC, linear-policy) cell
+exactly replicates C15's own recipe, so it doubles as this study's first
+proper 3-seed baseline for that cell (round 6 was 1 seed per draw for the
+whole population).
+
+**Result: both fixes help, and together they close nearly the entire
+architecture gap.**
+
+| Condition | Mean Elo, rung=4000 (3 seeds) | vs baseline | Mean eff_elo_per_log2cpu |
+|---|---|---|---|
+| Baseline (no FC, linear policy) | 748.7 | -- | 46.3 |
+| + FC head only | 820.7 | +72.0 | 50.7 |
+| + policy-MLP only | 814.0 | +65.3 | 50.3 |
+| + both | 953.0 | +204.3 | 59.3 |
+
+The combined effect (+204.3) is well above the sum of the two individual
+effects (+72.0 +65.3 = +137.3) -- the two fixes are super-additive here, not
+independent contributions. The single best checkpoint (seed 8975, both
+fixes) reached **1003 +/- 20** at rung=4000, landing inside the seed-noise
+band of the seed-replicated mlp top-4's own 3-seed means (937.0-971.7, see
+"Seed-replication follow-up" above) and far above round 6's entire 46-draw
+conv population (previous best 806). Speed is essentially unaffected across
+all 4 conditions (73-79 ms/move at rung=4000), so this is close to a pure
+capacity win, not a speed/strength tradeoff -- the conv trunk itself, not
+the small FC/policy additions, dominates conv's per-move cost, and conv
+with both fixes is still roughly 10x slower per move than a typical mlp
+checkpoint (~7 ms/move), so mlp likely keeps a real efficiency edge even
+though the raw-strength gap has closed.
+
+**Caveats:**
+- **One recipe, not a re-sweep.** This tests whether C15's specific
+  search/training hyperparameters close the gap when capacity-matched, not
+  whether every conv recipe would. A different conv recipe (channels, l2,
+  replay settings) might respond differently to the same two fixes.
+- **3 seeds per condition here, vs round 6's 1 seed per draw for conv's
+  whole population** -- more reliable per-cell, but still a small n for
+  judging the FC/policy interaction's exact shape (super-additive vs simply
+  noisy at this sample size is not fully distinguishable from 3 seeds).
+- **Screening only**, same pinned-fit caveat as every other number in this
+  document. Full per-checkpoint data:
+  `plans/gumbel-mcts-conv-capacity-agents-6-silver-thistle.tsv` (48 rows) /
+  `.wide.tsv` (12 rows).
+- **The canonical agent ID's `value_shape=` field does not reflect conv's FC
+  head or channel structure** (`archDescForSlot` reports a conv value head
+  as `value_shape=129-1` regardless of its actual `v_fc_layers`/`v_channels`
+  -- a pre-existing display-only gap, not a correctness issue: `rank.exe
+  check` still resolves the id/hash/model correctly). Read the model file's
+  own `v_channels`/`v_fc_layers`/`p_type` headers for a checkpoint's true
+  architecture, not its canonical ID string.
+
 ## Process notes
 
 New tooling this round: `tools/gumbelzero_arch_sample.ps1` (draw generator)
@@ -387,11 +498,27 @@ restarting the background sweep) is in the plan doc.
 - ~~**Confirm the mlp winner with more seeds**~~ Done same day -- see "Seed-
   replication follow-up" above. 1023 does not hold up (3-seed mean 971.7),
   but the architecture-level mlp-vs-conv/linear gap does.
-- **Sweep conv's FC head** (ties to "Conv's FC head untested" above): a
-  follow-up round jointly sweeping `--conv-channels` and `--mlp-hidden`
-  together for conv checkpoints, to see whether conv's gap to mlp narrows
-  with a comparably-sized post-flatten FC layer instead of a direct linear
-  read-out.
+- ~~**Sweep conv's FC head**~~ Done same day -- see "Conv-capacity
+  follow-up" above. An FC head plus a new `--policy-mlp` policy head
+  together raise conv's 3-seed mean at rung=4000 from 748.7 to 953.0,
+  closing nearly the entire gap to mlp's own seed-corrected top-4 range.
+- **Re-sweep other conv recipes with both capacity fixes**: the
+  conv-capacity follow-up tested only C15's recipe (round 6's single best
+  conv draw). Whether the same +204 Elo gain generalizes to other conv
+  recipes (different `l2`, `replaycap`, channel widths) or is specific to
+  C15's own hyperparameters is untested -- a small re-sweep crossing a
+  handful of round 6's other conv draws with (FC head, policy-MLP) both on
+  would settle it.
+- **Mechanism for the FC/policy super-additive interaction is untested**:
+  the conv-capacity follow-up found +72 (FC alone) and +65 (policy-MLP
+  alone) combine to +204, not the +137 additive sum. Whether this is a real
+  interaction (e.g. the value FC head and policy MLP head jointly improving
+  self-play data quality, which then compounds) or a 3-seed sampling
+  artifact is unresolved -- more seeds per cell would tighten this.
+- **Certification candidate**: the conv-capacity follow-up's best checkpoint
+  (seed 8975, FC head + policy-MLP, 1003 +/- 20 at rung=4000) is not yet
+  registered anywhere in `ranking/roster.txt`, unlike the mlp top-4 above --
+  the developer has not been asked whether to add it.
 - **Isolate architecture depth's effect** (ties to the "architecture depth"
   table): 8-17 draws per cell is too few to separate depth's effect from
   the other 9 jointly-varied axes; a controlled depth-only sweep at fixed

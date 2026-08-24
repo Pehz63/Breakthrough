@@ -39,13 +39,23 @@
 // architecture, not a shared one. "conv" applies to the VALUE head only: its
 // board features (v2, 129) are a real 8x8/2-plane image a conv tower can read,
 // but the policy head's move features (9 handcrafted, non-spatial numbers) are
-// not, so a conv run keeps the policy head at the linear scorer it always used
-// (see ml_model.h's ConvModel doc comment). A "linear" head is zero-initialized
-// (Slice 1's own smoke-test construction, so existing linear checkpoints
-// reproduce exactly); "mlp"/"conv" heads call their model's initRandom() to
-// break weight symmetry (zero-init hidden layers can never learn, ml_model.h),
-// so linear runs and mlp/conv runs draw from different points in the rand()
-// stream even at the same seed.
+// not spatial, so ConvModel itself is never usable for the policy head (see
+// ml_model.h's ConvModel doc comment) -- a conv run's policy head therefore
+// defaults to the same linear scorer it always used. GumbelZeroConfig::policyMlp
+// (default false, --policy-mlp) is an INDEPENDENT knob layered on top: it gives
+// a conv run's policy head an MLPModel instead (over the same 9 move features,
+// the same architecture "mlp" mode already uses for its own policy head -- only
+// the value-head/policy-head COUPLING is new, not a new model type), reusing
+// GumbelZeroConfig::mlpHidden for its hidden-layer widths. This decouples "what
+// architecture does the value head use" from "does the policy head get hidden-
+// layer capacity", which the plain modelType selector cannot express since it
+// picks one architecture for both heads (or, for conv, implicitly forces the
+// policy head linear). A "linear" head is zero-initialized (Slice 1's own
+// smoke-test construction, so existing linear checkpoints reproduce exactly).
+// "mlp"/"conv" heads, and any policyMlp policy head, call their model's
+// initRandom() to break weight symmetry (zero-init hidden layers can never
+// learn, ml_model.h), so linear runs and mlp/conv/policyMlp runs draw from
+// different points in the rand() stream even at the same seed.
 
 // ---- Policy gradient core (pure, unit-testable) ----
 
@@ -107,6 +117,9 @@ struct GumbelZeroConfig {
                                   // no forced default for conv (empty = direct linear read-out)
     std::vector<int> convChannels;  // conv layer output-channel counts (modelType=="conv"); default
                                      // {16,16} if empty (a 2->16 projection + one 16-wide residual block)
+    bool   policyMlp = false;  // give the policy head an MLPModel (mlpHidden widths) even when
+                                // modelType=="conv" (whose policy head is otherwise linear); no effect
+                                // when modelType=="mlp" (already MLP) or "linear" (see doc comment above)
     double lr;
     double l2;
     int    replayCapacity;
