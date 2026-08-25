@@ -260,7 +260,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
 | `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md`. The match store is PARTS + a live tail listed in `ranking/matches.index.txt`, and the rating outputs are gitignored (regenerate with `rank.exe rate`) |
 | `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract, interpretable best/worst-value prediction over a cohort sweep for any per-checkpoint target -- Elo, speed (`cpu_ms_move`), or efficiency (`analysis/predict_peak_elo.py`) -- and standard charts (Elo-vs-axis, rung-ladder learning curves, seed-spread) rendered from the same cohort export (`analysis/plot_cohort_results.py`) |
-| `plans/` | Archived session plans + companion results docs |
+| `plans/` | Archived session plans + companion results docs. A study's `plot_cohort_results.py` charts live in their own `plans/<export-name>/` subfolder (never loose PNGs at the `plans/` top level), so the root listing stays dominated by `.md` docs |
 | `.claude/skills/run-tests.md` | Skill: always run tests via `run_tests.ps1 -Build`, never bare `cl` |
 
 ### `src/` (details: `src/CLAUDE.md`)

@@ -73,18 +73,21 @@ seed-noise band.
 python analysis/plot_cohort_results.py \
     --in ../plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv \
     --group-by block --target elo --rung-col rung \
-    --features sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m \
-    --out-dir ../plans/
+    --features sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m
 ```
 
-Writes `<export-name>-elo-vs-<feature>.png` per feature, `<export-name>-learning-curves.png`,
-and, only when applicable, `<export-name>-seed-spread.png`. `--group-by` accepts a
-comma-separated column list (e.g. `block,seed`), needed whenever a study
-seed-replicates within a block -- passing only `block` there would collapse
-each seed's own peak together and understate the spread. `--group-by`,
-`--target`, `--rung-col`, and `--features` share defaults and meaning with
-`predict_peak_elo.py` above, so both tools can point at the same export
-unchanged.
+Writes into a subfolder next to `--in`, named after the export (e.g.
+`plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor/`, created if it does
+not exist) -- one folder per study keeps `plans/` itself from filling up with
+loose PNGs. Pass `--out-dir` to override. Inside that folder: `elo-vs-axis/<feature>.png`
+per swept axis (nested separately since this one scales with how many axes a
+study sweeps), `learning-curves.png`, and, only when applicable, `seed-spread.png`.
+`--group-by` accepts a comma-separated column list (e.g. `block,seed`), needed
+whenever a study seed-replicates within a block -- passing only `block` there
+would collapse each seed's own peak together and understate the spread.
+`--group-by`, `--target`, `--rung-col`, and `--features` share defaults and
+meaning with `predict_peak_elo.py` above, so both tools can point at the same
+export unchanged.
 
 ## Export a model for the C++ engine
 

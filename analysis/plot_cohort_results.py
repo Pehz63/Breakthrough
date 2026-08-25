@@ -6,19 +6,20 @@ Every study driver in this project (gumbelzero_*_study.ps1, tdleaf_study.ps1,
 ...) ends in a hand-typed markdown table in a plans/*-results-*.md doc; this
 is the one step SIERRA's "generate deliverables" pipeline stage has that this
 project didn't, so a study's rung ladders and swept axes can be looked at
-instead of read off a table. Three chart types, written as PNGs next to
---out-dir:
+instead of read off a table. Three chart types, written under --out-dir:
 
-  - <name>-elo-vs-<feature>.png, one per --features column: each run's peak
+  - elo-vs-axis/<feature>.png, one per --features column: each run's peak
     target value against that swept axis, with error bars from the target's
-    "<target>_pm" column when present. Numeric axes get a scatter+errorbar;
-    categorical axes get a box+strip plot per category.
-  - <name>-learning-curves.png: target vs --rung-col, one line per run, so a
-    rung ladder's shape (still rising vs plateaued vs regressing) is visible
-    at a glance. Only the top --legend-top-n runs by final-rung value get a
-    legend entry; the rest draw thin and grey so the plot stays readable.
-  - <name>-seed-spread.png: peak target per run, grouped by the non-seed part
-    of --group-by, with individual seed points overlaid. Only written when
+    "<target>_pm" column when present. An axis with few distinct values
+    (numeric or not -- this project's swept axes are almost always drawn from
+    a small fixed grid, not genuinely continuous) gets a box+strip plot per
+    value; a numeric axis with many distinct values falls back to a scatter.
+  - learning-curves.png: target vs --rung-col, one line per run, so a rung
+    ladder's shape (still rising vs plateaued vs regressing) is visible at a
+    glance. Only the top --legend-top-n runs by final-rung value get a legend
+    entry; the rest draw thin and grey so the plot stays readable.
+  - seed-spread.png: peak target per run, grouped by the non-seed part of
+    --group-by, with individual seed points overlaid. Only written when
     "seed" is one of --group-by's columns and takes more than one value, and
     reports the median within-config spread next to the project's documented
     50-150 Elo seed-noise band (CLAUDE.md's "seed-noise band" vocabulary
@@ -29,8 +30,7 @@ Usage:
     python analysis/plot_cohort_results.py \\
         --in plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv \\
         --group-by block --target elo --rung-col rung \\
-        --features sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m \\
-        --out-dir plans/
+        --features sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m
 
 --group-by, --target, --rung-col and --features share defaults and meaning
 with analysis/predict_peak_elo.py so the two tools can point at the same
@@ -38,6 +38,11 @@ export unchanged. Unlike that script, --group-by here accepts a
 comma-separated list of columns (e.g. "block,seed"), needed whenever a study
 seed-replicates within a block -- a single "block" column would then collapse
 each seed's own peak together and understate the seed-noise band.
+
+--out-dir defaults to a subfolder next to --in, named after the export (e.g.
+plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor/), created if it does
+not exist -- one folder per study keeps plans/ itself from filling up with
+loose PNGs. Pass --out-dir explicitly to override.
 """
 import argparse
 import os
@@ -94,17 +99,20 @@ def _fmt_value(v):
     return f"{v:.6g}" if isinstance(v, float) else str(v)
 
 
-def plot_elo_vs_features(peaks, features, target, out_dir, name, max_discrete):
+def plot_elo_vs_features(peaks, features, target, out_dir, max_discrete):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
+    axis_dir = os.path.join(out_dir, "elo-vs-axis")
+    os.makedirs(axis_dir, exist_ok=True)
 
     pm_col = f"{target}_pm"
     has_pm = pm_col in peaks.columns
     written = []
     for feat in features:
         if feat not in peaks.columns:
-            print(f"skip elo-vs-{feat}: column not in export", file=sys.stderr)
+            print(f"skip elo-vs-axis/{feat}: column not in export", file=sys.stderr)
             continue
         fig, ax = plt.subplots(figsize=(7, 5))
         is_numeric = pd.api.types.is_numeric_dtype(peaks[feat])
@@ -143,14 +151,14 @@ def plot_elo_vs_features(peaks, features, target, out_dir, name, max_discrete):
         ax.set_ylabel(target)
         ax.set_title(f"{target} vs {feat} ({len(peaks)} runs, {n_unique} distinct values)")
         fig.tight_layout()
-        out_path = os.path.join(out_dir, f"{name}-elo-vs-{feat}.png")
+        out_path = os.path.join(axis_dir, f"{feat}.png")
         fig.savefig(out_path, dpi=150)
         plt.close(fig)
         written.append(out_path)
     return written
 
 
-def plot_learning_curves(df, group_cols, rung_col, target, out_dir, name, legend_top_n):
+def plot_learning_curves(df, group_cols, rung_col, target, out_dir, legend_top_n):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -181,13 +189,14 @@ def plot_learning_curves(df, group_cols, rung_col, target, out_dir, name, legend
     )
     ax.legend(fontsize=7, loc="best", ncol=2)
     fig.tight_layout()
-    out_path = os.path.join(out_dir, f"{name}-learning-curves.png")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "learning-curves.png")
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     return out_path
 
 
-def plot_seed_spread(peaks, group_cols, target, out_dir, name):
+def plot_seed_spread(peaks, group_cols, target, out_dir):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -218,7 +227,8 @@ def plot_seed_spread(peaks, group_cols, target, out_dir, name):
     ax.set_title("\n".join(textwrap.wrap(title, width=max(40, len(configs) * 9))), fontsize=9)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
     fig.tight_layout()
-    out_path = os.path.join(out_dir, f"{name}-seed-spread.png")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "seed-spread.png")
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     return out_path
@@ -231,7 +241,7 @@ def main():
     ap.add_argument("--target", default="elo")
     ap.add_argument("--rung-col", default="rung", help="checkpoint-ladder column, empty string to disable learning-curves")
     ap.add_argument("--features", default=DEFAULT_FEATURES)
-    ap.add_argument("--out-dir", default="", help="defaults to --in's directory")
+    ap.add_argument("--out-dir", default="", help="defaults to a subfolder next to --in, named after the export")
     ap.add_argument("--legend-top-n", type=int, default=15)
     ap.add_argument(
         "--max-discrete-values", type=int, default=20,
@@ -253,17 +263,16 @@ def main():
 
     group_cols = [c.strip() for c in args.group_by.split(",") if c.strip()]
     features = [f.strip() for f in args.features.split(",") if f.strip()]
-    out_dir = args.out_dir or os.path.dirname(os.path.abspath(args.in_path))
-    name = stem(args.in_path)
+    out_dir = args.out_dir or os.path.join(os.path.dirname(os.path.abspath(args.in_path)), stem(args.in_path))
 
     peaks = collapse_to_peak(df, group_cols, args.target, args.rung_col, features, args.minimize)
 
     written = []
-    written += plot_elo_vs_features(peaks, features, args.target, out_dir, name, args.max_discrete_values)
-    lc = plot_learning_curves(df, group_cols, args.rung_col, args.target, out_dir, name, args.legend_top_n)
+    written += plot_elo_vs_features(peaks, features, args.target, out_dir, args.max_discrete_values)
+    lc = plot_learning_curves(df, group_cols, args.rung_col, args.target, out_dir, args.legend_top_n)
     if lc:
         written.append(lc)
-    ss = plot_seed_spread(peaks, group_cols, args.target, out_dir, name)
+    ss = plot_seed_spread(peaks, group_cols, args.target, out_dir)
     if ss:
         written.append(ss)
 
