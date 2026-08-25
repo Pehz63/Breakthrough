@@ -59,6 +59,33 @@ of its strongest). The report auto-flags any pair of axes that turn out to be
 perfectly coupled in the sweep (not actually independent draws) rather than
 silently double-counting one underlying effect as two.
 
+## Plot a cohort's swept axes and rung ladders
+
+Given the same long-format cohort export as above, render the standard chart
+shapes a study's results doc otherwise only reports as hand-typed tables:
+peak Elo (or any target column) against each swept axis with error bars,
+every run's rung-ladder learning curve on one plot, and, when the export's
+`--group-by` includes a `seed` column with more than one value, a per-config
+seed-spread box plot compared against the project's documented 50-150 Elo
+seed-noise band.
+
+```
+python analysis/plot_cohort_results.py \
+    --in ../plans/gumbel-mcts-joint-sweep-agents-5-violet-harbor.tsv \
+    --group-by block --target elo --rung-col rung \
+    --features sims,lr,l2,replaycap,replaywarm,batch,open,cvisit,cscale,m \
+    --out-dir ../plans/
+```
+
+Writes `<export-name>-elo-vs-<feature>.png` per feature, `<export-name>-learning-curves.png`,
+and, only when applicable, `<export-name>-seed-spread.png`. `--group-by` accepts a
+comma-separated column list (e.g. `block,seed`), needed whenever a study
+seed-replicates within a block -- passing only `block` there would collapse
+each seed's own peak together and understate the spread. `--group-by`,
+`--target`, `--rung-col`, and `--features` share defaults and meaning with
+`predict_peak_elo.py` above, so both tools can point at the same export
+unchanged.
+
 ## Export a model for the C++ engine
 
 Heavy models train in Python and export into the engine's text model format, which
