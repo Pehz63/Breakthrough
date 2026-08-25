@@ -87,7 +87,14 @@ def stem(path):
     return base[:-4] if base.lower().endswith(".tsv") else base
 
 
-def plot_elo_vs_features(peaks, features, target, out_dir, name):
+def _fmt_value(v):
+    """Adaptive-precision label for a discrete axis value: a mixed-scale grid
+    like l2's {0, 0.0003, 0.001} rounds to indistinguishable 0.0 at a fixed
+    decimal count, so format each value at its own natural precision instead."""
+    return f"{v:.6g}" if isinstance(v, float) else str(v)
+
+
+def plot_elo_vs_features(peaks, features, target, out_dir, name, max_discrete):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -100,25 +107,41 @@ def plot_elo_vs_features(peaks, features, target, out_dir, name):
             print(f"skip elo-vs-{feat}: column not in export", file=sys.stderr)
             continue
         fig, ax = plt.subplots(figsize=(7, 5))
-        if pd.api.types.is_numeric_dtype(peaks[feat]):
-            if has_pm:
-                ax.errorbar(
-                    peaks[feat], peaks[target], yerr=peaks[pm_col],
-                    fmt="o", capsize=3, alpha=0.7,
-                )
-            else:
-                ax.scatter(peaks[feat], peaks[target], alpha=0.7)
-        else:
-            categories = sorted(peaks[feat].unique(), key=str)
-            data = [peaks.loc[peaks[feat] == c, target].values for c in categories]
-            ax.boxplot(data, tick_labels=[str(c) for c in categories], showmeans=True)
+        is_numeric = pd.api.types.is_numeric_dtype(peaks[feat])
+        n_unique = peaks[feat].nunique(dropna=False)
+        # A sweep axis is drawn from a small discrete grid far more often than
+        # it is genuinely continuous (this project's hyperparameter sweeps are
+        # all randomly sampled from a fixed short list per axis, e.g. l2 in
+        # {0, 0.0003, 0.001}), so group by value whenever there are few enough
+        # distinct values for that to be readable, numeric or not -- only a
+        # numeric axis with many distinct values falls back to a scatter.
+        grouped = not is_numeric or n_unique <= max_discrete
+        if grouped:
+            # dropna=False groupby buckets NaN (e.g. an axis that only applies
+            # to some rows, like conv's FC-head width) into its own group --
+            # plain `peaks[feat] == np.nan` is always False and would silently
+            # drop that whole bucket instead of grouping it.
+            by_value = peaks.groupby(feat, dropna=False)[target]
+            real = [c for c in by_value.groups if pd.notna(c)]
+            real = sorted(real) if is_numeric else sorted(real, key=str)
+            categories = real + [c for c in by_value.groups if pd.isna(c)]
+            labels = [_fmt_value(c) if pd.notna(c) else "(none)" for c in categories]
+            data = [by_value.get_group(c).values for c in categories]
+            ax.boxplot(data, tick_labels=labels, showmeans=True)
             for i, c in enumerate(categories, start=1):
-                ys = peaks.loc[peaks[feat] == c, target]
+                ys = by_value.get_group(c)
                 xs = np.random.normal(i, 0.04, size=len(ys))
                 ax.scatter(xs, ys, alpha=0.5, s=15, color="black")
+        elif has_pm:
+            ax.errorbar(
+                peaks[feat], peaks[target], yerr=peaks[pm_col],
+                fmt="o", capsize=3, alpha=0.7,
+            )
+        else:
+            ax.scatter(peaks[feat], peaks[target], alpha=0.7)
         ax.set_xlabel(feat)
         ax.set_ylabel(target)
-        ax.set_title(f"{target} vs {feat} ({len(peaks)} runs)")
+        ax.set_title(f"{target} vs {feat} ({len(peaks)} runs, {n_unique} distinct values)")
         fig.tight_layout()
         out_path = os.path.join(out_dir, f"{name}-elo-vs-{feat}.png")
         fig.savefig(out_path, dpi=150)
@@ -211,6 +234,12 @@ def main():
     ap.add_argument("--out-dir", default="", help="defaults to --in's directory")
     ap.add_argument("--legend-top-n", type=int, default=15)
     ap.add_argument(
+        "--max-discrete-values", type=int, default=20,
+        help="numeric axes with at most this many distinct values are grouped (box+strip) like a "
+        "categorical axis instead of scattered -- this project's swept axes are almost always drawn "
+        "from a small fixed grid, not genuinely continuous",
+    )
+    ap.add_argument(
         "--minimize", action="store_true",
         help="select each run's MIN target value instead of its max (e.g. for a cost metric like cpu_ms_move)",
     )
@@ -230,7 +259,7 @@ def main():
     peaks = collapse_to_peak(df, group_cols, args.target, args.rung_col, features, args.minimize)
 
     written = []
-    written += plot_elo_vs_features(peaks, features, args.target, out_dir, name)
+    written += plot_elo_vs_features(peaks, features, args.target, out_dir, name, args.max_discrete_values)
     lc = plot_learning_curves(df, group_cols, args.rung_col, args.target, out_dir, name, args.legend_top_n)
     if lc:
         written.append(lc)
