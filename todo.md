@@ -46,11 +46,17 @@ spending more search compute on an already-established technique rather than a
 different one (see `ranking/CHAMPION.md`'s reference-class rule). A different
 search algorithm, for example Gumbel MCTS (`gaz(...)`), winning a category is
 evidence for that approach, not a result excluded by head identity. Since
-2026-07-28 the throne is split into 5 parallel category champions by opener
-loadout (openless / 4-book / 8-book / 4-random / 8-random), declared in
-`ranking/CHAMPION.md` (single source of truth; the numbers below are tagged to
-their fit dates and predate the split, so they describe the single-champion
-era's history, not a current category leader).
+2026-07-28 the throne is split into parallel category champions rather than
+one single champion. As of 2026-08-24 that is 6 categories: 3 opener/loadout
+divisions (openless / `.opener(rand,moves=8)@1` / a 20% full-random dilution
+division) crossed with 2 compute tracks (`nodes=200k` / `time=150ms`),
+declared in `ranking/CHAMPION.md` (single source of truth; the numbers below
+are tagged to their fit dates and predate the split, so they describe the
+single-champion era's history, not a current category leader). The earlier
+4-book/8-book/4-random categories are demoted to ladder/study data in
+CHAMPION.md's "Deferred categories" appendix, not deleted, pending a future
+book-mining redesign (self-maximizing per-division book mining, not yet
+scoped).
 **The first tier was achieved
 and certified 2026-07-17** (`plans/dethrone-champion-results-1-wiggly-mitten.md`):
 after boosting the top pairs to 32 games each and refitting, a learned PST
@@ -453,15 +459,41 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     round 6's conv population was already flat (not still rising) from
     rung 1500 to 4000, so undertraining from conv's slower forward pass is
     ruled out as the explanation `[Now]` {cpu: hours, dev: medium}
-  - **Category-title eligibility for a certified GAZ agent is unresolved.**
-    Revised 2026-08-23 to drop the exact-search-head requirement (see
-    `ranking/CHAMPION.md`'s reference-class rule), so a `gaz(...)` agent is no
-    longer excluded from a category title by head identity alone. Still
-    undecided: what counts as comparable compute against `gaz`'s `sims`
-    budget versus `ab`'s node budget. That call should be made explicitly
-    before or alongside the Workflow B certification push above, not inferred
-    after the fact from whichever number comes out ahead `[Next]` {cpu:
-    minutes, dev: medium}
+  - **GAZ budget instrumentation is designed but not implemented.** The
+    reference-class rule (revised 2026-08-23) already lets a `gaz(...)` agent
+    compete for a category title once certified, but `gaz()` has no node- or
+    time-budget concept yet -- only a simulation-count budget. A concrete
+    design (cut Sequential Halving only at round boundaries, never mid-round,
+    to preserve its fairness guarantee; node/leaf counters mirroring
+    `ai_minimax.cpp`'s `nodes++`/`leafs++` convention; `nodes=`/`time=`
+    grammar additions to `gaz()` reusing `ab()`'s existing machinery) was
+    scoped 2026-08-24 in
+    `plans/champion-category-restructure-plan-1-golden-painting-anchor.md`'s
+    appendix -- not yet built. Needed before any `gaz(...)` agent can enter a
+    category, independent of the Pass 3 certification item above `[Next]`
+    {cpu: minutes, dev: medium}
+  - **AB's `time=` budget does not correctly cap wall-clock cost for
+    expensive-per-node evaluators.** Discovered 2026-08-24 while building the
+    `x time` categories: two wide-MLP cores (`model=111`, `model=113`) run
+    477-500 ms/move against a `time=150ms` budget, 2-3.3x over. Root cause:
+    `src/ai_minimax.cpp`'s `budgetTripped()` checks the wall-clock deadline
+    only once every 4096 nodes (`(nodes & 4095ULL) == 0`, a deliberate
+    `Clock::now()`-overhead tradeoff), and the outer iterative-deepening loop
+    (`miniMaxWhite`, the `for (int d = 1; d <= depth; d++)` loop) has no check
+    before starting a new depth iteration -- so an expensive-per-node
+    evaluator can start a whole iteration with no time left and run well past
+    the deadline before the coarse in-recursion check catches it. Cheap
+    evaluators are unaffected (confirmed: all 12 normal-cost cores in the same
+    cohort stay under budget). Does not change any `CHAMPION.md` category's
+    declared champion (the two affected cores are not top-2 anywhere), but the
+    `x time` track's compute-parity guarantee is broken for those two cores'
+    rows until fixed. Cheapest fix identified but not implemented: add a
+    check before committing to the next depth iteration (mirrors the
+    round-boundary check already designed for GAZ above), which would cut the
+    worst-case overshoot (an entire doomed iteration) without touching the
+    existing per-node check's granularity. See `ranking/CHAMPION.md`'s Summary
+    section for the full writeup and measured numbers `[Next]` {cpu: minutes,
+    dev: low}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes

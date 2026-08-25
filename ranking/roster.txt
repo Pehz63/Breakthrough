@@ -325,6 +325,88 @@ on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,
 on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
 on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
 
+# ---------------------------------------------------------------------------
+# Champion-category cohort, round 3 (2026-08-24). Restructures the category
+# system from 5 opener-only categories to 6: 3 divisions (openless / 8-random,
+# both already above / a new 20%-full-random dilution division) crossed with
+# 2 compute-normalization tracks (the existing nodes=200k budget / a new
+# time=150ms wall-clock budget), so a future different search algorithm can
+# compete on comparable compute rather than being excluded by head identity
+# (see ranking/CHAMPION.md's reference-class rule, revised 2026-08-23).
+# 4-book/8-book/4-random are demoted to ladder/study data, not deleted --
+# their rows above are untouched. dil(prob=20) is PERCENT, not a fraction
+# (confirmed against src/ranking.cpp's lenientPct and existing dil(prob=25)
+# usage elsewhere in this file). time=150ms is a measured value (see
+# ranking/CHAMPION.md's "shared budget values"), not the historical
+# nodes=200k default -- this is the first live roster usage of a time= head.
+# Same 14-core set as the 4-random/8-random cohort above (13 learned cores +
+# the bare classic control), so per-division Elo deltas stay readable against
+# that established baseline.
+
+# dil20 x node (new division, existing head)
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+
+# openless x time (new track, bare cores)
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+
+# opener8 x time
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(rand,moves=8)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1
+
+# dil20 x time
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1  # 370ms/move core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1  # NNUE-wide core, cost flag
+on      ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+
 # ============================================================
 # TD-Leaf Pass 2 selection (added 2026-08-01) -- 16 agents, ONE seed each.
 # ============================================================

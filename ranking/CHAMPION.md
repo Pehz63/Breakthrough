@@ -1,5 +1,18 @@
 # Reigning Champions (single source of truth)
 
+> **[RESTRUCTURED 2026-08-24]** The 5-category system (one throne per opener)
+> is replaced by a 6-category system: 3 divisions (openless / opener8 / a new
+> 20%-full-random dilution division, dil20) crossed with 2 compute-
+> normalization tracks (the existing `nodes=200k` node budget / a new
+> `time=150ms` wall-clock budget). Read "Why 6 categories" and "Summary
+> (2026-08-24 fit, 6-category system)" below for the current state; the two
+> banners immediately following this one, and everything under "Superseded
+> summaries" and "Deferred categories", are historical and describe the prior
+> 5-category system. A genuine instrumentation defect was found while building
+> this round -- two cost-flagged evaluator cores do not respect the
+> `time=150ms` budget (2-3.3x overshoot); see the Summary section's defect
+> note before trusting any `x time` category's close margins.
+
 > **[RE-CERTIFIED 2026-08-01 after a scoring-population change]** The match
 > store no longer includes games involving the TD-Leaf Pass-2 candidates that
 > were screened and never promoted (457,611 rows, 71% of the store). Their files
@@ -43,7 +56,7 @@ numbers, because absolute Elo drifts as the pool grows (see
 `Docs/benchmarking.md`, "Elo scale drift across fits"). When another doc must
 quote a number, it tags it with the fit date.
 
-## Why 5 categories
+## Why 6 categories
 
 Until 2026-07-26 the project declared ONE champion: the highest pooled-Elo
 target-class agent in the full-roster fit. That agent kept turning out to be a
@@ -56,28 +69,48 @@ explicit open decision: keep one throne, or split into separate tracks? On
 then on 2026-07-29 asked for the roster to be grown further for Elo diversity
 (round 2, see "Rounds" below).
 
+**Restructured 2026-08-24** from 5 opener-only categories to 3 divisions x 2
+compute tracks. Two things motivated this, alongside the developer's own
+request to simplify the divisions: (1) the 2026-08-23 reference-class
+revision (below) opened the door to a different search algorithm (Gumbel
+MCTS, `gaz(...)`) competing for a title once certified, but a title comparison
+across search algorithms is only meaningful if both sides spend comparable
+compute -- otherwise "wins the category" just measures "has more compute,"
+the exact arms-race incentive the reference-class rule already excludes for
+depth/node-budget scaling within one algorithm; (2) the book divisions needed
+a fundamentally different mining methodology (self-maximizing book mining
+within a division's own field, not a fixed-pair replay) that hadn't been
+designed yet, so they were demoted rather than carried forward half-designed.
+See "Deferred categories" below for what specifically was dropped and why
+nothing about it was deleted.
+
 ## Category definitions and eligibility rule
 
 Excluding reference-class agents (defined below), a target-class agent's
-canonical ID places it in exactly one category by its `.opener(...)` ID
-segment:
+canonical ID places it in exactly one of 3 divisions by its `.opener(...)`/
+`.dil(...)` segment, crossed with exactly one of 2 compute tracks by its
+head's budget flag -- 3 x 2 = 6 categories:
 
-| Category | Rule |
+| Division | Rule |
 |---|---|
-| **openless** | no `.opener(...)` segment at all |
-| **4-book** | `.opener(book,book=N)@1` where `models/bookN.txt` was mined at `--plies 4` |
-| **8-book** | `.opener(book,book=N)@1` where `models/bookN.txt` was mined at `--plies 8` |
-| **4-random** | `.opener(rand,moves=4)@1` |
-| **8-random** | `.opener(rand,moves=8)@1` |
+| **openless** | no `.opener(...)` segment and no `.dil(...)` segment |
+| **opener8** | `.opener(rand,moves=8)@1` |
+| **dil20** | `.dil(prob=20)@1`, no `.opener(...)` segment |
 
-"4"/"8" are opener PLIES, not book slot numbers. The `book=N` in a book opener
-is the SLOT, and the ply depth it was mined at is a property of that slot, not
-of the ID -- so the table reads the depth out of the mining record, not off the
-number. Any other opener depth (the existing 6/16/30/60-ply books, or a
-hypothetical `rand,moves=6`) is ladder/study data, not a member of any of the 5
-categories -- it holds no title. This deliberately retires the pre-split
-champion (`book11`, a 16-ply book) with no direct successor; see "Pre-split
-history" below.
+| Track | Rule |
+|---|---|
+| **node** | head carries `nodes=200k` |
+| **time** | head carries `time=150ms` |
+
+`dil(prob=20)` is a PERCENTAGE (20% of moves fully randomized), not a
+fraction -- `dil(prob=0.2)` is a different, valid ID (~0.2% dilution) that
+`src/ranking.cpp`'s `lenientPct` grammar accepts silently, a real footgun
+rather than a typo the parser would catch. Any other opener/dilution/budget
+combination (the retired 4-ply/8-ply book categories, `.opener(rand,moves=4)@1`,
+any other `dil(prob=...)` value, any other `nodes=`/`time=` value) is
+ladder/study data, not a member of any of the 6 categories -- it holds no
+title. See "Deferred categories" below for what this retires and why nothing
+was deleted.
 
 > **[ELIGIBILITY RULE REVISED 2026-08-23]** Category eligibility previously
 > required an exact search-head match ("one-head rule inside the categories,"
@@ -120,9 +153,9 @@ declaration, not inferred silently from a head-string mismatch.
 **Consequence for existing rows:** `ab(deep=6,ord,nodes=200k)@1.adv(chip=77,...)@1`
 (the no-`tt` `adv` core wearing 4-ply/8-ply books) is no longer excluded by
 head identity. It is not reference class either, since dropping `tt` is not
-more compute, if anything less. It is category-eligible pending a re-check
-against the current fit rather than the historical numbers this file still
-quotes below. See "Category: 4-book" / "Category: 8-book" below.
+more compute, if anything less. Moot for now regardless, since the book
+divisions it would have entered are demoted -- see "Deferred categories"
+below.
 
 This is ONE roster (`ranking/roster.txt`), ONE match store
 (`ranking/matches.jsonl`), ONE Bradley-Terry fit -- not a second incompatible-
@@ -158,107 +191,296 @@ shared pool."
   14 more random-opener on the remaining cheap bare cores), 140 -> 158 active
   agents, ~21,384 new games. Every category's champion and runner-up from
   round 1 held its rank through round 2, but margins stayed thin (see below).
+- **Round 3 (2026-08-24):** the 3-division x 2-track restructure. 56 new
+  agents (the same 14-core set as round 1/2's random-opener cohort -- 13
+  learned cores + the bare classic control -- each newly wearing
+  `.dil(prob=20)@1` at the existing `nodes=200k` head, plus bare/`.opener(rand,
+  moves=8)@1`/`.dil(prob=20)@1` at a new `time=150ms` head), played into the
+  same store via `.\tools\run_rank.ps1 -Workers 10 --games 8 --paired-openings`.
+  `time=150ms` is a measured value: the existing `nodes=200k` head averages
+  ~6.0 ms/move for the bare chip counter and ~18.6 ms/move for the then-openless
+  champion core (`ranking/matches.roster.0001.jsonl`, `wms`/`wmv` fields),
+  and 150ms gives roughly the same headroom over that average that
+  `nodes=200k` gives over its ~62k avg node use -- reproduce by summing `wms`/
+  `wmv` and `bms`/`bmv` per agent over the store. `nodes=200k` is unchanged
+  (every existing category already used it). 4-book/8-book/4-random are
+  demoted, not replayed or removed -- see "Deferred categories" below.
 
-## Summary (2026-08-01 fit, after the scoring-population change)
+## Summary (2026-08-24 fit, 6-category system)
 
-Read this table, not the 2026-07-29 one below it. Fit population: the `roster`
-and `retired_other` store parts (191,823 games before the openless boost run,
-192,639 after), 170 active agents.
-
-| Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) | vs 2026-07-29 |
-|---|---|---|---|---|---|
-| **openless** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | **1044 +/- 11** | 1603 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 1007 +/- 8 (gap 37 / SE 13.6 = 2.7 SE) | **CHANGED** (was s76) |
-| 4-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1` | 968 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1`, 947 +/- 11 (gap 21 / SE 15.6 = 1.3 SE) | held |
-| 8-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1` | 989 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1`, 964 +/- 11 (gap 25 / SE 15.6 = 1.6 SE) | held |
-| 4-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` | 965 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1`, 949 +/- 11 (gap 16 / SE 15.6 -- **statistically tied**) | held |
-| 8-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | 781 +/- 10 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 773 +/- 10 (gap 8 / SE 14.1 -- **statistically tied**) | held |
-
-### Evidence level, stated honestly
-
-**openless is the only category boosted to rule-2 fill.** Because dropping the
-cohort games left the new leader at a median 8.0 games/pair -- exactly the fill
-this project has been inverted by three times -- `ranking/roster_top.txt` was
-rewritten to the openless top 9 plus the bare chip counter and played out: 816
-games, and `rank.exe check --roster ranking/roster_top.txt --games 32` now
-reports **0 pending at 32 across all 55 contender pairs**.
-
-Two caveats on that, both measured rather than assumed:
-
-- **32 stored rows/pair is ~22.6 DISTINCT games/pair.** The boost games came
-  back at 0.706 distinct trajectories per row (816 rows, 576 distinct). These
-  contenders carry no dilution and no opener, so nothing consumes `rand()`; the
-  variation comes from the `tt` head's cross-game state differing across the 12
-  shard processes. Printed SEs are therefore understated by about
-  `sqrt(1/0.706)` = 1.19x. Applying that, the openless gap is 37 Elo against a
-  combined SE of ~16.1, so **2.3 SE, not 2.7**. Still a separation, less
-  comfortable than the raw table suggests.
-- **The other four categories are unboosted** and sit at 1392 games with pairs
-  well under 32. They are re-confirmed only in the sense that the same agent
-  still leads; 4-random and 8-random remain statistically tied at the top and
-  should not be quoted as settled.
-
-**A standing suspicion about the openless result.** `s169` took the title while
-*losing* 36% of its games, because it is itself a TD-Leaf agent and the removed
-cohort was its own family. The boost run was specifically designed to test
-whether that survived proper fill, and it did (1050 +/- 12 at 8 games/pair ->
-1044 +/- 11 at 32). But the mechanism by which removing cohort games helps a
-cohort member is not understood, and the bare chip counter
-`ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` swinging from openless rank 2 to
-rank 35 under the same change is unexplained. Treat this title as the one most
-likely to move again.
-
-## Superseded summary (2026-07-29 fit, round 2, screening level)
-
-Kept for lineage. **Do not quote these numbers as current** -- they come from a
-fit over a different game population (see the re-certification banner at the top
-of this file).
+Fit population: full match store after round 3's 56-agent addition, 218 active
+agents, `rank.exe rate` re-run against the current `ranking/matches.jsonl` plus
+indexed parts. Read `ranking/standings.tsv` yourself to reproduce any row.
 
 | Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) |
 |---|---|---|---|---|
-| openless | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` | 1012 +/- 9 | 2136 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1`, 1002 +/- 9 (gap 10 / SE 12.7 -- **statistically tied**) |
+| **openless x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | **1031 +/- 10** | 1967 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 991 +/- 8 (gap 40 / SE 12.8 = 3.1 SE) |
+| **opener8 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **777 +/- 9** | 1840 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 765 +/- 9 (gap 12 / SE 12.7 -- **statistically tied**) |
+| **dil20 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` | **553 +/- 10** | 1736 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1`, 543 +/- 10 (gap 10 / SE 14.1 -- **statistically tied**) |
+| **openless x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | **977 +/- 14** | 1028 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 934 +/- 14 (gap 43 / SE 19.8 = 2.2 SE) |
+| **opener8 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **791 +/- 9** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 788 +/- 9 (gap 3 / SE 12.7 -- **statistically tied**) |
+| **dil20 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` | **558 +/- 10** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1`, exact tie at 558 +/- 10 |
+
+### Evidence level, stated honestly
+
+**openless x node and opener8 x node carry forward round 1/2's game counts**
+(1967/1840 games across their fields) and are the best-attested rows here, but
+still short of 32 games/pair certification fill (`CLAUDE.md` rule 2) -- the
+combined-SE math above already reflects that, not a certified result.
+**dil20 x node and all three `x time` categories are round-3-only, at 8
+games/pair nominal** (`--games 8 --paired-openings`), the same screening depth
+flagged as provisional in every prior round of this file. Per `Docs/
+benchmarking.md` defect 3, a pair with no dilution and no random opener
+replays close to 1 distinct game per stored row regardless of row count;
+**dil20 and the three `x time` rows all carry dilution or (for opener8) a
+random opener, so they consume `rand()` and are not subject to that specific
+undercount** -- but 8 games/pair is still well under the 32-games/pair
+certification standard, and none of the six declarations above should be
+quoted as settled.
+
+**Time-budget instrumentation defect, found while building this round.** Two
+of the 14 cores in this cohort (`model=111`, `model=113`, both wide-MLP
+position-oracle heads, already flagged `# cost flag` in `ranking/roster.txt`)
+do not respect the `time=150ms` budget: measured at 477-500 ms/move in
+openless x time, 309-320 ms/move in opener8 x time, and 413-438 ms/move in
+dil20 x time (`cpu_ms_move` column, `ranking/standings.tsv`) -- roughly 2-3.3x
+over budget, against every other core in the cohort staying under it. Root
+cause: `src/ai_minimax.cpp`'s `budgetTripped()` checks the wall-clock deadline
+only once every 4096 nodes (`(nodes & 4095ULL) == 0`, a deliberate
+`Clock::now()`-overhead tradeoff), and the outer iterative-deepening loop has
+no check before starting a new depth iteration -- so an expensive-per-node
+evaluator can start a whole iteration with no time left and run well past the
+deadline before the coarse in-recursion check catches it. This is a genuine
+engine gap, not a data artifact: it was invisible before this round because no
+prior roster line ever combined `time=` with a slow evaluator. It does not
+change any category's declared champion above (`model=111`/`113` are not
+top-2 in any `x time` category), but their rows within the three `x time`
+categories are not evidence of a budget-respecting agent and should be
+excluded from any claim resting on compute parity within those categories
+until the underlying check is fixed. Tracked in `todo.md`; not fixed this
+session (design-only discussion, no `src/` changes made). Does not affect the
+`x node` track at all -- `g_nodeDeadline` is checked on every node, with no
+granularity gap.
+
+## Superseded summaries (5-category system, pre-2026-08-24)
+
+Kept for lineage. **Do not quote these numbers as current** -- the category
+system itself changed on 2026-08-24 (see "Why 6 categories" above), and
+openless/8-random above already supersede this table's own rows for those two
+divisions specifically; 4-book/8-book/4-random are carried forward verbatim
+into "Deferred categories" below rather than re-quoted here.
+
+### 2026-08-01 fit, after the scoring-population change
+
+Fit population: the `roster` and `retired_other` store parts (191,823 games
+before the openless boost run, 192,639 after), 170 active agents.
+
+| Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) | vs 2026-07-29 |
+|---|---|---|---|---|---|
+| openless | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | 1044 +/- 11 | 1603 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 1007 +/- 8 (gap 37 / SE 13.6 = 2.7 SE) | CHANGED (was s76) |
+| 4-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1` | 968 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1`, 947 +/- 11 (gap 21 / SE 15.6 = 1.3 SE) | held |
+| 8-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1` | 989 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1`, 964 +/- 11 (gap 25 / SE 15.6 = 1.6 SE) | held |
+| 4-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` | 965 +/- 11 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1`, 949 +/- 11 (gap 16 / SE 15.6 -- statistically tied) | held |
+| 8-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | 781 +/- 10 | 1392 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 773 +/- 10 (gap 8 / SE 14.1 -- statistically tied) | held |
+
+**openless was the only category boosted to rule-2 fill this round**: 32
+stored rows/pair measured at ~22.6 distinct games/pair (0.706 distinct
+trajectories/row, since these bookless/openerless contenders consume no
+`rand()`), so the printed SEs understate by ~1.19x -- the true openless gap
+was ~2.3 combined SE, not 2.7. The other four categories sat at 1392 games,
+well under 32/pair, unboosted. `s169` took the openless title while losing 36%
+of its games (it is itself a TD-Leaf agent and the removed cohort was its own
+family); the boost run confirmed the result survived proper fill (1050 +/- 12
+at 8 games/pair -> 1044 +/- 11 at 32), but why removing cohort games helps a
+cohort member, and why the bare chip counter swung from rank 2 to rank 35
+under the same change, were never explained.
+
+### 2026-07-29 fit, round 2, screening level
+
+| Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) |
+|---|---|---|---|---|
+| openless | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` | 1012 +/- 9 | 2136 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1`, 1002 +/- 9 (gap 10 / SE 12.7 -- statistically tied) |
 | 4-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1` | 972 +/- 12 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=13)@1`, 941 +/- 11 (gap 31 / SE 16.3) |
 | 8-book | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1` | 997 +/- 12 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=14)@1`, 958 +/- 12 (gap 39 / SE 17.0) |
-| 4-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` | 968 +/- 12 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1`, 955 +/- 11 (gap 13 / SE 16.3 -- **statistically tied**) |
-| 8-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | 782 +/- 11 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 770 +/- 11 (gap 12 / SE 15.6 -- **statistically tied**) |
+| 4-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` | 968 +/- 12 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1`, 955 +/- 11 (gap 13 / SE 16.3 -- statistically tied) |
+| 8-random | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | 782 +/- 11 | 1256 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 770 +/- 11 (gap 12 / SE 15.6 -- statistically tied) |
 
-Only 4-book and 8-book clear ~2 combined SE; the other three are inside 1 SE.
-Growing the roster (round 2) did not resolve the close calls -- if anything
-4-random and 8-random got closer, since more cores joined and one (`s10`)
-landed a near-tie with the round-1 8-random leader. None of these should be
-read as settled -- they are the honest current answer at screening depth, per
-this file's own rule 2 above.
+Only 4-book and 8-book cleared ~2 combined SE; the other three were inside 1
+SE. Growing the roster (round 2) did not resolve the close calls -- 4-random
+and 8-random got closer, not further apart, as more cores joined.
 
 ---
 
-## Category: openless
+## Category: openless x node
 
-- **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`
-- **Elo:** 1012 +/- 9 (2136 games), 2026-07-29 full-roster fit.
-- **What it is:** a DIST model (position-oracle recipe: two trained heads, mu +
-  log-sigma, fit by probit BCE against per-position Elo-gap labels) whose mu
-  head has NO hidden layer -- structurally a linear value model, so search
-  reads it exactly like the `value`-recipe linear models, but its training data
-  and loss come from the position-oracle pipeline rather than outcome labels.
-  No loadout item at all: this is the core's bare identity.
-- **Needed no new games for this declaration in either round** -- it was
-  already the strongest bare bookless target-class agent in the pre-split
-  2026-07-26 fit (1077 +/- 9 there; the number here is re-quoted from each
-  post-split fit per rule 3, never compare absolute Elo across fits).
-- **Nearest rivals (this fit, same head):**
+- **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1`
+- **Elo:** 1031 +/- 10 (1967 games), 2026-08-24 fit.
+- **What it is:** a TD-Leaf self-play linear value model. No loadout item at
+  all: this is the core's bare identity, at the `nodes=200k` node-budget track.
+- **Division/track:** this is the same `openless` division this file has
+  tracked since 2026-07-28, now also labeled by the `node` compute track it
+  was always implicitly running at (`nodes=200k`, unchanged) -- carried
+  forward, not a new category needing new games.
+- **Nearest rivals (this fit, same head, node track):**
 
   | Elo | Agent |
   |---|---|
-  | 1002 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1` -- statistically tied (gap 10, combined SE 12.7) |
-  | 987 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1` |
-  | 973 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` (the pre-split single champion's bare core) |
-  | 971 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` (the 4-random champion's bare core) |
-  | 921 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` (the chip-counter control) |
+  | 991 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 40, combined SE 12.8 = 3.1 SE) |
+  | 988 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1` |
+  | 974 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` |
+  | 972 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1` |
+  | 960 +/- 7 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` (the pre-split single champion's bare core) |
 
-- **Lineage:** founding declaration 2026-07-28 (1030 +/- 9), re-quoted 2026-07-29
-  after round 2 (1012 +/- 9, same agent, same rank -- the split held).
+- **Lineage:** founding declaration 2026-07-28 (1030 +/- 9), 2026-07-29 round 2
+  (1012 +/- 9), 2026-08-01 re-certification after the scoring-population
+  change (1044 +/- 11, s169 took the title), 2026-08-24 restructure (1031 +/-
+  10, s169 held, now also labeled `x node`).
 - **Defended challenges:** none yet.
 
-## Category: 4-book
+## Category: opener8 x node
+
+- **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1`
+- **Elo:** 777 +/- 9 (1840 games), 2026-08-24 fit.
+- **What it is:** the openless-champion lineage's own core (s76) wearing
+  `.opener(rand,moves=8)@1` (uniform-random for its own first 8 plies), then
+  handing off to its real search. Lift over its own bare core (991, this fit):
+  **-214 Elo**. This is the same category this file called "8-random" through
+  2026-08-01; the division rule is unchanged, only the name and its explicit
+  `node`-track label are new as of the 2026-08-24 restructure.
+- **Nearest rivals (this fit, same head, node track):**
+
+  | Elo | Agent |
+  |---|---|
+  | 765 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1` -- statistically tied (gap 12, combined SE 12.7) |
+  | 752 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=8)@1` (control) |
+  | 749 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+  | 741 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+  | 725 +/- 9 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+
+- **Lineage:** founding declaration 2026-07-28 as "8-random" (790 +/- 12),
+  2026-07-29 round 2 (782 +/- 11), 2026-08-24 restructure (777 +/- 9, same
+  agent, renamed `opener8 x node`).
+- **Defended challenges:** none yet.
+
+## Category: dil20 x node
+
+- **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1`
+- **Elo:** 553 +/- 10 (1736 games), 2026-08-24 fit -- new category, round 3.
+- **What it is:** the pre-split single champion's evaluator wearing
+  `.dil(prob=20)@1`: 20% of moves fully randomized throughout the game, not
+  just an opening phase. `dil(prob=20)` is a PERCENTAGE, not a fraction --
+  `dil(prob=0.2)` silently parses as ~0.2% dilution instead (`src/
+  ranking.cpp`'s `lenientPct`), a footgun avoided here deliberately. Lift over
+  its own bare core (960, this fit): **-407 Elo**, a much larger cost than
+  either opener division, consistent with dilution acting on every ply rather
+  than only the opening.
+- **Nearest rivals (this fit, same head, node track):**
+
+  | Elo | Agent |
+  |---|---|
+  | 543 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1` -- statistically tied (gap 10, combined SE 14.1). Node-budgeted, not time-budgeted, so this core's known `time=` overshoot (see the Summary section's defect note) does not apply to this row |
+  | 542 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` |
+  | 540 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` |
+  | 538 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1` |
+  | 536 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=20)@1` (control) |
+
+- **Lineage:** founding declaration 2026-08-24 (round 3).
+- **Defended challenges:** none yet.
+
+## Category: openless x time
+
+- **ID:** `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1`
+- **Elo:** 977 +/- 14 (1028 games), 2026-08-24 fit -- new category, round 3.
+- **What it is:** a v2 sparse piece-square linear value model (outcome-trained,
+  one of the s94-s99 multi-seed replicate family), bare, at the new
+  `time=150ms` wall-clock budget track instead of `nodes=200k`. `time=150ms`
+  was chosen from a measurement (not guessed): the `nodes=200k` head averages
+  ~6.0 ms/move for the bare chip counter and ~18.6 ms/move for the
+  then-openless champion core, and 150ms gives roughly the same headroom over
+  that average that `nodes=200k` gives over its own ~62k avg node use (see
+  "Rounds" below for the reproduction command).
+- **Nearest rivals (this fit, same head, time track):**
+
+  | Elo | Agent |
+  |---|---|
+  | 934 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 43, combined SE 19.8 = 2.2 SE) |
+  | 933 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2` (control) |
+  | 929 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1` |
+  | 918 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1` |
+  | 908 +/- 13 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` |
+
+- **Time-budget defect applies to this category's field:** `model=111`/`113`
+  (both wide-MLP cost-flagged cores) rate 661/669 here at 477-500 ms/move,
+  2-3.3x over the 150ms budget -- see the Summary section's defect note. They
+  are well below the champion and runner-up and do not change this
+  declaration, but their rows are not evidence of a budget-respecting agent.
+- **Lineage:** founding declaration 2026-08-24 (round 3).
+- **Defended challenges:** none yet.
+
+## Category: opener8 x time
+
+- **ID:** `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1`
+- **Elo:** 791 +/- 9 (1736 games), 2026-08-24 fit -- new category, round 3.
+- **What it is:** the openless x node lineage's core (s76) wearing
+  `.opener(rand,moves=8)@1`, at the `time=150ms` track instead of
+  `nodes=200k`.
+- **Nearest rivals (this fit, same head, time track):**
+
+  | Elo | Agent |
+  |---|---|
+  | 788 +/- 9 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1` -- statistically tied (gap 3, combined SE 12.7) |
+  | 754 +/- 9 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+  | 737 +/- 9 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.opener(rand,moves=8)@1` (control) |
+  | 729 +/- 9 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+  | 722 +/- 9 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
+
+- **Time-budget defect applies to this category's field:** `model=111`/`113`
+  rate 524/512 here at 309-320 ms/move, roughly 2x over budget -- see the
+  Summary section's defect note. Well below champion and runner-up, no effect
+  on this declaration.
+- **Lineage:** founding declaration 2026-08-24 (round 3).
+- **Defended challenges:** none yet.
+
+## Category: dil20 x time
+
+- **ID:** `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1`
+- **Elo:** 558 +/- 10 (1736 games), 2026-08-24 fit -- new category, round 3.
+- **What it is:** a weight-merge-trained linear value model wearing
+  `.dil(prob=20)@1`, at the `time=150ms` track. Statistically an exact tie
+  with the bare chip counter under the same loadout and track (below), so this
+  declaration should be read as "co-champion, listed first alphabetically by
+  ID," not as a clear win.
+- **Nearest rivals (this fit, same head, time track):**
+
+  | Elo | Agent |
+  |---|---|
+  | 558 +/- 10 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1` -- exact tie |
+  | 552 +/- 10 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1` |
+  | 530 +/- 10 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` |
+  | 528 +/- 10 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` |
+  | 527 +/- 10 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` |
+
+- **Time-budget defect applies to this category's field:** `model=111`/`113`
+  rate 406/408 here at 413-438 ms/move, roughly 2.8x over budget -- see the
+  Summary section's defect note. Well below champion and runner-up, no effect
+  on this declaration.
+- **Lineage:** founding declaration 2026-08-24 (round 3).
+- **Defended challenges:** none yet.
+
+---
+
+## Deferred categories
+
+4-book, 8-book, and 4-random are not part of the active 6-category system as
+of the 2026-08-24 restructure ("Why 6 categories" above): book divisions need
+a self-maximizing mining methodology that hasn't been designed yet, and the
+4-ply opener division was folded away when the active random-opener division
+moved to 8-ply. Nothing here was deleted or replayed -- these are the same
+declarations this file carried before the restructure, verbatim, kept as
+ladder/study data. `ranking/roster.txt`'s rows for these agents are untouched
+and still `on`.
+
+### Category (deferred): 4-book
 
 - **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1`
 - **Elo:** 972 +/- 12 (1256 games), 2026-07-29 full-roster fit.
@@ -287,10 +509,11 @@ this file's own rule 2 above.
   the title does not change, but this needs re-checking against the current
   fit rather than assumed.
 - **Lineage:** founding declaration 2026-07-28 (982 +/- 12), re-quoted
-  2026-07-29 after round 2 (972 +/- 12, same agent, same rank).
+  2026-07-29 after round 2 (972 +/- 12, same agent, same rank). Deferred
+  2026-08-24 (division demoted, not superseded by a new champion).
 - **Defended challenges:** none yet.
 
-## Category: 8-book
+### Category (deferred): 8-book
 
 - **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1`
 - **Elo:** 997 +/- 12 (1256 games), 2026-07-29 full-roster fit.
@@ -311,9 +534,9 @@ this file's own rule 2 above.
   (8-ply, adv-own, added round 2), 988 +/- 12 in the 2026-07-29 fit. No longer
   excluded by head identity alone, and not reference class (dropping `tt` is
   not more compute). This reads ABOVE that fit's 8-book champion (997), so
-  under the revised rule this category's title is unsettled pending a direct
-  re-check against the current standings, not still held by the listed
-  champion by default.
+  under the revised rule this category's title was unsettled pending a direct
+  re-check against the current standings; moot now that the division is
+  deferred rather than re-checked.
 - **Depth-ladder context (same fit, not a new claim -- consistent with the
   project's existing "book depth is not monotonic" finding, theory 38):** on
   the `s98` core, lift by depth reads 4ply -1 / 6ply / 8ply +24 / 16ply / 30ply
@@ -324,10 +547,11 @@ this file's own rule 2 above.
   are negative, strengthening rather than resolving the "own book is not
   reliably better than bare" finding.
 - **Lineage:** founding declaration 2026-07-28 (1010 +/- 13), re-quoted
-  2026-07-29 after round 2 (997 +/- 12, same agent, same rank).
+  2026-07-29 after round 2 (997 +/- 12, same agent, same rank). Deferred
+  2026-08-24.
 - **Defended challenges:** none yet.
 
-## Category: 4-random
+### Category (deferred): 4-random
 
 - **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1`
 - **Elo:** 968 +/- 12 (1256 games), 2026-07-29 full-roster fit.
@@ -342,7 +566,7 @@ this file's own rule 2 above.
 
   | Elo | Agent |
   |---|---|
-  | 955 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1` -- statistically tied (gap 13, combined SE 16.3); note s76 is the openless AND 8-random champion but does not top 4-random |
+  | 955 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=4)@1` -- statistically tied (gap 13, combined SE 16.3); note s76 topped openless AND 8-random but not 4-random |
   | 943 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` |
   | 934 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1` |
   | 932 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=4)@1` (control; lift over bare classic 921 = +11) |
@@ -350,38 +574,11 @@ this file's own rule 2 above.
 
 - **Round 2 did not change the leader**, but tightened the gap to the runner-up
   (18 / SE 17.0 in round 1 -> 13 / SE 16.3 now) -- the opposite of what more
-  data should do if the true gap were real; consistent with treating this
-  category as unresolved (Future Work: boost to 32 games/pair).
+  data should do if the true gap were real; this category was never resolved
+  before being deferred.
 - **Lineage:** founding declaration 2026-07-28 (988 +/- 12), re-quoted
-  2026-07-29 after round 2 (968 +/- 12, same agent, same rank).
-- **Defended challenges:** none yet.
-
-## Category: 8-random
-
-- **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1`
-- **Elo:** 782 +/- 11 (1256 games), 2026-07-29 full-roster fit.
-- **What it is:** the openless champion's same core wearing `.opener(rand,moves=8)@1`
-  (uniform-random for its own first 8 plies). Lift over its own bare core
-  (1012, this fit): **-230 Elo** -- an 8-ply random opener costs this core
-  roughly 8x what a 4-ply one does (4-random lift for the same core was only
-  955 - 1012 = -57). The classic control shows the same sharp step: +11 at
-  4-ply (932 vs bare 921) but **-168** at 8-ply (753 vs bare 921, combined SE
-  ~13.6, ~12 combined SE -- highly significant, holds up in round 2 exactly as
-  in round 1). Filed as theory 41 (`Docs/theories.md`), now confirmed twice at
-  two different roster sizes.
-- **Nearest rivals (this fit, same head, all 1256 games):**
-
-  | Elo | Agent |
-  |---|---|
-  | 770 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1` -- statistically tied (gap 12, combined SE 15.6), added round 2 and immediately near-tied the round-1 leader |
-  | 766 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=6,eac8ab99,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
-  | 758 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` |
-  | 758 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1` (the 4-random champion, but falls to 5th here) |
-  | 753 +/- 11 | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=8)@1` (control) |
-
-- **Lineage:** founding declaration 2026-07-28 (790 +/- 12), re-quoted
-  2026-07-29 after round 2 (782 +/- 11, same agent, same rank, but the gap to
-  2nd place shrank from 22 to 12 as more cores joined -- see Future Work).
+  2026-07-29 after round 2 (968 +/- 12, same agent, same rank). Deferred
+  2026-08-24 (division folded into `opener8`).
 - **Defended challenges:** none yet.
 
 ---
