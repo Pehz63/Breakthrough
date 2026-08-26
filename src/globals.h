@@ -26,6 +26,12 @@ using std::map;
 // Defined here so callers that thread evaluator parameter arrays only need globals.h.
 #define MAX_EVAL_PARAMS 20
 
+// Capacity of the root-move whitelist below. Matches ML_MAX_MOVES (ml_features.h),
+// which is the same bound the move generator writes into, and is defined here so
+// globals.h stays free of ML includes. A position can never have more legal moves
+// than this: 16 pieces x 3 directions = 48 is the structural maximum.
+#define ROOT_FILTER_MAX 64
+
 // "Not set yet" sentinel for evaluator parameter arrays awaiting user input.
 // Must lie below every parameter's registry minimum: getEvaluatorSettings
 // prompts only for params outside their [lo, hi] range, and evaluators with
@@ -149,6 +155,25 @@ extern bool g_useMoveOrder;     // TT/killer/history move ordering (capture-firs
 extern bool g_useQuiescence;    // captures-only stand-pat extension at depth leaves
 extern bool g_keepPartial;      // keep a budget-cut iteration's best move instead of discarding
 extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width at the root
+
+// Root-move whitelist, the "filter mode" of the cluster-book opener (`cbook`,
+// src/ai_random.cpp). When g_useRootFilter is set, searchRootWhite/searchRootBlack
+// skip any root candidate not listed in g_rootMoveWhitelist, so the agent's normal
+// node/time budget is spent going deeper on fewer moves. This is a ROOT-only
+// restriction: the recursive maxAlphaBeta/minAlphaBeta never consult it, matching
+// how every opener only ever decides the current ply. A move is stored as the same
+// (source x, source y, destination x) triple the root loop and the book files use,
+// since destination y is implied by the side to move.
+//
+// The flag is one-shot by convention: the opener sets it, the caller clears it right
+// after the move is chosen (src/ranking.cpp's playOneGame and playoutCapture), so a
+// restriction can never leak into a later ply. It is never set with an empty list,
+// because that would leave the search no legal root move at all.
+extern bool g_useRootFilter;
+extern int  g_rootMoveWhitelist[ROOT_FILTER_MAX][3];   // [sx, sy, dx]
+extern int  g_rootMoveWhitelistCount;
+// True when (sx,sy,dx) survives the current filter. Always true when the filter is off.
+bool rootMoveAllowed(int sx, int sy, int dx);
 
 // Gumbel MCTS search-shape constants (src/ai_gumbel.cpp), set by agentChooseMove
 // (saved/restored around the call, same convention as the AB toggles above) from

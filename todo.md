@@ -766,7 +766,15 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   (`ttClear()` per game) is also still open and is what would make the fixed-start
   pool reproducible.
 - **Can a book be mined to RECOVER from bad random openings? `[Next]`** {cpu: hours, dev: low}
-  Developer question, 2026-07-26. In the diversified pool a book is inert, because it
+  Developer question, 2026-07-26. Partially addressed by `cbook`
+  (`plans/cluster-book-plan-1-noble-swimming-scott.md`): fuzzy nearest-cluster
+  matching has no exact-hash requirement, so a position reached via a random
+  opening still matches SOME mined cluster for its half-move, unlike `book`'s
+  exact hash which a random opening essentially never reaches. Not yet tested
+  against THIS specific claim, though: Pass 1a mined only from `matches.jsonl`
+  (the fixed-start pool), not `matches_open.jsonl` (the diversified one), and
+  the "recovers from a bad start" framing below is still the sharper, more
+  specific test. In the diversified pool a book is inert, because it
   is keyed on exact position hashes that a random opening never reaches, so book
   agents were left out. But that assumes a book mined the way `bookgen` mines them:
   from the standard start, forward. The interesting variant is a book keyed on
@@ -910,10 +918,21 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 
 ## Books (openers and mid-game)
 
-- **Opening book chosen by win rate over the roster's own game history.** Pick each
-  position's move by how often it won across every game already in the match store,
-  instead of mining one agent's wins against one target the way `rank.exe bookgen`
-  does today. Iterations worth trying:
+- **[IN PROGRESS, 2026-08-26] Opening book chosen by win rate over the roster's own
+  game history.** The pooling half of this is now built as `cbook` (`rank.exe
+  cbookdump`/`cbookfit`, `src/ml_cluster.h`, `.opener(cbook,<N>[,ply=M])@1`), which
+  also generalizes past exact-position-hash matching to nearest-cluster matching
+  (SMARTSTART, applied to alpha-beta as a root-move filter rather than a played
+  move). Pass 1a (plumbing sanity, one core's own wins) is complete and the
+  fuzzy-match-survives-diversification hypothesis is confirmed on a hit-rate
+  curve: the exact-hash book's hit rate collapses to 0% by half-move 3 against a
+  diversified opponent while `cbook`'s fuzzy match keeps firing (53-100%) through
+  half-move 15. Elo-expected weighting (below) is NOT implemented -- `cbookfit`
+  weights by raw move count within a cluster, not by the winner's Elo-expected
+  score -- and the universal-vs-per-regime scope decision (Pass 1b) has not run.
+  Plan + Pass-1a results: `plans/cluster-book-plan-1-noble-swimming-scott.md` /
+  `plans/cluster-book-results-1-noble-swimming-scott.md`. Original iterations still
+  worth trying, now against `cbook` rather than a from-scratch design:
   - Restrict the source games to random-opener agents, so the book is built from
     diverse openings rather than the few lines deterministic pairs replay.
   - Weight each win by the Elo-EXPECTED win rate of that matchup rather than counting

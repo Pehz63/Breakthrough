@@ -47,6 +47,18 @@ bool g_useQuiescence = false;
 bool g_keepPartial = false;
 int  g_aspirationWindow = 0;
 
+bool g_useRootFilter = false;
+int  g_rootMoveWhitelist[ROOT_FILTER_MAX][3] = {{0}};
+int  g_rootMoveWhitelistCount = 0;
+
+bool rootMoveAllowed(int sx, int sy, int dx) {
+    if (!g_useRootFilter) return true;
+    for (int i = 0; i < g_rootMoveWhitelistCount; i++)
+        if (g_rootMoveWhitelist[i][0] == sx && g_rootMoveWhitelist[i][1] == sy
+            && g_rootMoveWhitelist[i][2] == dx) return true;
+    return false;
+}
+
 double g_gumbelCVisit = 50.0;
 double g_gumbelCScale = 1.0;
 int    g_gumbelRootM  = 16;

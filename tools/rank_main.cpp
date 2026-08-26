@@ -33,6 +33,28 @@ static bool hasFlag(int argc, char** argv, const char* key) {
     for (int i = 2; i < argc; i++) if (std::strcmp(argv[i], key) == 0) return true;
     return false;
 }
+// "16,48,128" -> {16, 48, 128}. Empty or malformed input returns false rather than
+// a silently short list, so a typo in a sweep argument fails loudly.
+static bool parseIntList(const char* s, std::vector<int>& out) {
+    out.clear();
+    if (!s) return false;
+    string cur;
+    for (const char* p = s; ; p++) {
+        if (*p == ',' || *p == '\0') {
+            if (cur.empty()) return false;
+            out.push_back(atoi(cur.c_str()));
+            cur.clear();
+            if (*p == '\0') break;
+        } else if (*p == ' ' || *p == '\t') {
+            continue;
+        } else if ((*p >= '0' && *p <= '9') || (*p == '-' && cur.empty())) {
+            cur += *p;
+        } else {
+            return false;
+        }
+    }
+    return !out.empty();
+}
 
 static void usage() {
     cout << "Breakthrough agent Elo ranking\n\n";
@@ -49,6 +71,8 @@ static void usage() {
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
     cout << "  bookgen    mine an opening/refutation book from stored games between two agents\n";
+    cout << "  cbookdump  replay winning games, recording clustering points for a cluster book\n";
+    cout << "  cbookfit   cluster a cbookdump into models/cbook<N>.txt files (no replay)\n";
     cout << "  pairgen    play FRESH games between two named agents, capturing labeled training data\n";
     cout << "  opener-bias  measure whether the symmetric random opener handicaps a deterministic champion\n";
     cout << "  opener-swap  color-swap recovery test: same random-opener snapshot played out twice with\n";
@@ -72,6 +96,16 @@ static void usage() {
     cout << "bookgen:  --a <line-owner id> --b <target id> --plies 60 --out models/book<N>.txt\n";
     cout << "          Replays the pair's stored games; keeps positions/moves from A's wins only.\n";
     cout << "          Roster the follower as '<head>.<eval>.opener(book,<N>)@1'.\n";
+    cout << "cbookdump: at most one of --a <winner id> / --regime <tag> (neither = universal),\n";
+    cout << "          --min-elo 0 --ratings ranking/ratings.tsv (gate on the winner's rating),\n";
+    cout << "          --max-plies 32 --sample 0 (0 = all) --seed 1 --out data/cbook_<scope>.jsonl.\n";
+    cout << "          Deduplicates store rows to distinct games and drops replays that drift\n";
+    cout << "          from the stored result.\n";
+    cout << "cbookfit: --in <dump> --clusters 16,48,128 --keep 3,6,12 --mirror canon|augment|off\n";
+    cout << "          --seed 1 --min-per-cluster 32 --out-slot N. Writes one models/cbook<N>.txt\n";
+    cout << "          per (clusters, keep) pair, numbering up from --out-slot. --keep 0 = the\n";
+    cout << "          full move list (the no-op control). Roster the wearer as\n";
+    cout << "          '<head>.<eval>.opener(cbook,cbook=<N>,ply=<W>)@1'.\n";
     cout << "pairgen:  --a <id> --b <id> --games 100 --out data/pairgen.jsonl, --feature-version 2,\n";
     cout << "          --dil-apply a|b|both|none (dilute that agent: --dil-start 0.3 --dil-floor 0.05\n";
     cout << "          --dil-decay-plies 30), --open-plies K (random first K half-moves),\n";
@@ -243,6 +277,25 @@ int main(int argc, char** argv) {
                          getOpt(argc, argv, "--b", ""),
                          getInt(argc, argv, "--plies", 60),
                          getOpt(argc, argv, "--out", ""));
+    } else if (cmd == "cbookdump") {
+        rc = rankClusterBookDump(store, board, getOpt(argc, argv, "--a", ""),
+                                 getOpt(argc, argv, "--regime", ""),
+                                 getDbl(argc, argv, "--min-elo", 0.0),
+                                 getOpt(argc, argv, "--ratings", "ranking/ratings.tsv"),
+                                 getInt(argc, argv, "--max-plies", 32),
+                                 getInt(argc, argv, "--sample", 0), seed,
+                                 getOpt(argc, argv, "--out", ""));
+    } else if (cmd == "cbookfit") {
+        std::vector<int> clusters, keep;
+        if (!parseIntList(getOpt(argc, argv, "--clusters", "16"), clusters)
+            || !parseIntList(getOpt(argc, argv, "--keep", "6"), keep)) {
+            cout << "ERROR: --clusters and --keep take comma-separated integers, e.g. \"16,48,128\"\n";
+            return 1;
+        }
+        rc = rankClusterBookFit(getOpt(argc, argv, "--in", ""), clusters, keep,
+                                getOpt(argc, argv, "--mirror", "canon"), seed,
+                                getInt(argc, argv, "--min-per-cluster", 32),
+                                getInt(argc, argv, "--out-slot", 1));
     } else if (cmd == "pairgen") {
         string dilApply = getOpt(argc, argv, "--dil-apply", "none");
         RankDilOverride dil;

@@ -1,7 +1,9 @@
 #include "ai_random.h"
 #include "moves.h"
 #include "board_analysis.h"
-#include "datastore.h"   // positionKey (book-opener lookup key)
+#include "datastore.h"      // positionKey (book-opener lookup key)
+#include "ml_cluster.h"     // cluster-book structures + matching (cbook opener)
+#include "ml_features.h"    // generateMoves (cbook legality intersection)
 #include <map>
 #include <set>
 #include <fstream>
@@ -764,9 +766,98 @@ static bool openerBook(int side, int ownPly, int halfMove, int arg, int arg2, in
     return true;
 }
 
+// The "cbook" opener: cluster-matched opening book, the fuzzy generalisation of
+// `book` above. Where `book` needs an exact positionKey hash and goes silent the
+// moment the opponent deviates (theory 38), `cbook` matches the position to the
+// NEAREST mined cluster for the current half-move and always has an opinion.
+//
+// It also uses that opinion differently. `book` plays its stored move outright.
+// `cbook` never plays a move at all: it narrows the search's ROOT move list to
+// the matched cluster's historically-played moves (globals.h's g_useRootFilter)
+// and returns false, so the agent's own budgeted alpha-beta picks among them and
+// spends its whole node/time budget going deeper on fewer candidates. That is
+// SMARTSTART's filter mode transposed from Monte Carlo playouts to alpha-beta.
+//
+// Files are models/cbook<arg>.txt, produced by `rank.exe cbookfit`, and are
+// IMMUTABLE under their slot number for the same reason `book` files are: the
+// opener ID carries the slot, not a hash of the contents.
+static std::map<int, MlcBook> s_cbooks;
+static std::set<int> s_cbookLoadTried;
+
+static const MlcBook* cbookForSlot(int arg) {
+    if (s_cbookLoadTried.find(arg) == s_cbookLoadTried.end()) {
+        s_cbookLoadTried.insert(arg);
+        std::ostringstream fn;
+        fn << "models/cbook" << arg << ".txt";
+        MlcBook bk;
+        string err;
+        if (mlcLoadBook(fn.str(), bk, err)) s_cbooks[arg] = bk;
+    }
+    std::map<int, MlcBook>::const_iterator it = s_cbooks.find(arg);
+    return (it == s_cbooks.end()) ? nullptr : &it->second;
+}
+
+static bool openerClusterBook(int side, int ownPly, int halfMove, int arg, int arg2, int& victor) {
+    (void)ownPly; (void)victor;
+    // Same half-move cap as `book`, and for the same reason: a book mined to a
+    // deeper ceiling is a strict superset of a shallower one, because clustering
+    // runs independently per half-move bucket. So one file serves every candidate
+    // ply window and `ply=` selects which one is in force. 0 = uncapped.
+    if (arg2 > 0 && halfMove >= arg2) return false;
+    const MlcBook* bk = cbookForSlot(arg);
+    if (!bk) return false;
+    const MlcBucket* bucket = bk->bucketFor(halfMove);
+    if (!bucket || bucket->clusters.empty()) return false;
+
+    // Position -> difference from the book's own start board -> canonical form.
+    MlcVec cur, diff;
+    mlcBoardVector(cur);
+    mlcDiff(bk->start, cur, diff);
+    bool flipped = mlcCanonical(diff);
+
+    int ci = mlcNearest(*bucket, diff);
+    if (ci < 0) return false;
+    const MlcCluster& cl = bucket->clusters[ci];
+    if (cl.moves.empty()) return false;
+
+    // Intersect the cluster's suggestions with what is actually legal here. The
+    // match is approximate, so some suggestions will not apply, and mirroring the
+    // position means mirroring the columns of the moves back.
+    Move legal[ML_MAX_MOVES];
+    int nLegal = generateMoves(side, legal);
+    if (nLegal <= 0) return false;
+    int n = 0;
+    for (size_t mi = 0; mi < cl.moves.size() && n < ROOT_FILTER_MAX; mi++) {
+        int sx = cl.moves[mi].sx, sy = cl.moves[mi].sy, dx = cl.moves[mi].dx;
+        if (flipped) { sx = SIZE - 1 - sx; dx = SIZE - 1 - dx; }
+        for (int li = 0; li < nLegal; li++) {
+            if (legal[li].sx != sx || legal[li].sy != sy || legal[li].dx != dx) continue;
+            bool dup = false;
+            for (int j = 0; j < n; j++)
+                if (g_rootMoveWhitelist[j][0] == sx && g_rootMoveWhitelist[j][1] == sy
+                    && g_rootMoveWhitelist[j][2] == dx) { dup = true; break; }
+            if (!dup) {
+                g_rootMoveWhitelist[n][0] = sx;
+                g_rootMoveWhitelist[n][1] = sy;
+                g_rootMoveWhitelist[n][2] = dx;
+                n++;
+            }
+            break;
+        }
+    }
+    // An empty intersection means the matched cluster has nothing legal to offer.
+    // Leave the filter OFF and play an ordinary unrestricted move this ply: a
+    // whitelist of zero moves would hand the search no root move at all.
+    if (n == 0) return false;
+    g_rootMoveWhitelistCount = n;
+    g_useRootFilter = true;
+    return false;   // the brain still chooses, just from a narrowed root list
+}
+
 const OpenerDef g_openers[] = {
     { "Random", "rand", "uniform-random move for the agent's first <arg> own moves, then hand off", true, false, "moves", openerRandom },
     { "Book",   "book", "opening-book follower: play models/book<arg>.txt's stored reply while the position is in book, optionally only within the first <arg2> half-moves from the game start, then hand off", true, true, "book", openerBook },
+    { "ClusterBook", "cbook", "cluster-matched opening book: restrict the search's root moves to the nearest mined cluster's moves in models/cbook<arg>.txt, optionally only within the first <arg2> half-moves from the game start", true, true, "cbook", openerClusterBook },
 };
 const int g_openerCount = (int)(sizeof(g_openers) / sizeof(g_openers[0]));
 

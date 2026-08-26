@@ -319,6 +319,10 @@ static int searchRootWhite(int d, int alpha0, int beta0, int evaluator, const in
             if (board[x][y] != WHITE) continue;
             int ny = y + 1;
             auto tryMove = [&](int z) -> bool {
+                // Root-move filter (cbook opener). Skipped moves are not counted in
+                // rootTotal either, so the fractional effective-depth readout stays a
+                // fraction of the moves this search actually had to get through.
+                if (!rootMoveAllowed(x, y, z)) return false;
                 rootTotal++; if (!s_budgetHit) rootDeep++;
                 isCapture = simulateMoveWhite(x, y, z);
                 eval = minAlphaBeta(g_useAlphaBeta ? alpha : INT_MIN,
@@ -475,6 +479,8 @@ static int searchRootBlack(int d, int alpha0, int beta0, int evaluator, const in
             if (board[x][y] != BLACK) continue;
             int ny = y - 1;
             auto tryMove = [&](int z) -> bool {
+                // Root-move filter (cbook opener), see searchRootWhite.
+                if (!rootMoveAllowed(x, y, z)) return false;
                 rootTotal++; if (!s_budgetHit) rootDeep++;
                 isCapture = simulateMoveBlack(x, y, z);
                 eval = maxAlphaBeta(g_useAlphaBeta ? alpha : INT_MIN,

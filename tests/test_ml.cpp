@@ -11,6 +11,7 @@
 #include "ai_eval.h"
 #include "ranking.h"
 #include "datastore.h"
+#include "ml_cluster.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -1518,4 +1519,234 @@ TEST_CASE("trainTDLeaf - lr-decay and explore-decay schedules actually move the 
     delete off; delete on;
     std::remove("models/sweep/tdl_test_sched_off.txt");
     std::remove("models/sweep/tdl_test_sched_on.txt");
+}
+
+// ============================================================
+// SPHERICAL K-MEANS + CLUSTER BOOK (src/ml_cluster.h)
+// ============================================================
+static MlcVec mlcMake(const int* idx, int n) {
+    MlcVec v;
+    mlcClear(v);
+    for (int i = 0; i < n; i++) mlcSet(v, idx[i]);
+    return v;
+}
+
+TEST_CASE("mlcVec - set/get/popcount/mirror round-trip") {
+    MlcVec v;
+    mlcClear(v);
+    REQUIRE(mlcPopcount(v) == 0);
+    mlcSet(v, 0);
+    mlcSet(v, 63);
+    mlcSet(v, 64);
+    mlcSet(v, 127);
+    REQUIRE(mlcPopcount(v) == 4);
+    REQUIRE(mlcGet(v, 0));
+    REQUIRE(mlcGet(v, 127));
+    REQUIRE(!mlcGet(v, 1));
+    // Out-of-range access is a no-op rather than undefined behavior.
+    REQUIRE(!mlcGet(v, -1));
+    REQUIRE(!mlcGet(v, MLC_DIM));
+
+    // Mirror is x -> SIZE-1-x within each colour plane, and is an involution.
+    REQUIRE(mlcMirrorIndex(0) == SIZE - 1);
+    REQUIRE(mlcMirrorIndex(SIZE * SIZE) == SIZE * SIZE + SIZE - 1);
+    REQUIRE(mlcMirrorIndex(mlcMirrorIndex(37)) == 37);
+    MlcVec m, mm;
+    mlcMirror(v, m);
+    mlcMirror(m, mm);
+    REQUIRE(mlcPopcount(m) == 4);
+    REQUIRE(mlcEqual(mm, v));
+}
+
+TEST_CASE("mlcDiff - difference from the start board is sparse and lossless") {
+    // The reason cbook clusters a difference rather than a raw board: two
+    // same-ply Breakthrough positions share nearly every piece-square entry, so
+    // raw vectors are all near-parallel and carry almost no clustering signal.
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    MlcVec start, cur, d;
+    mlcBoardVector(start);
+    REQUIRE(mlcPopcount(start) == 32);   // 16 White + 16 Black on the standard start
+
+    // One quiet White move changes exactly two entries: source vacated, dest filled.
+    playMoveWhite(3, 1, 3);
+    mlcBoardVector(cur);
+    mlcDiff(start, cur, d);
+    REQUIRE(mlcPopcount(d) == 2);
+    // Lossless: XOR the difference back against the position to recover the start.
+    MlcVec back;
+    mlcDiff(d, cur, back);
+    REQUIRE(mlcEqual(back, start));
+}
+
+TEST_CASE("mlcCanonical - folds a position onto the smaller of itself and its mirror") {
+    int leftIdx[2]  = { 0, 64 };
+    int rightIdx[2] = { SIZE - 1, SIZE * SIZE + SIZE - 1 };
+    MlcVec a = mlcMake(leftIdx, 2);
+    MlcVec b = mlcMake(rightIdx, 2);
+    // a and b are mirror images, so canonicalising both lands on one vector.
+    mlcCanonical(a);
+    mlcCanonical(b);
+    REQUIRE(mlcEqual(a, b));
+    // Exactly one of the two needed flipping.
+    MlcVec c = mlcMake(leftIdx, 2);
+    MlcVec d = mlcMake(rightIdx, 2);
+    REQUIRE(mlcCanonical(c) != mlcCanonical(d));
+    // Canonicalising an already-canonical vector is a no-op.
+    MlcVec e = mlcMake(rightIdx, 2);
+    mlcCanonical(e);
+    REQUIRE(mlcCanonical(e) == false);
+}
+
+TEST_CASE("mlcEffectiveK - K is capped by how many points can support a cluster") {
+    REQUIRE(mlcEffectiveK(16, 0, 32) == 0);      // no points, no clusters
+    REQUIRE(mlcEffectiveK(16, 10, 32) == 1);     // too thin for even one full cluster
+    REQUIRE(mlcEffectiveK(16, 64, 32) == 2);     // 64 / 32
+    REQUIRE(mlcEffectiveK(16, 1000, 32) == 16);  // data is ample, K binds
+    REQUIRE(mlcEffectiveK(128, 4300, 32) == 128);
+}
+
+TEST_CASE("mlcSphericalKMeans - K=1 recovers the normalized mean") {
+    std::vector<MlcVec> pts;
+    int a[2] = { 0, 1 };
+    int b[2] = { 0, 2 };
+    pts.push_back(mlcMake(a, 2));
+    pts.push_back(mlcMake(b, 2));
+    std::vector<float> cen;
+    std::vector<int> asg;
+    REQUIRE(mlcSphericalKMeans(pts, 1, 1, 7, 50, cen, asg) == 1);
+    REQUIRE(asg[0] == 0);
+    REQUIRE(asg[1] == 0);
+    // Feature 0 is in both points and features 1 and 2 in one each, so the
+    // centroid weights 0 above the other two and those two equally.
+    REQUIRE(cen[0] > cen[1]);
+    REQUIRE(cen[1] == Approx(cen[2]));
+    double norm = 0.0;
+    for (int i = 0; i < MLC_DIM; i++) norm += (double)cen[i] * cen[i];
+    REQUIRE(norm == Approx(1.0).epsilon(1e-5));
+}
+
+TEST_CASE("mlcSphericalKMeans - separates two groups, and repeats exactly on a seed") {
+    // Two groups sharing no features at all, so any correct clustering splits them.
+    std::vector<MlcVec> pts;
+    for (int i = 0; i < 20; i++) {
+        int lo[2] = { 0, 1 + (i % 3) };
+        pts.push_back(mlcMake(lo, 2));
+    }
+    for (int i = 0; i < 20; i++) {
+        int hi[2] = { 80, 81 + (i % 3) };
+        pts.push_back(mlcMake(hi, 2));
+    }
+    std::vector<float> cen;
+    std::vector<int> asg;
+    REQUIRE(mlcSphericalKMeans(pts, 2, 1, 11, 100, cen, asg) == 2);
+    for (int i = 1; i < 20; i++) REQUIRE(asg[i] == asg[0]);
+    for (int i = 21; i < 40; i++) REQUIRE(asg[i] == asg[20]);
+    REQUIRE(asg[0] != asg[20]);
+
+    // Same seed, same answer: a book file must be reproducible from its dump.
+    std::vector<float> cen2;
+    std::vector<int> asg2;
+    REQUIRE(mlcSphericalKMeans(pts, 2, 1, 11, 100, cen2, asg2) == 2);
+    REQUIRE(asg == asg2);
+    REQUIRE(cen.size() == cen2.size());
+    for (size_t i = 0; i < cen.size(); i++) REQUIRE(cen[i] == Approx(cen2[i]));
+}
+
+TEST_CASE("mlcSphericalKMeans - degenerate inputs neither crash nor return a bad assignment") {
+    // Every point identical: k-means++ runs out of distinct seeds and the
+    // empty-cluster reseed has nothing farther away to reach for.
+    std::vector<MlcVec> same;
+    int idx[1] = { 5 };
+    for (int i = 0; i < 10; i++) same.push_back(mlcMake(idx, 1));
+    std::vector<float> cen;
+    std::vector<int> asg;
+    int k = mlcSphericalKMeans(same, 4, 1, 3, 50, cen, asg);
+    REQUIRE(k >= 1);
+    REQUIRE((int)asg.size() == 10);
+    for (size_t i = 0; i < asg.size(); i++) { REQUIRE(asg[i] >= 0); REQUIRE(asg[i] < k); }
+
+    // All-zero points. This is the real half-move-0 bucket: every game starts
+    // from one position, so its difference from the start is the zero vector.
+    std::vector<MlcVec> zeros(5);
+    for (size_t i = 0; i < zeros.size(); i++) mlcClear(zeros[i]);
+    REQUIRE(mlcSphericalKMeans(zeros, 3, 1, 3, 50, cen, asg) >= 1);
+    REQUIRE(mlcCosine(zeros[0], &cen[0]) == 0.0);
+
+    // No points at all.
+    std::vector<MlcVec> none;
+    REQUIRE(mlcSphericalKMeans(none, 4, 1, 3, 50, cen, asg) == 0);
+}
+
+TEST_CASE("mlcBook - save/load round-trip preserves centroids, moves, and the start vector") {
+    MlcBook book;
+    int s[3] = { 1, 5, 70 };
+    book.start = mlcMake(s, 3);
+    MlcBucket bucket;
+    bucket.ply = 6;
+    bucket.points = 128;
+    MlcCluster c;
+    c.centroid.assign(MLC_DIM, 0.0f);
+    c.centroid[3] = 0.6f;
+    c.centroid[90] = 0.8f;
+    c.size = 77;
+    c.meanCos = 0.8125;
+    MlcMove m1 = { 2, 1, 3, 40 };
+    MlcMove m2 = { 4, 1, 4, 9 };
+    c.moves.push_back(m1);
+    c.moves.push_back(m2);
+    bucket.clusters.push_back(c);
+    book.buckets.push_back(bucket);
+
+    const string path = "models/scratch/cbook_test.txt";
+    std::vector<string> hdr;
+    hdr.push_back("unit test");
+    string err;
+    REQUIRE(mlcSaveBook(path, book, hdr, err));
+
+    MlcBook back;
+    REQUIRE(mlcLoadBook(path, back, err));
+    REQUIRE(mlcEqual(back.start, book.start));
+    REQUIRE(back.buckets.size() == 1);
+    REQUIRE(back.buckets[0].ply == 6);
+    REQUIRE(back.buckets[0].points == 128);
+    REQUIRE(back.buckets[0].clusters.size() == 1);
+    const MlcCluster& r = back.buckets[0].clusters[0];
+    REQUIRE(r.size == 77);
+    REQUIRE(r.meanCos == Approx(0.8125));
+    REQUIRE(r.centroid[3] == Approx(0.6f));
+    REQUIRE(r.centroid[90] == Approx(0.8f));
+    REQUIRE(r.centroid[4] == 0.0f);
+    REQUIRE(r.moves.size() == 2);
+    REQUIRE(r.moves[0].sx == 2);
+    REQUIRE(r.moves[0].count == 40);
+    REQUIRE(r.moves[1].dx == 4);
+    // bucketFor finds a bucket by ply, and reports a miss rather than guessing.
+    REQUIRE(back.bucketFor(6) != nullptr);
+    REQUIRE(back.bucketFor(7) == nullptr);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("mlcNearest - picks the cluster whose centroid the position resembles") {
+    MlcBucket bucket;
+    bucket.ply = 4;
+    bucket.points = 2;
+    for (int c = 0; c < 2; c++) {
+        MlcCluster cl;
+        cl.centroid.assign(MLC_DIM, 0.0f);
+        cl.centroid[c == 0 ? 10 : 100] = 1.0f;
+        cl.size = 1;
+        cl.meanCos = 1.0;
+        bucket.clusters.push_back(cl);
+    }
+    int lo[1] = { 10 };
+    int hi[1] = { 100 };
+    REQUIRE(mlcNearest(bucket, mlcMake(lo, 1)) == 0);
+    REQUIRE(mlcNearest(bucket, mlcMake(hi, 1)) == 1);
+    // A position orthogonal to every centroid still gets a deterministic answer.
+    // The caller intersects with legality afterwards either way.
+    int off[1] = { 55 };
+    REQUIRE(mlcNearest(bucket, mlcMake(off, 1)) == 0);
+    MlcBucket empty;
+    empty.ply = 0; empty.points = 0;
+    REQUIRE(mlcNearest(empty, mlcMake(lo, 1)) == -1);
 }

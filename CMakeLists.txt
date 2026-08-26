@@ -17,6 +17,7 @@ add_executable(breakthrough
     src/ml_features.cpp
     src/ml_model.cpp
     src/ml_eval.cpp
+    src/ml_cluster.cpp
     src/datastore.cpp
     src/transposition.cpp
 )

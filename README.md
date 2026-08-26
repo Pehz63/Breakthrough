@@ -482,6 +482,23 @@ segment (`.opener(book,<N>)@1`): the stored reply while the position is in book,
 its own brain otherwise. Book files are not content-hashed into the agent ID, so
 treat a book slot as immutable and give a regenerated book a new slot number.
 
+**Cluster-matched opening book (`cbook`).** An exact-hash book stops helping the
+instant the opponent's move isn't the exact one it was mined against. `cbook`
+generalizes it with fuzzy nearest-cluster matching (applying Steinmetz & Gini's
+SMARTSTART, IJCAI 2015, to alpha-beta search): mined positions are clustered per
+half-move by an XOR-difference-from-the-start-board vector, and at play time the
+live position is matched to its nearest cluster and NARROWS THE SEARCH'S ROOT
+MOVE LIST to that cluster's historically-played moves, rather than playing one
+outright -- the brain still searches every surviving candidate under its normal
+node/time budget. Two-step mining, since replaying games is the only expensive
+part: `rank.exe cbookdump --a <id>` (or `--regime <tag>`, or neither for every
+winner in the store) replays winning games into `data/cbook_<scope>.jsonl`, then
+`rank.exe cbookfit --in <dump> --clusters 16,48,128 --keep 3,6,12 --mirror canon`
+clusters it into one `models/cbook<N>.txt` per combination. An agent wears it via
+`.opener(cbook,<N>[,ply=<M>])@1`, the same optional ply-cutoff grammar `book`
+uses. Design and measured Pass-1a results:
+`plans/cluster-book-results-1-noble-swimming-scott.md`.
+
 **Opener-bias study (Theory 6).** The vs-champion head-to-heads used a symmetric
 random opener (`--open-plies 6` on both sides), which forces the deterministic
 champion to play random opening moves it would never choose. `--open-side` and the

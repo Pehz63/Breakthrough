@@ -423,6 +423,39 @@ int rankBookGen(const std::string& storeFile, const std::string& board,
                 const std::string& idA, const std::string& idB,
                 int maxPlies, const std::string& outFile);
 
+// ---- Cluster book generation (cbookdump + cbookfit) ----
+// The fuzzy generalisation of bookgen, feeding the "cbook" opener. Where a
+// bookgen book needs an exact position-hash match and goes silent the moment the
+// opponent deviates (theory 38), a cluster book matches the position to the
+// NEAREST mined cluster for that half-move and narrows the search's root move
+// list to that cluster's moves. Design notes: src/ml_cluster.h.
+//
+// The work splits in two because replay is the only expensive part and it depends
+// on nothing but the game selection:
+//
+// cbookdump replays winning games and records one (half-move, difference-from-
+// start vector, move) triple per winner ply. Scope is at most one of idA (that
+// agent's own wins) or regime (every winner whose rankAgentRegime matches);
+// neither means universal, every winner in the store. minElo > 0 additionally
+// gates on the winner's rating in ratingsFile, the closest analogue to the
+// source method's professional-games input. Rows are deduplicated to distinct
+// games first, and replays that drift from the stored result are dropped.
+//
+// cbookfit clusters a dump with spherical k-means and writes one
+// models/cbook<N>.txt per (clusters, keep) pair, numbered from outSlot. keep
+// truncates each cluster's move list to its top M by count and is the parameter
+// that decides how much the filter actually filters (keep 0 = full list, the
+// no-op control). mirrorMode is "canon" (fold each position onto the smaller of
+// itself and its mirror), "augment" (add the mirror as a second point), or "off".
+int rankClusterBookDump(const std::string& storeFile, const std::string& board,
+                        const std::string& idA, const std::string& regime,
+                        double minElo, const std::string& ratingsFile,
+                        int maxPlies, int sampleN, unsigned seed,
+                        const std::string& outFile);
+int rankClusterBookFit(const std::string& dumpFile, const std::vector<int>& clusterList,
+                       const std::vector<int>& keepList, const std::string& mirrorMode,
+                       unsigned seed, int minPerCluster, int outSlot);
+
 // ---- Model loading (also used by the GUI, not just rank.exe subcommands) ----
 // Load whichever model slot(s) this one spec's brain needs (LearnedValue's
 // model, or LearnedPolicy's) into g_mlModels via mlLoadSlot (src/ml_eval.h),

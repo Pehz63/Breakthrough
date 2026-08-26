@@ -7,6 +7,7 @@
 #include "ml_eval.h"
 #include "explorers.h"
 #include "datastore.h"
+#include "ml_cluster.h"
 #include <algorithm>
 #include <sstream>
 #include <set>
@@ -216,6 +217,29 @@ TEST_CASE("ranking id - canonical round trips") {
     a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1)@1");
     REQUIRE(a.spec.openerKind == openerIndexByIdName("book"));
     REQUIRE(a.spec.openerArg == 1);
+
+    // The optional ply= cutoff (hasArg2). This is the mechanism the whole cbook
+    // ply-window ladder depends on, and until 2026-08-26 it could not actually be
+    // written in an id: the opener() parser rejected a 3rd argument before the
+    // per-opener hasArg2 check that allows it, so `book`'s own documented `ply=`
+    // cap (implemented since 2026-08-03) had no roster spelling that parsed.
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1,ply=16)@1");
+    REQUIRE(a.spec.openerArg == 1);
+    REQUIRE(a.spec.openerArg2 == 16);
+
+    // The cluster-book opener kind (arg = cbook slot, models/cbook<arg>.txt),
+    // with and without the same ply= cutoff.
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=1)@1");
+    REQUIRE(a.spec.openerKind == openerIndexByIdName("cbook"));
+    REQUIRE(a.spec.openerArg == 1);
+    REQUIRE(a.spec.openerArg2 == 0);
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=1,ply=8)@1");
+    REQUIRE(a.spec.openerArg == 1);
+    REQUIRE(a.spec.openerArg2 == 8);
+
+    parseErr("rand@1.opener(book,book=1,ply=0)@1");     // ply must be > 0 (omit it instead)
+    parseErr("rand@1.opener(book,book=1,ply=-1)@1");    // negative
+    parseErr("rand@1.opener(rand,moves=3,ply=4)@1");    // rand has no hasArg2, ply is rejected
 }
 
 TEST_CASE("book opener - plays the stored reply, hands off out of book") {
@@ -255,6 +279,173 @@ TEST_CASE("book opener - plays the stored reply, hands off out of book") {
     REQUIRE_FALSE(played);
 
     std::remove("models/book99.txt");
+}
+
+// ============================================================
+// CBOOK OPENER (src/ai_random.cpp openerClusterBook) + root filter plumbing
+// ============================================================
+// cbookForSlot caches lazily by slot number for the life of the process, the
+// same convention bookForSlot uses ("books load lazily once per process and
+// are treated as IMMUTABLE data" -- see the book opener's own comment). So
+// each test below needs its OWN slot: reusing one slot across test cases would
+// silently serve the FIRST test's cached content to every test after it.
+// These slot numbers are test-only scratch, well outside any real cbook<N>
+// this project mines.
+static void writeScratchCbook(int slot, const MlcVec& start, int ply, const MlcVec& centroid,
+                              int sx, int sy, int dx) {
+    MlcBook book;
+    book.start = start;
+    MlcBucket bucket;
+    bucket.ply = ply;
+    bucket.points = 1;
+    MlcCluster c;
+    c.centroid.assign(MLC_DIM, 0.0f);
+    for (int i = 0; i < MLC_DIM; i++) if (mlcGet(centroid, i)) c.centroid[i] = 1.0f;
+    c.size = 1;
+    c.meanCos = 1.0;
+    MlcMove m = { sx, sy, dx, 1 };
+    c.moves.push_back(m);
+    bucket.clusters.push_back(c);
+    book.buckets.push_back(bucket);
+    std::vector<string> hdr;
+    hdr.push_back("scratch test cbook");
+    string err;
+    std::ostringstream path;
+    path << "models/cbook" << slot << ".txt";
+    REQUIRE(mlcSaveBook(path.str(), book, hdr, err));
+}
+
+TEST_CASE("cbook opener - matches the position and narrows the root filter") {
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    MlcVec start;
+    mlcBoardVector(start);
+
+    // A single ply-0 cluster whose only suggested move is the legal straight
+    // push a2-a3 (x=0, y=1 -> y=2). The centroid content is irrelevant with only
+    // one cluster in the bucket (mlcNearest has nothing else to compare against),
+    // so it is left equal to the diff it would represent at rest (the start
+    // itself, ply 0, i.e. the zero vector).
+    MlcVec zero;
+    mlcClear(zero);
+    writeScratchCbook(9901, start, 0, zero, 0, 1, 0);
+
+    int idx = openerIndexByIdName("cbook");
+    REQUIRE(idx >= 0);
+    g_useRootFilter = false;
+    int victor = None;
+    bool played = g_openers[idx].fn(White, 0, 0, 9901, 0, victor);
+
+    // cbook never plays a move itself: filter mode always hands off to the brain.
+    REQUIRE_FALSE(played);
+    REQUIRE(g_useRootFilter);
+    REQUIRE(g_rootMoveWhitelistCount == 1);
+    REQUIRE(g_rootMoveWhitelist[0][0] == 0);
+    REQUIRE(g_rootMoveWhitelist[0][1] == 1);
+    REQUIRE(g_rootMoveWhitelist[0][2] == 0);
+    g_useRootFilter = false;
+
+    std::remove("models/cbook9901.txt");
+}
+
+TEST_CASE("cbook opener - empty legality intersection leaves the filter off") {
+    // Required safeguard: a matched cluster whose suggestions are all illegal
+    // here must never leave the search with zero root moves.
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    MlcVec start;
+    mlcBoardVector(start);
+    MlcVec zero;
+    mlcClear(zero);
+    writeScratchCbook(9902, start, 0, zero, 4, 4, 4);   // not a legal move from the start
+
+    int idx = openerIndexByIdName("cbook");
+    g_useRootFilter = false;
+    int victor = None;
+    bool played = g_openers[idx].fn(White, 0, 0, 9902, 0, victor);
+
+    REQUIRE_FALSE(played);
+    REQUIRE_FALSE(g_useRootFilter);   // no legal overlap: filter stays off, not empty
+
+    std::remove("models/cbook9902.txt");
+}
+
+TEST_CASE("cbook opener - ply= cutoff declines without touching the filter, like book") {
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    MlcVec start;
+    mlcBoardVector(start);
+    MlcVec zero;
+    mlcClear(zero);
+    writeScratchCbook(9903, start, 4, zero, 0, 1, 0);
+
+    int idx = openerIndexByIdName("cbook");
+    g_useRootFilter = false;
+    int victor = None;
+    // halfMove 4 >= arg2 4: past the cap, must decline before even loading the bucket.
+    bool played = g_openers[idx].fn(White, 0, 4, 9903, 4, victor);
+    REQUIRE_FALSE(played);
+    REQUIRE_FALSE(g_useRootFilter);
+
+    // A missing file also defers cleanly (an unused slot never written).
+    played = g_openers[idx].fn(White, 0, 0, 9999, 0, victor);
+    REQUIRE_FALSE(played);
+    REQUIRE_FALSE(g_useRootFilter);
+
+    std::remove("models/cbook9903.txt");
+}
+
+TEST_CASE("cbook opener - un-mirrors a canonicalised match back onto the live position") {
+    // The book was mined with mirror=canon, so its stored move is in canonical
+    // (lexicographically-smaller) space. A live position that canonicalises to
+    // the OTHER mirror image must have the matched move reflected back before
+    // it is checked against real legality.
+    //
+    // The mined cluster's centroid describes the position BEFORE its move, not
+    // the move's own effect, so this uses TWO unrelated squares to build that
+    // "before" position (columns 1/0, a diagonal push already made by some
+    // earlier ply) and leaves columns 2/3/4/5 at their start-board values,
+    // where the tested move actually lives.
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    MlcVec start;
+    mlcBoardVector(start);
+
+    // The "before" position: one earlier move already played, (1,1)-(0,2).
+    // Diff bits are mlSqW(1,1)=9 and mlSqW(0,2)=16, which is already canonical
+    // (its mirror, bits {14,23} from columns 6/7, is the larger of the two).
+    board[1][1] = EMPTY;
+    board[0][2] = WHITE;
+    MlcVec canonDiff;
+    {
+        MlcVec cur;
+        mlcBoardVector(cur);
+        mlcDiff(start, cur, canonDiff);
+    }
+    REQUIRE_FALSE(mlcCanonical(canonDiff));   // sanity: this diff is its own canonical form
+    // The stored move, (2,1)-(3,2), is legal from this "before" position: columns
+    // 2/3 were untouched by the (1,1)-(0,2) push above.
+    writeScratchCbook(9904, start, 2, canonDiff, 2, 1, 3);
+
+    // The live position is the MIRROR of that "before" position: the same
+    // earlier push reflected to columns 6/7, i.e. (6,1)-(7,2). Its diff
+    // canonicalises to the stored cluster's centroid, flipped, so the opener
+    // must un-mirror the stored move (2,1,3) to (5,1,4) -- the mirror image of
+    // columns 2/3 -- before checking it against this position's real legality.
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    board[6][1] = EMPTY;
+    board[7][2] = WHITE;
+
+    int idx = openerIndexByIdName("cbook");
+    g_useRootFilter = false;
+    int victor = None;
+    bool played = g_openers[idx].fn(White, 0, 2, 9904, 0, victor);
+
+    REQUIRE_FALSE(played);
+    REQUIRE(g_useRootFilter);
+    REQUIRE(g_rootMoveWhitelistCount == 1);
+    REQUIRE(g_rootMoveWhitelist[0][0] == 5);
+    REQUIRE(g_rootMoveWhitelist[0][1] == 1);
+    REQUIRE(g_rootMoveWhitelist[0][2] == 4);
+    g_useRootFilter = false;
+
+    std::remove("models/cbook9904.txt");
 }
 
 TEST_CASE("ranking id - stale or missing module versions are rejected") {

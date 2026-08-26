@@ -148,3 +148,80 @@ TEST_CASE("MiniMax - White captures only black piece to win") {
     REQUIRE(board[4][0] == EMPTY);
     REQUIRE(g_blackCount == 0);
 }
+
+// ============================================================
+// ROOT-MOVE FILTER (globals.h g_useRootFilter, the cbook opener's mechanism)
+// ============================================================
+// The filter is the whole point of "filter mode": narrow the root move list and
+// let the same budget go deeper on what is left. These tests check the two
+// things a caller depends on, at two settings each, per the project's
+// instrument-validation rule: the filter changes what the search does, and it
+// cannot make the search return a move outside the whitelist.
+
+TEST_CASE("root filter - restricts the chosen move and the nodes searched") {
+    clearBoard();
+    // A wide-open midboard position, so several root moves are available and the
+    // unrestricted search has a genuine choice to be constrained away from.
+    board[2][2] = WHITE; board[4][2] = WHITE; board[6][2] = WHITE;
+    board[2][5] = BLACK; board[4][5] = BLACK; board[6][5] = BLACK;
+    g_whiteCount = 3; g_blackCount = 3; g_chipDiff = 0;
+    char snap[SIZE][SIZE];
+    for (int y = 0; y < SIZE; y++) for (int x = 0; x < SIZE; x++) snap[x][y] = board[x][y];
+
+    int params[MAX_EVAL_PARAMS] = { 0, 1, 0, 0 };
+    unsigned long long nodesOff = 0, leafsOff = 0, nodesOn = 0, leafsOn = 0;
+
+    g_useRootFilter = false;
+    miniMaxWhite(4, 0, params, nodesOff, leafsOff);
+
+    // Setting 2: one single allowed root move, deliberately not the piece the
+    // unrestricted search would most likely prefer.
+    setupBoard(snap);
+    g_rootMoveWhitelist[0][0] = 2; g_rootMoveWhitelist[0][1] = 2; g_rootMoveWhitelist[0][2] = 1;
+    g_rootMoveWhitelistCount = 1;
+    g_useRootFilter = true;
+    miniMaxWhite(4, 0, params, nodesOn, leafsOn);
+    g_useRootFilter = false;
+
+    // One root move instead of nine must cost strictly fewer nodes.
+    REQUIRE(nodesOn < nodesOff);
+}
+
+TEST_CASE("root filter - rootMoveAllowed is inert when the flag is off") {
+    g_useRootFilter = false;
+    g_rootMoveWhitelistCount = 1;
+    g_rootMoveWhitelist[0][0] = 0; g_rootMoveWhitelist[0][1] = 0; g_rootMoveWhitelist[0][2] = 0;
+    // Off: everything is allowed, including a move not on the list.
+    REQUIRE(rootMoveAllowed(5, 5, 5) == true);
+    g_useRootFilter = true;
+    REQUIRE(rootMoveAllowed(5, 5, 5) == false);
+    REQUIRE(rootMoveAllowed(0, 0, 0) == true);
+    g_useRootFilter = false;
+}
+
+TEST_CASE("root filter - the search plays a whitelisted move, not its free choice") {
+    clearBoard();
+    // White can capture at (3,3) from (2,2), which a chip-weighted search prefers.
+    // Whitelisting only the quiet (6,2)->(6,3) advance must override that.
+    board[2][2] = WHITE; board[6][2] = WHITE;
+    board[3][3] = BLACK; board[0][6] = BLACK;
+    g_whiteCount = 2; g_blackCount = 2; g_chipDiff = 0;
+    char snap[SIZE][SIZE];
+    for (int y = 0; y < SIZE; y++) for (int x = 0; x < SIZE; x++) snap[x][y] = board[x][y];
+
+    int params[MAX_EVAL_PARAMS] = { 0, 1, 0, 0 };
+    g_useRootFilter = false;
+    moveWhite(MiniMax, 3, 0, params, StandardOpener);
+    const bool tookCaptureUnfiltered = (board[3][3] == WHITE);
+
+    setupBoard(snap);
+    g_rootMoveWhitelist[0][0] = 6; g_rootMoveWhitelist[0][1] = 2; g_rootMoveWhitelist[0][2] = 6;
+    g_rootMoveWhitelistCount = 1;
+    g_useRootFilter = true;
+    moveWhite(MiniMax, 3, 0, params, StandardOpener);
+    g_useRootFilter = false;
+
+    REQUIRE(tookCaptureUnfiltered);          // unfiltered: it grabs the piece
+    REQUIRE(board[6][3] == WHITE);           // filtered: it plays the only allowed move
+    REQUIRE(board[3][3] == BLACK);           // and leaves the capture on the board
+}

@@ -22,6 +22,7 @@
 #include "ai_eval.h"
 #include "ai_random.h"
 #include "ml_eval.h"
+#include "ml_cluster.h"
 #include "datastore.h"
 #include "transposition.h"
 #include <algorithm>
@@ -1007,8 +1008,14 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         if (word == "opener") {
             if (haveOpener) { err = "duplicate opener() segment"; return false; }
             if (atV < 1) { err = "opener segment '" + segs[si] + "' needs a module version like @1"; return false; }
-            if (!parens || args.empty() || args.size() > 2) {
-                err = "opener() takes an opener name and an optional arg, e.g. opener(rand,6)@1";
+            // Upper bound is 3 (name, arg, ply cutoff) because openers declaring
+            // hasArg2 accept a cutoff. The exact per-opener bound is enforced below
+            // from that opener's own metadata. This was 2 until 2026-08-26, which
+            // made hasArg2 unreachable: the `ply=` cap `book` has implemented since
+            // 2026-08-03 could not be written in any id that parsed.
+            if (!parens || args.empty() || args.size() > 3) {
+                err = "opener() takes an opener name, an optional arg, and an optional "
+                      "ply cutoff, e.g. opener(rand,moves=6)@1 or opener(book,book=2,ply=8)@1";
                 return false;
             }
             int ok = openerIndexByIdName(args[0].c_str());
@@ -2582,6 +2589,10 @@ static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& 
             playedByOpener = g_openers[ag.spec.openerKind].fn(side, h / 2, h, ag.spec.openerArg, ag.spec.openerArg2, victor);
         if (!playedByOpener)
             victor = agentChooseMove(ag.spec, side);
+        // An opener may have narrowed the root move list for this ply only (cbook).
+        // Clear it unconditionally so a restriction can never leak into a later ply,
+        // the opponent's move, or a ply past the opener's own cap.
+        g_useRootFilter = false;
         double dt = std::chrono::duration<double, std::milli>(clk::now() - t0).count();
         if (haveCpu) {
             double dc = processCpuMs() - c0;
@@ -3775,6 +3786,7 @@ static int playoutCapture(const RankAgent& wa, const RankAgent& ba, int startHal
             }
             victor = agentChooseMove(side == White ? wSpec : bSpec, side);
         }
+        g_useRootFilter = false;   // one-ply root narrowing (cbook), see playOneGame
         if (gameOutcome(victor)) break;
     }
     return victor;
@@ -3946,6 +3958,7 @@ int rankBookGen(const string& storeFile, const string& board, const string& idA,
             if (moverSpec.openerKind >= 0 && moverSpec.openerKind < g_openerCount)
                 playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, h, moverSpec.openerArg, moverSpec.openerArg2, victor);
             if (!playedByOpener) victor = agentChooseMove(moverSpec, side);
+            g_useRootFilter = false;   // one-ply root narrowing (cbook), see playOneGame
             if (record) {
                 BookRec br;
                 br.seen = 1;
@@ -3998,6 +4011,445 @@ int rankBookGen(const string& storeFile, const string& board, const string& idA,
          << conflicts << " conflicting duplicates dropped) -> " << outFile << "\n";
     mlClearSlots();
     return book.empty() ? 1 : 0;
+}
+
+// ============================================================
+// CBOOKDUMP -- replay winning games, record clustering points
+// ============================================================
+// The expensive half of cluster-book mining, and the only half that depends on
+// the game set. The store keeps summary rows with no move list, so recovering
+// what was played means re-running both agents' searches from the start board,
+// exactly as bookgen does. Clustering is cheap and depends only on the recorded
+// triples, so it lives in cbookfit and every (clusters, keep, seed, mirror)
+// combination reuses one dump instead of forcing another replay pass. Same split
+// as `rank.exe extract` -> `train.exe --from-data`.
+//
+// Three things this does that bookgen does not, each of them load-bearing:
+//
+//  - DEDUPLICATES rows before replaying. The store holds about 0.41 distinct
+//    games per row (measured 2026-08-26 over the loaded parts), because a
+//    deterministic pair replays one line per colour however many rows it has. An
+//    exact-hash book does not care, since a duplicate re-sets the same entry, but
+//    a frequency-weighted cluster book would count that single line once per row
+//    in both the centroids and the move counts.
+//  - SKIPS DRIFTED REPLAYS, following rankExtract's determinism guard rather than
+//    bookgen's "keep it if A still won". Cross-game search state makes replay
+//    imperfect (theory 19b: models/book2.txt's own header records 12 of 32
+//    replays drifting on a pair with no stochastic element), and mining a game
+//    that did not happen while attributing it to the stored winner would put a
+//    fault in the instrument rather than in the result.
+//  - GATES ON WINNER STRENGTH. SMARTSTART mined professional games. This store is
+//    dominated by weak play (of the wins whose winner is in ranking/ratings.tsv,
+//    2.2% came from agents at 1000+ Elo and 33% from below 600), so --min-elo is
+//    the closest available analogue. Ids from rankLoadMatches are already run
+//    through rankUpgradeId, so they join to the ratings file directly.
+//
+// Output is JSONL: one meta row carrying the start board's own vector, then one
+// row per recorded position with the RAW (uncanonicalised) difference vector and
+// the RAW move. Canonicalisation is cbookfit's business, so a single dump can
+// serve the canon, augment, and off mirror modes.
+// The dump's own writer, for the two free-text meta fields. Agent ids carry
+// parentheses and commas but never quotes or backslashes, so this is a guard
+// against a future id grammar rather than a live need.
+static string cbookJsonEscape(const string& s) {
+    string o;
+    for (size_t i = 0; i < s.size(); i++) {
+        if (s[i] == '"' || s[i] == '\\') o += '\\';
+        o += s[i];
+    }
+    return o;
+}
+
+int rankClusterBookDump(const string& storeFile, const string& board, const string& idA,
+                        const string& regime, double minElo, const string& ratingsFile,
+                        int maxPlies, int sampleN, unsigned seed, const string& outFile) {
+    if (outFile.empty()) { cout << "ERROR: cbookdump needs --out (data/cbook_<scope>.jsonl)\n"; return 1; }
+    if (!idA.empty() && !regime.empty()) {
+        cout << "ERROR: cbookdump takes at most one of --a and --regime (neither = universal scope)\n";
+        return 1;
+    }
+    if (maxPlies < 1) maxPlies = 1;
+    const string scope = !idA.empty() ? ("agent:" + idA)
+                       : !regime.empty() ? ("regime:" + regime) : "universal";
+
+    std::map<string, double> elo;
+    if (minElo > 0.0) {
+        if (!readRatingsTsv(ratingsFile, elo)) {
+            cout << "ERROR: --min-elo needs a readable ratings file (--ratings, default ranking/ratings.tsv). "
+                 << "Run `rank.exe rate` first: the rating outputs are gitignored.\n";
+            return 1;
+        }
+    }
+
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    rankLoadMatches(storeFile, board, rows, skipped);
+    if (rows.empty()) {
+        cout << "ERROR: no matches for board " << board << " in " << storeFile << "\n";
+        return 1;
+    }
+
+    // Scope filter, strength gate, and row deduplication in one pass. The dedup
+    // key is the full game identity: same pair, same colours, same seed, same
+    // result, same length is the same trajectory.
+    std::set<string> seenGame;
+    std::vector<const RankMatchRow*> games;
+    int offScope = 0, belowGate = 0, unrated = 0, dupRows = 0;
+    for (size_t i = 0; i < rows.size(); i++) {
+        const RankMatchRow& row = rows[i];
+        if (row.r != 'W' && row.r != 'B') continue;
+        const string& winner = (row.r == 'W') ? row.w : row.b;
+        if (!idA.empty()) {
+            if (winner != idA) { offScope++; continue; }
+        } else if (!regime.empty()) {
+            if (rankAgentRegime(winner) != regime) { offScope++; continue; }
+        }
+        if (minElo > 0.0) {
+            std::map<string, double>::const_iterator e = elo.find(winner);
+            if (e == elo.end()) { unrated++; continue; }
+            if (e->second < minElo) { belowGate++; continue; }
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "|%u|%c|%d", row.seed, row.r, row.plies);
+        string key = row.w + "|" + row.b + buf;
+        if (!seenGame.insert(key).second) { dupRows++; continue; }
+        games.push_back(&row);
+    }
+    if (games.empty()) {
+        cout << "ERROR: no winning games matched scope " << scope << " for board " << board << "\n";
+        return 1;
+    }
+
+    // Deterministic shuffle, same convention as rankExtract: a bigger --sample is
+    // a prefix extension of a smaller one rather than an unrelated draw.
+    std::vector<int> order(games.size());
+    for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
+    srand(seed);
+    for (size_t i = order.size(); i > 1; i--) {
+        size_t j = (size_t)(((double)rand() / ((double)RAND_MAX + 1.0)) * i);
+        if (j >= i) j = i - 1;
+        std::swap(order[i-1], order[j]);
+    }
+    const int target = (sampleN > 0 && sampleN < (int)order.size()) ? sampleN : (int)order.size();
+
+    cout << "cbookdump: scope " << scope << ", " << rows.size() << " store rows -> "
+         << games.size() << " distinct winning games (" << offScope << " off scope, "
+         << belowGate << " below the Elo gate, " << unrated << " winner unrated, "
+         << dupRows << " duplicate rows collapsed), replaying " << target
+         << ", recording the winner's own first " << maxPlies << " half-moves\n";
+
+    if (!reloadBoard(board)) { cout << "ERROR: cannot load board " << board << "\n"; return 1; }
+    MlcVec startVec;
+    mlcBoardVector(startVec);
+
+    ensureDir("data");
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (!out.is_open()) { cout << "ERROR: cannot write " << outFile << "\n"; return 1; }
+    {
+        char hex[40];
+        snprintf(hex, sizeof(hex), "%016llx%016llx",
+                 (unsigned long long)startVec.b[1], (unsigned long long)startVec.b[0]);
+        out << "{\"t\":\"meta\",\"scope\":\"" << cbookJsonEscape(scope) << "\",\"board\":\""
+            << cbookJsonEscape(board) << "\",\"start\":\"" << hex << "\",\"maxPlies\":" << maxPlies
+            << ",\"minElo\":" << minElo << ",\"sample\":" << target << ",\"seed\":" << seed << "}\n";
+    }
+
+    int replayed = 0, drifted = 0, idSkipped = 0, diffFail = 0;
+    long long positions = 0;
+    for (int k = 0; k < target; k++) {
+        const RankMatchRow& row = *games[order[k]];
+        RankAgent wa, ba;
+        string err;
+        if (!rankAgentFromId(row.w, wa, err) || !rankAgentFromId(row.b, ba, err)) { idSkipped++; continue; }
+        std::vector<const RankAgent*> pair;
+        pair.push_back(&wa); pair.push_back(&ba);
+        if (!loadModelSlots(pair, err)) { idSkipped++; continue; }
+
+        const bool winnerIsWhite = (row.r == 'W');
+        if (!reloadBoard(board)) { cout << "ERROR: cannot load board " << board << "\n"; return 1; }
+        srand(row.seed);
+        std::vector<string> rec;
+        int victor = None;
+        for (int h = 0; h < 400; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            const bool record = ((side == White) == winnerIsWhite) && h < maxPlies;
+            MlcVec cur, diff;
+            BoardSnap before;
+            if (record) { mlcBoardVector(cur); mlcDiff(startVec, cur, diff); snapBoard(before); }
+            const AgentSpec& moverSpec = (side == White) ? wa.spec : ba.spec;
+            bool playedByOpener = false;
+            if (moverSpec.openerKind >= 0 && moverSpec.openerKind < g_openerCount)
+                playedByOpener = g_openers[moverSpec.openerKind].fn(side, h / 2, h, moverSpec.openerArg, moverSpec.openerArg2, victor);
+            if (!playedByOpener) victor = agentChooseMove(moverSpec, side);
+            g_useRootFilter = false;   // one-ply root narrowing (cbook), see playOneGame
+            if (record) {
+                int sx, sy, dx;
+                if (diffMoveFromSnap(before, side, sx, sy, dx)) {
+                    char hex[40];
+                    snprintf(hex, sizeof(hex), "%016llx%016llx",
+                             (unsigned long long)diff.b[1], (unsigned long long)diff.b[0]);
+                    std::ostringstream ls;
+                    ls << "{\"h\":" << h << ",\"v\":\"" << hex << "\",\"sx\":" << sx
+                       << ",\"sy\":" << sy << ",\"dx\":" << dx << "}";
+                    rec.push_back(ls.str());
+                } else {
+                    diffFail++;
+                }
+            }
+            if (gameOutcome(victor)) break;
+        }
+        const int oc = gameOutcome(victor);
+        const char r = (oc == 1) ? 'W' : (oc == 2) ? 'B' : 'D';
+        // Determinism guard: a replay that did not reproduce the stored result is
+        // a different game, so its positions are not this winner's line.
+        if (r != row.r) { drifted++; continue; }
+        for (size_t i = 0; i < rec.size(); i++) out << rec[i] << "\n";
+        positions += (long long)rec.size();
+        replayed++;
+        if (replayed % 200 == 0)
+            cout << "  replayed " << replayed << "/" << target << " games, " << positions << " positions\n";
+    }
+    out.close();
+    mlClearSlots();
+    cout << "Kept " << replayed << " of " << target << " replays (" << drifted
+         << " drifted from the stored result, " << idSkipped << " unparseable/stale ids, "
+         << diffFail << " move-diff failures), " << positions << " positions -> "
+         << outFile << "\n";
+    return positions > 0 ? 0 : 1;
+}
+
+// ============================================================
+// CBOOKFIT -- cluster a dump into cbook files
+// ============================================================
+// The cheap half. Reads a cbookdump, clusters each half-move bucket independently
+// with spherical k-means (src/ml_cluster.cpp), and writes one models/cbook<N>.txt
+// per requested (clusters, keep) pair, numbered from --out-slot.
+//
+// Buckets are independent, which is why the ply window is a runtime cap rather
+// than a mining axis: a dump taken to half-move 32 contains a half-move 6 bucket
+// identical to the one a dump taken to half-move 8 would contain, so the `cbook`
+// opener's own `ply=` argument selects the window from one file. Only the
+// winner's own plies are recorded, so even buckets come from White winners and
+// odd buckets from Black winners, and each holds roughly half the dump.
+//
+// --keep truncates each cluster's move list to its top M by count, and it is the
+// parameter that actually matters. There are 22 legal moves at half-move 0, so a
+// cluster holding hundreds of positions covers essentially every legal move and
+// an untruncated whitelist filters nothing. --keep 0 writes the full list, which
+// is the no-op control arm.
+struct CbookPoint {
+    MlcVec v;
+    int sx, sy, dx;
+};
+
+// Count-descending, with the move triple as a tie-break so a book file is
+// reproducible from the same dump rather than depending on map iteration order.
+static bool cbookMoveMoreCommon(const MlcMove& a, const MlcMove& b) {
+    if (a.count != b.count) return a.count > b.count;
+    if (a.sx != b.sx) return a.sx < b.sx;
+    if (a.sy != b.sy) return a.sy < b.sy;
+    return a.dx < b.dx;
+}
+
+static bool cbookParseHexVec(const string& s, MlcVec& v) {
+    if (s.size() != 32) return false;
+    mlcClear(v);
+    for (int half = 0; half < 2; half++) {
+        unsigned long long acc = 0ULL;
+        for (int i = 0; i < 16; i++) {
+            char c = s[half * 16 + i];
+            int d;
+            if      (c >= '0' && c <= '9') d = c - '0';
+            else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+            else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+            else return false;
+            acc = (acc << 4) | (unsigned long long)d;
+        }
+        v.b[half == 0 ? 1 : 0] = acc;
+    }
+    return true;
+}
+
+int rankClusterBookFit(const string& dumpFile, const std::vector<int>& clusterList,
+                       const std::vector<int>& keepList, const string& mirrorMode,
+                       unsigned seed, int minPerCluster, int outSlot) {
+    if (dumpFile.empty()) { cout << "ERROR: cbookfit needs --in (a cbookdump file)\n"; return 1; }
+    if (clusterList.empty() || keepList.empty()) { cout << "ERROR: cbookfit needs --clusters and --keep\n"; return 1; }
+    if (mirrorMode != "canon" && mirrorMode != "augment" && mirrorMode != "off") {
+        cout << "ERROR: --mirror must be canon, augment, or off\n";
+        return 1;
+    }
+    if (outSlot < 1) { cout << "ERROR: --out-slot must be >= 1\n"; return 1; }
+    if (minPerCluster < 1) minPerCluster = MLC_MIN_PER_CLUSTER;
+
+    std::ifstream in(dumpFile.c_str());
+    if (!in.is_open()) { cout << "ERROR: cannot open " << dumpFile << "\n"; return 1; }
+
+    MlcVec startVec;
+    mlcClear(startVec);
+    bool sawMeta = false;
+    string metaScope, metaBoard;
+    std::map<int, std::vector<CbookPoint> > byPly;
+    long long nPoints = 0, badRows = 0;
+    string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        if (line.find("\"t\":\"meta\"") != string::npos) {
+            string sv;
+            if (!jsonStr(line, "start", sv) || !cbookParseHexVec(sv, startVec)) {
+                cout << "ERROR: bad or missing start vector in dump meta\n";
+                return 1;
+            }
+            jsonStr(line, "scope", metaScope);
+            jsonStr(line, "board", metaBoard);
+            sawMeta = true;
+            continue;
+        }
+        CbookPoint p;
+        string hv;
+        if (!jsonStr(line, "v", hv) || !cbookParseHexVec(hv, p.v)) { badRows++; continue; }
+        double h = 0, sx = 0, sy = 0, dx = 0;
+        if (!jsonNum(line, "h", h) || !jsonNum(line, "sx", sx)
+            || !jsonNum(line, "sy", sy) || !jsonNum(line, "dx", dx)) { badRows++; continue; }
+        p.sx = (int)sx; p.sy = (int)sy; p.dx = (int)dx;
+        byPly[(int)h].push_back(p);
+        nPoints++;
+    }
+    in.close();
+    if (!sawMeta) { cout << "ERROR: " << dumpFile << " has no meta row\n"; return 1; }
+    if (byPly.empty()) { cout << "ERROR: " << dumpFile << " has no position rows\n"; return 1; }
+    cout << "cbookfit: " << nPoints << " positions across " << byPly.size()
+         << " half-move buckets from " << dumpFile
+         << (badRows ? (" (" + std::to_string(badRows) + " unparseable rows skipped)") : "") << "\n";
+
+    // Apply the mirror mode once, since it does not depend on K or keep.
+    //   canon   -> replace each point with the smaller of itself and its mirror,
+    //              flipping the move's columns to match. Halves the space exactly.
+    //   augment -> keep the point AND add its mirror as a second point.
+    //   off     -> leave the raw points alone.
+    for (std::map<int, std::vector<CbookPoint> >::iterator it = byPly.begin(); it != byPly.end(); ++it) {
+        std::vector<CbookPoint>& pts = it->second;
+        if (mirrorMode == "canon") {
+            for (size_t i = 0; i < pts.size(); i++)
+                if (mlcCanonical(pts[i].v)) {
+                    pts[i].sx = SIZE - 1 - pts[i].sx;
+                    pts[i].dx = SIZE - 1 - pts[i].dx;
+                }
+        } else if (mirrorMode == "augment") {
+            const size_t n0 = pts.size();
+            pts.reserve(n0 * 2);
+            for (size_t i = 0; i < n0; i++) {
+                CbookPoint m = pts[i];
+                mlcMirror(pts[i].v, m.v);
+                m.sx = SIZE - 1 - m.sx;
+                m.dx = SIZE - 1 - m.dx;
+                pts.push_back(m);
+            }
+        }
+    }
+
+    // One clustering per (bucket, K, seed): the move cutoff only truncates the
+    // resulting lists, so every keep value reuses the same fit.
+    int slot = outSlot;
+    for (size_t ki = 0; ki < clusterList.size(); ki++) {
+        const int K = clusterList[ki];
+        std::map<int, MlcBucket> fitted;
+        for (std::map<int, std::vector<CbookPoint> >::const_iterator it = byPly.begin(); it != byPly.end(); ++it) {
+            const std::vector<CbookPoint>& pts = it->second;
+            std::vector<MlcVec> vecs(pts.size());
+            for (size_t i = 0; i < pts.size(); i++) vecs[i] = pts[i].v;
+            std::vector<float> centroids;
+            std::vector<int> assign;
+            const int kEff = mlcSphericalKMeans(vecs, K, minPerCluster, seed, 100, centroids, assign);
+            MlcBucket b;
+            b.ply = it->first;
+            b.points = (int)pts.size();
+            b.clusters.resize(kEff > 0 ? kEff : 0);
+            for (int c = 0; c < kEff; c++) {
+                b.clusters[c].centroid.assign(centroids.begin() + (size_t)c * MLC_DIM,
+                                              centroids.begin() + (size_t)(c + 1) * MLC_DIM);
+                b.clusters[c].size = 0;
+                b.clusters[c].meanCos = 0.0;
+            }
+            // Move counts and the mean intra-cluster cosine, in one pass.
+            std::vector<std::map<string, MlcMove> > tally(kEff > 0 ? kEff : 0);
+            for (size_t i = 0; i < pts.size(); i++) {
+                const int c = assign[i];
+                if (c < 0 || c >= kEff) continue;
+                b.clusters[c].size++;
+                b.clusters[c].meanCos += mlcCosine(pts[i].v, &b.clusters[c].centroid[0]);
+                char key[32];
+                snprintf(key, sizeof(key), "%d,%d,%d", pts[i].sx, pts[i].sy, pts[i].dx);
+                std::map<string, MlcMove>::iterator mit = tally[c].find(key);
+                if (mit == tally[c].end()) {
+                    MlcMove mv;
+                    mv.sx = pts[i].sx; mv.sy = pts[i].sy; mv.dx = pts[i].dx; mv.count = 1;
+                    tally[c][key] = mv;
+                } else {
+                    mit->second.count++;
+                }
+            }
+            for (int c = 0; c < kEff; c++) {
+                if (b.clusters[c].size > 0) b.clusters[c].meanCos /= (double)b.clusters[c].size;
+                for (std::map<string, MlcMove>::const_iterator mit = tally[c].begin(); mit != tally[c].end(); ++mit)
+                    b.clusters[c].moves.push_back(mit->second);
+                std::sort(b.clusters[c].moves.begin(), b.clusters[c].moves.end(), cbookMoveMoreCommon);
+            }
+            fitted[b.ply] = b;
+        }
+
+        for (size_t kk = 0; kk < keepList.size(); kk++) {
+            const int keep = keepList[kk];
+            MlcBook book;
+            book.start = startVec;
+            for (std::map<int, MlcBucket>::const_iterator it = fitted.begin(); it != fitted.end(); ++it) {
+                MlcBucket b = it->second;
+                if (keep > 0)
+                    for (size_t c = 0; c < b.clusters.size(); c++)
+                        if ((int)b.clusters[c].moves.size() > keep) b.clusters[c].moves.resize(keep);
+                book.buckets.push_back(b);
+            }
+            std::ostringstream path;
+            path << "models/cbook" << slot << ".txt";
+            std::vector<string> hdr;
+            {
+                std::ostringstream h1, h2, h3;
+                h1 << "dump " << dumpFile << ", scope " << metaScope << ", board " << metaBoard;
+                h2 << "clusters " << K << " (requested), keep " << keep
+                   << ", mirror " << mirrorMode << ", seed " << seed
+                   << ", min-per-cluster " << minPerCluster;
+                h3 << "positions " << nPoints << ", buckets " << book.buckets.size();
+                hdr.push_back(h1.str());
+                hdr.push_back(h2.str());
+                hdr.push_back(h3.str());
+            }
+            string err;
+            ensureDir("models");
+            if (!mlcSaveBook(path.str(), book, hdr, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+            // Per-bucket diagnostics: without these a null strength result cannot be
+            // told apart from a clustering that quietly degenerated.
+            long long clusters = 0;
+            double sumCos = 0.0;
+            int cosN = 0, minSize = INT_MAX, maxSize = 0;
+            for (size_t bi = 0; bi < book.buckets.size(); bi++)
+                for (size_t c = 0; c < book.buckets[bi].clusters.size(); c++) {
+                    clusters++;
+                    sumCos += book.buckets[bi].clusters[c].meanCos;
+                    cosN++;
+                    const int s = book.buckets[bi].clusters[c].size;
+                    if (s < minSize) minSize = s;
+                    if (s > maxSize) maxSize = s;
+                }
+            cout << "  -> " << path.str() << ": clusters=" << K << " keep=" << keep
+                 << " mirror=" << mirrorMode << " | " << book.buckets.size() << " buckets, "
+                 << clusters << " clusters, size " << (minSize == INT_MAX ? 0 : minSize)
+                 << ".." << maxSize << ", mean intra-cluster cosine "
+                 << (cosN ? sumCos / cosN : 0.0) << "\n";
+            slot++;
+        }
+    }
+    cout << "Wrote " << (slot - outSlot) << " book(s), slots " << outSlot << ".." << (slot - 1) << "\n";
+    return 0;
 }
 
 // ============================================================
