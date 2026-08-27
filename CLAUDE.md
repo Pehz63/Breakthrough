@@ -45,7 +45,7 @@ executing them. Before running training or ranking studies that only invoke
 scripts (`rank.exe` runs, sweeps, `train_vs_champion.ps1`, etc.), read
 `tools/CLAUDE.md` explicitly first. Before designing, training, or evaluating
 any ML model or training regime, read `Docs/model-training-playbook.md` in
-full first -- the three-pass process, configuration-design rules, and
+full first -- the four-pass process, configuration-design rules, and
 interactivity requirements are not optional and are not summarized here.
 
 ## Vocabulary
@@ -186,11 +186,13 @@ not just the one under active test.
 
 ### Console engine (`breakthrough.exe`)
 ```
-cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
+cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\ml_cluster.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
 ```
 The `ml_*`, `datastore`, and `transposition` files are required by every build
-target (see `src/CLAUDE.md`, "Engine link set"). Run with `.\breakthrough.exe`
-and enter e.g. `boards\board1.txt` at the board prompt.
+target (see `src/CLAUDE.md`, "Engine link set"). `ml_cluster.cpp` joined this
+set on 2026-08-26: `ai_random.cpp`'s `cbook` opener calls into it directly, so
+any target linking `ai_random.cpp` (every target does) now needs it too. Run
+with `.\breakthrough.exe` and enter e.g. `boards\board1.txt` at the board prompt.
 
 **Scripting the console:** pipe answers through the **Bash tool**, not
 PowerShell (its pipe encoding/BOM corrupts the first `cin` read and the program
@@ -247,7 +249,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `Docs/benchmarking.md` | Guide to measuring engine speed: metric choice, harness contract, confounds checklist, tools |
 | `Docs/corrections.md` | **Index of defect classes found in this project's own past writing** (`ELO HYGIENE UNVERIFIED`, `SELF-PLAY CONVERGENCE UNSUPPORTED`), and the banner + point-of-citation convention. Read before quoting a number out of any `plans/` doc |
 | `Docs/ranking-workflow.md` | **Step-by-step: how to add agents to the roster and read a ranking.** Workflow A (add + screen on a frozen scale via `play --cohort` + `rate --pin`, cannot disturb anything) vs Workflow B (the unpinned refit, the only thing that can dethrone a champion). Read before any ranking run |
-| `Docs/model-training-playbook.md` | **Read in full before designing, training, or evaluating any ML model.** The three-pass pipeline (sanity -> broad sweep -> optimize), configuration-design rules (minimum seeds, consistent rungs, present the grid before running it), interactivity checkpoints with the developer, extension points, and the certification gate |
+| `Docs/model-training-playbook.md` | **Read in full before designing, training, or evaluating any ML model.** The four-pass pipeline (sanity -> calibration -> broad sweep -> optimize/validate), configuration-design rules (minimum seeds at Pass 4, consistent Pass-3 rungs sized from Pass-2 calibration, present the grid before running it), interactivity checkpoints with the developer, extension points, and the certification gate |
 | `Docs/hyperparameter-log.md` | Cross-study reference of hyperparameter values actually tried, by training regime. Consult before setting a Pass-2 sweep's ranges; growing document, not force-read (see `todo.md` for the backfill task) |
 | `TESTING.md` | Verification playbook: console driving, GUI smoke test, visual-inspection lessons |
 | `INSTALL.md` | Setup: VS C++ workload, raylib download, emsdk for the web build |

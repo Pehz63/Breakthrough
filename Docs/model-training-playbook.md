@@ -16,12 +16,12 @@ both.
 
 ---
 
-## The pipeline: three passes, never one
+## The pipeline: four passes, never one
 
 The recurring failure this document exists to prevent: build something, run
 one configuration, see it produce a number, and report it as finished. That is
 a smoke test, not an experiment. A model is not ready for judgment until it has
-been through three distinct passes, and **the developer must hear from you at
+been through four distinct passes, and **the developer must hear from you at
 the boundary of each one** (see "Interactivity requirements" below), not just
 at the very end.
 
@@ -46,37 +46,109 @@ Pass 1 output is a single working artifact and a short "it runs, here's what I
 checked" note. It is never a strength claim, and it is never where the work
 stops.
 
-### Pass 2: Broad sweep
+### Pass 2: Calibration
+
+A small pilot sweep whose only job is to size Pass 3 correctly before real
+compute is spent on it — not itself a source of findings. Concretely:
+
+- **Rung-ladder sizing.** Run 8-16 random draws (fewer than Pass 3's full
+  population) at 1 seed each, with a deliberately generous or open-ended
+  checkpoint ladder, and watch where a reasonably good draw's performance
+  actually flattens. Use that evidence to set the shared rung list Pass 3 will
+  use, rather than guessing a ceiling. A guessed ceiling can bind a real
+  fraction of the population without anyone noticing: GAZ's round-5 joint
+  sweep fixed a 4-rung ladder (100/400/1500/4000 games) before any training
+  happened, and theory 50's analysis of that data found 31 of 101 arms peaked
+  exactly at the final rung — meaning for nearly a third of the population,
+  there is no evidence they wouldn't have kept improving past the ladder's
+  ceiling (`plans/gumbel-mcts-results-5-violet-harbor.md`).
+- **Range sizing.** Check whether the pilot's best draws sit at the edge of
+  any axis's eligible-value range. A best-performer hugging a boundary is a
+  concrete signal to widen that axis before locking Pass 3's grid, not
+  something to notice only after 100 draws are already spent. (A true optimum
+  legitimately sitting at a natural boundary, like "no regularization," is
+  possible too — this is a signal to look closer, not an automatic instruction
+  to always widen further.)
+- **Axis-completeness review.** This is a checklist step, not something the
+  pilot's own data can surface: before locking Pass 3's axis list, check
+  `Docs/hyperparameter-log.md` for this regime, and separately confirm no
+  capability has landed since the last sweep in this regime that belongs in
+  the list. GAZ's round-5 sweep dropped model architecture as an axis
+  entirely because `train.exe gumbelzero` had no `--model-type` flag yet at
+  the time; once it did, round 6 became a second full calibration-through-
+  optimize cycle just to cover the axis round 5 couldn't
+  (`plans/gumbel-mcts-arch-plan-6-silver-thistle.md`). A pilot sweep cannot
+  discover an axis the code doesn't support yet — only a deliberate review
+  can, which is why this step is a checklist item here rather than an output
+  of the pilot's data.
+
+Pass 2's two data-driven outputs (the rung list and any widened ranges) feed
+directly into "Design the grid, then stop and show it" below, which now sits
+at the Pass 2 -> Pass 3 boundary: present Pass 3's grid to the developer with
+the calibration evidence behind it, not intuition alone.
+
+### Pass 3: Broad sweep
 
 Vary the hyperparameters and configuration choices widely enough to actually
-learn the shape of the problem, not just to confirm your first guess. This is
-where lessons 1 and 2 below (seed count, consistent rungs) are load-bearing,
-and where the configuration grid gets reviewed with the developer BEFORE
-training starts (see "Design the grid, then stop and show it" below) — not
-after, and not buried in a plans document.
+learn the shape of the problem, not just to confirm your first guess, using
+the rung list and ranges Pass 2 calibrated. Draw at random across the full
+space (axes now include model size/architecture, not just training
+hyperparameters — see "Model architecture guidance" below), **1 seed per
+draw** by default: Pass 3's job is to learn the shape of the space, and that
+comes from analyzing many draws together (see below), not from trusting any
+single draw's point value. If this project's parallel node-budget and
+wall-clock-budget tracks (`ranking/CHAMPION.md`) both apply to what's being
+swept, measure each draw against **both** — a size/architecture choice that
+fits comfortably under one track can silently blow the other (see
+"Computation guidance" below).
 
-Pass 2 is exploratory by design: expect some arms to fail, underperform, or
-surprise you. That is the pass earning its keep. Report the shape of the
-result (what moved the outcome, what didn't, what was surprising), not just a
-leaderboard.
+Pass 3 is exploratory by design: expect some arms to fail, underperform, or
+surprise you. That is the pass earning its keep. Then narrow: fit a decision
+tree or regression model over the sweep's results
+(`analysis/predict_peak_elo.py` already does this) to find hyperparameter/size
+regions that are robustly good, rather than reading the sweep as a leaderboard
+of single points. This is what makes 1 seed per draw safe here in a way it was
+not safe in the TD-Leaf incident below — that incident's under-seeded arms
+were single pairwise comparisons quoted directly as findings ("d4 vs d6 came
+out -13... indistinguishable"), not pooled through a model that discounts any
+one draw's noise. An effect size clearly outside this project's measured
+50-150 Elo seed-noise band (theory 8) is trustworthy signal even from 1-seed
+data; anything smaller needs the multi-seed validation in Pass 4 before it's
+treated as real. Report the shape of the result (what moved the outcome, what
+didn't, what was surprising, which regions got dropped and why), not just a
+shortlist.
 
-### Pass 3: Optimize
+### Pass 4: Optimize / validate
 
-Use what Pass 2 taught you to either (a) construct a specific configuration
-you have a real reason to believe is close to the best available, or (b) hand
-the search off to an automated optimizer that iterates until it stops finding
-improvements. This project already has a working example of (b):
-`tools/hill_climb.ps1` — stochastic hill-climbing over evaluator weights,
-fitness = `rank.exe gauntlet` Elo, greedy-from-best with simplex-step mutation,
-a dedupe cache, and a `-Promote` flag that appends winners to the real roster
-and refits. If Pass 2 exposes a continuous or high-dimensional space (weight
-mixes, schedule shapes), adapting that pattern is very likely cheaper than
-hand-picking. If Pass 2 exposes a small discrete space (a handful of
-architecture or regime choices), hand-selecting the best-supported one from
-Pass 2's data is enough and a separate search harness is overkill — use
+Two things happen here, in order, for the region(s) Pass 3 shortlisted:
+
+1. **Confirm the plateau.** Extend the rung ladder for the shortlisted
+   survivors specifically — as a superset of Pass 3's shared rungs, not a
+   different ladder — until their curves visibly flatten. Do this only for the
+   shortlist, not the whole Pass-3 population; extending everyone's rungs
+   would spend real compute re-confirming configs already known to be
+   mediocre.
+2. **Validate across seeds.** Train >= 3 seeds of each shortlisted
+   configuration at its confirmed-good rung. This is where this document's
+   seed-count minimum applies (see "Configuration design rules" below) — not
+   at Pass 3's wide sweep, where the decision-tree analysis already discounts
+   individual draws' noise.
+
+Then either (a) construct a specific configuration you have a real reason to
+believe is close to the best available from what's now a properly validated
+shortlist, or (b) hand the search off to an automated optimizer that iterates
+until it stops finding improvements. This project already has a working
+example of (b): `tools/hill_climb.ps1` — stochastic hill-climbing over
+evaluator weights, fitness = `rank.exe gauntlet` Elo, greedy-from-best with
+simplex-step mutation, a dedupe cache, and a `-Promote` flag that appends
+winners to the real roster and refits. If Pass 3 exposes a continuous or
+high-dimensional space (weight mixes, schedule shapes), adapting that pattern
+is very likely cheaper than hand-picking. If Pass 3 exposes a small discrete
+space (a handful of architecture or regime choices), hand-selecting the
+best-supported one is enough and a separate search harness is overkill — use
 judgment, and say which you picked and why.
 
-Only after Pass 3 does "done" become the right word, and even then "done"
+Only after Pass 4 does "done" become the right word, and even then "done"
 means ready for certification (full-roster Elo measurement,
 `Docs/ranking-workflow.md` Workflow B), not that the strength claim exists yet.
 
@@ -84,52 +156,68 @@ means ready for certification (full-roster Elo measurement,
 
 ## Configuration design rules
 
-Both of these are direct developer corrections (2026-07-30), made because the
-TD-Leaf cohort study violated both.
+### 1. Minimum 3 seeds per shortlisted configuration at Pass 4, trim only after seeing results
 
-### 1. Minimum 3 seeds per configuration, trim only after seeing results
+Do not certify, or treat as a finding, any configuration measured at 1 or 2
+seeds. Seed-to-seed spread in this project's training runs has been measured
+as large as 50-150 Elo between replicas of one recipe (the seed-noise band,
+`CLAUDE.md`'s vocabulary section, theory 8) — a 1-seed or 2-seed result sits
+inside noise that size and cannot support a comparison. This floor applies at
+**Pass 4**, to the configurations Pass 3's shortlist actually carries forward
+— Pass 3's own wide sweep runs 1 seed per draw by design (see "Pass 3: Broad
+sweep" above) and draws its conclusions from a model fit across many draws,
+not from any single draw's point value. If Pass 4's results come back tight
+and unambiguous across a first batch of shortlisted configs, it is fine to run
+fewer seeds on less central configs of a *later* study — but that reduction
+happens after you have evidence the axis is low-variance, never as the
+starting assumption.
 
-Do not run a configuration at 1 or 2 seeds by default. Seed-to-seed spread in
-this project's training runs has been measured as large as 50-150 Elo between
-replicas of one recipe (the seed-noise band, `CLAUDE.md`'s vocabulary section,
-theory 8) — a 1-seed or 2-seed result sits inside noise that size and cannot
-support a comparison. Start every Pass-2 arm at >= 3 seeds. If the results come
-back tight and unambiguous, it is fine to run fewer seeds on less central arms
-of a *later* study — but that reduction happens after you have evidence the
-axis is low-variance, never as the starting assumption.
+Direct developer correction, 2026-07-30, after the TD-Leaf cohort study ran
+several axes (lambda, learning rate, generator depth) at 1-2 seeds and quoted
+their pairwise comparisons directly as findings — several had to be retracted
+in the results doc's own Future Work section as "not safe to quote."
+Originally this floor was written as applying to the whole broad-sweep pass;
+relocated to Pass 4 on 2026-08-25 once the pipeline gained a decision-tree
+narrowing step (Pass 3) whose whole purpose is to discount single-draw noise
+across a wide 1-seed sweep, which the TD-Leaf study did not have.
 
-### 2. Rungs (checkpoints) must be the same across every configuration in one study
+### 2. Rungs (checkpoints) must be the same across every configuration within Pass 3
 
-If one arm gets checkpoints at 100/250/500/1000/2000 games, every other arm in
-that same study gets the same five checkpoints, not a coarser subset. The
-concrete failure this prevents: in the TD-Leaf cohort study, the base recipe
-was checkpointed at all five of those points and turned out to peak at 1000
-games. Every *other* arm (different lambda, different init, different learning
-rate, different generator depth) was only checkpointed at 500 and 2000 — so
-none of them were ever measured at the point that mattered. It is impossible
-to say from that data whether the base recipe's advantage over the other arms
-is real or is an artifact of being the only arm sampled at its own optimum.
+If one Pass-3 arm gets checkpoints at 100/250/500/1000/2000 games, every other
+arm in that same sweep gets the same five checkpoints, not a coarser subset.
+The concrete failure this prevents: in the TD-Leaf cohort study, the base
+recipe was checkpointed at all five of those points and turned out to peak at
+1000 games. Every *other* arm (different lambda, different init, different
+learning rate, different generator depth) was only checkpointed at 500 and
+2000 — so none of them were ever measured at the point that mattered. It is
+impossible to say from that data whether the base recipe's advantage over the
+other arms is real or is an artifact of being the only arm sampled at its own
+optimum.
 
-Mechanically: decide the rung list once, per study, and pass the same list to
-every training run in that study (see `train.exe tdleaf --ckpt-at` as the
-existing mechanism — pass an identical `--ckpt-at` value across every arm's
-invocation).
+Mechanically: decide the rung list once per sweep, from Pass 2's calibration
+evidence (see "Pass 2: Calibration" above), and pass the same list to every
+training run in Pass 3 (see `train.exe tdleaf --ckpt-at` as the existing
+mechanism — pass an identical `--ckpt-at` value across every arm's
+invocation). Pass 4 may extend the ladder further for the shortlist alone
+(see "Pass 4: Optimize / validate" above) — that is a superset applied after
+Pass 3 closes, not a violation of this rule.
 
 **Before setting a range for any axis, check `Docs/hyperparameter-log.md`** for
 what's already been tried in this or another regime. A value that's already
 known to be untested (never varied, always left at a default) is informative
 too — it's a candidate axis for the new sweep, not a gap to silently repeat.
+This check is also part of Pass 2's axis-completeness review.
 
-### Design the grid, then stop and show it — before running anything
+### Design the grid, then stop and show it — before Pass 3 runs anything
 
-Once you have a proposed grid (axes, values per axis, seed count, rung list,
-resulting agent count), **present it as its own clearly labeled section of
-your response, in the chat, not only inside a plans/ document** — a table is
-usually the right format: block name, what varies, seed list, rung list,
-resulting agent count, total games it implies. State it plainly if the scale
-crosses the 2-hour/1-day threshold (`CLAUDE.md`'s compute rule) so the
-developer can weigh in on scope with real numbers rather than being surprised
-by a large `git status` later.
+Once Pass 2's calibration gives you a proposed grid (axes, values per axis,
+rung list, resulting agent count — seed count is fixed at 1 for Pass 3 itself,
+see above), **present it as its own clearly labeled section of your response,
+in the chat, not only inside a plans/ document** — a table is usually the
+right format: block name, what varies, rung list, resulting agent count, total
+games it implies. State it plainly if the scale crosses the 2-hour/1-day
+threshold (`CLAUDE.md`'s compute rule) so the developer can weigh in on scope
+with real numbers rather than being surprised by a large `git status` later.
 
 This is not a formality. The developer has direct, useful opinions about
 configuration design that are easy to miss by design alone — ask directly
@@ -155,14 +243,20 @@ real judgment call, use the question flow, not a rhetorical aside:
 
 - **After Pass 1.** What you verified, what (if anything) looked off, whether
   you're confident the instrument is sound enough to spend Pass-2 compute on.
-- **After Pass 2.** The shape of the result: what moved the outcome and by how
-  much, what didn't move it, anything that surprised you or contradicts a
-  standing assumption in this project's theory log. Point these out even if
-  they don't change your recommended next step — the developer may draw a
-  different conclusion from the same numbers than you did.
-- **Before Pass 3 (or before certification).** The configuration you're about
-  to commit more compute to, and why, stated plainly enough for the developer
-  to disagree with the choice before it's spent.
+- **After Pass 2 (calibration).** What the pilot draws showed about rung
+  timing and any range boundaries, and the rung list / ranges you're
+  proposing for Pass 3 as a result — this is also where "Design the grid,
+  then stop and show it" happens.
+- **After Pass 3 (broad sweep).** The shape of the result: what moved the
+  outcome and by how much, what didn't move it, anything that surprised you
+  or contradicts a standing assumption in this project's theory log, and
+  which region(s) the decision-tree narrowing shortlisted for Pass 4. Point
+  these out even if they don't change your recommended next step — the
+  developer may draw a different conclusion from the same numbers than you
+  did.
+- **Before Pass 4 (or before certification).** The configuration(s) you're
+  about to commit more compute to, and why, stated plainly enough for the
+  developer to disagree with the choice before it's spent.
 - **At final results.** Do not just finish a results document and say "done."
   Walk through what you found, ask the developer what they make of the
   surprising parts, and treat the conversation as part of the deliverable, not
@@ -220,6 +314,12 @@ will have grown.
 
 ## Running an experiment: the commands
 
+This sequence runs three times per study, at different scale each time: a
+small, generously-ranged pass for Pass 2's calibration; the full grid at 1
+seed/draw for Pass 3; and the shortlist at >= 3 seeds/config plus extended
+rungs for Pass 4. The commands are identical each time, only the draw count,
+seed count, and rung list change.
+
 1. **Train**, once per configuration in the grid. `train.exe <regime> --out
    <path> --ckpt-at "<same rung list for every arm>" --seed <arm's seed> ...`
    For an online/checkpoint-ladder regime, the ladder runs to the highest rung
@@ -234,8 +334,10 @@ will have grown.
    `<head>.learned(s<slot>,<hash8>,<arch>)@1`), and write the same IDs to a
    separate plain-text cohort file. **Also add the initialization model itself
    as an explicit control agent if it isn't already active in the real
-   roster** — TD-Leaf's Pass 2 nearly reported "beats its own init" without a
-   measured init, because that model's roster entry was commented `off`.
+   roster** — the TD-Leaf study's broad sweep (under this document's original
+   3-pass numbering, "Pass 2"; the same activity is Pass 3 under the current
+   4-pass numbering) nearly reported "beats its own init" without a measured
+   init, because that model's roster entry was commented `off`.
    Check this before playing anything, not after.
 5. **Validate**: `rank.exe check --roster <study roster>`. Non-canonical IDs
    and stale versions fail here with the fix printed.
@@ -252,15 +354,18 @@ will have grown.
 7. **Screen**: `rank.exe rate --roster <study roster> --pin
    ranking/standings.tsv`. Full mechanism, guarantees, and the reusable-system
    design discussion: `Docs/ranking-workflow.md`. One line worth repeating
-   here because it bounds what Pass 2/3 can conclude: **a pinned fit can never
-   dethrone anything** — it's a screening instrument, and its output lives in
-   `ranking/*_pinned.*`, never the canonical files. When a single-candidate
-   gauntlet (`rank.exe gauntlet`) is the right instrument instead of a pinned
-   group fit, use `ranking/roster_screening_pool.txt` as the default opponent
-   pool — a fixed, regime-diverse, Elo-spread set of 26 agents (+ `rand@1`)
-   across all 5 opener categories, built so any new agent's screening Elo
-   lands on an interpretable point of the scale regardless of its strength.
-8. **Certify** (after Pass 3, and only for the configuration(s) chosen to
+   here because it bounds what Pass 2/3/4 can conclude: **a pinned fit can
+   never dethrone anything** — it's a screening instrument, and its output
+   lives in `ranking/*_pinned.*`, never the canonical files. When a
+   single-candidate gauntlet (`rank.exe gauntlet`) is the right instrument
+   instead of a pinned group fit, use `ranking/roster_screening_pool.txt` as
+   the default opponent pool — a fixed, regime-diverse, Elo-spread set of 26
+   agents (+ `rand@1`), built so any new agent's screening Elo lands on an
+   interpretable point of the scale regardless of its strength. It predates
+   `ranking/CHAMPION.md`'s 2026-08-24 6-category restructure and still
+   describes the earlier 5-opener-category taxonomy in its own header
+   comment; check that header before relying on its category coverage.
+8. **Certify** (after Pass 4, and only for the configuration(s) chosen to
    keep): edit the real `ranking/roster.txt`, fill contenders to >= 32
    games/pair, run a plain unpinned `rank.exe run`. This is the only step that
    can move the real standings or a champion title.
@@ -279,6 +384,15 @@ linear architecture** for a new regime's first pass; treat reaching for an MLP
 or larger architecture as a deliberate choice with its own stated reason, not
 a default step up in "sophistication."
 
+Model size/architecture is a **Pass-3 sweep axis** like any other hyperparameter
+once a regime is past Pass 1, not a one-time upfront decision — Pass 2's
+axis-completeness review exists specifically so a relevant architecture choice
+doesn't get silently left out of a sweep the way GAZ round 5 left out
+architecture entirely (see "Pass 2: Calibration" above). When architecture is
+in the sweep, "big enough but not too big" is answered by Pass 3's
+decision-tree narrowing over that axis together with the dual-compute-track
+check below, not decided by eye beforehand.
+
 ## Generator/search depth
 
 For any regime whose training signal comes from the model's own search (not
@@ -289,7 +403,7 @@ in this project (roughly two orders of magnitude, TD-Leaf's pass 1: 20s to
 train 500 games at d6/nb200k vs 8 minutes to gauntlet-screen the result), so a
 cheaper generator buys savings on the cheap side of the pipeline while risking
 a distribution mismatch with the expensive side. If a generator-depth
-comparison is itself the question being studied, it is a proper Pass-2 axis
+comparison is itself the question being studied, it is a proper Pass-3 axis
 with its own seeds and rungs like any other, not a cost-saving default for
 everything else.
 
@@ -315,6 +429,18 @@ consequences specific to training studies:
   the resulting scale plainly if it's large (agent count, game count implied),
   and if the 2-hour/1-day threshold is in play, follow that rule exactly — one
   projection, one decision point, nothing else.
+- **When both of `ranking/CHAMPION.md`'s compute tracks apply to what's being
+  swept, measure a Pass-3 draw's realized `cpu_ms_move` and node throughput
+  directly, not just whichever track it happens to certify under.** A
+  size/architecture choice that fits comfortably under one track can silently
+  blow the other: two wide-MLP cores in `ranking/CHAMPION.md`'s 2026-08-24
+  round 3 measured 2-3.3x over a 150ms wall-clock budget while running fine
+  under the parallel 200k-node budget, because node and wall-clock cost don't
+  scale together once per-node evaluator cost varies. Also: AB's `time=`
+  budget enforcement itself has a known granularity defect for very expensive
+  evaluators (`todo.md`, `src/ai_minimax.cpp`'s `budgetTripped()`), so a sweep
+  cannot currently trust that flag to actually cap an expensive candidate's
+  cost — measure the realized number, don't assume the budget enforces it.
 
 ## Certification gate (unconditional)
 
@@ -364,6 +490,18 @@ Concrete, each one cost real time or produced a wrong number when missed.
   fit's error bars are only honest if the underlying games are actually
   independent — check the distinct-trajectory ratio (`CLAUDE.md`'s ranking
   hygiene rule, defect 3) on any new cohort's games before trusting its `+/-`.
+- **A sweep's axis list can silently omit a real axis if the code doesn't
+  support it yet.** GAZ's round-5 joint sweep dropped model architecture as an
+  axis entirely because `train.exe gumbelzero` had no `--model-type` flag at
+  the time; a second full calibration-through-optimize cycle (round 6) was
+  needed once it landed. Check the current capability surface, not just
+  `Docs/hyperparameter-log.md`'s history of what's been tried, at Pass 2's
+  axis-completeness review.
+- **A rung ladder fixed before any data exists can bind a real fraction of the
+  population.** GAZ's round-5 4-rung ladder (100/400/1500/4000 games) left 31
+  of 101 arms peaking exactly at the final rung, with no evidence they
+  wouldn't have kept improving further. Size the ladder from Pass 2's
+  calibration evidence, not a guess.
 
 ---
 
@@ -390,7 +528,21 @@ Concrete, each one cost real time or produced a wrong number when missed.
 Every rule above traces to a specific, named incident in this project, mostly
 from the TD-Leaf self-play study (`plans/tdleaf-plan-1-amber-pangolin.md`,
 `plans/tdleaf-results-1-amber-pangolin.md`). Read those if you want the full
-worked example: a real Pass-1/Pass-2 cycle, a real pinned-fit screening
+worked example: a real sanity/broad-sweep cycle (numbered Pass 1/Pass 2 in
+that study, since it predates this document's 2026-08-25 four-pass revision —
+its "Pass 2" is the activity now called Pass 3), a real pinned-fit screening
 result, a real case of an interior optimum a short ladder would have missed,
 and the `run_rank.ps1` overwrite incident this playbook's pitfalls section
 warns about.
+
+**The four-pass structure (2026-08-25).** The original three-pass version of
+this document (sanity / broad sweep / optimize) put the 3-seed minimum on the
+broad sweep itself. A developer-led redesign split calibration out into its
+own pass and relocated the seed floor to Pass 4, directly informed by two GAZ
+incidents neither the TD-Leaf study nor the original three-pass document had
+surfaced: round 5's joint sweep dropped model architecture as an axis because
+the trainer didn't support it yet, requiring a second full sweep (round 6)
+once it did; and round 5's fixed 4-rung ladder left 31 of 101 arms peaking at
+its own final rung with no plateau confirmation. Read
+`plans/gumbel-mcts-results-5-violet-harbor.md` and
+`plans/gumbel-mcts-arch-plan-6-silver-thistle.md` for the worked example.
