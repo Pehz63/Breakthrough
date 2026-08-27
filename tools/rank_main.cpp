@@ -96,7 +96,8 @@ static void usage() {
     cout << "bookgen:  --a <line-owner id> --b <target id> --plies 60 --out models/book<N>.txt\n";
     cout << "          Replays the pair's stored games; keeps positions/moves from A's wins only.\n";
     cout << "          Roster the follower as '<head>.<eval>.opener(book,<N>)@1'.\n";
-    cout << "cbookdump: at most one of --a <winner id> / --regime <tag> (neither = universal),\n";
+    cout << "cbookdump: at most one of --a <winner id> / --core <id, any opener incl. none> /\n";
+    cout << "          --regime <tag> (none = universal),\n";
     cout << "          --min-elo 0 --ratings ranking/ratings.tsv (gate on the winner's rating),\n";
     cout << "          --max-plies 32 --sample 0 (0 = all) --seed 1 --out data/cbook_<scope>.jsonl.\n";
     cout << "          Deduplicates store rows to distinct games and drops replays that drift\n";
@@ -279,6 +280,7 @@ int main(int argc, char** argv) {
                          getOpt(argc, argv, "--out", ""));
     } else if (cmd == "cbookdump") {
         rc = rankClusterBookDump(store, board, getOpt(argc, argv, "--a", ""),
+                                 getOpt(argc, argv, "--core", ""),
                                  getOpt(argc, argv, "--regime", ""),
                                  getDbl(argc, argv, "--min-elo", 0.0),
                                  getOpt(argc, argv, "--ratings", "ranking/ratings.tsv"),

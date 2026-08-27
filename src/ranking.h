@@ -435,11 +435,14 @@ int rankBookGen(const std::string& storeFile, const std::string& board,
 //
 // cbookdump replays winning games and records one (half-move, difference-from-
 // start vector, move) triple per winner ply. Scope is at most one of idA (that
-// agent's own wins) or regime (every winner whose rankAgentRegime matches);
-// neither means universal, every winner in the store. minElo > 0 additionally
-// gates on the winner's rating in ratingsFile, the closest analogue to the
-// source method's professional-games input. Rows are deduplicated to distinct
-// games first, and replays that drift from the stored result are dropped.
+// exact agent id's own wins), coreId (that core's wins under ANY opener/none,
+// i.e. the winner id with its trailing .opener(...)@N segment stripped must
+// equal coreId), or regime (every winner whose rankAgentRegime matches); none
+// of the three means universal, every winner in the store. minElo > 0
+// additionally gates on the winner's rating in ratingsFile, the closest
+// analogue to the source method's professional-games input. Rows are
+// deduplicated to distinct games first, and replays that drift from the stored
+// result are dropped.
 //
 // cbookfit clusters a dump with spherical k-means and writes one
 // models/cbook<N>.txt per (clusters, keep) pair, numbered from outSlot. keep
@@ -448,7 +451,8 @@ int rankBookGen(const std::string& storeFile, const std::string& board,
 // no-op control). mirrorMode is "canon" (fold each position onto the smaller of
 // itself and its mirror), "augment" (add the mirror as a second point), or "off".
 int rankClusterBookDump(const std::string& storeFile, const std::string& board,
-                        const std::string& idA, const std::string& regime,
+                        const std::string& idA, const std::string& coreId,
+                        const std::string& regime,
                         double minElo, const std::string& ratingsFile,
                         int maxPlies, int sampleN, unsigned seed,
                         const std::string& outFile);

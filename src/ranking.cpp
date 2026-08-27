@@ -4060,16 +4060,29 @@ static string cbookJsonEscape(const string& s) {
     return o;
 }
 
+// The opener segment is always emitted last (see the id-building code above:
+// evaluator segment(s), then an optional .dil(...), then an optional
+// .opener(...)@N, with nothing appended after it), so "core" scope strips
+// everything from ".opener(" onward rather than parsing the segment itself.
+static string rankIdWithoutOpener(const string& id) {
+    size_t p = id.find(".opener(");
+    return (p == string::npos) ? id : id.substr(0, p);
+}
+
 int rankClusterBookDump(const string& storeFile, const string& board, const string& idA,
-                        const string& regime, double minElo, const string& ratingsFile,
-                        int maxPlies, int sampleN, unsigned seed, const string& outFile) {
+                        const string& coreId, const string& regime, double minElo,
+                        const string& ratingsFile, int maxPlies, int sampleN,
+                        unsigned seed, const string& outFile) {
     if (outFile.empty()) { cout << "ERROR: cbookdump needs --out (data/cbook_<scope>.jsonl)\n"; return 1; }
-    if (!idA.empty() && !regime.empty()) {
-        cout << "ERROR: cbookdump takes at most one of --a and --regime (neither = universal scope)\n";
+    const int scopeCount = (!idA.empty() ? 1 : 0) + (!coreId.empty() ? 1 : 0) + (!regime.empty() ? 1 : 0);
+    if (scopeCount > 1) {
+        cout << "ERROR: cbookdump takes at most one of --a, --core, and --regime (none = universal scope)\n";
         return 1;
     }
     if (maxPlies < 1) maxPlies = 1;
+    const string coreKey = rankIdWithoutOpener(coreId);
     const string scope = !idA.empty() ? ("agent:" + idA)
+                       : !coreId.empty() ? ("core:" + coreKey)
                        : !regime.empty() ? ("regime:" + regime) : "universal";
 
     std::map<string, double> elo;
@@ -4101,6 +4114,8 @@ int rankClusterBookDump(const string& storeFile, const string& board, const stri
         const string& winner = (row.r == 'W') ? row.w : row.b;
         if (!idA.empty()) {
             if (winner != idA) { offScope++; continue; }
+        } else if (!coreId.empty()) {
+            if (rankIdWithoutOpener(winner) != coreKey) { offScope++; continue; }
         } else if (!regime.empty()) {
             if (rankAgentRegime(winner) != regime) { offScope++; continue; }
         }

@@ -307,9 +307,9 @@ is well-resolved and the climber has non-deterministic opponents.
 | `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root). See `gui/CLAUDE.md`. |
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
 | `train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `ensemble`, `imitate`, `dist-value`, `score`, `dist-eval`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, selfplay-supervised's `--model-type linear|mlp` + `--mlp-hidden "32"|"32,16"` + `--residual-skip <f>` (0 off / >0 fixed / <0 auto-calibrate the frozen chip skip), ensemble's `--models <comma-list>` + `--mirror 0|1` + `--out`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |
-| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `seal`, `split`, `history`, `gauntlet`, `extract`, `bookgen`, `cbookdump`, `cbookfit`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, seal's `--max-mb`, split's `--group`/`--max-mb`/`--apply` (**dry run unless `--apply`**), extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, cbookdump's `--a`/`--regime` (at most one, neither = universal) `--min-elo`/`--ratings` `--max-plies`/`--sample`/`--out`, cbookfit's `--in`/`--clusters`/`--keep`/`--mirror`/`--min-per-cluster`/`--out-slot` (`--clusters`/`--keep` take comma-separated lists, one book file per pair from a single read), pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
+| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `seal`, `split`, `history`, `gauntlet`, `extract`, `bookgen`, `cbookdump`, `cbookfit`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, seal's `--max-mb`, split's `--group`/`--max-mb`/`--apply` (**dry run unless `--apply`**), extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, cbookdump's `--a`/`--core`/`--regime` (at most one, none = universal) `--min-elo`/`--ratings` `--max-plies`/`--sample`/`--out`, cbookfit's `--in`/`--clusters`/`--keep`/`--mirror`/`--min-per-cluster`/`--out-slot` (`--clusters`/`--keep` take comma-separated lists, one book file per pair from a single read), pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
 | bookgen (subcommand) | Mine an opening/refutation book from stored games between two agents. Replays every stored `--a` vs `--b` game, keeps positions + the move `--a` played (first `--plies` half-moves) from A's WINS only, writes `models/book<N>.txt` (a `#` provenance header + `<positionKey hex16> <sx> <sy> <dx>` lines). The `book` opener (`src/ai_random.cpp` `g_openers[]`) plays those replies via `.opener(book,<N>)@1`. First use: the s98 refutation book (dethrone plan phase 2, `plans/dethrone-champion-results-3-wiggly-mitten.md`). The book file is NOT hashed into the agent ID (unlike `learned()` models), so treat a book slot as immutable and give a regenerated book a new slot number. **Read `plans/book-opener-audit-results-1-vivid-lantern.md` (theory 38) before quoting any book Elo:** a book is a memorized line keyed by position hash, so its measured lift only holds while the opponent reproduces its previous replies, and it collapses under `pairgen --open-plies`. |
-| cbookdump + cbookfit (subcommands) | Mine a fuzzy, nearest-cluster-matched opening book -- SMARTSTART (Steinmetz & Gini, IJCAI 2015) applied to Breakthrough, generalizing `bookgen` past its theory-38 collapse. Two steps because replay is the only expensive part and clustering depends only on what got recorded: `cbookdump` replays winning games (scope: one agent's own wins, a `rankAgentRegime`-matched bloc, or every winner in the store, optionally gated on winner Elo) and writes `data/cbook_<scope>.jsonl`, one `(half-move, difference-from-start vector, move)` triple per winner ply, deduplicated to distinct games first and dropping replays that drift from the stored result. `cbookfit` reads a dump (no replay) and writes one `models/cbook<N>.txt` per `(--clusters, --keep)` combination via spherical k-means (`src/ml_cluster.h`). The `cbook` opener (`src/ai_random.cpp`) matches the live position to its nearest mined cluster per half-move and narrows the search's ROOT move list to that cluster's moves via `.opener(cbook,<N>[,ply=M])@1`, rather than playing a move outright the way `book` does -- the brain still searches every surviving candidate, so this is a compute-for-depth trade, not a memorized line. Design rationale, the raw-vector clustering failure mode, and the measured grounding for its mining parameters: `plans/cluster-book-plan-1-noble-swimming-scott.md`, results (Pass 1a): `plans/cluster-book-results-1-noble-swimming-scott.md`. |
+| cbookdump + cbookfit (subcommands) | Mine a fuzzy, nearest-cluster-matched opening book -- SMARTSTART (Steinmetz & Gini, IJCAI 2015) applied to Breakthrough, generalizing `bookgen` past its theory-38 collapse. Two steps because replay is the only expensive part and clustering depends only on what got recorded: `cbookdump` replays winning games and writes `data/cbook_<scope>.jsonl`, one `(half-move, difference-from-start vector, move)` triple per winner ply, deduplicated to distinct games first and dropping replays that drift from the stored result. Scope is at most one of three, none meaning universal (every winner in the store): `--a <id>` (that exact agent id's own wins only), `--core <id>` (that id's wins under ANY opener or none -- the winner's id with its trailing `.opener(...)@N` segment stripped must equal `<id>`, so this pools a core's bare/`book`/`rand`/`cbook`-wearing wins together), or `--regime <tag>` (every winner whose `rankAgentRegime` matches, the broadest of the three: e.g. `classic` matches any classic-evaluator agent regardless of weights, dilution, or opener). `--min-elo`/`--ratings` gates additionally on the winner's rating. `cbookfit` reads a dump (no replay) and writes one `models/cbook<N>.txt` per `(--clusters, --keep)` combination via spherical k-means (`src/ml_cluster.h`). The `cbook` opener (`src/ai_random.cpp`) matches the live position to its nearest mined cluster per half-move and narrows the search's ROOT move list to that cluster's moves via `.opener(cbook,<N>[,ply=M])@1`, rather than playing a move outright the way `book` does -- the brain still searches every surviving candidate, so this is a compute-for-depth trade, not a memorized line. Design rationale, the raw-vector clustering failure mode, and the measured grounding for its mining parameters: `plans/cluster-book-plan-1-noble-swimming-scott.md`, results (Pass 1a): `plans/cluster-book-results-1-noble-swimming-scott.md`, results (scope comparison, Pass 1a-extended): `plans/cluster-book-results-2-noble-swimming-scott.md`. |
 
 **Mined books.** Slot numbers are immutable, a regenerated book gets a new slot.
 `--plies` is the book DEPTH (how many of the line owner's half-moves are stored).
@@ -373,23 +373,43 @@ per-half-move-bucket set of clusters, each an XOR-difference-from-start centroid
 plus a count-ranked move list, matched by nearest cosine similarity rather than
 exact hash. `models/cbook1.txt` is this feature's Pass-1a plumbing artifact:
 
-| Slot | Scope (`--a`/`--regime`) | Dump | Clusters | Keep | Mirror | Kept replays | Positions |
+| Slot | Scope | Dump | Clusters | Keep | Mirror | Kept replays | Positions |
 |---|---|---|---|---|---|---|---|
-| `cbook1` | `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` (own wins) | `data/cbook_classic.jsonl` (max-plies 32) | 4 | 6 | canon | 1520 of 2173 (380 drifted, 273 unparseable/stale ids) | 22408 |
+| `cbook1` | `--a` `ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2` | `data/cbook_classic.jsonl` (max-plies 32) | 4 | 6 | canon | 1520 of 2173 (380 drifted, 273 unparseable/stale ids) | 22408 |
+| `cbook2` | `--a` `...classic(chip=100)@2` (re-mined) | `data/cbook_dump_classic_exact.jsonl` | 16 | 6 | canon | 1541 of 2173 (359 drifted, 273 unparseable/stale ids) | 22622 |
+| `cbook3` | `--core` `...classic(chip=100)@2` (any opener) | `data/cbook_dump_classic_core.jsonl` | 16 | 6 | canon | 14435 of 17906 (2440 drifted, 1031 unparseable/stale ids) | 214819 |
+| `cbook4` | `--regime classic` | `data/cbook_dump_classic_regime.jsonl` | 16 | 6 | canon | 52432 of 78360 (9381 drifted, 16547 unparseable/stale ids) | 764840 |
+| `cbook5` | `--a` `...learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | `data/cbook_dump_linear_exact.jsonl` | 16 | 6 | canon | 1380 of 1592 (146 drifted, 66 unparseable/stale ids) | 21765 |
+| `cbook6` | `--core` `...learned(model=169,...)@1` (any opener) | same dump as `cbook5` | 16 | 6 | canon | identical to `cbook5` | identical to `cbook5` |
+| `cbook7` | `--regime tdleaf_self` | `data/cbook_dump_linear_regime.jsonl` | 16 | 6 | canon | 13577 of 17849 (3647 drifted, 625 unparseable/stale ids) | 210216 |
 
-Mined 2026-08-26 as the Pass-1a sanity vehicle: one core, one scope, the smallest
-candidate cluster count (the plan's `--a`-mode density is two orders of magnitude
-thinner than the universal/per-regime pools Pass 2 targets, so `clusters=4` states
-the intent honestly rather than requesting a count the per-cluster floor would
-immediately clamp down anyway). Ply-0's bucket collapses to one real cluster (every
-game's ply-0 difference from the start is the zero vector, so the other 3 requested
-clusters end up empty by construction, see `src/ml_cluster.h`'s zero-vector note);
-later buckets show genuine multi-cluster structure (ply 8: 4 clusters, sizes
-146-216, mean intra-cluster cosine 0.62-0.70, visibly different move distributions
-per cluster). Full mining rationale, the measured grounding behind every
-parameter choice, and the Pass-1a verification results (including the
-fuzzy-match-fires-where-exact-wouldn't hit-rate curve): `plans/cluster-book-plan-1-noble-swimming-scott.md` /
+`cbook1` (2026-08-26) was the Pass-1a sanity vehicle: one core, one scope, the
+smallest candidate cluster count (the plan's `--a`-mode density is two orders of
+magnitude thinner than the universal/per-regime pools Pass 2 targets, so
+`clusters=4` states the intent honestly rather than requesting a count the
+per-cluster floor would immediately clamp down anyway). Ply-0's bucket collapses to
+one real cluster (every game's ply-0 difference from the start is the zero vector,
+so the other 3 requested clusters end up empty by construction, see
+`src/ml_cluster.h`'s zero-vector note); later buckets show genuine multi-cluster
+structure (ply 8: 4 clusters, sizes 146-216, mean intra-cluster cosine 0.62-0.70,
+visibly different move distributions per cluster). Full mining rationale, the
+measured grounding behind every parameter choice, and the Pass-1a verification
+results (including the fuzzy-match-fires-where-exact-wouldn't hit-rate curve):
+`plans/cluster-book-plan-1-noble-swimming-scott.md` /
 `plans/cluster-book-results-1-noble-swimming-scott.md`.
+
+`cbook2`-`cbook7` (2026-08-27) are a scope comparison: two cores (the top-Elo bare
+`classic` chip counter and the top-Elo bare linear `tdleaf_self` model on
+`ab(deep=6,tt,ord,nodes=200k)@1`) each mined under 3 scopes (`--a` exact id,
+`--core` that id under any opener, `--regime`), all fit with the same
+`--clusters 16 --keep 6 --mirror canon --seed 1` so scope is the only varying
+input. `cbook6` is byte-identical to `cbook5` because `learned(model=169,...)@1`
+has no opener-wearing wins in the store, so its `--core` and `--a` scopes select
+the same game set. Screened via `rate --pin ranking/standings.tsv` against
+`ranking/roster_screening_pool.txt` at `ply=16`, 16 games/pair: **every cbook
+variant of both cores rated BELOW its bare baseline** (classic: 923 bare vs
+899/915/895 for exact/core/regime; linear-169: 1031 bare vs 964 for exact/core).
+Full numbers and caveats: `plans/cluster-book-results-2-noble-swimming-scott.md`.
 
 ## Artifact directories (repo root)
 

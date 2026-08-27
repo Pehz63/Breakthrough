@@ -1,0 +1,4 @@
+ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=2,ply=16)@1
+ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=3,ply=16)@1
+ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=4,ply=16)@1
+ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1.opener(cbook,cbook=5,ply=16)@1
