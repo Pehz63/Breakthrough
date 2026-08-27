@@ -930,6 +930,52 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 
 ## Books (openers and mid-game)
 
+- **[IN PROGRESS, 2026-08-27] Refutation oracle: one book that beats every
+  deterministic agent in the roster.** The repaired form of theory 14 that the
+  theory's own notes name and that theory 33 did not cover: a book carrying the
+  full winning continuation, so the live brain never plays and there is no
+  brain-portability handoff to fail. Plan + Phase-0 results:
+  `plans/refutation-oracle-plan-1-quiet-lodestone.md` /
+  `plans/refutation-oracle-results-1-quiet-lodestone.md`.
+  - ~~**Phase 0, reproducibility gate.** Does a deterministic agent actually
+    replay? Built as `rank.exe determinism`. PASSED: 238/238 subject-colours
+    reproducible within and across processes, 210/210 node-budgeted in all 4
+    passes. Only `model=111`/`model=113` on the `time=150ms` head ever varied,
+    the two lines already `# cost flag`ged, and only once in four passes.~~
+  - **Phase 1-2, the miner (`rank.exe refute`).** With both sides deterministic
+    each (book, opponent, colour) pair is ONE game, so beating 119 agents is
+    winning 238 specific games and finding each is a ONE-PLAYER depth-first
+    search over our own moves with backtracking, not a minimax. Grow one shared
+    strategy tree across all opponents, splitting only where their replies
+    diverge, ordering our candidates with the d8/nb2m oracle. `[Next]`
+    {cpu: hours, dev: high}
+  - **Phase 3, merge conflicts.** `openerBook` keys on `positionKey(side).hash`
+    with no ply and no path, so two lines needing different moves from one
+    position cannot both be expressed. Detect at merge and re-search a branch
+    rather than dropping an entry silently.
+  - **Phase 4, verification.** Replay the merged book against all 238 and require
+    238-0. Exhaustively checkable, so `Docs/benchmarking.md` defect 3's
+    distinct-game accounting does not apply.
+  - **Declare it reference-class in `ranking/CHAMPION.md`, do not enter it as a
+    champion.** A Bradley-Terry fit assigns one strength parameter per agent and
+    this one is maximally intransitive: 238-0 against deterministic opponents,
+    ordinary against the 52 dilution and 66 random-opener agents that never
+    reproduce a line. Its pooled Elo would be a fit artifact.
+  - Open risk compute cannot remove: a black-side win against the strongest
+    openless agents may not exist. Report the unwinnable set explicitly rather
+    than dropping it.
+
+- **Deterministic pairs are still scheduled as if they were samples.** 119 of 218
+  active agents are deterministic, and Phase 0 above confirms a post-fix
+  deterministic pair yields exactly 2 distinct games however many are scheduled.
+  A 32-games/pair boost round therefore spends most of its compute on replays.
+  Options: skip known-replay pairs in `rankSchedule`, or store an 8-byte per-ply
+  trace hash per row so distinct-game counts (and error bars) become exact
+  instead of inferred from `(plies, result, node totals)` -- a tuple that also
+  OVERCOUNTS for `time=` agents (`Docs/benchmarking.md` defect 3). Either changes
+  what "games/pair" means in `CHAMPION.md`, so it needs a decision first.
+  {cpu: none, dev: medium}
+
 - **[IN PROGRESS, 2026-08-26] Opening book chosen by win rate over the roster's own
   game history.** The pooling half of this is now built as `cbook` (`rank.exe
   cbookdump`/`cbookfit`, `src/ml_cluster.h`, `.opener(cbook,<N>[,ply=M])@1`), which

@@ -434,7 +434,14 @@ seconds. Run a rate before reading standings in a fresh clone.
 .\tools\run_rank.ps1 -Workers 8 --games 8   # same, process-sharded across 8 workers
 .\rank.exe history --agent "ab(deep=4"       # one agent's record vs every opponent
 .\rank.exe gauntlet --id "ab(deep=5)@1.classic(chip=100)@2" --games 4
+.\rank.exe determinism --replicas 3        # do the deterministic agents actually replay?
 ```
+
+`determinism` replays every active deterministic agent against a fixed
+deterministic probe, both colours, and compares exact per-ply position traces. It
+exits 2 if any did not repeat. Add `--include-stochastic` to include agents that
+draw from `rand()` as a positive control: those must come back non-reproducible,
+which is what shows the probe can detect a difference at all.
 
 Each game records wall time per side, **process CPU time** per side (via
 GetProcessTimes deltas, so it stays honest under parallel contention), end piece

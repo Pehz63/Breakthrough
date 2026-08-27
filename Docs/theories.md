@@ -87,12 +87,12 @@ theories out of a single stray entry into their own subsection.
 | 11 | Dilution decay beats flat dilution | Promising / unproven | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 12 | Replay-extraction beats bespoke single-teacher self-play | Confirmed | Training Data & Recipes | [incremental-ml-eval-plan-1](../plans/incremental-ml-eval-plan-1-luminous-snail.md) | [training-sweep-results-1](../plans/training-sweep-results-1-luminous-snail.md) |
 | 13 | Incremental wall/column delta must replicate `evalPosFull`'s edge convention exactly | Confirmed | Search & Evaluation Engineering | [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md) |
-| 14 | An offline refutation book could dethrone the champion with less live compute | Refuted in the naive (foreign-agent-mined) form; CONFIRMED in the self-mined form (theory 33) -- a 2026-07-18 book mined from the book-wearer's OWN wins dethroned the champion, 1145 vs 1074 | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | [dethrone-champion-results-3](../plans/dethrone-champion-results-3-wiggly-mitten.md), [dethrone-champion-results-5](../plans/dethrone-champion-results-5-wiggly-mitten.md) |
+| 14 | An offline refutation book could dethrone the champion with less live compute | Refuted in the naive (foreign-agent-mined) form, CONFIRMED in the self-mined form (theory 33). **Premise 1 (the target is not reproducibly deterministic) is measured as repaired, 2026-08-27** (238/238 subject-colours reproducible, against 11.4% of pairs pre-fix), unblocking the entry's other named repair: a book carrying a full winning continuation so the live brain never plays ([refutation-oracle-results-1](../plans/refutation-oracle-results-1-quiet-lodestone.md)) -- a 2026-07-18 book mined from the book-wearer's OWN wins dethroned the champion, 1145 vs 1074 | Gameplay Performance & Dethroning the Champion | [todo.md](../todo.md) | [dethrone-champion-results-3](../plans/dethrone-champion-results-3-wiggly-mitten.md), [dethrone-champion-results-5](../plans/dethrone-champion-results-5-wiggly-mitten.md) |
 | 15 | Champdil recovers from an identical bad/random position better than the champion, independent of color | Promising / unproven (n=20) | Gameplay Performance & Dethroning the Champion | this session's conversation | [opener-bias-results-1](../plans/opener-bias-results-1-synchronous-stearns.md) |
 | 16 | Per-heuristic incremental evaluation gives identical results at lower cpu/node, and generalizes | Confirmed | Search & Evaluation Engineering | [`3af970d`](https://github.com/Pehz63/Breakthrough/commit/3af970dca38c749d14f0b44d183b8c87f7b4f4a7) (chip count), [incremental-wall-column-eval-plan-1](../plans/incremental-wall-column-eval-plan-1-golden-forest.md) | [incremental-wall-column-eval-results-1](../plans/incremental-wall-column-eval-results-1-golden-forest.md), [incremental-ml-eval-results-1](../plans/incremental-ml-eval-results-1-luminous-snail.md) |
 | 17 | Capturing a piece one ply from winning is always optimal, except when it is the last piece | Open / untested | Game-Theoretic Structure & Optimal Play | `todo.md`, this session's conversation | -- |
 | 18 | Per-side capacity/distance difference is a meaningful predictor or evaluator signal | Partially resolved (analytic: redundant as a linear eval feature; predictor half open) | Game-Theoretic Structure & Optimal Play | `todo.md` | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
-| 19 | Same-policy agents with different IDs score differently in gauntlets (identity artifact) | Confirmed (mechanisms not yet separated) | Gameplay Performance & Dethroning the Champion | this session's sanity check | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
+| 19 | Same-policy agents with different IDs score differently in gauntlets (identity artifact) | Confirmed. **Mechanism (b) is now separated and closed, 2026-08-27**: cross-game search state no longer makes deterministic agents diverge, measured directly at 238/238 subject-colours reproducible within and across processes by `rank.exe determinism` (210/210 for node-budgeted agents in all 4 passes), after `playOneGame` gained a per-game `ttClear()` on 2026-08-03. Mechanism (a), ID-derived per-game seeds against stochastic opponents, is untouched and remains the live half | Gameplay Performance & Dethroning the Champion | this session's sanity check | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 20 | Seeded random eval noise is a cheap tie-breaker / diversity knob | Split by form: PST refuted at both scales; bounded tie-only jitter works at ~0-80 Elo cost | Model & Evaluator Design | `todo.md` noise idea | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) (corrected), [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
 | 21 | Exact decided-race detection (D14) adds playing strength at fixed depth | Refuted at d6 (shallow depths untested) | Model & Evaluator Design | 2026-07-11 session (axioms D9/D14) | [heuristic-eval-overhaul-results-1](../plans/heuristic-eval-overhaul-results-1-buzzing-floyd.md) |
 | 22 | Deterministic first-found tie-breaking outperforms random tie-breaking | Weakened toward refuted (2 of 6 noise seeds beat baseline) | Model & Evaluator Design | bounded-jitter retest | [bounded-jitter-results-1](../plans/bounded-jitter-results-1-buzzing-floyd.md) |
@@ -267,6 +267,27 @@ response tree over the target's deviations (pairgen's `--branch-tries`
 machinery is the natural miner). Related: theories 19 (the blocking
 artifact), 28 (why the chip counter loses these middlegames), 23
 (deterministic tie-bias as the book's implicit key).
+
+**Update 2026-08-27 (premise 1 measured as repaired):** the reset-state
+prerequisite is no longer outstanding. `playOneGame` gained a per-game
+`ttClear()` on 2026-08-03, and `rank.exe determinism` now measures the property
+directly rather than assuming it: all 119 active deterministic agents replay
+exactly against a fixed deterministic probe, both colours, within a process and
+across separate processes (238/238 subject-colours, 210/210 for the node-budgeted
+subset in all four passes). The only agents that ever varied are `model=111` and
+`model=113` on the `time=150ms` head, the two lines already carrying `# cost flag`
+in `ranking/roster.txt`, and `model=113` failed just once in four passes.
+
+For contrast, the pre-fix store measures the failure this theory tripped over:
+across 625,501 rows, only **2,545 of 22,322** strictly deterministic ordered pairs
+(11.4%) replayed identically. That is what the naive book was mined against.
+
+Premise (2) remains the reason the naive form failed, and theory 33's self-mined
+book is one repair. The OTHER repair this entry names, a book that carries a full
+winning continuation so the live brain never plays at all, is now unblocked and
+is the subject of `plans/refutation-oracle-plan-1-quiet-lodestone.md`. Phase 0
+(this gate) is done; the miner is not built. See
+`plans/refutation-oracle-results-1-quiet-lodestone.md`.
 
 **Update 2026-07-18 (theory 33 confirms a repaired form):** premise (2), not
 (1), turned out to be the fixable one. Mining the BOOK-WEARER'S OWN wins

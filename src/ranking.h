@@ -370,6 +370,19 @@ double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double
                      double& seOut);
 
 // ---- Subcommand entry points (return a process exit code) ----
+// Replay every active deterministic agent against a fixed deterministic probe,
+// `replicas` times per colour, and report how many produced the SAME move
+// sequence every time. rankAgentIsDeterministic() says an agent draws no
+// randomness; this says whether it actually replays, which is the stronger
+// property any line-mining or distinct-game count depends on. Exit code 2 when
+// at least one subject-colour was not reproducible. Writes a per-subject TSV.
+// includeStochastic: also probe agents that DO draw from rand(). They are
+// expected to come back non-reproducible, which is the point -- it is the
+// positive control that shows the probe can detect a difference at all.
+int rankDeterminism(const std::string& rosterFile, const std::string& probeId,
+                    int replicas, const std::string& board, const std::string& outFile,
+                    const std::string& only, int shard, int ofK,
+                    bool includeStochastic = false);
 int rankCheck(const std::string& rosterFile, const std::string& storeFile,
               int gamesPerPair, const std::string& board);
 // cohortFile (optional): path to a plain list of agent ids. When given, only

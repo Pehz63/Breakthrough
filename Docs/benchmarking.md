@@ -167,11 +167,23 @@ of DETERMINISTIC agents the two are very different numbers.
 is only ever consumed by dilution and by random-move agents. A pair with no
 `dil(...)` segment and no `rand` opener consumes no randomness at all, so the
 seed is inert and every game with the same colour assignment is byte-identical.
-`playOneGame` also does not call `ttClear()` between games (unlike the pairgen
-replay path and the posgen ladder, which both do), so for a `tt` head the only
-residual variation is cross-game transposition-table state, that is, which games
-happened to run earlier in the same process. That is theory 19 mechanism b acting
-as the instrument's entire source of sample diversity.
+
+Until 2026-08-03 `playOneGame` did not call `ttClear()` between games, so for a
+`tt` head the residual variation was cross-game transposition-table state, that
+is, which games happened to run earlier in the same process. That is theory 19
+mechanism b acting as the instrument's entire source of sample diversity. The
+ratios measured below all predate that fix and were produced under it.
+
+**The fix made this defect worse, not better, and that is the correct outcome.**
+Clearing the table per game removed the accidental diversity that was inflating
+the distinct-trajectory counts. Measured directly 2026-08-27 by `rank.exe
+determinism` (`plans/refutation-oracle-results-1-quiet-lodestone.md`): all 210
+node-budgeted deterministic subject-colours replay exactly, within a process and
+across separate processes. So a post-fix deterministic pair yields exactly TWO
+distinct games, one per colour, however many are scheduled, rather than the 0.438
+median below. The accidental diversity was never a sample of anything, so losing
+it costs no information, but any error bar computed from row counts is now
+understated by more than the 1.5x quoted at the end of this section.
 
 Measured across `ranking/games.tsv`, counting distinct game trajectories per pair
 (a trajectory is colour assignment + ply count + result + both node totals, which
@@ -197,6 +209,18 @@ as an independent trial, so `pm` in `ratings.tsv` and `standings.tsv` is
 understated by roughly `sqrt(1/0.438)`, about 1.5x, for a typical pair, and far
 more for the deterministic no-TT pairs. A margin that looks like 2 standard errors
 may be under 1.
+
+**The trajectory tuple overcounts for wall-clock-budgeted agents.** Counting a
+trajectory as `(colour, plies, result, both node totals)` assumes the node total
+is a function of the move sequence. That holds for a `nodes=` budget and fails for
+a `time=` one. Measured 2026-08-27: `ab(deep=6,tt,ord,time=150ms)@1` wearing
+`model=113` produced IDENTICAL move sequences across two processes with node
+totals differing by about 5,000 (1857802 vs 1853028 as White, 2558889 vs 2564574
+as Black), verified against exact per-ply position traces. The tuple reports those
+as two distinct games. Any distinct-game count over a population containing `time=`
+agents is therefore an upper bound, and the three `x time` categories in
+`ranking/CHAMPION.md` are the affected ones. An 8-byte per-ply trace hash stored
+with each row would make the count exact; not implemented.
 
 Worked instance, the reigning champion's own certification.
 `...classic(chip=100)@2.opener(book,book=2)@1` versus its bare self at the same

@@ -69,6 +69,7 @@ static void usage() {
     cout << "  matchup    regime-vs-regime matrix: actual vs Elo-expected score, and the residual\n";
     cout << "  history    per-opponent record + recent games for one agent\n";
     cout << "  gauntlet   rate one candidate id vs the frozen pool (O(N) games, for hill climbing)\n";
+    cout << "  determinism  replay every deterministic agent vs a fixed probe N times: does it repeat?\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
     cout << "  bookgen    mine an opening/refutation book from stored games between two agents\n";
     cout << "  cbookdump  replay winning games, recording clustering points for a cluster book\n";
@@ -92,6 +93,17 @@ static void usage() {
     cout << "\nplay:     --out <file> (default = --in), --shard i --of k (process sharding)\n";
     cout << "history:  --agent <id or unique prefix>, --last 20\n";
     cout << "gauntlet: --id <candidate id>, --keep (append to the store instead of scratch)\n";
+    cout << "determinism: --probe <fixed deterministic opponent id>"
+            " (default ab(deep=2)@1.classic(chip=100)@2),\n";
+    cout << "          --replicas 3 --only <id substring> --shard i --of k"
+            " --out ranking/determinism.tsv.\n";
+    cout << "          Replays each active deterministic roster agent against the probe, both\n";
+    cout << "          colours, interleaved so a replica is preceded by a different game sequence\n";
+    cout << "          each time, and compares per-ply position traces. Exit 2 if any\n";
+    cout << "          subject-colour did not repeat. Run it TWICE and diff the TSVs to test\n";
+    cout << "          cross-process reproducibility too. --include-stochastic adds agents that DO\n";
+    cout << "          draw from rand() as a positive control: they SHOULD come back non-reproducible,\n";
+    cout << "          which is what shows the probe can detect a difference at all.\n";
     cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
     cout << "bookgen:  --a <line-owner id> --b <target id> --plies 60 --out models/book<N>.txt\n";
     cout << "          Replays the pair's stored games; keeps positions/moves from A's wins only.\n";
@@ -266,6 +278,14 @@ int main(int argc, char** argv) {
     } else if (cmd == "history") {
         rc = rankHistory(store, getOpt(argc, argv, "--agent", ""),
                          getInt(argc, argv, "--last", 20), board);
+    } else if (cmd == "determinism") {
+        rc = rankDeterminism(roster, getOpt(argc, argv, "--probe", ""),
+                             getInt(argc, argv, "--replicas", 3), board,
+                             getOpt(argc, argv, "--out", "ranking/determinism.tsv"),
+                             getOpt(argc, argv, "--only", ""),
+                             getInt(argc, argv, "--shard", 0),
+                             getInt(argc, argv, "--of", 1),
+                             hasFlag(argc, argv, "--include-stochastic"));
     } else if (cmd == "gauntlet") {
         rc = rankGauntlet(roster, store, getOpt(argc, argv, "--id", ""), games,
                           hasFlag(argc, argv, "--keep"), seed, board);

@@ -1,0 +1,65 @@
+# rank.exe determinism -- one row per (subject, colour)
+# probe=ab(deep=2)@1.classic(chip=100)@2	replicas=3	board=boards/board1.txt
+# distinct = distinct move sequences over the replicas (1 = reproducible)
+# first_div_ply = first half-move where two replicas differ (-1 = none)
+# det = rankAgentIsDeterministic (0 = draws from rand(), expected to fail)
+# traceset = hash over the SORTED DISTINCT per-ply position traces. Two runs of
+#   this command agree on a row's trajectories exactly when its traceset matches,
+#   so diffing two TSVs is an exact cross-process test, not a plies/nodes proxy.
+colour	det	timed	replicas	distinct	first_div_ply	traceset	plies	result	nodes_self	id
+W	0	0	3	3	8	d571bb4601b98419	45	B	2152252	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	ab6bd13dcb560ff4	45	W	1205665	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	a23ff378a4f63df8	41	B	1221805	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	b8b68f8034e7a90d	50	W	1544937	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	cf5246d02dbc635e	48	B	1414982	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	3feb860ed9d5066	50	W	1273382	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	8cd0852072a2c37	48	B	1540588	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	955f8c041cb9039c	42	B	1428692	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	ab50c5be219f40e1	36	B	1461654	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	2c8ab19654581eca	70	W	1715551	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	136dbf4a484fb031	39	B	1466495	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	7d98f0be55ae6cee	45	W	1351317	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	3eb8044aa07318c4	55	B	2784475	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	393ce0c7156ce6c2	49	W	2017683	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	61ec7995e3ba71b8	33	W	508357	ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=20)@1
+B	0	0	3	3	9	ad52ebfc3379a8f2	24	B	343616	ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=20)@1
+W	0	0	3	3	8	75b680e6d72d399c	47	W	1131315	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	7110b9644491953	38	B	1110703	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	25f024847e1be29	48	B	1594728	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	575eecb41c000be4	37	W	1817360	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	b39ecbe28057a972	14	B	329117	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	84c1baee27c6faf1	37	W	921648	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	cf502520b8d19819	55	W	1861522	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	a2ee48b001c4839d	42	B	1272329	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	8	26b765958ee5bd55	58	B	1232169	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	23b77e5cc9cc6f55	37	W	863812	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	0	3	3	12	14a17d276fb65be1	41	W	1274118	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	0	3	3	9	f3faff86e9ecd630	30	B	627059	ab(deep=6,tt,ord,nodes=200k)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	2af6ec8d9e731404	39	B	1825266	ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	abc2f355123aae69	45	W	1205665	ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	a23ff378a4f63df8	41	B	1221805	ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	b8b68f8034e7a90d	50	W	1544937	ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	cf5246d02dbc635e	48	B	1414982	ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	eed4fb55f7172c64	50	W	1273382	ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	96b3c70539b23bc0	49	B	1838219	ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+B	0	1	3	3	13	1371bd83ccd306c5	64	W	2097751	ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	ab50c5be219f40e1	36	B	1461654	ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	b14ca4c8dbd6ef08	70	W	1715551	ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	136dbf4a484fb031	39	B	1466495	ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	7d98f0be55ae6cee	45	W	1351317	ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	67ff3ea9ec02392e	36	B	2170067	ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	bbec916b39d60a5c	45	W	1497519	ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	61ec7995e3ba71b8	33	W	508357	ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1
+B	0	1	3	3	9	ad52ebfc3379a8f2	24	B	343616	ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1
+W	0	1	3	3	8	75b680e6d72d399c	47	W	1131315	ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	7110b9644491953	38	B	1110703	ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	e091e5992b47d7e8	54	B	2196320	ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	1f50efb60b46f1a6	59	W	2524555	ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	b39ecbe28057a972	14	B	329117	ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	84c1baee27c6faf1	37	W	921648	ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	cf502520b8d19819	55	W	1861522	ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	a2ee48b001c4839d	42	B	1272329	ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	8	26b765958ee5bd55	58	B	1232169	ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	23b77e5cc9cc6f55	37	W	863812	ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+W	0	1	3	3	12	14a17d276fb65be1	41	W	1274118	ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+B	0	1	3	3	9	f3faff86e9ecd630	30	B	627059	ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1.dil(prob=20)@1

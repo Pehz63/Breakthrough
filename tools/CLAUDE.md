@@ -225,6 +225,37 @@ a mismatch (a retrain is a new identity). Full internals (ID codec, store row fo
 scheduler, BT fit, every subcommand, slot conventions): `src/CLAUDE.md`'s
 `ranking.cpp` entry.
 
+### Does a deterministic agent actually replay? (`determinism`)
+
+`rankAgentIsDeterministic` answers whether an agent draws from `rand()`. That is
+not the same as whether it replays. An agent can consume no randomness and still
+play a different game on a second run, because search state outliving a move (the
+transposition table) or a budget measured against the wall clock makes its choice
+depend on something other than the position.
+
+`rank.exe determinism` measures the stronger property. It replays every active
+deterministic roster agent against a fixed deterministic probe, both colours,
+`--replicas` times, and compares exact per-ply position traces. Replicas are
+interleaved agent-minor so each is preceded by a different game sequence, and the
+seed varies per replica. Cross-PROCESS reproducibility is a separate question: run
+it twice and diff the `traceset` column. Exit code 2 when any subject-colour did
+not repeat, so it works as a script gate.
+
+**Run `--include-stochastic` before believing a clean sweep.** It adds agents that
+DO draw from `rand()`, which must come back non-reproducible. A probe that only
+ever prints "reproducible" is indistinguishable from one that cannot detect
+anything, and this exact failure happened while the subcommand was being written
+(a pinned seed made dilution agents replay, reporting a meaningless 56/56).
+
+Measured 2026-08-27 (`plans/refutation-oracle-results-1-quiet-lodestone.md`):
+238/238 subject-colours reproducible across two independent processes, 210/210 for
+the node-budgeted subset in all four passes. The only agents that ever varied are
+`model=111` and `model=113` on the `time=150ms` head, the two lines already
+carrying `# cost flag` in `ranking/roster.txt`; `model=113` failed once in four
+passes. Note that for a `time=` agent the node total is NOT a trajectory
+fingerprint: identical move sequences came back with node totals differing by
+~5,000, so `Docs/benchmarking.md` defect 3's distinct-game tuple overcounts there.
+
 ### Two rating pools
 
 The ranker now maintains two independent pools. They answer different questions and
@@ -307,7 +338,7 @@ is well-resolved and the climber has non-deterministic opponents.
 | `smoke_test_gui.ps1` | Standard GUI smoke test: build/launch/screenshot/close, exits non-zero on crash (run from project root). See `gui/CLAUDE.md`. |
 | `gui_capture.ps1` | Targeted screenshot helper: finds the `GLFW30` window by process id and crops its client area for inspecting individual widgets (complements `smoke_test_gui.ps1`). |
 | `train_main.cpp` | `train.exe` CLI: subcommands `selfplay-supervised`, `ensemble`, `imitate`, `dist-value`, `score`, `dist-eval`, `tournament`, `tournament-play`, `tournament-rate`, `turn-swing`, `speed`, `run-config`, `run-note`, `docs`, all `--key value` (incl. `--only`, `--run`, `--note`, `--node-budget`, `--time-budget-ms`, `--budgets`, `--ablate`, `--forward-study`, `--gen-eval`/`--gen-params`, `--teacher-eval`/`--teacher-params`, `--feature-version`, selfplay-supervised's `--model-type linear|mlp` + `--mlp-hidden "32"|"32,16"` + `--residual-skip <f>` (0 off / >0 fixed / <0 auto-calibrate the frozen chip skip), ensemble's `--models <comma-list>` + `--mirror 0|1` + `--out`, and `turn-swing`'s `--chip/--wall/--col/--forward`). |
-| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `seal`, `split`, `history`, `gauntlet`, `extract`, `bookgen`, `cbookdump`, `cbookfit`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, seal's `--max-mb`, split's `--group`/`--max-mb`/`--apply` (**dry run unless `--apply`**), extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, cbookdump's `--a`/`--core`/`--regime` (at most one, none = universal) `--min-elo`/`--ratings` `--max-plies`/`--sample`/`--out`, cbookfit's `--in`/`--clusters`/`--keep`/`--mirror`/`--min-per-cluster`/`--out-slot` (`--clusters`/`--keep` take comma-separated lists, one book file per pair from a single read), pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`). |
+| `rank_main.cpp` | `rank.exe` CLI: subcommands `check`, `play`, `rate`, `run`, `seal`, `split`, `history`, `gauntlet`, `determinism`, `extract`, `bookgen`, `cbookdump`, `cbookfit`, `pairgen`, `opener-bias`, `opener-swap`, `posgen`, `label`, `labelfit`, all `--key value` (`--roster`, `--in`, `--out`, `--board`, `--games`, `--seed`, `--shard`/`--of`, `--agent`, `--last`, `--id`, `--keep`, seal's `--max-mb`, split's `--group`/`--max-mb`/`--apply` (**dry run unless `--apply`**), extract's `--feature-version`/`--sample`, bookgen's `--a` (line owner) `--b` (target) `--plies` `--out`, cbookdump's `--a`/`--core`/`--regime` (at most one, none = universal) `--min-elo`/`--ratings` `--max-plies`/`--sample`/`--out`, cbookfit's `--in`/`--clusters`/`--keep`/`--mirror`/`--min-per-cluster`/`--out-slot` (`--clusters`/`--keep` take comma-separated lists, one book file per pair from a single read), pairgen's `--a`/`--b`/`--dil-apply`/`--dil-start`/`--dil-floor`/`--dil-decay-plies`/`--open-plies`/`--open-side`/`--filter`/`--branch-tries`, opener-bias's `--a`/`--b`/`--judge`/`--open-plies`/`--games`, opener-swap's `--a`/`--b`/`--open-plies`/`--games`, posgen's `--out-train`/`--out-eval`/`--train`/`--eval`/`--per-game`/`--min-ply`/`--max-ply`, label's `--pool`/`--ladder`/`--out`/`--resume`/`--done`/`--max-positions`, labelfit's `--in`/`--pool`/`--ratings`/`--out`/`--min-rows`/`--rating-se`, determinism's `--probe`/`--replicas`/`--only`/`--include-stochastic`/`--out`). |
 | bookgen (subcommand) | Mine an opening/refutation book from stored games between two agents. Replays every stored `--a` vs `--b` game, keeps positions + the move `--a` played (first `--plies` half-moves) from A's WINS only, writes `models/book<N>.txt` (a `#` provenance header + `<positionKey hex16> <sx> <sy> <dx>` lines). The `book` opener (`src/ai_random.cpp` `g_openers[]`) plays those replies via `.opener(book,<N>)@1`. First use: the s98 refutation book (dethrone plan phase 2, `plans/dethrone-champion-results-3-wiggly-mitten.md`). The book file is NOT hashed into the agent ID (unlike `learned()` models), so treat a book slot as immutable and give a regenerated book a new slot number. **Read `plans/book-opener-audit-results-1-vivid-lantern.md` (theory 38) before quoting any book Elo:** a book is a memorized line keyed by position hash, so its measured lift only holds while the opponent reproduces its previous replies, and it collapses under `pairgen --open-plies`. |
 | cbookdump + cbookfit (subcommands) | Mine a fuzzy, nearest-cluster-matched opening book -- SMARTSTART (Steinmetz & Gini, IJCAI 2015) applied to Breakthrough, generalizing `bookgen` past its theory-38 collapse. Two steps because replay is the only expensive part and clustering depends only on what got recorded: `cbookdump` replays winning games and writes `data/cbook_<scope>.jsonl`, one `(half-move, difference-from-start vector, move)` triple per winner ply, deduplicated to distinct games first and dropping replays that drift from the stored result. Scope is at most one of three, none meaning universal (every winner in the store): `--a <id>` (that exact agent id's own wins only), `--core <id>` (that id's wins under ANY opener or none -- the winner's id with its trailing `.opener(...)@N` segment stripped must equal `<id>`, so this pools a core's bare/`book`/`rand`/`cbook`-wearing wins together), or `--regime <tag>` (every winner whose `rankAgentRegime` matches, the broadest of the three: e.g. `classic` matches any classic-evaluator agent regardless of weights, dilution, or opener). `--min-elo`/`--ratings` gates additionally on the winner's rating. `cbookfit` reads a dump (no replay) and writes one `models/cbook<N>.txt` per `(--clusters, --keep)` combination via spherical k-means (`src/ml_cluster.h`). The `cbook` opener (`src/ai_random.cpp`) matches the live position to its nearest mined cluster per half-move and narrows the search's ROOT move list to that cluster's moves via `.opener(cbook,<N>[,ply=M])@1`, rather than playing a move outright the way `book` does -- the brain still searches every surviving candidate, so this is a compute-for-depth trade, not a memorized line. Design rationale, the raw-vector clustering failure mode, and the measured grounding for its mining parameters: `plans/cluster-book-plan-1-noble-swimming-scott.md`, results (Pass 1a): `plans/cluster-book-results-1-noble-swimming-scott.md`, results (scope comparison, Pass 1a-extended): `plans/cluster-book-results-2-noble-swimming-scott.md`. |
 

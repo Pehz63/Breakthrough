@@ -2552,9 +2552,16 @@ static double processCpuMs() {
 
 // Play one game on the live engine board, filling a match row (timing, node
 // totals, result). The caller has already srand()'d with the game's seed.
+// `trace`, when non-null, receives one position hash per half-move played (the
+// position AFTER that half-move, keyed for the side then to move). Two games
+// with identical traces followed identical move sequences, so it is the exact
+// trajectory fingerprint the determinism probe compares. Cheap enough to leave
+// opt-in rather than always-on: one positionKey per ply against a search that
+// costs a 200k-node budget.
 static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& board,
-                        RankMatchRow& m) {
+                        RankMatchRow& m, std::vector<unsigned long long>* trace = nullptr) {
     if (!reloadBoard(board)) return false;
+    if (trace) trace->clear();
     // Fresh TT per game. Without this a tt-flagged agent's play depends on every
     // game the worker process happened to run first, so the same scheduled game
     // gives different results under a different shard split or resume point --
@@ -2605,6 +2612,7 @@ static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& 
             else               { m.bnod += (double)g_lastNodes; m.bed += g_lastEffDepth; m.bsn++; }
         }
         m.plies = h + 1;
+        if (trace) trace->push_back(positionKey(side == White ? Black : White, false).hash);
         if (gameOutcome(victor)) break;
     }
     m.wpc = g_whiteCount;
@@ -4537,6 +4545,11 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
                       : (openSide == 2) ? (aWhite ? 2 : 1)
                       : openSide;
 
+        // Fresh TT per game, the same contract playOneGame and the extract replay
+        // path hold. Without it a tt-flagged agent's play here depends on every
+        // earlier game in the process, so a deterministic pair does not replay
+        // and `--games N` yields N different games rather than N copies of one.
+        ttClear();
         srand(gameSeed(wa.id, ba.id, g, runSeed));
         std::vector<int> capSide;
         std::vector<std::vector<float> > capFeat;
@@ -5546,6 +5559,194 @@ int rankLabelFit(const string& storeFile, const string& poolFile,
     }
     cout << "  labels -> " << outFile << "\n";
     return fitted > 0 ? 0 : 1;
+}
+
+// ============================================================
+// DETERMINISM PROBE
+// ============================================================
+// Answers one question: does a deterministic agent, replayed against a fixed
+// deterministic opponent, produce the SAME game every time?
+//
+// rankAgentIsDeterministic() answers whether an agent draws from rand(). That is
+// not the same property. An agent can consume no randomness and still play a
+// different game on a second run, because search state that outlives one move
+// (the transposition table) or a budget measured against the wall clock makes
+// its choice depend on something other than the position. This probe measures
+// the property that actually matters to any work assuming replayability: mining
+// lines against a fixed opponent, counting distinct games behind an error bar,
+// or reproducing a stored result.
+//
+// Design. Replicas are played in an INTERLEAVED order (outer loop = replica,
+// inner loop = agent), so replica 2 of an agent is preceded by an entirely
+// different sequence of games than replica 1 was. A pass that looped agent-major
+// would play each agent's replicas back to back and would not disturb whatever
+// process state it is trying to detect. Cross-PROCESS reproducibility is a
+// separate question: run the command twice and compare the two TSVs.
+//
+// Each game's trajectory is fingerprinted by playOneGame's per-ply position-hash
+// trace, so "same game" means the same move sequence, not a proxy for it.
+int rankDeterminism(const string& rosterFile, const string& probeId, int replicas,
+                    const string& board, const string& outFile, const string& only,
+                    int shard, int ofK, bool includeStochastic) {
+    if (replicas < 2) { cout << "ERROR: --replicas must be >= 2\n"; return 1; }
+    if (ofK < 1) ofK = 1;
+    if (shard < 0 || shard >= ofK) { cout << "ERROR: --shard must be in [0,--of)\n"; return 1; }
+
+    string err;
+    std::vector<RankAgent> roster;
+    if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    RankAgent probe;
+    string pid = probeId.empty() ? string("ab(deep=2)@1.classic(chip=100)@2") : probeId;
+    if (!rankAgentFromId(pid, probe, err)) { cout << "ERROR: bad --probe id: " << err << "\n"; return 1; }
+    if (!rankAgentIsDeterministic(probe.spec)) {
+        cout << "ERROR: --probe " << probe.id << " is not deterministic, so it would supply the\n"
+             << "       variation this probe is trying to attribute to the agent under test\n";
+        return 1;
+    }
+
+    // Subjects: active, deterministic (unless --include-stochastic), matching
+    // --only, in this shard.
+    //
+    // --include-stochastic exists to be the POSITIVE CONTROL. A probe that only
+    // ever reports "reproducible" is indistinguishable from a probe that cannot
+    // detect anything, so before trusting a clean sweep, point it at an agent
+    // known to draw from rand() (a dil(...) or opener(rand,...) roster line) and
+    // confirm it reports > 1 distinct move sequence. Not for ordinary use: a
+    // stochastic subject is EXPECTED to fail and says nothing about state.
+    std::vector<const RankAgent*> subj;
+    int nActive = 0, nStochastic = 0, nDeterministic = 0;
+    for (size_t i = 0; i < roster.size(); i++) {
+        if (!roster[i].active) continue;
+        nActive++;
+        bool det = rankAgentIsDeterministic(roster[i].spec);
+        if (det) nDeterministic++; else nStochastic++;
+        if (!det && !includeStochastic) continue;
+        if (!only.empty() && roster[i].id.find(only) == string::npos) continue;
+        subj.push_back(&roster[i]);
+    }
+    std::vector<const RankAgent*> mine;
+    for (size_t i = 0; i < subj.size(); i++)
+        if ((int)(i % (size_t)ofK) == shard) mine.push_back(subj[i]);
+    if (mine.empty()) { cout << "ERROR: no deterministic subjects selected\n"; return 1; }
+
+    std::vector<const RankAgent*> toLoad(mine);
+    toLoad.push_back(&probe);
+    if (!loadModelSlots(toLoad, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    cout << "determinism probe: " << mine.size() << " subjects selected"
+         << " (roster: " << nActive << " active = " << nDeterministic << " deterministic + "
+         << nStochastic << " stochastic";
+    if (includeStochastic) cout << "; --include-stochastic ON, stochastic subjects are the POSITIVE CONTROL";
+    if (!only.empty()) cout << "; --only \"" << only << "\"";
+    if (ofK > 1) cout << "; shard " << shard << " of " << ofK;
+    cout << "), probe = " << probe.id << ", " << replicas << " replicas x 2 colours"
+         << ", " << (mine.size() * 2 * (size_t)replicas) << " games\n" << flush;
+
+    // traces[subject][colour][replica]; colour 0 = subject as White.
+    std::vector<std::vector<std::vector<std::vector<unsigned long long> > > > traces(
+        mine.size(), std::vector<std::vector<std::vector<unsigned long long> > >(2));
+    std::vector<std::vector<std::vector<RankMatchRow> > > rowsOut(
+        mine.size(), std::vector<std::vector<RankMatchRow> >(2));
+
+    for (int rep = 0; rep < replicas; rep++) {
+        for (size_t i = 0; i < mine.size(); i++) {
+            for (int col = 0; col < 2; col++) {
+                const RankAgent& wa = (col == 0) ? *mine[i] : probe;
+                const RankAgent& ba = (col == 0) ? probe : *mine[i];
+                // A DIFFERENT seed per replica, on purpose. A deterministic agent
+                // draws from rand() nowhere, so varying the seed cannot change its
+                // game -- if it does, the agent is not what rankAgentIsDeterministic
+                // claims, which is itself worth catching. Pinning one seed instead
+                // would silently disarm --include-stochastic: a dilution agent
+                // replays exactly when handed the same seed, so the positive control
+                // would report "reproducible" and prove nothing. (Measured: it did,
+                // 56/56, before this line varied.)
+                srand(12345u + (unsigned)rep);
+                RankMatchRow m;
+                std::vector<unsigned long long> tr;
+                if (!playOneGame(wa, ba, board, m, &tr)) {
+                    cout << "ERROR: cannot load board " << board << "\n";
+                    mlClearSlots();
+                    return 1;
+                }
+                traces[i][col].push_back(tr);
+                rowsOut[i][col].push_back(m);
+            }
+        }
+        cout << "  replica " << (rep + 1) << "/" << replicas << " done\n" << flush;
+    }
+
+    ensureDir("ranking");
+    std::ofstream out(outFile.c_str(), std::ios::trunc);
+    if (out.is_open()) {
+        out << "# rank.exe determinism -- one row per (subject, colour)\n";
+        out << "# probe=" << probe.id << "\treplicas=" << replicas << "\tboard=" << board << "\n";
+        out << "# distinct = distinct move sequences over the replicas (1 = reproducible)\n";
+        out << "# first_div_ply = first half-move where two replicas differ (-1 = none)\n";
+        out << "# det = rankAgentIsDeterministic (0 = draws from rand(), expected to fail)\n";
+        out << "# traceset = hash over the SORTED DISTINCT per-ply position traces. Two runs of\n";
+        out << "#   this command agree on a row's trajectories exactly when its traceset matches,\n";
+        out << "#   so diffing two TSVs is an exact cross-process test, not a plies/nodes proxy.\n";
+        out << "colour\tdet\ttimed\treplicas\tdistinct\tfirst_div_ply\ttraceset\tplies\tresult\tnodes_self\tid\n";
+    }
+
+    int repro = 0, total = 0, timedRepro = 0, timedTotal = 0;
+    std::vector<const RankAgent*> failures;
+    std::vector<int> failColour, failDiv, failDistinct;
+    for (size_t i = 0; i < mine.size(); i++) {
+        bool timed = (mine[i]->spec.timeBudgetMs > 0.0);
+        bool det = rankAgentIsDeterministic(mine[i]->spec);
+        for (int col = 0; col < 2; col++) {
+            const std::vector<std::vector<unsigned long long> >& T = traces[i][col];
+            std::set<std::vector<unsigned long long> > uniq(T.begin(), T.end());
+            int distinct = (int)uniq.size();
+            // std::set orders the traces, so this hash is independent of the order
+            // the replicas happened to be played in.
+            unsigned long long tsh = 1469598103934665603ULL;
+            for (std::set<std::vector<unsigned long long> >::const_iterator u = uniq.begin();
+                 u != uniq.end(); ++u)
+                tsh = fnv1a64((const char*)(u->empty() ? nullptr : &(*u)[0]),
+                              u->size() * sizeof(unsigned long long), tsh);
+            int div = -1;
+            for (size_t r = 1; r < T.size() && div < 0; r++) {
+                size_t n = T[0].size() < T[r].size() ? T[0].size() : T[r].size();
+                for (size_t k = 0; k < n; k++)
+                    if (T[0][k] != T[r][k]) { div = (int)k; break; }
+                if (div < 0 && T[0].size() != T[r].size()) div = (int)n;
+            }
+            total++;
+            if (timed) timedTotal++;
+            if (distinct == 1) { repro++; if (timed) timedRepro++; }
+            else { failures.push_back(mine[i]); failColour.push_back(col);
+                   failDiv.push_back(div); failDistinct.push_back(distinct); }
+            const RankMatchRow& m0 = rowsOut[i][col][0];
+            double selfNodes = (col == 0) ? m0.wnod : m0.bnod;
+            if (out.is_open())
+                out << (col == 0 ? "W" : "B") << "\t" << (det ? 1 : 0) << "\t" << (timed ? 1 : 0) << "\t" << replicas
+                    << "\t" << distinct << "\t" << div << "\t" << std::hex << tsh << std::dec
+                    << "\t" << m0.plies << "\t" << m0.r
+                    << "\t" << (long long)selfNodes << "\t" << mine[i]->id << "\n";
+        }
+    }
+    out.close();
+
+    cout << "\nreproducible (1 distinct move sequence over " << replicas << " replicas): "
+         << repro << "/" << total << " subject-colours\n";
+    if (timedTotal > 0)
+        cout << "  of which wall-clock-budgeted (time=): " << timedRepro << "/" << timedTotal
+             << " reproducible, node-budgeted: " << (repro - timedRepro) << "/"
+             << (total - timedTotal) << "\n";
+    for (size_t f = 0; f < failures.size() && f < 12; f++)
+        cout << "  NONREPRO  " << (failColour[f] == 0 ? "W" : "B") << "  " << failDistinct[f]
+             << " distinct, first divergence at half-move " << failDiv[f] << "  "
+             << failures[f]->id << "\n";
+    if (failures.size() > 12)
+        cout << "  ... and " << (failures.size() - 12) << " more (see " << outFile << ")\n";
+    cout << "  -> " << outFile << "\n";
+
+    mlClearSlots();
+    return failures.empty() ? 0 : 2;
 }
 
 // ============================================================
