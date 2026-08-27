@@ -214,29 +214,35 @@ indexed parts. Read `ranking/standings.tsv` yourself to reproduce any row.
 
 | Category | Champion (loadout on its core) | Elo +/- SE | Games | Nearest rival (gap / combined SE) |
 |---|---|---|---|---|
-| **openless x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | **1031 +/- 10** | 1967 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 991 +/- 8 (gap 40 / SE 12.8 = 3.1 SE) |
+| **openless x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | **1036 +/- 10** | 1975 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 995 +/- 8 (gap 41 / SE 12.8 = 3.2 SE) |
 | **opener8 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **777 +/- 9** | 1840 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 765 +/- 9 (gap 12 / SE 12.7 -- **statistically tied**) |
 | **dil20 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` | **553 +/- 10** | 1736 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1`, 543 +/- 10 (gap 10 / SE 14.1 -- **statistically tied**) |
-| **openless x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | **977 +/- 14** | 1028 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 934 +/- 14 (gap 43 / SE 19.8 = 2.2 SE) |
+| **openless x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | **982 +/- 14** | 1052 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 939 +/- 14 (gap 43 / SE 19.8 = 2.2 SE) |
 | **opener8 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **791 +/- 9** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 788 +/- 9 (gap 3 / SE 12.7 -- **statistically tied**) |
 | **dil20 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` | **558 +/- 10** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1`, exact tie at 558 +/- 10 |
 
 ### Evidence level, stated honestly
 
-**openless x node and opener8 x node carry forward round 1/2's game counts**
-(1967/1840 games across their fields) and are the best-attested rows here, but
-still short of 32 games/pair certification fill (`CLAUDE.md` rule 2) -- the
-combined-SE math above already reflects that, not a certified result.
-**dil20 x node and all three `x time` categories are round-3-only, at 8
+**openless x node and openless x time are certified at 32 games/pair**
+(2026-08-27, `ranking/roster_top.txt` / `ranking/roster_top_time.txt`, each a
+top-N contender pool at their head -- 12 of 37 active openless x node agents,
+all 14 of the openless x time round-3 cohort -- boosted to 32 games/pair and
+refit unpinned; `CLAUDE.md` rule 2 satisfied for the contenders listed). Both
+champions held their round-3 rank; the combined-SE math above is this
+certified fit's own numbers, not a screening estimate.
+
+**opener8 x node still carries forward round 1/2's game count** (1840 games
+across its field) and remains short of 32 games/pair certification fill.
+**dil20 x node and opener8/dil20 x time are still round-3-only, at 8
 games/pair nominal** (`--games 8 --paired-openings`), the same screening depth
 flagged as provisional in every prior round of this file. Per `Docs/
 benchmarking.md` defect 3, a pair with no dilution and no random opener
 replays close to 1 distinct game per stored row regardless of row count;
-**dil20 and the three `x time` rows all carry dilution or (for opener8) a
-random opener, so they consume `rand()` and are not subject to that specific
-undercount** -- but 8 games/pair is still well under the 32-games/pair
-certification standard, and none of the six declarations above should be
-quoted as settled.
+**dil20 and opener8 both carry dilution or a random opener, so they consume
+`rand()` and are not subject to that specific undercount** -- but 8 games/pair
+is still well under the 32-games/pair certification standard, and the
+remaining four declarations (opener8 x node, dil20 x node, opener8 x time,
+dil20 x time) should not be quoted as settled.
 
 **Time-budget instrumentation defect, found while building this round.** Two
 of the 14 cores in this cohort (`model=111`, `model=113`, both wide-MLP
@@ -314,7 +320,8 @@ and 8-random got closer, not further apart, as more cores joined.
 ## Category: openless x node
 
 - **ID:** `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1`
-- **Elo:** 1031 +/- 10 (1967 games), 2026-08-24 fit.
+- **Elo:** 1036 +/- 10 (1975 games), 2026-08-27 fit, certified at 32 games/pair
+  among its top-12 contender pool (`ranking/roster_top.txt`).
 - **What it is:** a TD-Leaf self-play linear value model. No loadout item at
   all: this is the core's bare identity, at the `nodes=200k` node-budget track.
 - **Division/track:** this is the same `openless` division this file has
@@ -325,16 +332,17 @@ and 8-random got closer, not further apart, as more cores joined.
 
   | Elo | Agent |
   |---|---|
-  | 991 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 40, combined SE 12.8 = 3.1 SE) |
-  | 988 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1` |
-  | 974 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` |
-  | 972 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1` |
-  | 960 +/- 7 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` (the pre-split single champion's bare core) |
+  | 995 +/- 8 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 41, combined SE 12.8 = 3.2 SE) |
+  | 993 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1` |
+  | 979 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` |
+  | 977 +/- 10 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1` |
+  | 966 +/- 7 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` (the pre-split single champion's bare core) |
 
 - **Lineage:** founding declaration 2026-07-28 (1030 +/- 9), 2026-07-29 round 2
   (1012 +/- 9), 2026-08-01 re-certification after the scoring-population
   change (1044 +/- 11, s169 took the title), 2026-08-24 restructure (1031 +/-
-  10, s169 held, now also labeled `x node`).
+  10, s169 held, now also labeled `x node`), 2026-08-27 32-games/pair
+  certification of the top-12 field (1036 +/- 10, s169 held).
 - **Defended challenges:** none yet.
 
 ## Category: opener8 x node
@@ -390,7 +398,8 @@ and 8-random got closer, not further apart, as more cores joined.
 ## Category: openless x time
 
 - **ID:** `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1`
-- **Elo:** 977 +/- 14 (1028 games), 2026-08-24 fit -- new category, round 3.
+- **Elo:** 982 +/- 14 (1052 games), 2026-08-27 fit, certified at 32 games/pair
+  among the full 14-core round-3 cohort (`ranking/roster_top_time.txt`).
 - **What it is:** a v2 sparse piece-square linear value model (outcome-trained,
   one of the s94-s99 multi-seed replicate family), bare, at the new
   `time=150ms` wall-clock budget track instead of `nodes=200k`. `time=150ms`
@@ -403,18 +412,20 @@ and 8-random got closer, not further apart, as more cores joined.
 
   | Elo | Agent |
   |---|---|
-  | 934 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 43, combined SE 19.8 = 2.2 SE) |
-  | 933 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2` (control) |
-  | 929 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1` |
-  | 918 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1` |
-  | 908 +/- 13 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` |
+  | 939 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` (gap 43, combined SE 19.8 = 2.2 SE) |
+  | 938 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2` (control) |
+  | 935 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1` |
+  | 923 +/- 14 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1` |
+  | 914 +/- 13 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` |
 
 - **Time-budget defect applies to this category's field:** `model=111`/`113`
-  (both wide-MLP cost-flagged cores) rate 661/669 here at 477-500 ms/move,
+  (both wide-MLP cost-flagged cores) rate 666/675 here at 477-500 ms/move,
   2-3.3x over the 150ms budget -- see the Summary section's defect note. They
   are well below the champion and runner-up and do not change this
   declaration, but their rows are not evidence of a budget-respecting agent.
-- **Lineage:** founding declaration 2026-08-24 (round 3).
+- **Lineage:** founding declaration 2026-08-24 (round 3, screening level, 977
+  +/- 14). 2026-08-27 32-games/pair certification of the full field (982 +/-
+  14, s96 held).
 - **Defended challenges:** none yet.
 
 ## Category: opener8 x time

@@ -1,0 +1,35 @@
+# Temporary top-contender roster: boosts games AMONG the listed agents to
+# 32/pair so the top of the table separates. Games append to the shared store;
+# the permanent record is the full-roster refit (rank.exe rate with the default
+# roster). Companion to ranking/roster_top.txt (openless x node); kept as a
+# separate file per head so this cohort's games stay within one head (a
+# node-track vs time-track pair answers neither category's ordering question).
+#
+# 2026-08-27: OPENLESS x TIME BOOST, per ranking/CHAMPION.md's 2026-08-24
+# restructure (round 3 founded this category) and todo.md's "Boost the
+# category-champion pools to 32 games/pair" item. Sat at 8-14 games/pair
+# (screening level, round-3-only) with no declaration certifiable per
+# CLAUDE.md rule 2.
+
+anchor  rand@1
+
+# Openless x time contenders: the full 14-core round-3 cohort at this head
+# (ranking/CHAMPION.md, "Rounds", round 3), all currently under 32 games/pair.
+# model=111/model=113 are cost-flagged: measured 477-500 ms/move against the
+# 150ms budget (ranking/CHAMPION.md's time-budget instrumentation defect
+# note). Included anyway so the field is complete; their rows are not evidence
+# of a budget-respecting agent.
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on      ab(deep=6,tt,ord,time=150ms)@1.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1

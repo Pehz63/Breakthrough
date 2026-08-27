@@ -824,19 +824,31 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
      distinct-trajectory count per pair and an effective-n column, so a reader can see
      that a 32-game pair is 2 games. Cheapest, and worth doing regardless of 1 and 2.
 - **Boost the category-champion pools to 32 games/pair. `[Next]`** {cpu: hours, dev: low}
-  Round 1 (2026-07-28, 24 agents, 116->140 active) and round 2 (2026-07-29, 18
-  more agents incl. `s3`/`adv` own-books at 4/8-ply, 140->158 active) both
-  screened at only 8-11 games/pair, short of this project's own 32-games/pair
-  top-of-table standard (`CLAUDE.md` rule 2). Consequence: only 4-book/8-book
-  clear ~2 combined SE over their runner-up; openless, 4-random, and 8-random
-  are all within about 1 SE of a tie, and growing the roster in round 2 made
-  4-random and 8-random's gaps SMALLER, not larger (`ranking/CHAMPION.md`).
-  None of the 5 declarations should be treated as settled until this is done.
-  Remaining book-category growth candidates: `s4`/`s9`/`s10`/`s94`/`s95`/`s97`/
-  `s99` don't have an established own-book pair yet (would need a fresh
-  bookgen source, unlike `s3`/`adv` which reused book6/book3's existing
-  target); the wide dist-mlp cores (`s77`/`s78`/`s79`/`s110`/`s112`/`s114`/
-  `s115`, 350-1670 ms/move) were deliberately skipped from the random
+  ~~openless x node and openless x time DONE 2026-08-27~~: boosted to 32
+  games/pair (top-12 of 37 contenders for x node via `ranking/roster_top.txt`,
+  the full 14-core round-3 cohort for x time via `ranking/roster_top_time.txt`),
+  refit unpinned, both champions held (`ranking/CHAMPION.md`). Remaining under
+  the current 6-category system (`ranking/CHAMPION.md`'s 2026-08-24
+  restructure): **opener8 x node** still carries round 1/2's 1840-game
+  screening fill; **dil20 x node**, **opener8 x time**, **dil20 x time** are
+  all still round-3-only at 8 games/pair nominal. None of those four
+  declarations should be treated as settled until boosted the same way (build
+  a `ranking/roster_top_<name>.txt` top-N contender list per category, play to
+  32/pair, plain unpinned `rank.exe rate`, update `CHAMPION.md`).
+  Historical note (pre-restructure, 5-category system): round 1 (2026-07-28,
+  24 agents, 116->140 active) and round 2 (2026-07-29, 18 more agents incl.
+  `s3`/`adv` own-books at 4/8-ply, 140->158 active) both screened at only
+  8-11 games/pair; only 4-book/8-book cleared ~2 combined SE over their
+  runner-up, and growing the roster in round 2 made 4-random/8-random's gaps
+  SMALLER, not larger. Those categories are now demoted to
+  `ranking/CHAMPION.md`'s "Deferred categories" appendix pending a
+  self-maximizing book-mining redesign, not part of this item's remaining
+  scope. Remaining book-category growth candidates (if that redesign lands):
+  `s4`/`s9`/`s10`/`s94`/`s95`/`s97`/`s99` don't have an established own-book
+  pair yet (would need a fresh bookgen source, unlike `s3`/`adv` which reused
+  book6/book3's existing target); the wide dist-mlp cores (`s77`/`s78`/`s79`/
+  `s110`/`s112`/`s114`/`s115`, 350-1670 ms/move) were deliberately skipped from
+  the random
   categories for cost, same call as `book5`'s exclusion.
 - **Explain the 30-ply book depth rung. `[Next]`** {cpu: hours, dev: medium}
   Book depth was varied for the first time (6/16/30/60 ply, `models/book7..12`). On the
