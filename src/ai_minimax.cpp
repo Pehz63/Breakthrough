@@ -65,6 +65,55 @@ static const int MAXPLY = 128;
 static int g_killerFrom[MAXPLY][2], g_killerTo[MAXPLY][2];
 static int g_hist[2][64][64];
 
+// === TRANSPOSITION SEARCHER CONTEXT ===
+// The transposition table is ONE table for the whole process, keyed by the position
+// hash. A position hash says WHICH POSITION was searched. It does not say WHO
+// searched it, and a stored score is only meaningful to a searcher that would have
+// computed the same number. Without this context both halves of that go wrong:
+//
+//   1. Cross-evaluator reads. White's agent stores a score its evaluator produced,
+//      Black's agent probes the same position, gets a hit, and returns White's
+//      evaluator's number as its own. The two agents are different players with
+//      different value functions, so this is simply a wrong score, not a cache hit.
+//   2. Cross-strength reads. ttProbe accepts any entry whose stored depth is at
+//      least the prober's remaining depth, so a shallow agent reads a deeper
+//      agent's entries and plays above its own depth.
+//
+// Mixing a searcher context into the key gives every distinct searcher its own
+// disjoint region of the one table, which is the same semantics as handing each
+// player a private table. It is composed of:
+//
+//   - the evaluator index and its full parameter array. That covers the learned
+//     evaluator's model slot too, since agentChooseMove wires the slot into
+//     evalParams[0].
+//   - g_useQuiescence, because a quiescence score at a given remaining depth
+//     extends captures past the horizon and a plain one does not, so the two are
+//     different numbers for the same position and depth.
+//   - the ROOT side to move. In a game the White player always searches from a
+//     White-to-move root and the Black player from a Black-to-move root, so this
+//     one value separates the two players even when they are otherwise identical.
+//     It costs nothing inside a single search, where every ply of both parities
+//     still shares one context and the whole point of the table is preserved.
+//
+// Without the root-side term, two agents sharing an evaluator still contaminate
+// each other: measured 2026-08-27 while mining refutation lines, 132 of 238 mined
+// lines stopped reproducing when the mined side stopped searching, and every one of
+// those 132 had a `tt` opponent while 0 of 77 non-`tt` opponents were affected.
+static uint64_t s_ttCtx = 0;
+
+static void setTTContext(int rootSide, int evaluator, const int* evalParams) {
+    uint64_t h = 1469598103934665603ULL;
+    #define TT_MIX(v) do { uint64_t _v = (uint64_t)(int64_t)(v); \
+        for (int _b = 0; _b < 8; _b++) { h ^= (unsigned char)(_v >> (_b * 8)); h *= 1099511628211ULL; } \
+    } while (0)
+    TT_MIX(rootSide);
+    TT_MIX(evaluator);
+    TT_MIX(g_useQuiescence ? 1 : 0);
+    for (int i = 0; i < MAX_EVAL_PARAMS; i++) TT_MIX(evalParams ? evalParams[i] : 0);
+    #undef TT_MIX
+    s_ttCtx = h;
+}
+
 static void resetSearchHeuristics() {
     for (int p = 0; p < MAXPLY; p++) { g_killerFrom[p][0]=g_killerFrom[p][1]=-1;
                                        g_killerTo[p][0]=g_killerTo[p][1]=-1; }
@@ -211,7 +260,7 @@ static int maxAlphaBetaOrdered(int alpha, int beta, int level, int depth, int ev
     int depthLeft = depth - level;
     uint64_t key = 0; int ttFrom = -1, ttTo = -1;
     if (g_useTT) {
-        key = (uint64_t)positionKey(White, false).hash;
+        key = (uint64_t)positionKey(White, false).hash ^ s_ttCtx;
         int sc;
         if (ttProbe(key, depthLeft, alpha, beta, sc, ttFrom, ttTo)) { leafs++; return sc; }
     }
@@ -266,7 +315,7 @@ static int minAlphaBetaOrdered(int alpha, int beta, int level, int depth, int ev
     int depthLeft = depth - level;
     uint64_t key = 0; int ttFrom = -1, ttTo = -1;
     if (g_useTT) {
-        key = (uint64_t)positionKey(Black, false).hash;
+        key = (uint64_t)positionKey(Black, false).hash ^ s_ttCtx;
         int sc;
         if (ttProbe(key, depthLeft, alpha, beta, sc, ttFrom, ttTo)) { leafs++; return sc; }
     }
@@ -345,6 +394,7 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
     nodes++;
     g_nodeDeadline = g_nodeBudget ? nodes + g_nodeBudget : 0; //per-move node cap (0=off)
     seedTimeBudget();
+    setTTContext(White, evaluator, evalParams);
     if (g_useTT) ttNewSearch();
     if (g_useTT || g_useMoveOrder) resetSearchHeuristics();
     bool budgeted = g_nodeDeadline || s_timeOn;
@@ -503,6 +553,7 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
     nodes++;
     g_nodeDeadline = g_nodeBudget ? nodes + g_nodeBudget : 0; //per-move node cap (0=off)
     seedTimeBudget();
+    setTTContext(Black, evaluator, evalParams);
     if (g_useTT) ttNewSearch();
     if (g_useTT || g_useMoveOrder) resetSearchHeuristics();
     bool budgeted = g_nodeDeadline || s_timeOn;

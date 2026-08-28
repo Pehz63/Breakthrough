@@ -942,20 +942,29 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     reproducible within and across processes, 210/210 node-budgeted in all 4
     passes. Only `model=111`/`model=113` on the `time=150ms` head ever varied,
     the two lines already `# cost flag`ged, and only once in four passes.~~
-  - **Phase 1-2, the miner (`rank.exe refute`).** With both sides deterministic
+  - ~~**Phase 1-2, the miner (`rank.exe refute`).** With both sides deterministic
     each (book, opponent, colour) pair is ONE game, so beating 119 agents is
     winning 238 specific games and finding each is a ONE-PLAYER depth-first
-    search over our own moves with backtracking, not a minimax. Grow one shared
-    strategy tree across all opponents, splitting only where their replies
-    diverge, ordering our candidates with the d8/nb2m oracle. `[Next]`
-    {cpu: hours, dev: high}
-  - **Phase 3, merge conflicts.** `openerBook` keys on `positionKey(side).hash`
+    search over our own moves with backtracking, not a minimax. Built: stage 1
+    mines every target over one shared book with the oracle as fallback, stage 2
+    repairs the losers by walking each losing line backwards and re-searching
+    with the tried moves filtered out of the search root.~~
+  - ~~**Phase 3, merge conflicts.** `openerBook` keys on `positionKey(side).hash`
     with no ply and no path, so two lines needing different moves from one
-    position cannot both be expressed. Detect at merge and re-search a branch
-    rather than dropping an entry silently.
-  - **Phase 4, verification.** Replay the merged book against all 238 and require
-    238-0. Exhaustively checkable, so `Docs/benchmarking.md` defect 3's
-    distinct-game accounting does not apply.
+    position cannot both be expressed. Handled by construction (the book is
+    shared from the first game onward, so a later line inherits an earlier one's
+    move) plus an ownership check that refuses to change a position a won line
+    depends on, surfacing the conflict as a `blocked_shared` row.~~
+  - ~~**Phase 4, verification.** Replay the merged book against all 238.
+    Built as two passes: a coverage audit that reports how many lines LEFT the
+    book, and an `openerBook` replay through `playOneGame`.~~
+  - ~~**The transposition table was handing each agent the other agent's search
+    results** (theory 54, `TT CROSS-AGENT CONTAMINATION` in `Docs/corrections.md`).
+    Found here because a book plays back without searching, so it exposes any
+    dependence on the miner having searched: 132 of 238 mined lines stopped
+    reproducing, all 132 against a `,tt,` opponent and 0 of 77 against non-`tt`
+    ones. Fixed by mixing a searcher context into the TT key. Same 8 targets,
+    same `tt` oracle: 8 of 8 lines left the book before, 0 of 8 after.~~
   - **Declare it reference-class in `ranking/CHAMPION.md`, do not enter it as a
     champion.** A Bradley-Terry fit assigns one strength parameter per agent and
     this one is maximally intransitive: 238-0 against deterministic opponents,
@@ -964,6 +973,28 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   - Open risk compute cannot remove: a black-side win against the strongest
     openless agents may not exist. Report the unwinnable set explicitly rather
     than dropping it.
+
+- **Decide what the TT fix means for the roster and the stored match history.**
+  169 of 217 active agents carry `tt`, so every stored game between two of them
+  was played under `TT CROSS-AGENT CONTAMINATION` and the current binary will not
+  reproduce it. Two open questions, both for the developer, neither answerable by
+  measurement alone: (1) does the behaviour change warrant a code-version bump on
+  the `ab` explorer segment, which would re-identify every alpha-beta agent
+  including the `tt`-free ones whose play did not change and retire the roster's
+  Elo history? (2) should the affected games be re-played, discarded, or kept with
+  a banner? The Elo consequence of the fix is NOT measured yet, and measuring it
+  (replay a slice of the store and compare results) is the cheap input to both
+  decisions. `[Next]` {cpu: medium, dev: low}
+
+- **Does the same replay mismatch confound `bookgen`'s measured book lift?**
+  `bookgen` mines the line owner's moves out of stored games in which the owner
+  DID search, and the resulting book is worn by an agent that does not. That is a
+  second, independent explanation for theory 38's book collapse alongside position
+  novelty, and it is only partly addressed by the TT fix: the fix stops the
+  opponent reading OUR entries, but the owner's own entries still shaped the moves
+  that got mined. Test: replay a `book13`/`book14` wearer against the exact core
+  the book was mined from and report the half-move at which it first leaves book,
+  separately for `tt` and non-`tt` opponents. Not measured. {cpu: low, dev: low}
 
 - **Deterministic pairs are still scheduled as if they were samples.** 119 of 218
   active agents are deterministic, and Phase 0 above confirms a post-fix

@@ -2,7 +2,8 @@
 // Persistent agent Elo ranking (rank.exe) -- see ranking.h
 // ============================================================
 // Sections: SMALL UTILITIES, ID CODEC, ROSTER, MATCH STORE, SCHEDULER,
-// BRADLEY-TERRY FIT, GAME RUNNER, RATE + REPORTS, HISTORY, GAUNTLET, EXTRACT, CHECK.
+// BRADLEY-TERRY FIT, GAME RUNNER, RATE + REPORTS, HISTORY, GAUNTLET, EXTRACT,
+// DETERMINISM PROBE, REFUTE, CHECK.
 //
 // Deliberately independent of ml_train.cpp (whose helpers are static): the tiny
 // utilities it shares (ensureDir, fnv1a64, json extractors, registry lookups)
@@ -23,6 +24,7 @@
 #include "ai_random.h"
 #include "ml_eval.h"
 #include "ml_cluster.h"
+#include "ml_features.h"   // generateMoves (refute: enumerating a node's untried moves)
 #include "datastore.h"
 #include "transposition.h"
 #include <algorithm>
@@ -5747,6 +5749,578 @@ int rankDeterminism(const string& rosterFile, const string& probeId, int replica
 
     mlClearSlots();
     return failures.empty() ? 0 : 2;
+}
+
+// ============================================================
+// REFUTE
+// ============================================================
+// Mine ONE position-keyed book that beats every deterministic agent on the
+// roster, both colours.
+//
+// Why this is a search over our own moves rather than a minimax: with both sides
+// deterministic, a (book, opponent, colour) triple produces exactly ONE game.
+// Beating N opponents is winning 2N specific games, not 2N distributions, so
+// finding each line is depth-first search over OUR moves with backtracking, with
+// the opponent treated as a fixed reply function of the game.
+//
+// A fixed function of the PATH, though, not of the position. A `tt`-flagged
+// opponent carries its transposition table across the plies of a game
+// (playOneGame clears it once, per game, not per ply). So an alternative move
+// cannot be tried by un-playing the last one and searching again: the opponent's
+// reply would be computed against a table that the real game would never have
+// held. Every trial here replays the game from the start. That is the dominant
+// cost, and the reason stage 1 below is greedy rather than exhaustive.
+//
+// It is also ONE book rather than 2N books. `openerBook` keys on
+// positionKey(sideToMove) alone, with no ply and no path, so one entry serves
+// every line that reaches that position, and two lines needing DIFFERENT moves
+// from one position cannot both be expressed. That merge conflict is avoided by
+// construction rather than repaired afterwards: the book is shared from the
+// first game onward and every move our side plays is committed to it
+// immediately, so a later target inherits an earlier one's choice instead of
+// deriving its own. Deriving its own would not agree anyway -- the oracle's TT
+// state at the same position differs by which opponent led it there.
+//
+// Stages:
+//   1. Sequential mining over the shared book. Play each target once with the
+//      current book, falling back to the oracle where the book is silent, and
+//      commit every move the oracle picks. A win claims ownership of every
+//      position on its line.
+//   2. Backtracking repair for the targets that lost. Walk the losing line from
+//      the deepest of OUR moves backwards. At a position no WON target owns,
+//      re-search with the already-tried moves filtered out of the root, and
+//      replay from the start. A position a won target owns is a shared prefix
+//      and is left alone, which is how a real conflict surfaces instead of
+//      quietly breaking a solved line.
+//   3. Prune to the entries the winning lines actually use, write the book, and
+//      verify by replaying every target through the real openerBook path with a
+//      rostered wearer agent.
+
+struct RefMove { int sx, sy, dx; };
+
+static bool refSameMove(const RefMove& a, const RefMove& b) {
+    return a.sx == b.sx && a.sy == b.sy && a.dx == b.dx;
+}
+
+// Bounds first, for the same reason openerBook checks them: tryMoveQuick* skips
+// bounds checks by design, so a bad entry must never index off the board.
+static bool refMoveLegal(int side, const RefMove& e) {
+    if (e.sx < 0 || e.sx >= SIZE || e.sy < 0 || e.sy >= SIZE
+        || e.dx < 0 || e.dx >= SIZE || e.dx < e.sx - 1 || e.dx > e.sx + 1) return false;
+    return (side == White) ? tryMoveQuickWhite(e.sx, e.sy, e.dx)
+                           : tryMoveQuickBlack(e.sx, e.sy, e.dx);
+}
+
+// Narrow the search's root to the legal moves that are NOT in `exclude`, so the
+// next search returns the oracle's best remaining candidate. This is the same
+// one-shot root whitelist the cbook opener uses (globals.h), and the caller
+// clears it right after the move is chosen.
+static bool refSetRootFilter(int side, const std::vector<RefMove>& exclude, int& nLeft) {
+    Move mv[ML_MAX_MOVES];
+    int n = generateMoves(side, mv);
+    int c = 0;
+    for (int i = 0; i < n && c < ROOT_FILTER_MAX; i++) {
+        bool skip = false;
+        for (size_t e = 0; e < exclude.size(); e++)
+            if (exclude[e].sx == mv[i].sx && exclude[e].sy == mv[i].sy
+                && exclude[e].dx == mv[i].dx) { skip = true; break; }
+        if (skip) continue;
+        g_rootMoveWhitelist[c][0] = mv[i].sx;
+        g_rootMoveWhitelist[c][1] = mv[i].sy;
+        g_rootMoveWhitelist[c][2] = mv[i].dx;
+        c++;
+    }
+    g_rootMoveWhitelistCount = c;
+    nLeft = c;
+    if (c == 0) { g_useRootFilter = false; return false; }
+    g_useRootFilter = true;
+    return true;
+}
+
+struct RefGame {
+    int outcome;                                  // 1 = we won, 2 = we lost, 0 = draw/ply cap
+    int plies;
+    std::vector<unsigned long long> ourKeys;      // position hash at each of OUR turns
+    std::vector<RefMove> ourMoves;                // what we played there
+    bool probeExhausted;                          // the probed ply had no untried legal move
+    bool probeIgnored;                            // the search returned an EXCLUDED move anyway
+    int  oobFirst;                                // first of OUR plies the book did not serve (-1 = none)
+    int  oobCount;                                // how many of OUR plies the book did not serve
+};
+
+// One full game, our side driven by the book with the oracle as fallback.
+//
+// probeOurPly >= 0 suppresses the book at that one of OUR moves (counted in our
+// own moves, not half-moves) and re-searches with `exclude` filtered out of the
+// root, which is how stage 2 asks for the oracle's next-best move at a node.
+// Everything before it replays identically, which is the point: the opponent
+// reaches the probed ply with exactly the table it would really have.
+static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
+                        const RankAgent& oppAg, const AgentSpec& oracle,
+                        int ourColour, const string& boardFile,
+                        int probeOurPly, const std::vector<RefMove>* exclude,
+                        RefGame& g) {
+    if (!reloadBoard(boardFile)) return false;
+    ttClear();
+    g.outcome = 0; g.plies = 0;
+    g.ourKeys.clear(); g.ourMoves.clear();
+    g.probeExhausted = false; g.probeIgnored = false;
+    g.oobFirst = -1; g.oobCount = 0;
+
+    const int ourSide = (ourColour == 0) ? White : Black;
+    int victor = None;
+    int ourPly = 0;
+    for (int h = 0; h < 400; h++) {
+        int side = (h % 2 == 0) ? White : Black;
+        g_lastNodes = 0;
+        if (side == ourSide) {
+            unsigned long long key = positionKey(side, false).hash;
+            RefMove chosen; chosen.sx = chosen.sy = chosen.dx = -1;
+            bool haveBook = false;
+            if (ourPly != probeOurPly) {
+                std::map<unsigned long long, RefMove>::const_iterator it = book.find(key);
+                if (it != book.end() && refMoveLegal(side, it->second)) {
+                    chosen = it->second; haveBook = true;
+                }
+            }
+            if (haveBook) {
+                victor = (side == White) ? playMoveWhite(chosen.sx, chosen.sy, chosen.dx)
+                                         : playMoveBlack(chosen.sx, chosen.sy, chosen.dx);
+            } else {
+                BoardSnap before;
+                for (int y = 0; y < SIZE; y++)
+                    for (int x = 0; x < SIZE; x++) before.sq[x][y] = board[x][y];
+                if (ourPly == probeOurPly && exclude && !exclude->empty()) {
+                    int nLeft = 0;
+                    if (!refSetRootFilter(side, *exclude, nLeft)) {
+                        g.probeExhausted = true;
+                        return true;                       // no untried legal move here
+                    }
+                }
+                victor = agentChooseMove(oracle, side);
+                g_useRootFilter = false;
+                if (!diffMoveFromSnap(before, side, chosen.sx, chosen.sy, chosen.dx))
+                    return false;                          // move recovery failed: a bug, not a result
+                if (ourPly != probeOurPly) {
+                    // The book was silent (or held an entry illegal here) and the
+                    // oracle covered for it. On a line the book is supposed to own
+                    // outright, that is the defect, so record where it first happened.
+                    if (g.oobFirst < 0) g.oobFirst = ourPly;
+                    g.oobCount++;
+                }
+                if (ourPly == probeOurPly && exclude)
+                    for (size_t e = 0; e < exclude->size(); e++)
+                        if (refSameMove((*exclude)[e], chosen)) g.probeIgnored = true;
+            }
+            g.ourKeys.push_back(key);
+            g.ourMoves.push_back(chosen);
+            ourPly++;
+        } else {
+            // The opponent plays exactly as playOneGame would: its own opener
+            // first (with its own move count), then its brain.
+            bool playedByOpener = false;
+            if (oppAg.spec.openerKind >= 0 && oppAg.spec.openerKind < g_openerCount)
+                playedByOpener = g_openers[oppAg.spec.openerKind].fn(
+                    side, h / 2, h, oppAg.spec.openerArg, oppAg.spec.openerArg2, victor);
+            if (!playedByOpener) victor = agentChooseMove(oppAg.spec, side);
+            g_useRootFilter = false;
+        }
+        g.plies = h + 1;
+        if (gameOutcome(victor)) break;
+    }
+    int oc = gameOutcome(victor);
+    g.outcome = (oc == 0) ? 0
+              : (((oc == 1) == (ourSide == White)) ? 1 : 2);
+    return true;
+}
+
+struct RefTarget {
+    const RankAgent* opp;
+    int  colour;          // 0 = the book plays White, 1 = the book plays Black
+    int  status;          // 0 = unsolved, 1 = won, 2 = conceded
+    int  plies;
+    int  ourMoveCount;
+    int  triedNodes;      // stage-2 positions examined
+    int  triedMoves;      // stage-2 alternative moves searched
+    bool blockedShared;   // stage 2 ran out of positions it was allowed to change
+    bool auditWon;        // stage-3 audit: won replaying against the WRITTEN book
+    int  oobFirst;        // stage-3 audit: first of OUR moves the book did not serve (-1 = none)
+    int  oobCount;        // stage-3 audit: how many of OUR moves the book did not serve
+    std::vector<unsigned long long> keys;
+    std::vector<RefMove> moves;
+};
+
+int rankRefute(const string& rosterFile, const string& oracleId, const string& wearerId,
+               int slot, const string& board, const string& only, const string& colours,
+               int maxTries, long long maxGames, bool skipTimed, bool force,
+               bool verifyOnly, const string& outFile) {
+    if (slot <= 0) { cout << "ERROR: refute needs --slot <N> (writes models/book<N>.txt)\n"; return 1; }
+    if (maxTries < 1) maxTries = 1;
+
+    string err;
+    std::vector<RankAgent> roster;
+    if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    string oid = oracleId.empty() ? string("ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2")
+                                  : oracleId;
+    RankAgent oracle;
+    if (!rankAgentFromId(oid, oracle, err)) { cout << "ERROR: bad --oracle id: " << err << "\n"; return 1; }
+    if (!rankAgentIsDeterministic(oracle.spec)) {
+        cout << "ERROR: --oracle " << oracle.id << " is not deterministic, so a mined line\n"
+             << "       would not be reproducible even against a deterministic target\n";
+        return 1;
+    }
+    if (oracle.spec.brain != BRAIN_SEARCH) {
+        cout << "ERROR: --oracle must be a SEARCH brain. Stage 2 asks it for its next-best\n"
+             << "       move by narrowing the search root, which only the search explorers honour\n";
+        return 1;
+    }
+
+    string wid = wearerId.empty() ? oracle.id : wearerId;
+    RankAgent wearer;
+    if (!rankAgentFromId(wid, wearer, err)) { cout << "ERROR: bad --wearer id: " << err << "\n"; return 1; }
+    int bookOpener = openerIndexByIdName("book");
+    if (bookOpener < 0) { cout << "ERROR: no 'book' opener in the registry\n"; return 1; }
+    wearer.spec.openerKind = bookOpener;
+    wearer.spec.openerArg  = slot;
+    wearer.spec.openerArg2 = 0;
+    wearer.id = rankAgentId(wearer.spec);
+
+    std::ostringstream bfn;
+    bfn << "models/book" << slot << ".txt";
+    if (!verifyOnly) {
+        std::ifstream probe(bfn.str().c_str());
+        if (probe.is_open() && !force) {
+            cout << "ERROR: " << bfn.str() << " already exists. Books are immutable under their\n"
+                 << "       slot number (the opener ID does not hash the file, so editing one\n"
+                 << "       silently changes an existing agent's identity-play mapping). Pick a\n"
+                 << "       free --slot, or pass --force if this slot is genuinely unused.\n";
+            return 1;
+        }
+    }
+
+    bool wantW = (colours != "b"), wantB = (colours != "w");
+    std::vector<RefTarget> targets;
+    int nActive = 0, nDet = 0, nTimedSkipped = 0;
+    for (size_t i = 0; i < roster.size(); i++) {
+        if (!roster[i].active) continue;
+        nActive++;
+        if (!rankAgentIsDeterministic(roster[i].spec)) continue;
+        nDet++;
+        if (!only.empty() && roster[i].id.find(only) == string::npos) continue;
+        if (skipTimed && roster[i].spec.timeBudgetMs > 0.0) { nTimedSkipped++; continue; }
+        for (int c = 0; c < 2; c++) {
+            if (c == 0 && !wantW) continue;
+            if (c == 1 && !wantB) continue;
+            RefTarget t;
+            t.opp = &roster[i]; t.colour = c; t.status = 0;
+            t.plies = 0; t.ourMoveCount = 0; t.triedNodes = 0; t.triedMoves = 0;
+            t.blockedShared = false; t.auditWon = false; t.oobFirst = -1; t.oobCount = 0;
+            targets.push_back(t);
+        }
+    }
+    if (targets.empty()) { cout << "ERROR: no deterministic targets selected\n"; return 1; }
+
+    std::vector<const RankAgent*> toLoad;
+    for (size_t i = 0; i < targets.size(); i++) toLoad.push_back(targets[i].opp);
+    toLoad.push_back(&oracle);
+    toLoad.push_back(&wearer);
+    if (!loadModelSlots(toLoad, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    cout << "refute: " << targets.size() << " targets (" << nActive << " active roster = "
+         << nDet << " deterministic";
+    if (skipTimed) cout << ", " << nTimedSkipped << " time=-budgeted skipped";
+    cout << ")\n"
+         << "  oracle  " << oracle.id << "\n"
+         << "  wearer  " << wearer.id << "\n"
+         << "  book    " << bfn.str() << ", max " << maxTries << " candidate moves per node\n" << flush;
+
+    std::map<unsigned long long, RefMove> book;
+    std::map<unsigned long long, int> owners;      // positions a WON line depends on
+    long long gamesPlayed = 0;
+    bool budgetHit = false;
+    int stage1Won = 0;
+
+  if (verifyOnly) {
+    // Audit an already-written book instead of mining a new one. Stage 3 below
+    // runs the same coverage audit and verification either way.
+    std::ifstream bf(bfn.str().c_str());
+    if (!bf.is_open()) { cout << "ERROR: cannot read " << bfn.str() << "\n"; mlClearSlots(); return 1; }
+    string line;
+    while (std::getline(bf, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream ls(line);
+        string hex; RefMove e;
+        if (!(ls >> hex >> e.sx >> e.sy >> e.dx)) continue;
+        book[strtoull(hex.c_str(), nullptr, 16)] = e;
+    }
+    cout << "\nverify-only: loaded " << book.size() << " entries from " << bfn.str() << "\n" << flush;
+  } else {
+
+    // ---- Stage 1: sequential mining over the shared book ----
+    cout << "\nstage 1: mining " << targets.size() << " lines over one shared book\n" << flush;
+    for (size_t i = 0; i < targets.size(); i++) {
+        RefTarget& t = targets[i];
+        srand(20260827u);
+        RefGame g;
+        if (!refPlayGame(book, *t.opp, oracle.spec, t.colour, board, -1, nullptr, g)) {
+            cout << "ERROR: replay failed for " << t.opp->id << "\n"; mlClearSlots(); return 1;
+        }
+        gamesPlayed++;
+        // Commit every move our side just made, so the next target inherits this
+        // line's choices instead of deriving its own from a different TT history.
+        for (size_t k = 0; k < g.ourKeys.size(); k++)
+            if (book.find(g.ourKeys[k]) == book.end()) book[g.ourKeys[k]] = g.ourMoves[k];
+        t.keys = g.ourKeys; t.moves = g.ourMoves;
+        t.plies = g.plies; t.ourMoveCount = (int)g.ourMoves.size();
+        if (g.outcome == 1) {
+            t.status = 1;
+            for (size_t k = 0; k < g.ourKeys.size(); k++) owners[g.ourKeys[k]]++;
+        }
+        if ((i + 1) % 20 == 0 || i + 1 == targets.size()) {
+            int won = 0;
+            for (size_t j = 0; j <= i; j++) if (targets[j].status == 1) won++;
+            cout << "  " << (i + 1) << "/" << targets.size() << " mined, " << won
+                 << " won, book " << book.size() << " entries, " << gamesPlayed << " games\n" << flush;
+        }
+    }
+
+    for (size_t i = 0; i < targets.size(); i++) if (targets[i].status == 1) stage1Won++;
+    cout << "stage 1 done: " << stage1Won << "/" << targets.size() << " won by the oracle line alone\n" << flush;
+
+    // ---- Stage 2: backtracking repair for the lines that lost ----
+    cout << "\nstage 2: repairing " << (targets.size() - stage1Won) << " unsolved lines\n" << flush;
+    for (size_t i = 0; i < targets.size(); i++) {
+        RefTarget& t = targets[i];
+        if (t.status == 1) continue;
+        if (maxGames > 0 && gamesPlayed >= maxGames) { budgetHit = true; break; }
+
+        bool solved = false;
+        bool sawFreeNode = false;
+        // Deepest of our own moves first: a change there disturbs the least, and
+        // a deep position is the most likely to be private to this one line.
+        for (int k = (int)t.keys.size() - 1; k >= 0 && !solved; k--) {
+            if (maxGames > 0 && gamesPlayed >= maxGames) { budgetHit = true; break; }
+            std::map<unsigned long long, int>::const_iterator ow = owners.find(t.keys[k]);
+            if (ow != owners.end() && ow->second > 0) continue;   // shared prefix, not ours to change
+            sawFreeNode = true;
+            t.triedNodes++;
+            std::vector<RefMove> tried;
+            tried.push_back(t.moves[k]);
+            for (int attempt = 1; attempt < maxTries; attempt++) {
+                if (maxGames > 0 && gamesPlayed >= maxGames) { budgetHit = true; break; }
+                srand(20260827u);
+                RefGame g;
+                if (!refPlayGame(book, *t.opp, oracle.spec, t.colour, board, k, &tried, g)) {
+                    cout << "ERROR: probe replay failed for " << t.opp->id << "\n"; mlClearSlots(); return 1;
+                }
+                gamesPlayed++;
+                if (g.probeExhausted) break;                  // no untried legal move at this node
+                if (g.probeIgnored) {
+                    cout << "  WARNING: root filter ignored by " << oracle.id
+                         << " -- cannot enumerate alternatives, stopping stage 2\n";
+                    k = -1; break;
+                }
+                t.triedMoves++;
+                tried.push_back(g.ourMoves[k]);
+                if (g.outcome == 1) {
+                    for (size_t q = 0; q < g.ourKeys.size(); q++) book[g.ourKeys[q]] = g.ourMoves[q];
+                    for (size_t q = 0; q < g.ourKeys.size(); q++) owners[g.ourKeys[q]]++;
+                    t.keys = g.ourKeys; t.moves = g.ourMoves;
+                    t.plies = g.plies; t.ourMoveCount = (int)g.ourMoves.size();
+                    t.status = 1; solved = true;
+                    break;
+                }
+            }
+        }
+        if (!solved) {
+            t.status = 2;
+            t.blockedShared = !sawFreeNode;
+        }
+        int done = 0, won = 0;
+        for (size_t j = 0; j <= i; j++) { if (targets[j].status != 0) done++; if (targets[j].status == 1) won++; }
+        cout << "  " << (t.status == 1 ? "SOLVED  " : "CONCEDED") << "  "
+             << (t.colour == 0 ? "W" : "B") << "  " << t.triedNodes << " nodes, "
+             << t.triedMoves << " moves tried" << (t.blockedShared ? ", every node shared" : "")
+             << "  " << t.opp->id << "\n" << flush;
+    }
+    if (budgetHit) cout << "  --max-games budget reached, remaining lines left unsolved\n";
+  }
+
+    // ---- Stage 3: prune, write, verify ----
+    int minedWon = 0, collisions = 0;
+    for (size_t i = 0; i < targets.size(); i++) if (targets[i].status == 1) minedWon++;
+
+    // Keep only the entries a winning line actually walks. Stage 2 leaves the
+    // discarded suffix of every failed attempt behind, and an unreachable entry
+    // is one more position at which a future line can collide for no benefit.
+    std::map<unsigned long long, RefMove> pruned;
+    if (verifyOnly) {
+        pruned = book;
+    } else {
+        for (size_t i = 0; i < targets.size(); i++) {
+            if (targets[i].status != 1) continue;
+            for (size_t k = 0; k < targets[i].keys.size(); k++) {
+                std::map<unsigned long long, RefMove>::iterator ex = pruned.find(targets[i].keys[k]);
+                if (ex != pruned.end() && !refSameMove(ex->second, targets[i].moves[k])) collisions++;
+                pruned[targets[i].keys[k]] = targets[i].moves[k];
+            }
+        }
+        cout << "\nstage 3: " << pruned.size() << " entries kept of " << book.size()
+             << " mined (" << (book.size() - pruned.size()) << " unreachable pruned)\n" << flush;
+        if (collisions > 0)
+            cout << "  WARNING: " << collisions << " positions where two WINNING lines recorded\n"
+                 << "  different moves. A position-keyed book holds one move per position, so the\n"
+                 << "  later line's move overwrote the earlier one's and that earlier line is now\n"
+                 << "  broken. This is the merge conflict the ownership check is supposed to\n"
+                 << "  prevent, so its appearance means the check has a hole.\n";
+    }
+
+    ensureDir("models");
+    if (!verifyOnly) {
+        std::ofstream bf(bfn.str().c_str(), std::ios::trunc);
+        if (!bf.is_open()) { cout << "ERROR: cannot write " << bfn.str() << "\n"; mlClearSlots(); return 1; }
+        bf << "# rank.exe refute -- refutation book, one entry per position where the\n";
+        bf << "# book-wearer moves. Lines carry the full continuation to the win, so the\n";
+        bf << "# wearer's own brain is never consulted on a covered line.\n";
+        bf << "# oracle=" << oracle.id << "\n";
+        bf << "# board=" << board << "\troster=" << rosterFile << "\n";
+        bf << "# targets=" << targets.size() << "\tsolved=" << minedWon << "\n";
+        bf << "# wear it as: " << wearer.id << "\n";
+        for (std::map<unsigned long long, RefMove>::const_iterator it = pruned.begin();
+             it != pruned.end(); ++it)
+            bf << std::hex << std::setw(16) << std::setfill('0') << it->first << std::dec
+               << " " << it->second.sx << " " << it->second.sy << " " << it->second.dx << "\n";
+    }
+    if (!verifyOnly) cout << "  -> " << bfn.str() << "\n" << flush;
+
+    // Coverage audit, run on every invocation and not only under --verify-only.
+    // Mining wins are not evidence the BOOK wins: while a line is being mined our
+    // side searches at every unbooked ply, and on playback it does not, which
+    // changes what a `tt` opponent replies. A line that leaves the book is then
+    // being carried by the wearer's brain, and the record says nothing about
+    // memorization. This is the number that made a silent 238-0 into an honest one.
+    cout << "\naudit: replaying " << targets.size() << " games against the written book\n" << flush;
+    int aWon = 0, aLeft = 0;
+    for (size_t i = 0; i < targets.size(); i++) {
+        RefTarget& t = targets[i];
+        srand(20260827u);
+        RefGame g;
+        if (!refPlayGame(pruned, *t.opp, oracle.spec, t.colour, board, -1, nullptr, g)) {
+            cout << "ERROR: audit replay failed for " << t.opp->id << "\n"; mlClearSlots(); return 1;
+        }
+        t.oobFirst = g.oobFirst; t.oobCount = g.oobCount;
+        t.auditWon = (g.outcome == 1);
+        if (verifyOnly) {
+            t.status = t.auditWon ? 1 : 2;
+            t.plies = g.plies; t.ourMoveCount = (int)g.ourMoves.size();
+        }
+        if (t.auditWon) aWon++;
+        if (g.oobFirst >= 0) aLeft++;
+        if ((i + 1) % 40 == 0 || i + 1 == targets.size())
+            cout << "  " << (i + 1) << "/" << targets.size() << " audited, " << aWon
+                 << " won, " << aLeft << " left the book\n" << flush;
+    }
+    if (verifyOnly) { minedWon = aWon; }
+
+    // Verification replays through playOneGame and the real openerBook, not
+    // through the miner's own loop. A book that only wins inside the tool that
+    // mined it has proved nothing about the agent that will wear it.
+    cout << "\nverify: replaying " << targets.size() << " games with the wearer\n" << flush;
+    int vWon = 0, vLost = 0, vDrew = 0, vMismatch = 0;
+    std::vector<char> vres(targets.size(), '?');
+    std::vector<int> vplies(targets.size(), 0);
+    for (size_t i = 0; i < targets.size(); i++) {
+        const RefTarget& t = targets[i];
+        const RankAgent& wa = (t.colour == 0) ? wearer : *t.opp;
+        const RankAgent& ba = (t.colour == 0) ? *t.opp : wearer;
+        srand(20260827u);
+        RankMatchRow m;
+        if (!playOneGame(wa, ba, board, m)) {
+            cout << "ERROR: cannot load board " << board << "\n"; mlClearSlots(); return 1;
+        }
+        int oc = (m.r == 'W') ? 1 : (m.r == 'B') ? 2 : 0;
+        int ours = (oc == 0) ? 0 : (((oc == 1) == (t.colour == 0)) ? 1 : 2);
+        vres[i] = (ours == 1) ? 'W' : (ours == 2) ? 'L' : 'D';
+        vplies[i] = m.plies;
+        if (ours == 1) vWon++; else if (ours == 2) vLost++; else vDrew++;
+        if (t.auditWon != (ours == 1)) vMismatch++;
+        if ((i + 1) % 40 == 0 || i + 1 == targets.size())
+            cout << "  " << (i + 1) << "/" << targets.size() << " verified, " << vWon << " won\n" << flush;
+    }
+
+    ensureDir("ranking");
+    string rep = outFile.empty() ? ("ranking/refute_book" + std::to_string(slot) + ".tsv") : outFile;
+    std::ofstream out(rep.c_str(), std::ios::trunc);
+    if (out.is_open()) {
+        out << "# rank.exe refute -- one row per (target, colour)\n";
+        out << "# oracle=" << oracle.id << "\twearer=" << wearer.id << "\tboard=" << board << "\n";
+        out << "# mined: 1 = the miner found a win, 0 = conceded\n";
+        out << "# verify: W/L/D for the BOOK's side, replayed through openerBook by the wearer\n";
+        out << "# blocked_shared: every position on the losing line was owned by an already-won\n";
+        out << "#   line, so no move could be changed without breaking one. That is the merge\n";
+        out << "#   conflict a single position-keyed book cannot express.\n";
+        out << "# audit: 1 = the WRITTEN book won this line replayed on its own. Distinct from\n";
+        out << "#   `mined`, which only says the line was found while our side was still\n";
+        out << "#   searching at unbooked plies.\n";
+        out << "# oob_first: the first of OUR moves the book did not serve, so the fallback brain\n";
+        out << "#   had to choose (-1 = the book covered the whole line). A line with oob_first\n";
+        out << "#   >= 0 was carried by the brain, not by the book, whatever its result says.\n";
+        out << "# v_plies: half-moves in the openerBook verification game. A line that matches\n";
+        out << "#   `plies` played the same length game the miner recorded.\n";
+        out << "colour\tmined\taudit\tverify\ttimed\tplies\tv_plies\tour_moves\toob_first\toob_count"
+               "\ttried_nodes\ttried_moves\tblocked_shared\topponent\n";
+        for (size_t i = 0; i < targets.size(); i++) {
+            const RefTarget& t = targets[i];
+            out << (t.colour == 0 ? "W" : "B") << "\t" << (t.status == 1 ? 1 : 0)
+                << "\t" << (t.auditWon ? 1 : 0) << "\t" << vres[i]
+                << "\t" << (t.opp->spec.timeBudgetMs > 0.0 ? 1 : 0) << "\t" << t.plies
+                << "\t" << vplies[i] << "\t" << t.ourMoveCount
+                << "\t" << t.oobFirst << "\t" << t.oobCount
+                << "\t" << t.triedNodes << "\t" << t.triedMoves
+                << "\t" << (t.blockedShared ? 1 : 0) << "\t" << t.opp->id << "\n";
+        }
+    }
+    out.close();
+
+    int blocked = 0, timedTargets = 0, timedWon = 0;
+    for (size_t i = 0; i < targets.size(); i++) {
+        if (targets[i].blockedShared) blocked++;
+        if (targets[i].opp->spec.timeBudgetMs > 0.0) {
+            timedTargets++;
+            if (vres[i] == 'W') timedWon++;
+        }
+    }
+    if (!verifyOnly)
+        cout << "\nmined:  " << minedWon << "/" << targets.size() << " lines won ("
+             << stage1Won << " by the oracle line alone, " << (minedWon - stage1Won) << " by repair)\n";
+    cout << (verifyOnly ? "\n" : "") << "audit:  " << aWon << "/" << targets.size()
+         << " lines won by the written book on its own, " << aLeft << " left the book\n";
+    if (aLeft > 0)
+        cout << "  Those " << aLeft << " lines were carried by the wearer's brain, not by the\n"
+             << "  book, so the verified record below is NOT a memorization result for them.\n";
+    cout << "verify: " << vWon << "-" << vLost << "-" << vDrew << " (W-L-D for the book's side) over "
+         << targets.size() << " games, " << pruned.size() << " book entries\n";
+    if (timedTargets > 0)
+        cout << "  of which wall-clock-budgeted (time=) targets: " << timedWon << "/" << timedTargets << " won\n";
+    if (!verifyOnly && collisions > 0)
+        cout << "  " << collisions << " position(s) where two winning lines wanted different moves\n";
+    if (blocked > 0)
+        cout << "  " << blocked << " conceded with every node on the losing line owned by an\n"
+             << "  already-won line: a single position-keyed book cannot express those\n";
+    if (vMismatch > 0)
+        cout << "  WARNING: " << vMismatch << " rows where the "
+             << (verifyOnly ? "audit" : "mined") << " verdict and the verified replay\n"
+             << "  disagree. The miner's loop and openerBook are not playing the same game, so\n"
+             << "  neither number should be quoted until that is explained. Re-run with\n"
+             << "  --verify-only to see whether the book stops covering those lines (oob_first)\n"
+             << "  or whether the two loops diverge on a fully covered one.\n";
+    cout << "  " << gamesPlayed << " mining games + " << targets.size() << " verification games\n";
+    cout << "  -> " << rep << "\n";
+
+    mlClearSlots();
+    // Clean only when the book wins every line, on its own, through openerBook.
+    return (vWon == (int)targets.size() && aLeft == 0 && vMismatch == 0) ? 0 : 2;
 }
 
 // ============================================================

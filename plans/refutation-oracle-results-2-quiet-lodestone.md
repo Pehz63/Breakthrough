@@ -1,0 +1,220 @@
+# Refutation oracle, phases 1-4: the miner, and the transposition-table defect it found
+
+Companion to `plans/refutation-oracle-plan-1-quiet-lodestone.md` (phases 1-4).
+Phase 0's gate is `plans/refutation-oracle-results-1-quiet-lodestone.md`.
+
+## Headline
+
+The miner (`rank.exe refute`) is built and works. The book it was supposed to
+produce is not finished, because building it surfaced a defect in the
+transposition table that invalidates the premise the whole approach rests on, and
+fixing that took priority.
+
+**The transposition table was handing each agent the other agent's search
+results.** It is one process-wide table keyed by the position hash alone, and
+`ttClear()` runs once per GAME rather than per move, so both players of a game
+searched through it. A position hash records which position was searched, not who
+searched it.
+
+| | |
+|---|---|
+| Cross-evaluator read | White's agent stores a score its evaluator produced. Black's agent probes the same position, gets a key match, and returns White's evaluator's number as its own. |
+| Cross-strength read | `ttProbe` accepts any entry whose stored depth is at least the prober's remaining depth, so a shallower agent reads a deeper agent's entries and plays above its own depth. |
+| Reach | 169 of 217 active roster agents carry `tt`. |
+| Elo consequence | **Not measured.** |
+
+## How it surfaced
+
+Mining is an unusually sharp probe for this, and that is not a coincidence. A
+mined line is played back by a book that does no searching at all, so any
+dependence of the opponent's replies on OUR side having searched shows up
+immediately as the line failing to reproduce. An ordinary tournament never
+notices, because both sides always search.
+
+First full mine, 238 targets, d8/nb2m oracle: 238 of 238 lines mined, 226-12 on
+the verification replay. That looked like a near-clean sweep with 12 stragglers.
+It was not. A coverage audit of the written book found **132 of the 238 lines had
+left the book entirely** and were being carried by the wearer's brain. The split
+was exactly on the opponent's own flag:
+
+| Opponent head | Lines that left the book | Lines that stayed |
+|---|---|---|
+| carries `,tt,` | **132** | 32 |
+| no `tt` | **0** | 76 |
+
+Two-setting control, same 8 targets, an oracle identical but for the one flag:
+
+| Oracle | Book entries | Lines that left the book |
+|---|---|---|
+| `ab(deep=8,ord,nodes=2m)@1.classic(chip=100)@2` | 197 | **0 of 8** |
+| `ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2` | 146 | **8 of 8** |
+
+Both runs reported 8-0-0. The record was not the signal. That is why the coverage
+audit now runs on every invocation rather than only under `--verify-only`.
+
+After the fix, the same command with the same `tt` oracle on the same 8 targets
+goes to **0 of 8 lines leaving the book**, with the same 197 entries the tt-free
+oracle produced.
+
+## The fix
+
+`setTTContext` in `src/ai_minimax.cpp`, mixed into the key at both probe/store
+sites. Each distinct searcher gets a disjoint region of the one table, which is
+the same semantics as handing each player a private table. The context is:
+
+- the evaluator index and the full `evalParams` array. That covers the learned
+  evaluator's model slot too, since `agentChooseMove` wires the slot into
+  `evalParams[0]`.
+- `g_useQuiescence`, because a quiescence score at a given remaining depth
+  extends captures past the horizon and a plain one does not, so the two are
+  different numbers for the same position and depth.
+- the ROOT side to move. In a game the White player always searches from a
+  White-to-move root and the Black player from a Black-to-move root, so this one
+  term separates the two players even when they are otherwise identical, and it
+  costs nothing inside a single search where both parities still share a context.
+
+Killer and history tables are not a second channel: `resetSearchHeuristics` runs
+at the top of every root search.
+
+## The regression test took three attempts, and the first two proved nothing
+
+`tests/test_ai_integration.cpp`, "the transposition table never hands one searcher
+another's score". Validated by reverting the fix and confirming it fails:
+Black's node count 157 clean versus 135 contaminated, 30 key matches, 3 cutoffs.
+
+The two failed attempts are worth recording, because both PASSED with the fix
+reverted and would have shipped as decoration:
+
+1. **Two searches from the same root never collide.** White's tree is "P then a
+   white move", Black's is "P then a black move". The two never visit a common
+   position, so the table was never even read. The collision needs an actual
+   game: White searches from P and PLAYS, and Black then searches from the
+   resulting P', which is a node inside White's tree stored at a greater
+   remaining depth than Black's own.
+2. **The position short-circuited the search.** The midgame position copied from
+   the neighbouring test has White pieces on row 6, so `canWinWhite()` fires and
+   `moveWhite` returns a winning move without entering the search at all.
+   Instrumenting the table showed `stores=0`: nothing had happened. Moving both
+   sides to midboard fixed it.
+
+Attempt 2's position is the same one the existing "move ordering and TT preserve
+the search value" test uses, at depth 4. That test may be vacuous for the same
+reason. Not checked, listed under Future Work.
+
+## What was built
+
+`rank.exe refute` mines ONE position-keyed book intended to beat every
+deterministic agent on the roster, both colours.
+
+Both sides being deterministic makes each (book, opponent, colour) triple exactly
+one game, so beating N opponents is winning 2N specific games rather than 2N
+distributions, and finding each is depth-first search over our own moves with the
+opponent as a fixed reply function. Not a minimax and not a sampled tournament.
+
+Every trial replays from move 1. The opponent is a fixed function of the game
+PATH rather than of the position, since the table is cleared per game and not per
+ply, so an alternative move cannot be tried by un-playing the last one.
+
+It is one book rather than 2N because `openerBook` keys on
+`positionKey(sideToMove)` alone, with no ply and no path. Two lines needing
+different moves from one position cannot both be expressed. The miner avoids that
+by construction rather than repairing it afterwards: the book is shared from the
+first game onward and every move our side plays is committed immediately, so a
+later target inherits an earlier one's choice instead of deriving its own, which
+would not agree anyway.
+
+| Stage | What it does |
+|---|---|
+| 1 | Play every target once with the shared book, oracle as fallback. A win claims ownership of every position on its line. |
+| 2 | Repair the losers. Walk each losing line backwards from the deepest of our moves, and at any position no won line owns, re-search with the already-tried moves filtered out of the search root (the same one-shot whitelist `cbook` uses) and replay. Positions a won line owns are left alone, so a real merge conflict surfaces as a `blocked_shared` row rather than quietly breaking a solved line. |
+| 3 | Prune to the entries a winning line walks, write the book, audit coverage, then verify through `playOneGame` and the real `openerBook`. |
+
+`--verify-only` runs stage 3 against an existing book without mining or rewriting
+it. Exit code 2 unless the book wins every line, on its own, through `openerBook`.
+
+Two self-checks are permanent, both because they caught something here: the miner
+compares its own verdict against the `openerBook` replay and warns on
+disagreement, and it detects a search that ignores the root whitelist and returns
+an excluded move, which would otherwise make stage 2 silently retry the move that
+already lost.
+
+## Also fixed, from phase 0
+
+`rankPairGen`'s game loop never called `ttClear()`, unlike `playOneGame` and the
+extract replay path. `pairgen --games N` on a deterministic pair produced N
+different games rather than N copies of one. No prior `pairgen` result is
+re-measured here.
+
+## Changes made
+
+| File | Change |
+|---|---|
+| `src/ai_minimax.cpp` | `setTTContext` + the searcher context mixed into both TT keys |
+| `src/ranking.cpp` | `rankRefute` (stages 1-3, coverage audit, `--verify-only`), `refPlayGame`, `rankPairGen` per-game `ttClear` |
+| `src/ranking.h`, `tools/rank_main.cpp` | `refute` entry point, dispatch, usage |
+| `tests/test_ai_integration.cpp` | TT searcher-context regression test |
+| `Docs/corrections.md` | `TT CROSS-AGENT CONTAMINATION` defect class |
+| `Docs/theories.md` | theory 54 |
+| `src/CLAUDE.md`, `tools/CLAUDE.md`, `README.md`, `todo.md` | reference updates |
+
+## How to test
+
+```powershell
+.\tests.exe "MiniMax - the transposition table never hands one searcher another's score"
+.\rank.exe refute --slot 95 --only "ab(deep=4,tt,ord,nodes=200k)@1" --tries 4
+```
+The refute run should report `audit: 8/8 lines won by the written book on its own,
+0 left the book`. Any non-zero "left the book" against a node-budgeted opponent
+means the contamination is back.
+
+To see the defect rather than its absence, revert the two `^ s_ttCtx` in
+`src/ai_minimax.cpp` and re-run the test.
+
+## Open, and deliberately not decided here
+
+**The roster and the stored history.** 169 of 217 active agents carry `tt`, so
+every stored game between two of them was played under the defect and the current
+binary will not reproduce it. Whether that warrants a code-version bump on the
+`ab` explorer segment is a developer decision with a large consequence: bumping
+re-identifies every alpha-beta agent, including the `tt`-free ones whose play did
+not change, and retires the roster's Elo history. Whether the affected games get
+re-played, discarded, or kept with a banner is the same decision's other half.
+
+## Future Work
+
+- **The Elo consequence of the fix is unmeasured.** The cheap version is to
+  replay a slice of the store with the current binary and count how many stored
+  `tt`-vs-`tt` games no longer reproduce their stored result. That number is the
+  input to the roster decision above, and it is a few minutes of compute.
+- **The neighbouring TT test may be vacuous.** "MiniMax - move ordering and TT
+  preserve the search value" uses the same row-6 position that made attempt 2 of
+  the new test short-circuit before reaching the search. If `canWinWhite()` fires
+  there too, that test has been asserting that three identical no-op searches
+  agree. One instrumented run settles it.
+- **The book itself is not finished.** Both full mines are superseded: the first
+  ran under the defect, the second was killed mid-stage-2 once the real fix was
+  identified. A clean full mine on the fixed binary has not been run, so there is
+  no answer yet to the actual question of how much of this ladder is memorizable.
+- **`bookgen` is only partly repaired by this.** Its books are mined from stored
+  games in which the line owner DID search, and are then worn by an agent that
+  does not. The fix stops the opponent reading our entries, but the owner's own
+  entries still shaped the moves that got mined, so this remains a second
+  candidate explanation for theory 38's book collapse alongside position novelty.
+- **Stage 2's ordering is unstudied.** Targets are repaired in roster order, and
+  the shared prefix is therefore fixed by whichever targets happened to be mined
+  first. Hardest-first would plausibly concede fewer lines. Untested.
+
+## Ideas This Inspired
+
+- **A "would this replay?" column on the store.** The fix makes a stored game's
+  reproducibility a property worth recording rather than rediscovering. An 8-byte
+  per-ply trace hash per row would make it a query.
+- **Mining as a general instrument for hidden state.** The reason this defect
+  surfaced here and nowhere else is that playback removes one side's search
+  entirely. Any shared mutable state that a search touches is detectable the same
+  way, so a "mine a line, then replay it without searching" harness is a
+  general-purpose test for search-state leaks, not just a book-building tool.
+- **Give each agent a real private table.** The context XOR is the minimal fix and
+  keeps one allocation, but it also means two agents contend for the same slots
+  and evict each other. Separate tables would remove the contention and make the
+  per-agent table size a tunable, which is itself a strength axis worth rating.

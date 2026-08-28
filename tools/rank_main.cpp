@@ -72,6 +72,7 @@ static void usage() {
     cout << "  determinism  replay every deterministic agent vs a fixed probe N times: does it repeat?\n";
     cout << "  extract    replay a sample of stored matches, capturing labeled value-model training data\n";
     cout << "  bookgen    mine an opening/refutation book from stored games between two agents\n";
+    cout << "  refute     mine ONE book that beats every deterministic roster agent, both colours\n";
     cout << "  cbookdump  replay winning games, recording clustering points for a cluster book\n";
     cout << "  cbookfit   cluster a cbookdump into models/cbook<N>.txt files (no replay)\n";
     cout << "  pairgen    play FRESH games between two named agents, capturing labeled training data\n";
@@ -104,6 +105,17 @@ static void usage() {
     cout << "          cross-process reproducibility too. --include-stochastic adds agents that DO\n";
     cout << "          draw from rand() as a positive control: they SHOULD come back non-reproducible,\n";
     cout << "          which is what shows the probe can detect a difference at all.\n";
+    cout << "refute:   --slot <N> (writes models/book<N>.txt) --oracle <id> --wearer <id>\n";
+    cout << "          --tries 4 --colours both|w|b --only <id substring> --max-games 0\n";
+    cout << "          --skip-timed --force --out ranking/refute_book<N>.tsv\n";
+    cout << "          --verify-only (audit an existing book: no mining, no rewrite)\n";
+    cout << "          Stage 1 plays every deterministic target once with a shared book,\n";
+    cout << "          falling back to --oracle where the book is silent and committing what\n";
+    cout << "          it picks, so later targets inherit earlier choices. Stage 2 repairs the\n";
+    cout << "          losers by walking each losing line backwards and re-searching with the\n";
+    cout << "          tried moves filtered out of the root, skipping positions an already-won\n";
+    cout << "          line depends on. Stage 3 prunes to the reachable entries and replays\n";
+    cout << "          every target through openerBook. Exit 2 unless the book wins them all.\n";
     cout << "extract:  --out <file>, --feature-version 2, --sample 3000 (0 = all matching rows)\n";
     cout << "bookgen:  --a <line-owner id> --b <target id> --plies 60 --out models/book<N>.txt\n";
     cout << "          Replays the pair's stored games; keeps positions/moves from A's wins only.\n";
@@ -289,6 +301,18 @@ int main(int argc, char** argv) {
     } else if (cmd == "gauntlet") {
         rc = rankGauntlet(roster, store, getOpt(argc, argv, "--id", ""), games,
                           hasFlag(argc, argv, "--keep"), seed, board);
+    } else if (cmd == "refute") {
+        rc = rankRefute(roster, getOpt(argc, argv, "--oracle", ""),
+                        getOpt(argc, argv, "--wearer", ""),
+                        getInt(argc, argv, "--slot", 0), board,
+                        getOpt(argc, argv, "--only", ""),
+                        getOpt(argc, argv, "--colours", "both"),
+                        getInt(argc, argv, "--tries", 4),
+                        (long long)getInt(argc, argv, "--max-games", 0),
+                        hasFlag(argc, argv, "--skip-timed"),
+                        hasFlag(argc, argv, "--force"),
+                        hasFlag(argc, argv, "--verify-only"),
+                        getOpt(argc, argv, "--out", ""));
     } else if (cmd == "extract") {
         rc = rankExtract(store, getOpt(argc, argv, "--out", "data/replay.jsonl"), board,
                          getInt(argc, argv, "--feature-version", 2),

@@ -435,6 +435,7 @@ seconds. Run a rate before reading standings in a fresh clone.
 .\rank.exe history --agent "ab(deep=4"       # one agent's record vs every opponent
 .\rank.exe gauntlet --id "ab(deep=5)@1.classic(chip=100)@2" --games 4
 .\rank.exe determinism --replicas 3        # do the deterministic agents actually replay?
+.\rank.exe refute --slot 21 --tries 4      # mine one book that beats every deterministic agent
 ```
 
 `determinism` replays every active deterministic agent against a fixed
@@ -442,6 +443,18 @@ deterministic probe, both colours, and compares exact per-ply position traces. I
 exits 2 if any did not repeat. Add `--include-stochastic` to include agents that
 draw from `rand()` as a positive control: those must come back non-reproducible,
 which is what shows the probe can detect a difference at all.
+
+`refute` mines a single opening-book file that aims to beat every deterministic
+agent on the roster, both colours. Because both sides are deterministic, each
+(book, opponent, colour) triple produces exactly one game, so this is a
+depth-first search over the book's own moves with the opponent treated as a fixed
+reply function, not a minimax and not a sampled tournament. It plays every target
+once with a shared book that a strong `--oracle` fills in, repairs the losses by
+re-searching earlier moves with the already-tried ones excluded, then verifies by
+replaying every game through the ordinary book-opener path. Exit code 2 unless the
+book wins them all. A book that does win them all is memorization rather than
+strength, and belongs in `ranking/CHAMPION.md`'s reference class rather than in a
+category race.
 
 Each game records wall time per side, **process CPU time** per side (via
 GetProcessTimes deltas, so it stays honest under parallel contention), end piece

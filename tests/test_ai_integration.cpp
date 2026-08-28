@@ -1,4 +1,5 @@
 #include "catch.hpp"
+#include "transposition.h"   // ttClear (searcher-context regression test)
 #include "helpers.h"
 #include <cstring>
 
@@ -70,6 +71,100 @@ TEST_CASE("MiniMax - move ordering and TT preserve the search value") {
     REQUIRE(runValue(false, true) == base);   // move ordering only
     REQUIRE(runValue(true,  false) == base);  // transposition table only
     REQUIRE(runValue(true,  true)  == base);  // both
+}
+
+TEST_CASE("MiniMax - the transposition table never hands one searcher another's score") {
+    // The TT is ONE process-wide table keyed by the position hash. A position hash
+    // says WHICH position was searched. It does not say WHO searched it, so without
+    // a searcher context an entry stored by one player is readable by the other:
+    // a different evaluator reads a number its own value function never produced,
+    // and a shallower search reads a deeper one's entries and plays above its depth.
+    // ttClear runs once per GAME, not per move, so both players of a ranked game
+    // really do share one table and the defect changed match results.
+    //
+    // The shape here matters. Two searches from the SAME root never collide, because
+    // White's tree is "P then a white move" and Black's is "P then a black move", so
+    // an earlier version of this test passed with the fix reverted and proved
+    // nothing. The collision needs an actual game: White searches from P and PLAYS,
+    // and Black then searches from the resulting P', which is a node INSIDE White's
+    // tree, stored there at a remaining depth greater than Black's own.
+    // Both sides in midboard, so neither canWin* short-circuit fires and both
+    // searches actually run. (A position with a piece one step from the back row
+    // makes moveWhite return a winning move without ever entering the search, which
+    // silently makes a TT test vacuous.)
+    clearBoard();
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {2,2,2,3,3};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {5,5,5,4,4};
+    for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
+    g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+
+    struct Snap { char sq[SIZE][SIZE]; int wc, bc, cd, we, be; };
+    auto take = [](Snap& s) {
+        memcpy(s.sq, board, sizeof(board));
+        s.wc = g_whiteCount; s.bc = g_blackCount; s.cd = g_chipDiff;
+        s.we = g_whiteAtEnd; s.be = g_blackAtEnd;
+    };
+    auto put = [](const Snap& s) {
+        memcpy(board, s.sq, sizeof(board));
+        g_whiteCount = s.wc; g_blackCount = s.bc; g_chipDiff = s.cd;
+        g_whiteAtEnd = s.we; g_blackAtEnd = s.be;
+    };
+
+    Snap start; take(start);
+    int whiteParams[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
+    int otherParams[MAX_EVAL_PARAMS] = { 0, 97, 0, 0 };   // a very different value function
+    int blackParams[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
+    const int WHITE_DEPTH = 5, BLACK_DEPTH = 3;           // Black shallower, so probes hit
+
+    // White searches from the start position and plays. Capture where that leaves
+    // the board, so Black's own search can be run from the identical position
+    // both with and without White's entries sitting in the table.
+    auto whiteMoveTo = [&](const int* params, Snap& after) {
+        ttClear();
+        g_useTT = true; g_useMoveOrder = true; g_aspirationWindow = 0;
+        put(start);
+        moveWhite(MiniMax, WHITE_DEPTH, 0, params, StandardOpener);
+        take(after);
+    };
+
+    auto blackSearch = [&](const Snap& from, bool keepWhitesEntries,
+                           const int* whiteFirstParams, unsigned long long& nodesOut) -> int {
+        g_useTT = true; g_useMoveOrder = true; g_aspirationWindow = 0;
+        if (keepWhitesEntries) {
+            ttClear();
+            put(start);
+            moveWhite(MiniMax, WHITE_DEPTH, 0, whiteFirstParams, StandardOpener);
+        } else {
+            ttClear();
+        }
+        put(from);
+        moveBlack(MiniMax, BLACK_DEPTH, 0, blackParams, StandardOpener);
+        nodesOut = g_lastNodes;
+        int v = g_downEvalBlack;
+        g_useTT = false; g_useMoveOrder = false;
+        return v;
+    };
+
+    Snap afterSame, afterCross;
+    whiteMoveTo(blackParams, afterSame);
+    whiteMoveTo(otherParams, afterCross);
+
+    unsigned long long nClean = 0, nDirty = 0;
+
+    // 1. A prior White search with the SAME evaluator must not reach Black. They are
+    //    still two different players, and this half is what made 132 of 238 mined
+    //    refutation lines stop reproducing (theory 54).
+    int cleanSame = blackSearch(afterSame, false, blackParams, nClean);
+    int dirtySame = blackSearch(afterSame, true,  blackParams, nDirty);
+    REQUIRE(dirtySame == cleanSame);
+    REQUIRE(nDirty == nClean);
+
+    // 2. Nor may one with a DIFFERENT evaluator, which additionally hands Black a
+    //    score its own value function would never have produced.
+    int cleanCross = blackSearch(afterCross, false, otherParams, nClean);
+    int dirtyCross = blackSearch(afterCross, true,  otherParams, nDirty);
+    REQUIRE(dirtyCross == cleanCross);
+    REQUIRE(nDirty == nClean);
 }
 
 TEST_CASE("MiniMax - quiescence resolves the leaf exchange (horizon fix)") {

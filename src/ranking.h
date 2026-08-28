@@ -383,6 +383,21 @@ int rankDeterminism(const std::string& rosterFile, const std::string& probeId,
                     int replicas, const std::string& board, const std::string& outFile,
                     const std::string& only, int shard, int ofK,
                     bool includeStochastic = false);
+// Mine ONE position-keyed book that beats every deterministic agent on the
+// roster, both colours. Both sides being deterministic makes each (book,
+// opponent, colour) triple exactly one game, so this is a depth-first search
+// over OUR OWN moves with the opponent as a fixed reply function, not a
+// minimax. `oracleId` supplies the candidate moves and their ordering,
+// `wearerId` is the agent the book is written for (its ID gains the
+// `.opener(book,book=<slot>)@1` segment). Writes models/book<slot>.txt plus a
+// per-target TSV, and verifies by replaying every target through the real
+// openerBook path rather than through the miner's own loop. Exit code 2 unless
+// every target was won on that verification.
+int rankRefute(const std::string& rosterFile, const std::string& oracleId,
+               const std::string& wearerId, int slot, const std::string& board,
+               const std::string& only, const std::string& colours,
+               int maxTries, long long maxGames, bool skipTimed, bool force,
+               bool verifyOnly, const std::string& outFile);
 int rankCheck(const std::string& rosterFile, const std::string& storeFile,
               int gamesPerPair, const std::string& board);
 // cohortFile (optional): path to a plain list of agent ids. When given, only

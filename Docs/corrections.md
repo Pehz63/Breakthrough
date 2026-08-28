@@ -104,3 +104,49 @@ is what `tools/tdleaf_study.ps1` does via `train.exe --ckpt-at`.
 
 **Affected:** `plans/training-sweep-results-1-luminous-snail.md` (source),
 `tools/CLAUDE.md`, `tools/train_scaling.ps1`, `todo.md` (citation sites).
+
+---
+
+## `TT CROSS-AGENT CONTAMINATION` - flagged 2026-08-27
+
+**Scope: every stored game played between two agents that both carry `tt`, up to
+2026-08-27.** 169 of the 217 active roster agents carry it. This is a code defect
+rather than a writing defect, so unlike the other entries here it is not a class of
+sloppy claim, it is a class of number that the engine itself produced wrongly.
+
+The transposition table is ONE process-wide table keyed by the position hash alone
+(`src/transposition.cpp`), and `ttClear()` runs once per GAME, not per move. Both
+players of a game therefore searched through the same table, and a position hash
+records WHICH position was searched, not WHO searched it. Two wrong reads follow,
+both reachable in ordinary ranked play:
+
+1. **Cross-evaluator.** White's agent stores a score its evaluator produced. Black's
+   agent probes the same position, gets a key match, and returns White's evaluator's
+   number as its own. That is not a cache hit, it is a different value function's
+   answer.
+2. **Cross-strength.** `ttProbe` accepts any entry whose stored depth is at least the
+   prober's remaining depth, so a shallower agent reads a deeper agent's entries and
+   plays above its own depth.
+
+**How it was found.** Mining refutation lines (`rank.exe refute`), because a book
+plays its line back without searching at all, so any dependence of the opponent's
+replies on OUR side having searched shows up immediately as the line failing to
+reproduce. 132 of 238 mined lines stopped reproducing, and the split was exactly on
+the opponent's own flag: all 132 had a `,tt,` opponent, and 0 of the 77 non-`tt`
+opponents were affected. A two-setting control on 8 targets with an oracle identical
+but for the flag gave 0 of 8 lines leaving the book tt-free versus 8 of 8 with `tt`,
+and both runs still reported a winning record, because the wearer's brain silently
+covered for the book once it fell out.
+
+**Fixed** the same day by mixing a searcher context (evaluator index, the full
+`evalParams` array, `g_useQuiescence`, and the root side to move) into the TT key,
+which gives each player a disjoint region of the one table. `tests/test_ai_integration.cpp`
+carries a regression test, validated to fail with the fix reverted.
+
+**What this does and does not license.** It does NOT mean past Elo numbers are
+wrong by a known amount, because **the Elo consequence has not been measured**. What
+it does mean: a stored `tt`-vs-`tt` game is not reproducible by the current binary,
+so anything derived by REPLAYING those games (`rank.exe extract` training data,
+`bookgen` books, `cbookdump` cluster books) was derived under the defect, and any
+claim that rests on a `tt` agent's exact node count or effective depth is measuring
+a quantity that included the opponent's work. Re-measure rather than re-quote.
