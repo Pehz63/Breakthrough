@@ -199,6 +199,33 @@ means the contamination is back.
 To see the defect rather than its absence, revert the two `^ s_ttCtx` in
 `src/ai_minimax.cpp` and re-run the test.
 
+## Running a long mine while another session works the same tree
+
+Two mines were lost to collisions with a concurrent session working in the same
+working tree and the same binaries, so the isolation below is not optional
+hygiene, it is what makes a multi-hour mine survivable.
+
+| Hazard | What happened | Mitigation |
+|---|---|---|
+| The other session rebuilds `rank.exe` | A running exe is locked on Windows, so their link fails until something clears the lock. The mine died at 40/238 with no book. | Run the mine from a private copy, `rank_refute.exe`. Neither side can block or kill the other. |
+| `ranking/roster.txt` is rewritten mid-run | The `ab` explorer was bumped to `@2` and all 217 roster lines rewritten 13 seconds after a mine started, leaving its output naming `@1` identities that no longer exist. | Snapshot the roster and pass `--roster ranking/roster_refute_snapshot.txt`. |
+| Shared output paths | Not hit, but `refute` writes `models/book<N>.txt`, and book slots are immutable under their number. | Confirm the slot is free before starting. `refute` already refuses to overwrite without `--force`. |
+
+The general rule: a long-running job in a shared tree should depend on a private
+binary and a private copy of every input it reads, so that the only shared thing
+left is CPU.
+
+## A module version bump stales every hardcoded ID
+
+The `ab` bump to `@2` re-canonicalised every ID wearing the alpha-beta explorer,
+and a hardcoded `"@1"` then fails the canonical check and refuses to start. There
+were 129 such literals in the tree (80 in `tests/test_ranking.cpp`, 41 in
+`tools/`, 8 in `src/`). Two of the `src/` ones were live defaults in commands
+added by this work, `refute`'s default oracle and `determinism`'s default probe,
+and both are now composed from the module registries through new
+`rkExplorerVersion` / `rkEvalVersion` helpers rather than written out. Anything
+that needs to NAME a specific agent in code should compose it the same way.
+
 ## Open, and deliberately not decided here
 
 **The roster and the stored history.** 169 of 217 active agents carry `tt`, so
