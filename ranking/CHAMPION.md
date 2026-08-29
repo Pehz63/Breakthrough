@@ -1,5 +1,19 @@
 # Reigning Champions (single source of truth)
 
+> **[IDENTITIES RETIRED 2026-08-28]** Every category champion below is declared
+> on the `ab(...)` search head, and the `ab` explorer's code version was bumped
+> `@1` -> `@2` this day to fix the TT cross-agent contamination defect
+> (`Docs/corrections.md`, `TT CROSS-AGENT CONTAMINATION`). Module versioning
+> re-identifies every agent using that module, `tt` and non-`tt` alike, so all
+> six declarations below now name a `gone` identity frozen with zero games
+> under the live roster: `ranking/roster.txt`'s alpha-beta lines all read `@2`
+> and have not played a single game yet. The Elo numbers stand as an honest
+> record of what was measured under `@1`; they are not a description of who
+> currently holds any title, since nobody has played under `@2`. Re-certifying
+> each category (replaying games until the field clears 32/pair again under the
+> new identities) is open in `todo.md`. Do not quote any ID below as an active
+> agent without checking `ranking/standings.tsv` first.
+
 > **[RESTRUCTURED 2026-08-24]** The 5-category system (one throne per opener)
 > is replaced by a 6-category system: 3 divisions (openless / opener8 / a new
 > 20%-full-random dilution division, dil20) crossed with 2 compute-

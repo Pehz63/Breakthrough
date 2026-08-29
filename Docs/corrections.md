@@ -144,9 +144,29 @@ which gives each player a disjoint region of the one table. `tests/test_ai_integ
 carries a regression test, validated to fail with the fix reverted.
 
 **What this does and does not license.** It does NOT mean past Elo numbers are
-wrong by a known amount, because **the Elo consequence has not been measured**. What
-it does mean: a stored `tt`-vs-`tt` game is not reproducible by the current binary,
-so anything derived by REPLAYING those games (`rank.exe extract` training data,
-`bookgen` books, `cbookdump` cluster books) was derived under the defect, and any
-claim that rests on a `tt` agent's exact node count or effective depth is measuring
-a quantity that included the opponent's work. Re-measure rather than re-quote.
+wrong by a known amount. What it does mean: a stored `tt`-vs-`tt` game is not
+reproducible by the current binary, so anything derived by REPLAYING those games
+(`rank.exe extract` training data, `bookgen` books, `cbookdump` cluster books) was
+derived under the defect, and any claim that rests on a `tt` agent's exact node
+count or effective depth is measuring a quantity that included the opponent's work.
+Re-measure rather than re-quote.
+
+**Impact measured 2026-08-28**, as a reproducibility proxy (not yet a direct Elo
+refit): replaying a 3000-game sample of stored `tt`-vs-`tt` games under the fixed
+binary gave a 30.9% outcome-mismatch rate (705 of 2284 replayable games), against a
+13.5% baseline (24 of 178) on a same-size sample of non-`tt`-vs-`tt` games (unaffected
+by this defect, since contamination requires both sides to carry `tt`) replayed the
+same way. The baseline is nonzero because ANY code change since a stored game was
+recorded, not only this fix, can make its replay diverge, so the two rates are not
+directly subtractable into a clean "TT-caused" fraction, but the gap (z approx 6.4)
+is far too large to be that baseline noise alone. This confirms the defect changed a
+substantial share of `tt`-vs-`tt` outcomes, not merely a rare edge case.
+
+**Consequence: the `ab` explorer's code version was bumped 1 -> 2** the same day
+(`src/ranking.cpp`'s `g_rkExplorers` table), per the module-versioning scheme
+documented at that table. This re-identifies every alpha-beta agent, `tt` and
+non-`tt` alike (the versioning scheme has no finer grain than per-module), so
+`ranking/roster.txt`'s 216 active `ab(...)` lines now read `@2` and carry zero
+games; their entire pre-fix history sits under the frozen `@1` identity, `gone` in
+a refit. See `ranking/CHAMPION.md` for what this means for the category champions
+and `todo.md` for the re-certification task.

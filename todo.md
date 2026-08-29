@@ -974,17 +974,31 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     openless agents may not exist. Report the unwinnable set explicitly rather
     than dropping it.
 
-- **Decide what the TT fix means for the roster and the stored match history.**
-  169 of 217 active agents carry `tt`, so every stored game between two of them
-  was played under `TT CROSS-AGENT CONTAMINATION` and the current binary will not
-  reproduce it. Two open questions, both for the developer, neither answerable by
-  measurement alone: (1) does the behaviour change warrant a code-version bump on
-  the `ab` explorer segment, which would re-identify every alpha-beta agent
-  including the `tt`-free ones whose play did not change and retire the roster's
-  Elo history? (2) should the affected games be re-played, discarded, or kept with
-  a banner? The Elo consequence of the fix is NOT measured yet, and measuring it
-  (replay a slice of the store and compare results) is the cheap input to both
-  decisions. `[Next]` {cpu: medium, dev: low}
+- ~~Decide what the TT fix means for the roster and the stored match history.~~
+  **Resolved 2026-08-28.** Measured the Elo consequence first (replayed a
+  3000-game `tt`-vs-`tt` sample: 30.9% outcome-mismatch under the fixed binary,
+  vs 13.5% baseline on a same-size non-`tt`-vs-`tt` control sample, z approx
+  6.4 -- see `Docs/corrections.md`'s `TT CROSS-AGENT CONTAMINATION` entry for
+  the full numbers). The gap was judged too large to leave unaddressed, so the
+  `ab` explorer's code version was bumped `@1` -> `@2` (`src/ranking.cpp`'s
+  `g_rkExplorers`), all four binaries rebuilt, `ranking/roster.txt`'s 216
+  active alpha-beta lines bumped to match (`rank.exe check` passes), and the
+  canonical fit re-run. Developer pre-authorized this specific action
+  ("if you notice any impact, do that next") ahead of the measurement.
+
+- **Re-certify all 6 category champions under the `ab(...)@2` identities.**
+  The version bump above retired every alpha-beta agent's game history at
+  once (the versioning scheme has no finer grain than per-module, so
+  `tt`-free agents were swept up too even though their play did not change).
+  `ranking/standings.tsv` for the `ab` head is now empty; every declaration in
+  `ranking/CHAMPION.md` names a `gone` identity with zero games under `@2` (see
+  that file's 2026-08-28 banner). This is a large re-play commitment (216
+  active agents, 23653 pairs at the last `rank.exe check`) -- **scope and
+  sequencing is a developer decision**, not yet made: e.g. whether to
+  re-certify all 6 categories at once vs. the 2 already-certified ones first,
+  and whether the existing `roster_top.txt`/`roster_top_time.txt` contender
+  lists are still the right boost target or need reconsidering now that the
+  whole field restarts from zero games together. `[Next]` {cpu: high, dev: medium}
 
 - **Does the same replay mismatch confound `bookgen`'s measured book lift?**
   `bookgen` mines the line owner's moves out of stored games in which the owner

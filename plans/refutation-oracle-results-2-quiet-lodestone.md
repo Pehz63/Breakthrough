@@ -56,6 +56,12 @@ After the fix, the same command with the same `tt` oracle on the same 8 targets
 goes to **0 of 8 lines leaving the book**, with the same 197 entries the tt-free
 oracle produced.
 
+The Phase 0 reproducibility gate was measured on the pre-fix binary, so it was
+re-run on the fixed one before mining: **237/238 subject-colours reproducible over
+3 replicas, node-budgeted 210/210**. The single miss is `model=113` as Black
+diverging at half-move 3, which is the same agent, colour and divergence point
+that missed one pass of four pre-fix. The fix did not regress reproducibility.
+
 ## The fix
 
 `setTTContext` in `src/ai_minimax.cpp`, mixed into the key at both probe/store
@@ -97,9 +103,32 @@ reverted and would have shipped as decoration:
    Instrumenting the table showed `stores=0`: nothing had happened. Moving both
    sides to midboard fixed it.
 
-Attempt 2's position is the same one the existing "move ordering and TT preserve
-the search value" test uses, at depth 4. That test may be vacuous for the same
-reason. Not checked, listed under Future Work.
+## Two existing tests were vacuous for the same reason, and are now fixed
+
+Attempt 2's position is the same one two already-committed tests use, and
+checking them turned the suspicion into a measurement.
+
+`ttStore` is called at two sites in `minAlphaBeta`, both guarded by
+`!isNearWin(best)` (`src/ai_minimax.cpp`). From a position with a White piece
+already on row 6, effectively every line scores as a near-win, so the table is
+never written. The search collapses further than that: instrumented at depth 6 on
+that position, the whole search is **17 nodes, and the count is identical with and
+without move ordering**. `canWinWhite()` answers at the root's children and there
+is essentially no tree to explore.
+
+Both of these therefore compared a 17-node no-op against a copy of itself:
+
+| Test | Was asserting |
+|---|---|
+| `MiniMax - move ordering and TT preserve the search value` | that 4 identical no-op searches agree |
+| `MiniMax - quiescence value is search-path invariant (tt/ord)` | the same, with quiescence on |
+
+Both are moved to the midboard position the new regression test uses, at depth 6,
+and both gained two **anti-vacuity guards** asserting that each feature actually
+changed the node count (`ordNodes != plainNodes`, `ttNodes != plainNodes`). That
+is the part worth keeping: an invariance test that does not also prove the
+invariant was *exercised* cannot fail, and neither of these could. Confirmed by
+restoring the old position and rebuilding: the guard fails with `17 != 17`.
 
 ## What was built
 
@@ -186,11 +215,6 @@ re-played, discarded, or kept with a banner is the same decision's other half.
   replay a slice of the store with the current binary and count how many stored
   `tt`-vs-`tt` games no longer reproduce their stored result. That number is the
   input to the roster decision above, and it is a few minutes of compute.
-- **The neighbouring TT test may be vacuous.** "MiniMax - move ordering and TT
-  preserve the search value" uses the same row-6 position that made attempt 2 of
-  the new test short-circuit before reaching the search. If `canWinWhite()` fires
-  there too, that test has been asserting that three identical no-op searches
-  agree. One instrumented run settles it.
 - **The book itself is not finished.** Both full mines are superseded: the first
   ran under the defect, the second was killed mid-stage-2 once the real fix was
   identified. A clean full mine on the fixed binary has not been run, so there is

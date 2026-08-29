@@ -228,7 +228,7 @@ static const RankNameCodec g_rkChoosers[] = {
 static const int g_rkChooserCount = sizeof(g_rkChoosers) / sizeof(g_rkChoosers[0]);
 static const RankNameCodec g_rkExplorers[] = {
     { "Greedy",     "greedy", 1 },
-    { "AlphaBeta",  "ab",     1 },
+    { "AlphaBeta",  "ab",     2 },   // @2: TT cross-agent contamination fix (searcher-context key), see Docs/corrections.md
     { "GumbelMCTS", "gaz",    1 },
 };
 static const int g_rkExplorerCount = sizeof(g_rkExplorers) / sizeof(g_rkExplorers[0]);
@@ -243,6 +243,20 @@ static const RankEvalCodec g_rkEvals[] = {
     { "Advanced",     "adv",     "tcwlfdemhborxnsg", 1 },
 };
 static const int g_rkEvalCount = sizeof(g_rkEvals) / sizeof(g_rkEvals[0]);
+
+// Current code version of a registry module, by registry name. Lets code that
+// needs to NAME a specific agent compose a canonical ID instead of hardcoding
+// an "@N" that goes stale the next time that module's behavior changes.
+static int rkExplorerVersion(const string& regName) {
+    for (int i = 0; i < g_rkExplorerCount; i++)
+        if (regName == g_rkExplorers[i].regName) return g_rkExplorers[i].version;
+    return 1;
+}
+static int rkEvalVersion(const string& regName) {
+    for (int i = 0; i < g_rkEvalCount; i++)
+        if (regName == g_rkEvals[i].regName) return g_rkEvals[i].version;
+    return 1;
+}
 // The dilution wrapper is a module too (agentChooseMove's random-move coin).
 static const int RK_DIL_VERSION = 1;
 // The identity-level random opener is a module too (playOneGame/playoutCapture's
@@ -5599,7 +5613,16 @@ int rankDeterminism(const string& rosterFile, const string& probeId, int replica
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
 
     RankAgent probe;
-    string pid = probeId.empty() ? string("ab(deep=2)@1.classic(chip=100)@2") : probeId;
+    // Composed from the registries, not hardcoded, for the reason given on
+    // rankRefute's default oracle: a module version bump re-canonicalises every
+    // ID wearing that module, and a baked-in "@N" then refuses to start.
+    string pid = probeId;
+    if (pid.empty()) {
+        std::ostringstream d;
+        d << "ab(deep=2)@" << rkExplorerVersion("AlphaBeta")
+          << ".classic(chip=100)@" << rkEvalVersion("Classic");
+        pid = d.str();
+    }
     if (!rankAgentFromId(pid, probe, err)) { cout << "ERROR: bad --probe id: " << err << "\n"; return 1; }
     if (!rankAgentIsDeterministic(probe.spec)) {
         cout << "ERROR: --probe " << probe.id << " is not deterministic, so it would supply the\n"
@@ -5961,8 +5984,18 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
     std::vector<RankAgent> roster;
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
 
-    string oid = oracleId.empty() ? string("ab(deep=8,tt,ord,nodes=2m)@1.classic(chip=100)@2")
-                                  : oracleId;
+    // Composed from the registries rather than written out, so a module version
+    // bump (which re-canonicalises every ID wearing that module) cannot leave a
+    // stale "@N" baked into this default. It did: the "ab" bump to @2 on
+    // 2026-08-28 broke a hardcoded "@1" here, and the failure mode is that the
+    // command refuses to start at all until someone edits this line.
+    string oid = oracleId;
+    if (oid.empty()) {
+        std::ostringstream d;
+        d << "ab(deep=8,tt,ord,nodes=2m)@" << rkExplorerVersion("AlphaBeta")
+          << ".classic(chip=100)@"        << rkEvalVersion("Classic");
+        oid = d.str();
+    }
     RankAgent oracle;
     if (!rankAgentFromId(oid, oracle, err)) { cout << "ERROR: bad --oracle id: " << err << "\n"; return 1; }
     if (!rankAgentIsDeterministic(oracle.spec)) {

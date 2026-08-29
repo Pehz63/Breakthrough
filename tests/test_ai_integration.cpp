@@ -48,29 +48,49 @@ TEST_CASE("MiniMax - move ordering and TT preserve the search value") {
     // best-line value (g_downEvalWhite) whether or not the optional efficiency
     // features (move ordering, transposition table) are enabled - they change how the
     // tree is explored, never the exact minimax value.
+    //
+    // The position must be MIDBOARD, and that is load-bearing rather than cosmetic.
+    // Both ttStore calls in minAlphaBeta are guarded by !isNearWin(best), so from a
+    // position where one side already has a piece on the far rank nearly every line
+    // scores as a near-win and the table is never written at all. This test used such
+    // a position until 2026-08-28 and its two TT arms were therefore comparing an
+    // empty table against an empty table. The nodes guard below is what keeps that
+    // from silently happening again: it fails if the table did not change the search.
     clearBoard();
-    int wcols[5] = {1,3,5,2,4}, wrows[5] = {5,5,5,6,6};
-    int bcols[5] = {1,3,5,2,4}, brows[5] = {2,2,2,1,1};
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {2,2,2,3,3};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {5,5,5,4,4};
     for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
     g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
 
     char snapshot[SIZE][SIZE];
     memcpy(snapshot, board, sizeof(board));
 
+    unsigned long long lastNodes = 0;
     auto runValue = [&](bool tt, bool ord) -> int {
         memcpy(board, snapshot, sizeof(board));
         g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+        ttClear();
         g_useTT = tt; g_useMoveOrder = ord; g_aspirationWindow = 0;
         int params[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
-        moveWhite(MiniMax, 4, 0, params, StandardOpener);
+        moveWhite(MiniMax, 6, 0, params, StandardOpener);
         g_useTT = false; g_useMoveOrder = false;
+        lastNodes = g_lastNodes;
         return g_downEvalWhite;
     };
 
     int base = runValue(false, false);
+    unsigned long long plainNodes = lastNodes;
+
     REQUIRE(runValue(false, true) == base);   // move ordering only
+    unsigned long long ordNodes = lastNodes;
     REQUIRE(runValue(true,  false) == base);  // transposition table only
+    unsigned long long ttNodes = lastNodes;
     REQUIRE(runValue(true,  true)  == base);  // both
+
+    // Anti-vacuity guards: each feature must actually have done something, or the
+    // equality assertions above are comparing a search against a copy of itself.
+    REQUIRE(ordNodes != plainNodes);
+    REQUIRE(ttNodes  != plainNodes);
 }
 
 TEST_CASE("MiniMax - the transposition table never hands one searcher another's score") {
@@ -201,29 +221,47 @@ TEST_CASE("MiniMax - quiescence resolves the leaf exchange (horizon fix)") {
 TEST_CASE("MiniMax - quiescence value is search-path invariant (tt/ord)") {
     // With quiescence enabled, move ordering and the transposition table must
     // still preserve the exact search value, like they do for the plain leaf.
+    //
+    // Midboard for the same reason as the non-quiescence version above: from a
+    // position where a piece already sits on the far rank, canWin* answers at the
+    // root's children and the whole search collapses to a handful of nodes, which
+    // makes every arm of this test identical for reasons that have nothing to do
+    // with tt or ord. Measured on the position this test used until 2026-08-28: 17
+    // nodes at depth 6, unchanged by either flag. The nodes guards below fail if
+    // that ever comes back.
     clearBoard();
-    int wcols[5] = {1,3,5,2,4}, wrows[5] = {5,5,5,6,6};
-    int bcols[5] = {1,3,5,2,4}, brows[5] = {2,2,2,1,1};
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {2,2,2,3,3};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {5,5,5,4,4};
     for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
     g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
 
     char snapshot[SIZE][SIZE];
     memcpy(snapshot, board, sizeof(board));
 
+    unsigned long long lastNodes = 0;
     auto runValue = [&](bool tt, bool ord) -> int {
         memcpy(board, snapshot, sizeof(board));
         g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+        ttClear();
         g_useTT = tt; g_useMoveOrder = ord; g_aspirationWindow = 0; g_useQuiescence = true;
         int params[MAX_EVAL_PARAMS] = { 0, 4, 2, 2 };
-        moveWhite(MiniMax, 4, 0, params, StandardOpener);
+        moveWhite(MiniMax, 6, 0, params, StandardOpener);
         g_useTT = false; g_useMoveOrder = false; g_useQuiescence = false;
+        lastNodes = g_lastNodes;
         return g_downEvalWhite;
     };
 
     int base = runValue(false, false);
+    unsigned long long plainNodes = lastNodes;
+
     REQUIRE(runValue(false, true) == base);   // move ordering only
+    unsigned long long ordNodes = lastNodes;
     REQUIRE(runValue(true,  false) == base);  // transposition table only
+    unsigned long long ttNodes = lastNodes;
     REQUIRE(runValue(true,  true)  == base);  // both
+
+    REQUIRE(ordNodes != plainNodes);
+    REQUIRE(ttNodes  != plainNodes);
 }
 
 TEST_CASE("MiniMax - White captures only black piece to win") {

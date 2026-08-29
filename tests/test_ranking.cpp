@@ -133,13 +133,13 @@ TEST_CASE("ranking id - canonical round trips") {
     // c100 into the ONE identity they have always played as.
     REQUIRE(parseErr("greedy@1.classic(chip=4)@2").find("classic(chip=100)@2") != string::npos);
 
-    a = parseOk("ab(deep=6)@1.classic(chip=10,wall=3,column=2)@2");
+    a = parseOk("ab(deep=6)@2.classic(chip=10,wall=3,column=2)@2");
     REQUIRE(a.spec.depth == 6);
     REQUIRE(a.spec.useAlphaBeta);
     REQUIRE_FALSE(a.spec.useTT);
     REQUIRE(a.spec.evalParams[1] == 10);
 
-    a = parseOk("ab(deep=8,tt,ord,nodes=200k)@1.exp(chip=10,wall=3,column=2,forward=2)@2.dil(prob=5)@1");
+    a = parseOk("ab(deep=8,tt,ord,nodes=200k)@2.exp(chip=10,wall=3,column=2,forward=2)@2.dil(prob=5)@1");
     REQUIRE(a.spec.depth == 8);
     REQUIRE(a.spec.useTT);
     REQUIRE(a.spec.useMoveOrder);
@@ -148,7 +148,7 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.evalParams[4] == 2);
     REQUIRE(a.spec.randomMoveProb == Approx(0.05));
 
-    a = parseOk("ab(deep=3,noab,part,margin=50,time=250ms,maxdeep=2)@1.classic(turn=1,chip=4)@2");
+    a = parseOk("ab(deep=3,noab,part,margin=50,time=250ms,maxdeep=2)@2.classic(turn=1,chip=4)@2");
     REQUIRE_FALSE(a.spec.useAlphaBeta);
     REQUIRE(a.spec.keepPartial);
     REQUIRE(a.spec.aspirationWindow == 50);
@@ -156,18 +156,18 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.depthCap == 2);
 
     // Quiescence flag on the ab head (captures-only leaf extension).
-    a = parseOk("ab(deep=6,tt,ord,qs,nodes=200k)@1.classic(turn=1,chip=4)@2");
+    a = parseOk("ab(deep=6,tt,ord,qs,nodes=200k)@2.classic(turn=1,chip=4)@2");
     REQUIRE(a.spec.useQuiescence);
     REQUIRE(a.spec.useTT);
     REQUIRE(a.spec.useMoveOrder);
-    parseErr("ab(d4,qs,qs)@1.classic(t1,c4,w0,l0)@2");   // duplicate flag rejected
+    parseErr("ab(d4,qs,qs)@2.classic(t1,c4,w0,l0)@2");   // duplicate flag rejected
 
     // Advanced evaluator: a negative weight (signed weights are legal in IDs)
     // and the noise seed / racewin toggle slots. The TURN weight is absent
     // because this head has neither qs nor part, so every leaf sits at one ply
     // parity and the turn term shifts them all by the same constant, reordering
     // nothing. It is elided from the id and reads back as the registry default.
-    a = parseOk("ab(deep=4)@1.adv(chip=50,wall=-3,forward=10,support=5,center=2,mobility=3,hole=4,control=2,open=2,race=3,overext=2,noise=1,noiseseed=7,racewin=1)@1");
+    a = parseOk("ab(deep=4)@2.adv(chip=50,wall=-3,forward=10,support=5,center=2,mobility=3,hole=4,control=2,open=2,race=3,overext=2,noise=1,noiseseed=7,racewin=1)@1");
     REQUIRE(a.spec.evaluator == rkEvalIdx("Advanced"));
     REQUIRE(a.spec.evalParams[0] == 1);
     REQUIRE(a.spec.evalParams[2] == -3);
@@ -178,10 +178,10 @@ TEST_CASE("ranking id - canonical round trips") {
     // Under qs the leaves sit at MIXED ply parity, so the turn term is live and
     // the id must carry it. racewin rides along at its non-zero default: hiding
     // a zero whose default is 1 would silently switch the term back on.
-    a = parseOk("ab(deep=4,qs)@1.adv(turn=20,chip=50,wall=-3,racewin=1)@1");
+    a = parseOk("ab(deep=4,qs)@2.adv(turn=20,chip=50,wall=-3,racewin=1)@1");
     REQUIRE(a.spec.evalParams[0] == 20);
     REQUIRE(a.spec.evalParams[2] == -3);
-    a = parseOk("ab(deep=4,qs)@1.adv(turn=20,chip=50,wall=-3,racewin=0)@1");
+    a = parseOk("ab(deep=4,qs)@2.adv(turn=20,chip=50,wall=-3,racewin=0)@1");
     REQUIRE(a.spec.evalParams[15] == 0);
 
     a = parseOk("smart(pieces=4)@1.dil(prob=2.5)@1");
@@ -189,32 +189,32 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.dilDepth == 0);   // plain dilution = fully random move
 
     // Stochastic depth dilution: dilute with a shallower search instead of a random move.
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30,deep=3)@1");
     REQUIRE(a.spec.randomMoveProb == Approx(0.30));
     REQUIRE(a.spec.dilDepth == 3);
 
     a = parseOk("greedy@1.exp(chip=4,forward=-2)@2");
     REQUIRE(a.spec.evalParams[4] == -2);
 
-    a = parseOk("ab(deep=4,nodes=2m)@1.classic(chip=100)@2");
+    a = parseOk("ab(deep=4,nodes=2m)@2.classic(chip=100)@2");
     REQUIRE(a.spec.nodeBudget == 2000000ULL);
-    a = parseOk("ab(deep=4,nodes=1500)@1.classic(chip=100)@2");
+    a = parseOk("ab(deep=4,nodes=1500)@2.classic(chip=100)@2");
     REQUIRE(a.spec.nodeBudget == 1500ULL);
 
     // Identity-level opener: a registered opener kind + arg as an ID segment.
-    a = parseOk("ab(deep=6,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=6)@1");
+    a = parseOk("ab(deep=6,ord,nodes=200k)@2.classic(chip=100)@2.opener(rand,moves=6)@1");
     REQUIRE(a.spec.openerKind == openerIndexByIdName("rand"));
     REQUIRE(a.spec.openerArg == 6);
     a = parseOk("smart(pieces=4)@1.opener(rand,moves=3)@1");
     REQUIRE(a.spec.openerArg == 3);
 
     // opener() and dil() compose; dil is always emitted first (canonical order).
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1.opener(rand,moves=6)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30,deep=3)@1.opener(rand,moves=6)@1");
     REQUIRE(a.spec.dilDepth == 3);
     REQUIRE(a.spec.openerArg == 6);
 
     // The book opener kind (arg = book slot, models/book<arg>.txt).
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=1)@1");
     REQUIRE(a.spec.openerKind == openerIndexByIdName("book"));
     REQUIRE(a.spec.openerArg == 1);
 
@@ -223,17 +223,17 @@ TEST_CASE("ranking id - canonical round trips") {
     // written in an id: the opener() parser rejected a 3rd argument before the
     // per-opener hasArg2 check that allows it, so `book`'s own documented `ply=`
     // cap (implemented since 2026-08-03) had no roster spelling that parsed.
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=1,ply=16)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=1,ply=16)@1");
     REQUIRE(a.spec.openerArg == 1);
     REQUIRE(a.spec.openerArg2 == 16);
 
     // The cluster-book opener kind (arg = cbook slot, models/cbook<arg>.txt),
     // with and without the same ply= cutoff.
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=1)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(cbook,cbook=1)@1");
     REQUIRE(a.spec.openerKind == openerIndexByIdName("cbook"));
     REQUIRE(a.spec.openerArg == 1);
     REQUIRE(a.spec.openerArg2 == 0);
-    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(cbook,cbook=1,ply=8)@1");
+    a = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(cbook,cbook=1,ply=8)@1");
     REQUIRE(a.spec.openerArg == 1);
     REQUIRE(a.spec.openerArg2 == 8);
 
@@ -477,8 +477,8 @@ TEST_CASE("ranking id - non-canonical and malformed ids are rejected") {
     // legacy spelling is reported with its modern form rather than accepted.
     REQUIRE(parseErr("smart(04)@1").find("smart(pieces=4)@1") != string::npos);
     REQUIRE(parseErr("smart(4)@1").find("smart(pieces=4)@1") != string::npos);
-    REQUIRE(parseErr("ab(d6,tt,ord,nb200k)@1.classic(t1,c4,w0,l0)@2")
-                .find("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2") != string::npos);
+    REQUIRE(parseErr("ab(d6,tt,ord,nb200k)@2.classic(t1,c4,w0,l0)@2")
+                .find("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2") != string::npos);
     REQUIRE(parseErr("greedy@1.classic(chip=100)@1").find("greedy@1.classic(chip=100)@2") != string::npos);
     REQUIRE(parseErr("ab(d4,nb2000k)@1.classic(chip=100)@2").find("nodes=2m") != string::npos);
 
@@ -1012,12 +1012,12 @@ TEST_CASE("ranking id - regime token replaces the superseded model-type token") 
 // has to preserve is the only one a version number carries: current vs not.
 TEST_CASE("ranking id - display form drops only CURRENT module versions") {
     // Every segment at its current version: all the @N go.
-    const string live = "ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2";
+    const string live = "ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2";
     REQUIRE(rankDisplayId(live) == "ab(deep=6,tt,ord,nodes=200k).classic(chip=100)");
 
     // A RETIRED identity is pinned at an older version, and that is exactly when
     // the reader needs to see it -- it is a different player from the live one.
-    const string retired = "ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@1";
+    const string retired = "ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@1";
     REQUIRE(rankDisplayId(retired) == "ab(deep=6,tt,ord,nodes=200k).classic(chip=100)@1");
     REQUIRE(rankDisplayId(retired) != rankDisplayId(live));
 
@@ -1167,7 +1167,7 @@ TEST_CASE("ranking roster - test-suite scratch slots never collide with a live r
 // ============================================================
 TEST_CASE("ranking match rows - format/parse round trip") {
     RankMatchRow m;
-    m.w = "ab(deep=4)@1.classic(chip=100)@2";
+    m.w = "ab(deep=4)@2.classic(chip=100)@2";
     m.b = "rand@1";
     m.r = 'W';
     m.plies = 57;
@@ -1268,22 +1268,22 @@ static string shardTestRow(const string& w, int seed) {
 // Regimes and matchups
 // ============================================================
 TEST_CASE("ranking regime - read off the canonical id") {
-    REQUIRE(rankAgentRegime("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2") == "classic");
-    REQUIRE(rankAgentRegime("ab(deep=6)@1.exp(chip=10,wall=3,column=2,forward=2)@1") == "exp");
+    REQUIRE(rankAgentRegime("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2") == "classic");
+    REQUIRE(rankAgentRegime("ab(deep=6)@2.exp(chip=10,wall=3,column=2,forward=2)@1") == "exp");
     REQUIRE(rankAgentRegime("rand@1") == "nonlearning");
     // The regime is the THIRD field of learned(...), not the model type.
     REQUIRE(rankAgentRegime(
-        "ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1")
+        "ab(deep=6,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1")
         == "tdleaf_self");
     REQUIRE(rankAgentRegime(
-        "ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1")
+        "ab(deep=6,tt,ord,nodes=200k)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1")
         == "position_elo");
     // A loadout must not change the regime: same core, same bloc.
     REQUIRE(rankAgentRegime(
-        "ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1")
+        "ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1")
         == "pool_games");
     // The legacy two-field form genuinely carries no regime; say so rather than guess.
-    REQUIRE(rankAgentRegime("ab(deep=6,tt,ord,nodes=200k)@1.learned(s98,5801570e)@1") == "learned?");
+    REQUIRE(rankAgentRegime("ab(deep=6,tt,ord,nodes=200k)@2.learned(s98,5801570e)@1") == "learned?");
 }
 
 TEST_CASE("ranking matchup - residual is zero when Elo explains the results") {
@@ -1293,8 +1293,8 @@ TEST_CASE("ranking matchup - residual is zero when Elo explains the results") {
     RankMatchRow m;
     m.r='W'; m.plies=9; m.wms=m.bms=0; m.wmv=m.bmv=5; m.wnod=m.bnod=0;
     m.seed=1; m.par=1; m.board="";
-    const string strong = "ab(d6,tt,ord,nb200k)@1.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
-    const string weak   = "ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2";
+    const string strong = "ab(d6,tt,ord,nb200k)@2.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
+    const string weak   = "ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2";
     // 30-10 to the strong agent, colours balanced so the White edge cancels.
     for (int i = 0; i < 40; i++) {
         bool strongWhite = (i % 2 == 0);
@@ -1328,12 +1328,12 @@ TEST_CASE("ranking BT fit - regime balancing reweights an over-represented bloc"
     RankMatchRow m;
     m.r='W'; m.plies=9; m.wms=m.bms=0; m.wmv=m.bmv=5; m.wnod=m.bnod=0;
     m.seed=1; m.par=1; m.board="";
-    const string td = "ab(d6,tt,ord,nb200k)@1.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
-    const string pe = "ab(d6,tt,ord,nb200k)@1.learned(s7,bbbbbbbb,position_elo,lin,129-1,con100)@1";
+    const string td = "ab(d6,tt,ord,nb200k)@2.learned(s5,aaaaaaaa,tdleaf_self,lin,129-1,con100)@1";
+    const string pe = "ab(d6,tt,ord,nb200k)@2.learned(s7,bbbbbbbb,position_elo,lin,129-1,con100)@1";
     std::vector<string> classics;
     for (int c = 0; c < 4; c++) {
         std::ostringstream s;
-        s << "ab(d6,tt,ord,nb200k)@1.classic(t1,c" << (4 + c) << ",w0,l0)@2";
+        s << "ab(d6,tt,ord,nb200k)@2.classic(t1,c" << (4 + c) << ",w0,l0)@2";
         classics.push_back(s.str());
     }
     // td beats every classic 3-1; td loses to pe 1-3; pe beats each classic 2-2.
@@ -1619,15 +1619,15 @@ static RankMatchRow asRow(const RankPendingGame& g) {
 TEST_CASE("ranking determinism - derived from the spec, not stored") {
     // Draws no randomness: a search brain with no dilution and no random opener.
     REQUIRE(rankAgentIsDeterministic(
-        mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2").spec));
+        mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2").spec));
     // A book opener is a lookup, so it stays deterministic.
     REQUIRE(rankAgentIsDeterministic(
-        mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(book,book=2)@1").spec));
+        mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=2)@1").spec));
     // Dilution and the random opener both draw from rand().
     REQUIRE(!rankAgentIsDeterministic(
-        mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30)@1").spec));
+        mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30)@1").spec));
     REQUIRE(!rankAgentIsDeterministic(
-        mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.opener(rand,moves=4)@1").spec));
+        mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(rand,moves=4)@1").spec));
     // The random chooser family draws; the anchor is one of them.
     REQUIRE(!rankAgentIsDeterministic(mkActive("rand@1").spec));
     REQUIRE(!rankAgentIsDeterministic(mkActive("smart(pieces=4)@1").spec));
@@ -1639,8 +1639,8 @@ TEST_CASE("ranking determinism - derived from the spec, not stored") {
 
 TEST_CASE("ranking scheduler - a deterministic pair is REQUIRED to play exactly 2") {
     std::vector<RankAgent> roster;
-    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2"));
-    roster.push_back(mkActive("ab(deep=4)@1.classic(chip=100)@2"));
+    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2"));
+    roster.push_back(mkActive("ab(deep=4)@2.classic(chip=100)@2"));
     std::vector<RankMatchRow> store;
 
     // Ceiling: asking for 32 still schedules 2, because the other 30 would be
@@ -1659,7 +1659,7 @@ TEST_CASE("ranking scheduler - a deterministic pair is REQUIRED to play exactly 
     REQUIRE(rankSchedule(roster, store, 32, 1, false, NULL).empty());
 
     // A stochastic partner lifts the cap: those games are genuinely independent.
-    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30)@1"));
+    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30)@1"));
     std::vector<RankPendingGame> q = rankSchedule(roster, store, 8, 1, false, NULL);
     int withDil = 0;
     for (size_t i = 0; i < q.size(); i++)
@@ -1887,8 +1887,8 @@ TEST_CASE("pairgen dilution schedule - linear decay to a held floor") {
 }
 
 TEST_CASE("pairgen - deterministic output, valid rows, honest meta tallies") {
-    const string idA = "ab(deep=2)@1.classic(chip=100)@2";
-    const string idB = "ab(deep=1)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=2)@2.classic(chip=100)@2";
+    const string idB = "ab(deep=1)@2.classic(chip=100)@2";
     const string out1 = "build/pairgen_t1.jsonl", out2 = "build/pairgen_t2.jsonl";
     RankDilOverride dil;
     dil.apply = 1; dil.start = 0.3; dil.floorProb = 0.05; dil.decayPlies = 30;
@@ -1916,8 +1916,8 @@ TEST_CASE("pairgen - deterministic output, valid rows, honest meta tallies") {
 }
 
 TEST_CASE("pairgen - a zero override plays exactly like no override") {
-    const string idA = "ab(deep=2)@1.classic(chip=100)@2";
-    const string idB = "ab(deep=1)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=2)@2.classic(chip=100)@2";
+    const string idB = "ab(deep=1)@2.classic(chip=100)@2";
     RankDilOverride none;                       // apply = 0
     RankDilOverride zero;
     zero.apply = 1; zero.start = 0.0; zero.floorProb = 0.0; zero.decayPlies = 0;
@@ -1928,8 +1928,8 @@ TEST_CASE("pairgen - a zero override plays exactly like no override") {
 }
 
 TEST_CASE("pairgen - winner filter keeps only that agent's wins") {
-    const string idA = "ab(deep=3)@1.classic(chip=100)@2";   // stronger
-    const string idB = "ab(deep=1)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=3)@2.classic(chip=100)@2";   // stronger
+    const string idB = "ab(deep=1)@2.classic(chip=100)@2";
     RankDilOverride dil;
     dil.apply = 1; dil.start = 0.2; dil.floorProb = 0.05; dil.decayPlies = 20;
 
@@ -1941,8 +1941,8 @@ TEST_CASE("pairgen - winner filter keeps only that agent's wins") {
 }
 
 TEST_CASE("pairgen - color-stratified tallies reconcile with the aggregate record") {
-    const string idA = "ab(deep=3)@1.classic(chip=100)@2";
-    const string idB = "ab(deep=1)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=3)@2.classic(chip=100)@2";
+    const string idB = "ab(deep=1)@2.classic(chip=100)@2";
     RankDilOverride dil;
     dil.apply = 1; dil.start = 0.2; dil.floorProb = 0.05; dil.decayPlies = 20;
 
@@ -1967,8 +1967,8 @@ TEST_CASE("pairgen - color-stratified tallies reconcile with the aggregate recor
 }
 
 TEST_CASE("pairgen - open plies spread a deterministic pair, branch mode is deterministic") {
-    const string idA = "ab(deep=2)@1.classic(chip=100)@2";
-    const string idB = "ab(deep=2)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=2)@2.classic(chip=100)@2";
+    const string idB = "ab(deep=2)@2.classic(chip=100)@2";
     RankDilOverride none;
 
     // Two clean deterministic agents: without open plies every game is one of
@@ -1982,8 +1982,8 @@ TEST_CASE("pairgen - open plies spread a deterministic pair, branch mode is dete
     // Branch mode: deterministic across runs, tallies present.
     RankDilOverride dil;
     dil.apply = 1; dil.start = 0.3; dil.floorProb = 0.05; dil.decayPlies = 30;
-    const string idW = "ab(deep=3)@1.classic(chip=100)@2";   // A strong enough to win bases
-    const string idL = "ab(deep=1)@1.classic(chip=100)@2";
+    const string idW = "ab(deep=3)@2.classic(chip=100)@2";   // A strong enough to win bases
+    const string idL = "ab(deep=1)@2.classic(chip=100)@2";
     REQUIRE(rankPairGen(idW, idL, 4, "build/pairgen_b1.jsonl", "boards/board1.txt", 2, 9, dil, 0, 1, 2, 0, 1) == 0);
     REQUIRE(rankPairGen(idW, idL, 4, "build/pairgen_b2.jsonl", "boards/board1.txt", 2, 9, dil, 0, 1, 2, 0, 1) == 0);
     REQUIRE(slurpFile("build/pairgen_b1.jsonl") == slurpFile("build/pairgen_b2.jsonl"));
@@ -1995,8 +1995,8 @@ TEST_CASE("pairgen - open plies spread a deterministic pair, branch mode is dete
 TEST_CASE("pairgen - asymmetric open side diverges, default stays symmetric-identical") {
     // Two DIFFERENT deterministic agents, so only one side playing the random
     // opener is a distinguishable perturbation from the other side playing it.
-    const string idA = "ab(deep=3)@1.classic(chip=100)@2";
-    const string idB = "ab(deep=2)@1.classic(chip=100)@2";
+    const string idA = "ab(deep=3)@2.classic(chip=100)@2";
+    const string idB = "ab(deep=2)@2.classic(chip=100)@2";
     RankDilOverride none;
 
     // Back-compat: the default trailing openSide (3 = both) reproduces the
@@ -2026,8 +2026,8 @@ TEST_CASE("identity-level opener (AgentSpec::openerPlies) randomizes its own ope
     // Two different deterministic agents, no pairgen-level --open-plies at all
     // (openPlies=0): any divergence across seeds must come from the agent's own
     // .opener() identity, not the pairgen flag this mirrors.
-    const string idPlain  = "ab(deep=2)@1.classic(chip=100)@2";
-    const string idOpener = "ab(deep=3)@1.classic(chip=100)@2.opener(rand,moves=6)@1";
+    const string idPlain  = "ab(deep=2)@2.classic(chip=100)@2";
+    const string idOpener = "ab(deep=3)@2.classic(chip=100)@2.opener(rand,moves=6)@1";
     RankDilOverride none;
 
     // Baseline: two plain deterministic agents replay identically across seeds.
@@ -2046,8 +2046,8 @@ TEST_CASE("identity-level opener (AgentSpec::openerPlies) randomizes its own ope
 }
 
 TEST_CASE("opener-bias - runs and is deterministic across identical seeds") {
-    const string champ = "ab(deep=3)@1.classic(chip=100)@2";   // small depth to keep the test fast
-    const string other = "ab(deep=2)@1.classic(chip=100)@2";
+    const string champ = "ab(deep=3)@2.classic(chip=100)@2";   // small depth to keep the test fast
+    const string other = "ab(deep=2)@2.classic(chip=100)@2";
     // 4 games, 6-ply opener: the command must succeed (nonzero A-plies scored).
     REQUIRE(rankOpenerBias(champ, other, 4, "boards/board1.txt", 6, 7) == 0);
     // Determinism is asserted at the RNG-faithful replay + deterministic-search
@@ -2056,8 +2056,8 @@ TEST_CASE("opener-bias - runs and is deterministic across identical seeds") {
 }
 
 TEST_CASE("opener-swap - color-swap recovery test runs and is deterministic") {
-    const string a = "ab(deep=3)@1.classic(chip=100)@2";
-    const string b = "ab(deep=2)@1.classic(chip=100)@2";
+    const string a = "ab(deep=3)@2.classic(chip=100)@2";
+    const string b = "ab(deep=2)@2.classic(chip=100)@2";
     // A stronger agent (d3) vs a weaker one (d2): expect an "agent effect" (A wins
     // both continuations) to show up at least sometimes, not asserted precisely
     // (search-dependent), just that the command succeeds and classifies something.
@@ -2147,8 +2147,8 @@ TEST_CASE("rankLoadLadder - parses good specs and rejects bad ones") {
 
     std::istringstream good(
         "# ladder comment\n"
-        "rung 0 ab(deep=2)@1.classic(chip=100)@2\n"
-        "rung 1 ab(deep=2)@1.classic(chip=100)@2.dil(prob=25)@1   # stochastic\n"
+        "rung 0 ab(deep=2)@2.classic(chip=100)@2\n"
+        "rung 1 ab(deep=2)@2.classic(chip=100)@2.dil(prob=25)@1   # stochastic\n"
         "pair 1 0 3\n"
         "pair 0 1 3\n"
         "pair 1 1 2 mod 2 0\n");
@@ -2204,8 +2204,8 @@ static string writeMicroPool() {
 static string writeMicroLadder() {
     string path = "build/label_ladder.txt";
     std::ofstream f(path.c_str(), std::ios::trunc);
-    f << "rung 0 ab(deep=2)@1.classic(chip=100)@2\n";
-    f << "rung 1 ab(deep=2)@1.classic(chip=100)@2.dil(prob=25)@1\n";
+    f << "rung 0 ab(deep=2)@2.classic(chip=100)@2\n";
+    f << "rung 1 ab(deep=2)@2.classic(chip=100)@2.dil(prob=25)@1\n";
     f << "pair 1 0 3\n";
     f << "pair 0 1 3\n";
     f << "pair 1 1 2 mod 2 0\n";
@@ -2273,15 +2273,15 @@ TEST_CASE("rank label - deterministic, shard-invariant, resumable") {
         std::ofstream f("build/label_ladder_bad.txt", std::ios::trunc);
         // Canonical ids, so the rejection under test is the deterministic
         // PAIRING and not an id-spelling error that would return 1 anyway.
-        f << "rung 0 ab(deep=2)@1.classic(chip=100)@2\npair 0 0 2\n";
+        f << "rung 0 ab(deep=2)@2.classic(chip=100)@2\npair 0 0 2\n";
     }
     REQUIRE(rankLabel(pool, "build/label_ladder_bad.txt", "build/label_raw_bad.jsonl", 9, 0, 1, false, "", 0) == 1);
 
     // Identity-opener rungs are rejected.
     {
         std::ofstream f("build/label_ladder_op.txt", std::ios::trunc);
-        f << "rung 0 ab(deep=2)@1.classic(chip=100)@2.opener(rand,moves=2)@1\n";
-        f << "rung 1 ab(deep=2)@1.classic(chip=100)@2.dil(prob=25)@1\n";
+        f << "rung 0 ab(deep=2)@2.classic(chip=100)@2.opener(rand,moves=2)@1\n";
+        f << "rung 1 ab(deep=2)@2.classic(chip=100)@2.dil(prob=25)@1\n";
         f << "pair 0 1 2\n";
     }
     REQUIRE(rankLabel(pool, "build/label_ladder_op.txt", "build/label_raw_op.jsonl", 9, 0, 1, false, "", 0) == 1);
@@ -2374,8 +2374,8 @@ TEST_CASE("rank labelfit - joins ratings, fits labels, deterministic") {
     {
         std::ofstream f("build/label_ratings.tsv", std::ios::trunc);
         f << "rank\telo\tpm\tgames\tid\n";
-        f << "1\t500\t15\t100\tab(deep=2)@1.classic(chip=100)@2\n";
-        f << "2\t350\t18\t100\tab(deep=2)@1.classic(chip=100)@2.dil(prob=25)@1\n";
+        f << "1\t500\t15\t100\tab(deep=2)@2.classic(chip=100)@2\n";
+        f << "2\t350\t18\t100\tab(deep=2)@2.classic(chip=100)@2.dil(prob=25)@1\n";
     }
     REQUIRE(rankLabelFit("build/label_raw_fit.jsonl", pool, "build/label_ratings.tsv",
                          "build/label_labels.jsonl", 1, false) == 0);
