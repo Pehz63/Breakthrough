@@ -5,9 +5,40 @@ Phase 0's gate is `plans/refutation-oracle-results-1-quiet-lodestone.md`.
 
 ## Headline
 
-The miner (`rank.exe refute`) is built and works. The book it was supposed to
-produce is not finished, because building it surfaced a defect in the
-transposition table that invalidates the premise the whole approach rests on, and
+**One book of 3657 positions wins 230 of 238 lines against the roster's 119
+deterministic agents, both colours, on its own.** Mined 2026-08-29 on the
+TT-fixed `@2` binary, oracle `ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2`,
+`--tries 8`, 2756 mining games plus 238 verification games.
+
+The number to quote is 230, not the 238/238 the mining stage reports. Three
+stages measure three different things and only the last is a memorization claim:
+
+| Stage | Reports | What it establishes |
+|---|---|---|
+| mined | 238/238 (143 by the oracle line alone, 95 by repair) | Only that a win existed while our side was still SEARCHING at unbooked plies. Not a book result. |
+| audit | 237/238 won, 7 left the book | The written book replayed on its own. The 7 that fell out were carried by the wearer's brain. |
+| verify | 235-3-0 through the real `openerBook` | Includes those 7, so it overstates the book. |
+
+Crossing coverage against the verified result splits the 238 lines as:
+
+| Outcome | Lines |
+|---|---|
+| Fully covered by the book, verified win (**the memorization result**) | **230** |
+| Fully covered, audit won, verify lost (`model=113`) | 1 |
+| Left the book, won on the wearer's brain (NOT memorization) | 5 |
+| Left the book, lost (`model=96` as White) | 1 |
+| Left the book, audit won, verify lost (`model=111`) | 1 |
+
+Both miner-versus-`openerBook` disagreements are the same two agents that fail
+the determinism gate: `model=111` and `model=113`, the two cost-flagged
+`time=150ms` cores running 2-3.3x over budget, `model=113` being the exact
+subject-colour that missed this session's gate at half-move 3. A non-reproducible
+opponent cannot be mined by construction, so these are not miner defects.
+Excluding both, the result is **230 of 236, with 5 brain-assisted and 1 genuine
+loss**. Wall-clock-budgeted targets overall went 26/28.
+
+This did not come first. Building the miner surfaced a defect in the
+transposition table that invalidated the premise the whole approach rests on, and
 fixing that took priority.
 
 **The transposition table was handing each agent the other agent's search
@@ -199,6 +230,40 @@ means the contamination is back.
 To see the defect rather than its absence, revert the two `^ s_ttCtx` in
 `src/ai_minimax.cpp` and re-run the test.
 
+## The ownership check has a hole, at the write and not the branch
+
+Stage 3's own collision counter fired: **1 position of 3657 where two winning
+lines recorded different moves.** A position-keyed book holds one move per
+position, so the later line's move overwrote the earlier one's and the earlier
+line is broken.
+
+The hole is locatable. Stage 2 gates which position a repair may BRANCH at:
+
+```cpp
+if (ow != owners.end() && ow->second > 0) continue;   // shared prefix, not ours to change
+```
+
+but on a win it then commits the repair's ENTIRE path unconditionally:
+
+```cpp
+for (size_t q = 0; q < g.ourKeys.size(); q++) book[g.ourKeys[q]] = g.ourMoves[q];
+```
+
+So the check guards the branch point and not the write. A repair that branches at
+a position it is allowed to change can still, further down its new line, cross a
+position an earlier winner owns and overwrite the move there. The fix is to
+validate the whole path against `owners` before committing and reject the repair
+if it would overwrite an owned position with a different move, falling through to
+the next candidate move rather than silently breaking a solved line.
+
+**Untested hypothesis, flagged as such:** the 7 lines that left the book may all
+be downstream of this single overwritten position, which would make the two
+symptoms one defect. Their `oob_first` plies are 8, 8, 9, 11, 12, 13 and 16,
+which is consistent with several lines crossing one position at different depths,
+but the miner does not report the colliding position's key, so this is a guess
+and not a measurement. Printing that key is the one-line change that would settle
+it.
+
 ## Running a long mine while another session works the same tree
 
 Two mines were lost to collisions with a concurrent session working in the same
@@ -242,10 +307,23 @@ re-played, discarded, or kept with a banner is the same decision's other half.
   replay a slice of the store with the current binary and count how many stored
   `tt`-vs-`tt` games no longer reproduce their stored result. That number is the
   input to the roster decision above, and it is a few minutes of compute.
-- **The book itself is not finished.** Both full mines are superseded: the first
-  ran under the defect, the second was killed mid-stage-2 once the real fix was
-  identified. A clean full mine on the fixed binary has not been run, so there is
-  no answer yet to the actual question of how much of this ladder is memorizable.
+- **Close the ownership hole and re-mine.** The fix is described above: validate
+  a repair's whole path against `owners` before committing it, rather than only
+  its branch point. Until then 1 position of 3657 is overwritten and at least one
+  winning line is broken by it. A re-mine would also settle whether the 7
+  out-of-book lines are downstream of that one position.
+- **Print the colliding position's key.** One line of output, and it converts the
+  untested hypothesis above into a measurement.
+- **The 5 brain-assisted wins are not memorization and should not be counted as
+  such.** They left the book and the wearer's search finished the game. Whether
+  they are memorizable at all is unknown: they may need a deeper oracle, more
+  `--tries`, or they may be genuinely unreachable through a single position-keyed
+  book because of the merge-conflict limit.
+- **`model=111` and `model=113` cannot be mined by construction.** Both are
+  cost-flagged wall-clock cores that do not replay, so no book can hold a line
+  against them. Either exclude them from the target set explicitly or give the
+  miner a reproducibility pre-check, rather than letting them surface as
+  miner-versus-`openerBook` disagreements that look like tool defects.
 - **`bookgen` is only partly repaired by this.** Its books are mined from stored
   games in which the line owner DID search, and are then worn by an agent that
   does not. The fix stops the opponent reading our entries, but the owner's own

@@ -965,11 +965,30 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     reproducing, all 132 against a `,tt,` opponent and 0 of 77 against non-`tt`
     ones. Fixed by mixing a searcher context into the TT key. Same 8 targets,
     same `tt` oracle: 8 of 8 lines left the book before, 0 of 8 after.~~
+  - ~~**Run a clean full mine on the fixed `@2` binary.** Done 2026-08-29,
+    `models/book21.txt`, 3657 entries, log `ranking/refute_book21_postfix.log`,
+    per-target detail `ranking/refute_book21.tsv`. **230 of 238 lines are won by
+    the book alone, end to end**, which is the memorization result. The mining
+    stage's own 238/238 is NOT that number: 7 lines left the book (5 won on the
+    wearer's brain, 1 lost, 1 disagreed) and 1 fully covered line failed to
+    reproduce. Both miner-versus-`openerBook` disagreements are `model=111` and
+    `model=113`, the two cost-flagged `time=150ms` cores that do not replay, so
+    excluding them the result is 230 of 236. Stage 1 took 143 by the oracle line
+    alone, stage 2 repaired all 95 remaining with 0 conceded.~~
+  - **Close the ownership hole, then re-mine.** Stage 3 found 1 position of 3657
+    where two winning lines recorded different moves. The check gates which
+    position a repair may BRANCH at but then commits the winning line's whole
+    path unconditionally, so a repair can overwrite a position an earlier winner
+    owns. Fix: validate the full path against `owners` before committing and
+    fall through to the next candidate move instead. Also print the colliding
+    position's key, which would settle the untested guess that all 7 out-of-book
+    lines are downstream of that single position. `[Next]` {cpu: hours, dev: low}
   - **Declare it reference-class in `ranking/CHAMPION.md`, do not enter it as a
     champion.** A Bradley-Terry fit assigns one strength parameter per agent and
-    this one is maximally intransitive: 238-0 against deterministic opponents,
-    ordinary against the 52 dilution and 66 random-opener agents that never
-    reproduce a line. Its pooled Elo would be a fit artifact.
+    this one is maximally intransitive: 230 of 238 lines won against
+    deterministic opponents, ordinary against the 52 dilution and 66
+    random-opener agents that never reproduce a line. Its pooled Elo would be a
+    fit artifact.
   - Open risk compute cannot remove: a black-side win against the strongest
     openless agents may not exist. Report the unwinnable set explicitly rather
     than dropping it.
