@@ -1,0 +1,67 @@
+# Refutation-book agents, staged for certification. NOT the live roster.
+#
+# One book (models/book21.txt, 3657 positions) worn by several fallback brains.
+# The book is the same file in every line here, so a difference between two of
+# these rows is a difference between their BRAINS, not between their books.
+#
+# What the book falls back to is the wearer's own brain, and it is consulted
+# only where the book is silent. On a line the book covers end to end the brain
+# is never called, so those lines are fallback-independent. MEASURED, not
+# assumed: replaying book21 with three different brains (the d8/nb2m oracle, a
+# deep=6 classic, a deep=6 tdleaf) gives coverage differing on 0 of the 210
+# node-budgeted targets, all three at 205 fully covered and 205 won. Every
+# coverage difference is on a time=150ms target, which does not replay.
+#
+# So the number to quote for a TARGET-CLASS book agent is 205 of 210
+# node-budgeted lines, NOT the 230 of 238 headline, which belongs to the
+# reference-class d8/nb2m wearer and counts the 28 timed targets.
+#
+# To use: merge these lines into ranking/roster.txt (they are additions, no
+# existing line changes), run rank.exe check, then play and rate. Every agent
+# here needs >= 32 games/pair against the contenders before any top-of-table
+# claim, per CLAUDE.md's ranking-claim hygiene rule.
+#
+# READ BEFORE RATING: the book was mined against the same 119 deterministic
+# agents it would be rated against, so its pooled Elo measures memorization of
+# this pool, not strength. See "Certification" in the results doc. The honest
+# measurement is a held-out mine, which none of these rows provide.
+
+anchor  rand@1  # UniformRandom, pinned at Elo 0
+
+# ---------------------------------------------------------------------------
+# Baseline: the exact configuration every book21 number was measured on.
+# Reference class (deep=8 + 2m nodes is more compute on an established
+# technique), so it is not title-eligible regardless of its Elo.
+# ---------------------------------------------------------------------------
+on  ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2.opener(book,book=21)@1
+
+# ---------------------------------------------------------------------------
+# Standard head (deep=6, 200k nodes). TARGET CLASS under CHAMPION.md's current
+# reference-class definition, which is written in terms of compute: wearing a
+# book is not more compute, it is less. These rows are the ones that would be
+# title-eligible, which is exactly why the rule gap flagged in the results doc
+# needs a decision before they are rated.
+# ---------------------------------------------------------------------------
+on  ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=21)@1
+on  ab(deep=6,tt,ord,nodes=200k)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1.opener(book,book=21)@1
+on  ab(deep=6,tt,ord,nodes=200k)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.opener(book,book=21)@1
+
+# ---------------------------------------------------------------------------
+# Deep-10 heads. A node budget makes `deep` a CAP on iterative deepening rather
+# than a fixed depth, so deep=10 at 200k nodes would spend the same compute as
+# deep=6 at 200k and differ only in whether the budget or the cap binds first.
+# These carry 2m nodes so the extra depth is actually reachable. Reference
+# class for the same reason the d8 oracle is.
+# ---------------------------------------------------------------------------
+on  ab(deep=10,tt,ord,nodes=2m)@2.classic(chip=100)@2.opener(book,book=21)@1
+on  ab(deep=10,tt,ord,nodes=2m)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1.opener(book,book=21)@1
+
+# ---------------------------------------------------------------------------
+# Bookless twins, required for a loadout-matched read of the book's lift.
+# CLAUDE.md: lift is the Elo one item adds to ONE core and does not transfer
+# between cores, so every book row above needs its bare twin in the same fit.
+# The deep=6 and deep=8 twins are already in ranking/roster.txt. These two are
+# not, and adding the book rows without them makes the lift unmeasurable.
+# ---------------------------------------------------------------------------
+on  ab(deep=10,tt,ord,nodes=2m)@2.classic(chip=100)@2
+on  ab(deep=10,tt,ord,nodes=2m)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1

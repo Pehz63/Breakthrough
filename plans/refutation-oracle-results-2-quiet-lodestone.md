@@ -443,6 +443,84 @@ under replay and the instability is confined to the cores that cannot be mined b
 construction. It also means the verified total for a timed line is a coin flip
 between runs and should never be quoted to the unit.
 
+## The book transfers: coverage is fallback-independent, so a cheap wearer memorizes the same lines
+
+Every number in the headline above was measured with the MINING ORACLE as the
+fallback brain, `ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2`. That agent is
+reference class under `ranking/CHAMPION.md` because of its brain, ten times the
+standard node budget, so the headline as stated describes an agent that can never
+hold a title. The question that decides whether the book is worth anything to the
+ladder is whether it still covers the same lines when a CHEAP brain wears it.
+
+The mechanism predicts it should. What a book agent falls back to is the wearer's
+own brain, and the brain is consulted only where the book is silent. On a line the
+book covers end to end the brain is never called at all, so the game should not
+depend on which brain is sitting behind the book.
+
+Tested by replaying `models/book21.txt` through `--verify-only` with three
+different brains, same frozen roster snapshot, same 238 targets. Both the audit
+fallback (`--oracle`) and the verification agent (`--wearer`) were set to the brain
+under test:
+
+| Wearer | node-budgeted fully covered | covered and won | time= coverage differs |
+|---|---|---|---|
+| `ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2` (as mined) | 205/210 | 205 | baseline |
+| `ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2` | 205/210 | 205 | 3 rows |
+| `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1` | 205/210 | 205 | 3 rows |
+
+**Across the 210 node-budgeted targets, coverage differs on 0 rows between all
+three brains.** Two different evaluator families and a 10x node-budget difference
+produce identical coverage. The book carries the same 205 lines on a standard
+`deep=6,nodes=200k` head that it carries on the d8/nb2m oracle.
+
+Every coverage difference is on a `time=150ms` target, all three of them, and
+those are the cores already measured as non-replaying. The two `deep=6` wearers
+differ from each other on exactly one row, also a timed one. This is the third
+independent measurement pointing at the same 28 targets and is consistent with
+theory 57.
+
+Verification results DO differ across brains, on 4 node-budgeted rows, and all
+four are lines that left the book. That is the expected division of labour: the
+book decides the covered lines, the brain decides the rest.
+
+### What this means for certification
+
+The number to quote for a TARGET-CLASS book agent is **205 of 210 node-budgeted
+lines won by the book alone**, on `ab(deep=6,tt,ord,nodes=200k)@2` with either
+evaluator tested. Not 230 of 238, which is the reference-class d8/nb2m wearer's
+figure and includes the 28 timed targets that do not replay.
+
+This is the result the campaign was aimed at: the lines are carried with LESS live
+compute than the oracle that found them, by construction, since on a covered line
+the wearer does not search at all.
+
+It does not make the agent certifiable as a champion, for two reasons that are
+independent of the above and are not fixed by a cheaper wearer:
+
+1. **No category admits it.** `CHAMPION.md`'s divisions are openless (no
+   `.opener(...)` and no `.dil(...)` segment), opener8 (`.opener(rand,moves=8)@1`)
+   and dil20 (`.dil(prob=20)@1`). An agent carrying `.opener(book,book=21)@1`
+   matches none of the three, and the file says so directly: any other opener
+   combination, the retired 4-ply and 8-ply book categories named explicitly, is
+   ladder and study data holding no title. The book divisions were deferred
+   pending "a self-maximizing mining methodology that hasn't been designed yet,
+   not a fixed-pair replay". This miner IS a fixed-pair replay against a frozen
+   roster, so by the deferral's own wording it does not yet clear that bar.
+   Reviving those categories is a design decision, not a consequence of this
+   result.
+2. **The book was mined against the pool it would be rated against.** All 119
+   deterministic agents in the fit are agents the miner had access to. A pooled
+   Elo from that fit measures memorization of this specific pool. The agent is
+   also maximally intransitive: near-perfect against those 119, no coverage at all
+   against the 52 dilution and 66 random-opener agents, which never reproduce a
+   line. One Bradley-Terry strength parameter averages two populations that behave
+   nothing alike, and describes neither.
+
+The measurement that WOULD be a strength claim is a held-out mine: mine against a
+subset of the roster, rate against all of it, and report the held-out agents
+separately. Nothing run so far distinguishes "this book generalises" from "this
+book memorised 205 specific games".
+
 ## Running a long mine while another session works the same tree
 
 Two mines were lost to collisions with a concurrent session working in the same

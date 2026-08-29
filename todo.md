@@ -1046,12 +1046,46 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     memorization result is stable and the instability is confined to the two
     cores that cannot be mined by construction. A timed line's verified result
     should not be quoted to the unit.
-  - **Declare it reference-class in `ranking/CHAMPION.md`, do not enter it as a
-    champion.** A Bradley-Terry fit assigns one strength parameter per agent and
-    this one is maximally intransitive: 230 of 238 lines won against
-    deterministic opponents, ordinary against the 52 dilution and 66
-    random-opener agents that never reproduce a line. Its pooled Elo would be a
-    fit artifact.
+  - ~~**Work out whether the book can be certified.**~~ Answered 2026-08-29, and
+    the reference-class rule is NOT the reason. `CHAMPION.md`'s divisions are
+    openless (no `.opener(...)` and no `.dil(...)` segment), opener8
+    (`.opener(rand,moves=8)@1`) and dil20 (`.dil(prob=20)@1`). An agent carrying
+    `.opener(book,book=21)@1` matches none, and the file says any other opener
+    combination, naming the retired 4-ply and 8-ply book categories, is ladder
+    and study data holding no title. So a book agent can be rostered and rated
+    but holds no title, by category membership. Reference class is defined by
+    COMPUTE, and a book is not more compute, so it does not apply. Two further
+    reasons no cheaper wearer fixes: the book was mined against the same 119
+    deterministic agents it would be rated against, so its pooled Elo measures
+    memorization of this pool, and it is maximally intransitive (near-perfect
+    against those 119, no coverage against the 52 dilution and 66 random-opener
+    agents that never reproduce a line).
+  - ~~**Does the book transfer to a cheap brain?**~~ Yes, measured 2026-08-29.
+    Replaying `models/book21.txt` through `--verify-only` with three brains (the
+    d8/nb2m oracle, `ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2`, and the
+    same head with `learned(model=459,...,tdleaf_self,lin,shape=129-1)@1`) gives
+    **coverage differing on 0 of the 210 node-budgeted targets**, all three at 205
+    fully covered and 205 won. Every coverage difference is on a `time=150ms`
+    target. Verification differs on 4 node-budgeted rows, all of them lines that
+    LEFT the book, which is the expected split: the book decides covered lines,
+    the brain decides the rest. **The target-class number is 205 of 210, not the
+    230 of 238 headline**, which belongs to the reference-class d8/nb2m wearer and
+    counts the 28 timed targets. This is the campaign's actual goal met: the lines
+    are carried with less live compute than the oracle that found them, since on a
+    covered line the wearer never searches.
+  - **Roster candidates staged, ready for another session to play.**
+    `ranking/roster_book_candidates.txt`, 9 agents, all passing `rank.exe check`.
+    One book (book21) on six fallback brains plus two bookless twins. Notes that
+    matter: `deep` is a CAP on iterative deepening when a budget is set, so the
+    deep=10 rows carry `nodes=2m` (deep=10 at 200k would spend the same compute as
+    deep=6 at 200k), and the deep=10 bookless twins are included because lift is
+    per-core and unmeasurable without them. Merge into `ranking/roster.txt` (pure
+    additions), `check`, play, rate. `[Next]` {cpu: hours, dev: low}
+  - **Held-out mine, the only design that makes this a strength claim.** Mine
+    against a SUBSET of the roster, rate against all of it, and report the
+    held-out agents separately. Nothing run so far distinguishes "this book
+    generalises" from "this book memorised 205 specific games". `[Next]`
+    {cpu: hours, dev: medium}
   - Open risk compute cannot remove: a black-side win against the strongest
     openless agents may not exist. Report the unwinnable set explicitly rather
     than dropping it.
