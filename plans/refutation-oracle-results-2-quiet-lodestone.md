@@ -35,7 +35,10 @@ the determinism gate: `model=111` and `model=113`, the two cost-flagged
 subject-colour that missed this session's gate at half-move 3. A non-reproducible
 opponent cannot be mined by construction, so these are not miner defects.
 Excluding both, the result is **230 of 236, with 5 brain-assisted and 1 genuine
-loss**. Wall-clock-budgeted targets overall went 26/28.
+loss**. Wall-clock-budgeted targets overall went 26/28, and that figure is not
+stable: an independent replay of the same book against the same roster returned
+27/28, moving one row. Do not quote a `time=`-budgeted result to the unit. See
+"The book21 audit reproduces, except on the timed cores" below.
 
 This did not come first. Building the miner surfaced a defect in the
 transposition table that invalidated the premise the whole approach rests on, and
@@ -314,6 +317,108 @@ a test.
 The test is `ovr_key` on a fresh mine, which is why the fix is validated by
 re-mining rather than by re-auditing the old book.
 
+## The A/B: the fix is behaviour-neutral, and the hypothesis it was built on is refuted
+
+The first attempt at validating the fix compared the new mine (slot 22) against
+book21 and looked like a regression: 86 of 95 lines repaired against 95 of 95, 16
+lines out of book against 7. That comparison is void, and the reason matters more
+than the fix.
+
+**Stage 1 is identical code in both binaries, and it diverged.** book21 ended
+stage 1 with 3532 book entries, book22 with 3530, first differing between targets
+181 and 200. Nothing in the fix can cause that: the check lives in stage 2, and on
+that run it never fired at all (0 rejects, 0 collisions). The miner is simply not
+reproducible run to run, and stage 2 is path dependent, so two entries of
+difference at the end of stage 1 change which positions are owned and cascade into
+nine extra concessions.
+
+Re-running with `--skip-timed`, which drops the 14 wall-clock-budgeted agents and
+leaves 210 targets, settles both questions at once. Slot 23 ran on the fixed
+binary, slot 24 on a pre-fix binary built from `src/ranking.cpp` at commit
+`3d945c2` (sources kept in `build/pre/`), same frozen snapshot, same oracle, two
+separate processes:
+
+| | slot 23 (fixed) | slot 24 (pre-fix) |
+|---|---|---|
+| stage 1 won | 130/210 | 130/210 |
+| stage 3 entries kept | 3505 of 3899 | 3505 of 3899 |
+| mined won | 203/210 | 203/210 |
+| audit won | 202/210 | 202/210 |
+| audit left the book | 12 | 12 |
+| verify (W-L-D) | 202-8-0 | 202-8-0 |
+| mining games | 1736 | 1736 |
+| collisions | 0 | 0 |
+| wins refused by the check | 0 | n/a |
+
+`models/book23.txt` and `models/book24.txt` are byte-identical apart from the slot
+number in their header comment, and the two reports agree on all 210 rows across
+every column both versions have.
+
+Both are kept because the pre-fix book is the evidence, but note the consequence:
+an agent wearing `book=23` and one wearing `book=24` are the SAME player under
+different IDs, exactly like two evaluators differing only in turn weight. Only
+slot 23 should ever be rostered.
+
+Three conclusions, and the third is the one that matters:
+
+1. **The miner is exactly reproducible once the wall-clock-budgeted agents are
+   excluded.** Two processes, two different binaries, identical output. With them
+   included, two runs differ. That localises the irreproducibility to the `time=`
+   opponents, consistent with the independent replay of book21, where the only row
+   that moved was a `time=150ms` core.
+2. **The fix is behaviour-neutral on this workload.** It never fired, so it cost
+   nothing and proved nothing. It closes a hole that is reachable in principle,
+   and the collision on book21 shows the hole is not theoretical, but that
+   collision needed the timed agents' irreproducibility to occur.
+3. **The ownership hole does not explain lines leaving the book.** This was the
+   hypothesis the whole exercise was built to test, and it is refuted: 12 lines
+   left the book with 0 collisions and 0 overwrites on any won line.
+
+### What the 12 out-of-book lines actually are
+
+Seven are conceded lines (`mined=0`), which is expected: a line that was never
+solved has no book coverage to leave. The remaining five were mined as wins and
+still left the book:
+
+| colour | oob ply | unserved | opponent |
+|---|---|---|---|
+| W | 16 | 18 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` |
+| B | 9 | 26 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` |
+| B | 11 | 6 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1` |
+| B | 12 | 12 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1` |
+| W | 8 | 2 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1` |
+
+All five report `ovr_ply = -1`, and that is informative rather than merely
+negative. The overwrite check fires when the replay stands on a position the mine
+recorded for that line and the book returns a different move. Getting `-1` means
+no such position exists: up to the point the book fell silent, OUR moves reproduced
+the mined line exactly. The book was not overwritten and our side did not deviate.
+
+What is left is that the line reached a position the book has never seen, and
+since our moves matched, the position can only have changed because THE OPPONENT
+replied differently in the audit than it did during mining. The opponent is
+deterministic and its own inputs are unchanged. The one thing that differs between
+the two runs is that during mining our side SEARCHES at unbooked plies and during
+the audit it does not.
+
+That is the same shape as the transposition-table contamination fixed earlier in
+this campaign: an opponent whose replies depend on our side having searched. It is
+a deduction from `ovr_ply = -1` and not a direct measurement, so it is recorded as
+the leading hypothesis with the test named in Future Work, not as a result.
+
+### The ovr check needed a gate, found by using it
+
+Its first run reported "4 line(s) were overwritten". All four were `mined=0`. A
+conceded target's stored `keys`/`moves` are its last FAILED attempt, which was
+never written to the book, so every difference against the book is expected and
+means nothing. Gated to `t.status == 1`. The three surviving reports on slot 23,
+before the gate landed, are the same false positive and should be read as zero.
+
+Worth stating as a general point: a diagnostic added to explain a defect is itself
+untested code, and the first thing it reported here was an artifact. It was caught
+only because the rows it flagged were checked against another column rather than
+believed.
+
 ## The book21 audit reproduces, except on the timed cores
 
 Replaying `models/book21.txt` a second time through `--verify-only`, against the
@@ -381,13 +486,29 @@ re-played, discarded, or kept with a banner is the same decision's other half.
   replay a slice of the store with the current binary and count how many stored
   `tt`-vs-`tt` games no longer reproduce their stored result. That number is the
   input to the roster decision above, and it is a few minutes of compute.
-- **Close the ownership hole and re-mine.** The fix is described above: validate
-  a repair's whole path against `owners` before committing it, rather than only
-  its branch point. Until then 1 position of 3657 is overwritten and at least one
-  winning line is broken by it. A re-mine would also settle whether the 7
-  out-of-book lines are downstream of that one position.
-- **Print the colliding position's key.** One line of output, and it converts the
-  untested hypothesis above into a measurement.
+- **Why does a WON line's opponent reply differently in the audit than during
+  mining?** This is the open question the ownership work replaced, and it is the
+  live explanation for out-of-book lines now that the collision hypothesis is
+  refuted. All five won-but-out-of-book lines report `ovr_ply = -1`, so our moves
+  reproduced the mined line exactly up to the point the book fell silent, which
+  leaves the opponent's reply as the only thing that can have changed. The one
+  difference between the two runs is that our side searches during mining and
+  does not during playback. The test: log the opponent's chosen move per ply in
+  both runs for one of the five and diff them, which names the ply, and then
+  bisect what state that ply reads. If it is real it is a second search-state
+  leak of the same family as the transposition-table defect, and the same
+  mine-then-replay harness that found the first one found this one.
+- **Whether the ownership check ever fires is unknown.** It is correct by
+  construction and behaviour-neutral on every workload run so far, which means it
+  is also untested in the only way that counts. A targeted test would construct
+  two winning lines that genuinely want different moves at one shared position
+  and assert the second is refused rather than committed. Without it the check is
+  a guard nothing has ever tripped.
+- **The irreproducibility is localised to the `time=` agents but not explained.**
+  Excluding them makes two separate processes on two different binaries produce
+  byte-identical books. Including them makes two runs differ by two book entries.
+  That is consistent with wall-clock budgets alone, but it has not been separated
+  from any other property those 14 agents share.
 - **The 5 brain-assisted wins are not memorization and should not be counted as
   such.** They left the book and the wearer's search finished the game. Whether
   they are memorizable at all is unknown: they may need a deeper oracle, more

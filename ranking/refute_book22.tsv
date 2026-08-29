@@ -1,0 +1,266 @@
+# rank.exe refute -- one row per (target, colour)
+# oracle=ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2	wearer=ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2.opener(book,book=22)@1	board=boards/board1.txt
+# mined: 1 = the miner found a win, 0 = conceded
+# verify: W/L/D for the BOOK's side, replayed through openerBook by the wearer
+# blocked_shared: every position on the losing line was owned by an already-won
+#   line, so no move could be changed without breaking one. That is the merge
+#   conflict a single position-keyed book cannot express.
+# audit: 1 = the WRITTEN book won this line replayed on its own. Distinct from
+#   `mined`, which only says the line was found while our side was still
+#   searching at unbooked plies.
+# oob_first: the first of OUR moves the book did not serve, so the fallback brain
+#   had to choose (-1 = the book covered the whole line). A line with oob_first
+#   >= 0 was carried by the brain, not by the book, whatever its result says.
+# oob_key: the position hash at oob_first, in the same 16-digit form the
+#   book file uses (0 = the book covered the whole line). Match it against
+#   the keys the stage-3 collision warning prints, to see whether a line left
+#   the book at a position a later winner overwrote, instead of inferring it
+#   from ply numbers.
+# ovr_ply / ovr_key: the first of OUR plies where the written book served a
+#   move different from the one the mine recorded at that same position, and
+#   the position hash there (-1 / 0 = never). A nonzero ovr_key is a measured
+#   overwrite of this line by a later winner, not an inference from oob_first.
+#   Blank under --verify-only, which has no mined path to compare against.
+# rejected: stage-2 wins refused because committing the line would have
+#   overwritten a position an already-won line depends on.
+# v_plies: half-moves in the openerBook verification game. A line that matches
+#   `plies` played the same length game the miner recorded.
+colour	mined	audit	verify	timed	plies	v_plies	our_moves	oob_first	oob_count	oob_key	ovr_ply	ovr_key	tried_nodes	tried_moves	rejected	blocked_shared	opponent
+W	1	1	W	0	23	23	12	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	greedy@1.classic(chip=100)@2
+B	1	1	W	0	22	22	11	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	greedy@1.classic(chip=100)@2
+W	1	1	W	0	39	39	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	greedy@1.classic(chip=10,wall=3,column=2)@2
+B	1	1	W	0	62	62	31	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	greedy@1.classic(chip=10,wall=3,column=2)@2
+W	1	1	W	0	23	23	12	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=1)@2.classic(chip=100)@2
+B	1	1	W	0	22	22	11	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=1)@2.classic(chip=100)@2
+W	1	1	W	0	25	25	13	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.classic(chip=100)@2
+B	1	1	W	0	24	24	12	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.classic(chip=100)@2
+W	1	1	W	0	31	31	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=3)@2.classic(chip=100)@2
+B	1	1	W	0	36	36	18	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=3)@2.classic(chip=100)@2
+W	1	1	W	0	33	33	17	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.classic(chip=100)@2
+B	1	1	W	0	38	38	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.classic(chip=100)@2
+W	1	1	W	0	33	33	17	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=5)@2.classic(chip=100)@2
+B	1	1	W	0	38	38	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=5)@2.classic(chip=100)@2
+W	1	1	W	0	37	37	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.classic(chip=10,wall=3,column=2)@2
+B	1	1	W	0	72	72	36	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.classic(chip=10,wall=3,column=2)@2
+W	1	1	W	0	37	37	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=1)@2
+B	1	1	W	0	66	66	33	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=1)@2
+W	1	1	W	0	37	37	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=2)@2
+B	1	1	W	0	48	48	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=2)@2
+W	1	1	W	0	37	37	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=4)@2
+B	1	1	W	0	46	46	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=4)@2
+W	1	1	W	0	37	37	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=8)@2
+B	1	1	W	0	46	46	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=4,forward=8)@2
+W	1	1	W	0	30	30	15	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,noab,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	35	35	17	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,noab,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	32	32	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	7	19	0	0	ab(deep=6,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,ord,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,margin=25,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,margin=25,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,margin=50,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,margin=50,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,margin=100,nodes=200k)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,margin=100,nodes=200k)@2.classic(chip=100)@2
+W	1	1	W	0	47	47	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=64,column=1,forward=15)@2
+B	1	1	W	0	32	32	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=64,column=1,forward=15)@2
+W	1	1	W	0	47	47	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=65,column=1,forward=14)@2
+B	1	1	W	0	32	32	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.exp(chip=65,column=1,forward=14)@2
+W	1	1	W	0	52	52	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	31	31	15	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	40	40	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	83	83	41	-1	0	0000000000000000	-1	0000000000000000	9	25	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+W	1	0	L	0	56	67	28	16	18	f8c848c4112ac741	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	59	59	29	-1	0	0000000000000000	-1	0000000000000000	10	30	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	64	64	32	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	45	45	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	12	34	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	9	25	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	76	76	38	-1	0	0000000000000000	-1	0000000000000000	8	22	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	37	37	18	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2
+W	1	1	W	0	42	42	21	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=75,hole=3,race=2,noiseseed=1,racewin=1)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	13	37	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=75,hole=3,race=2,noiseseed=1,racewin=1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	19	56	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,qs,nodes=200k)@2.classic(turn=1,chip=4)@2
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,qs,nodes=200k)@2.classic(turn=1,chip=4)@2
+W	1	1	W	0	48	48	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,qs,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	53	53	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,qs,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	68	68	34	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=1)@1
+B	1	1	W	0	85	85	42	-1	0	0000000000000000	-1	0000000000000000	16	46	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=1)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=1)@1
+W	0	0	L	0	50	45	25	14	9	88845bce74e376b1	13	648385b819481b07	11	33	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=2)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=2)@1
+W	0	0	L	0	47	47	24	5	19	46c57d0a1e78f2fd	-1	0000000000000000	19	57	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	74	74	37	-1	0	0000000000000000	-1	0000000000000000	10	28	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	47	47	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	68	68	34	-1	0	0000000000000000	-1	0000000000000000	9	25	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	49	49	24	-1	0	0000000000000000	-1	0000000000000000	10	28	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	80	80	40	-1	0	0000000000000000	-1	0000000000000000	10	28	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	17	51	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	52	52	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	47	47	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	36	36	18	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+B	1	1	W	0	47	47	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+W	1	1	W	0	43	43	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+B	1	1	W	0	40	40	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+W	1	1	W	0	47	47	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+B	1	1	W	0	52	52	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+W	1	1	W	0	70	70	35	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+B	1	1	W	0	63	63	31	-1	0	0000000000000000	-1	0000000000000000	17	49	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+W	1	1	W	0	57	57	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	50	50	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	51	51	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	56	56	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	60	60	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	71	71	35	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	49	49	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	49	49	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	7	20	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	1	W	0	53	53	26	-1	0	0000000000000000	-1	0000000000000000	14	41	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	1	W	0	57	57	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	38	38	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=2)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	83	83	42	-1	0	0000000000000000	-1	0000000000000000	4	12	0	0	ab(deep=4)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	50	50	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	43	43	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	48	48	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	76	76	38	-1	0	0000000000000000	-1	0000000000000000	5	14	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	83	83	41	-1	0	0000000000000000	-1	0000000000000000	6	17	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	65	65	33	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	78	78	39	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	56	56	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	49	49	24	-1	0	0000000000000000	-1	0000000000000000	6	18	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	43	43	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	68	68	34	-1	0	0000000000000000	-1	0000000000000000	6	16	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	65	71	32	9	26	ef5323c57304dc77	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	63	63	32	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	44	44	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	71	71	35	-1	0	0000000000000000	-1	0000000000000000	11	31	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	55	55	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	68	68	34	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	73	73	36	-1	0	0000000000000000	-1	0000000000000000	7	19	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	59	59	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	48	48	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=4)@2.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	0	67	67	33	-1	0	0000000000000000	-1	0000000000000000	9	25	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	0	72	72	36	-1	0	0000000000000000	-1	0000000000000000	7	21	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=7)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=7)@1
+W	1	1	W	0	52	52	26	-1	0	0000000000000000	-1	0000000000000000	8	23	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=8)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=8)@1
+W	0	0	L	0	50	45	25	14	9	88845bce74e376b1	13	648385b819481b07	11	33	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=9)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=9)@1
+W	0	0	L	0	50	45	25	14	9	88845bce74e376b1	13	648385b819481b07	11	33	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=4)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=4)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=10)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	10	28	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=10)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=11)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=12)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=12)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=4)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=4)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
+W	0	0	L	0	48	47	24	5	19	46c57d0a1e78f2fd	-1	0000000000000000	19	57	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=6)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=6)@1
+W	1	1	W	0	56	56	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=2)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=3)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=3)@1
+W	1	1	W	0	76	76	38	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=2)@1
+B	1	1	W	0	33	33	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=2)@1
+W	1	1	W	0	48	48	24	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=13)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=13)@1
+W	1	1	W	0	56	56	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=14)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.opener(book,book=14)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=15)@1
+W	1	1	W	0	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.opener(book,book=16)@1
+W	0	0	L	0	48	47	24	5	19	46c57d0a1e78f2fd	-1	0000000000000000	19	57	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=17)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=17)@1
+W	0	0	L	0	48	47	24	5	19	46c57d0a1e78f2fd	-1	0000000000000000	19	57	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=18)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1.opener(book,book=18)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=19)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=19)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=20)@1
+B	1	1	W	0	55	55	27	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,ord,nodes=200k)@2.adv(chip=77,support=-2,control=1,noiseseed=1,racewin=1)@1.opener(book,book=20)@1
+W	1	1	W	1	70	70	35	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+B	1	1	W	1	63	63	31	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+W	0	0	L	1	48	47	24	5	19	46c57d0a1e78f2fd	-1	0000000000000000	19	57	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	61	61	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	54	54	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	44	44	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	W	1	49	49	24	13	11	7769f3524cbd4b1b	-1	0000000000000000	2	4	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	1	56	56	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	59	59	29	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	68	68	34	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+B	0	0	L	1	59	62	29	21	10	379cf1c8ba1b30e3	19	d4ebad7d913f0927	9	27	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	46	52	23	8	18	cccd5f23b422db27	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	1	L	1	65	64	32	-1	0	0000000000000000	-1	0000000000000000	8	24	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	1	W	1	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2
+B	1	1	W	1	57	57	28	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2
+W	1	1	W	1	74	74	37	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	47	47	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	80	80	40	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+B	1	1	W	1	55	55	27	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+W	1	1	W	1	52	52	26	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	31	31	15	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	40	40	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	83	83	41	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	64	64	32	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	45	45	22	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+W	1	1	W	1	76	76	38	-1	0	0000000000000000	-1	0000000000000000	1	1	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+B	1	1	W	1	37	37	18	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,time=150ms)@2.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+W	1	1	W	0	72	72	36	-1	0	0000000000000000	-1	0000000000000000	18	52	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	81	81	40	-1	0	0000000000000000	-1	0000000000000000	10	28	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	78	78	39	-1	0	0000000000000000	-1	0000000000000000	12	34	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	67	67	33	-1	0	0000000000000000	-1	0000000000000000	10	29	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	78	78	39	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	63	63	31	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	42	42	21	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	69	69	34	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	80	80	40	-1	0	0000000000000000	-1	0000000000000000	20	59	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	57	57	28	-1	0	0000000000000000	-1	0000000000000000	8	24	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	82	82	41	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	67	67	33	-1	0	0000000000000000	-1	0000000000000000	19	56	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	50	50	25	-1	0	0000000000000000	-1	0000000000000000	8	24	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	43	43	21	-1	0	0000000000000000	-1	0000000000000000	9	25	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	56	56	28	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	61	61	30	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	58	58	29	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	51	51	25	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	86	86	43	-1	0	0000000000000000	-1	0000000000000000	10	30	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+B	1	1	W	0	59	35	29	11	6	f1cdad46a82df389	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+W	1	1	W	0	40	40	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+B	1	1	W	0	77	49	38	12	12	343f5585cfb47bc5	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+W	1	1	W	0	70	70	35	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+B	1	1	W	0	47	47	23	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+W	1	1	W	0	38	38	19	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+B	1	1	W	0	29	29	14	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+W	1	1	W	0	68	68	34	-1	0	0000000000000000	-1	0000000000000000	6	16	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+B	1	1	W	0	83	83	41	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+W	1	1	W	0	32	32	16	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+B	1	1	W	0	31	31	15	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+W	1	1	W	0	54	54	27	8	2	41f5301bd33f47a7	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1
+B	1	1	W	0	41	41	20	-1	0	0000000000000000	-1	0000000000000000	0	0	0	0	ab(deep=6,tt,ord,nodes=200k)@2.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1

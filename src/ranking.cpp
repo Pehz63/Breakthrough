@@ -6321,8 +6321,15 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         RefTarget& t = targets[i];
         srand(20260827u);
         RefGame g;
+        // Only a WON line has a committed path worth comparing against. A conceded
+        // target's keys and moves are its last FAILED attempt, which was never written
+        // to the book, so every difference there is expected and means nothing. Passing
+        // one in reports an overwrite on a line that was never in the book to begin
+        // with, which it did: all 4 "overwritten" rows on the first run carrying this
+        // check were conceded lines.
+        bool cmpMined = !verifyOnly && t.status == 1;
         if (!refPlayGame(pruned, *t.opp, oracle.spec, t.colour, board, -1, nullptr, g,
-                         verifyOnly ? 0 : &t.keys, verifyOnly ? 0 : &t.moves)) {
+                         cmpMined ? &t.keys : 0, cmpMined ? &t.moves : 0)) {
             cout << "ERROR: audit replay failed for " << t.opp->id << "\n"; mlClearSlots(); return 1;
         }
         t.oobFirst = g.oobFirst; t.oobCount = g.oobCount; t.oobKey = g.oobKey;
@@ -6392,7 +6399,9 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         out << "#   move different from the one the mine recorded at that same position, and\n";
         out << "#   the position hash there (-1 / 0 = never). A nonzero ovr_key is a measured\n";
         out << "#   overwrite of this line by a later winner, not an inference from oob_first.\n";
-        out << "#   Blank under --verify-only, which has no mined path to compare against.\n";
+        out << "#   Blank under --verify-only, which has no mined path to compare against,\n";
+        out << "#   and on a conceded line, whose stored path is a failed attempt the book\n";
+        out << "#   never received.\n";
         out << "# rejected: stage-2 wins refused because committing the line would have\n";
         out << "#   overwritten a position an already-won line depends on.\n";
         out << "# v_plies: half-moves in the openerBook verification game. A line that matches\n";

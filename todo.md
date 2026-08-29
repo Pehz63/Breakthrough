@@ -987,17 +987,56 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     written book serves a move DIFFERENT from the one mined for that line, which
     measures an overwrite instead of inferring it, and `oob_key` records where
     the book fell silent in the same form `models/book<N>.txt` uses.
-  - **Re-mine on the fixed miner and compare against book21.** In flight as
-    slot 22 (`ranking/refute_book22.log`, `ranking/refute_book22.tsv`), same
-    frozen roster snapshot and same oracle, so the only difference is the fix.
-    This is the test of the untested guess that the 7 out-of-book lines were all
-    downstream of the one overwritten position: if the guess is right, the
-    collision count goes to 0 and audit coverage rises from 231; if collisions go
-    to 0 and lines still leave the book, there is a second defect and `ovr_key`
-    will say so. Note the seven `oob_key` values on book21 are all DISTINCT,
-    which does NOT weigh against the guess, since lines crossing one overwritten
-    position face different opponents and so reach different successors.
-    `[Now]` {cpu: hours, dev: low}
+  - **The miner is not reproducible run to run, so book21 vs book22 is not a
+    valid A/B.** Slot 22 (`ranking/refute_book22.log`) re-mined on the fixed
+    binary, same frozen snapshot and same oracle, and came out worse: 86 of 95
+    repaired against 95 of 95, 16 lines out of book against 7. That is NOT
+    attributable to the fix. The new check never fired (0 rejects, 0 collisions),
+    and STAGE 1, which is identical code in both binaries, already diverged:
+    3532 book entries against 3530, first differing between targets 181 and 200.
+    A 2-entry difference at the end of stage 1 is enough to change which
+    positions stage 2 finds owned, and stage 2 is path dependent.
+  - ~~**Clean A/B with `--skip-timed`.**~~ Done 2026-08-29. Slot 23 on the fixed
+    binary and slot 24 on a pre-fix binary built from `src/ranking.cpp` at commit
+    `3d945c2` (`rank_refute_pre.exe`, sources in `build/pre/`), both 210 targets
+    with the 14 wall-clock-budgeted agents excluded, same snapshot and oracle.
+    **The two runs are identical at every stage**: 130/210 stage 1, 3505 entries
+    kept of 3899, 203/210 mined, 202/210 audited with 12 out of book, 202-8-0
+    verified, 1736 mining games, 0 collisions in both. `models/book23.txt` and
+    `models/book24.txt` are byte-identical apart from the slot number in the
+    header comment, and the reports agree on all 210 rows. Three results:
+    (a) the miner is exactly reproducible once the `time=` agents are excluded,
+    which localises the irreproducibility to them, (b) the fix is
+    behaviour-neutral, it never fired, and (c) **the ownership hole does NOT
+    explain lines leaving the book** -- 12 left with 0 collisions, so that
+    hypothesis is refuted.
+  - **Why does a WON line's opponent reply differently in the audit than during
+    mining?** The live explanation for out-of-book lines now the collision one is
+    refuted. Of the 12, seven are conceded lines with no coverage to lose. The
+    other five were mined as wins and all report `ovr_ply = -1`, so OUR moves
+    reproduced the mined line exactly up to the point the book fell silent, which
+    leaves the opponent's reply as the only thing that can have changed. The one
+    difference between the runs is that our side searches during mining and does
+    not during playback, so this is the same shape as the transposition-table
+    contamination. Test: log the opponent's chosen move per ply in both runs for
+    one of the five and diff them to name the ply, then bisect what state that ply
+    reads. Deduction, not measurement, until that is run. `[Next]` {cpu: minutes,
+    dev: medium}
+  - **The ownership check has never fired, so it is untested.** Correct by
+    construction and behaviour-neutral on every workload run so far. A targeted
+    test would construct two winning lines that genuinely want different moves at
+    one shared position and assert the second is refused rather than committed.
+    `[Next]` {cpu: seconds, dev: medium}
+  - ~~**The `ovr` diagnostic had a false-positive mode.**~~ Fixed 2026-08-29
+    before the A/B landed. It compared the written book against the target's
+    stored path without checking that the target WON. A conceded target's stored
+    path is its last failed attempt, which was never written to the book, so every
+    difference is expected. All 4 lines slot 22 reported as overwritten were
+    conceded (`mined=0`). Now gated on `t.status == 1`.
+  - Note for the re-mine comparison: the seven `oob_key` values on book21 are all
+    DISTINCT, and that does NOT weigh against the guess that one overwritten
+    position explains them, since lines crossing it face different opponents and
+    so reach different successors.
   - ~~**Check that the book21 audit reproduces.**~~ Done 2026-08-29, an
     independent `--verify-only` replay against the same snapshot. The audit
     matched exactly (237/238 won, the same 7 lines out of book at the same
