@@ -975,14 +975,38 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     `model=113`, the two cost-flagged `time=150ms` cores that do not replay, so
     excluding them the result is 230 of 236. Stage 1 took 143 by the oracle line
     alone, stage 2 repaired all 95 remaining with 0 conceded.~~
-  - **Close the ownership hole, then re-mine.** Stage 3 found 1 position of 3657
-    where two winning lines recorded different moves. The check gates which
-    position a repair may BRANCH at but then commits the winning line's whole
-    path unconditionally, so a repair can overwrite a position an earlier winner
-    owns. Fix: validate the full path against `owners` before committing and
-    fall through to the next candidate move instead. Also print the colliding
-    position's key, which would settle the untested guess that all 7 out-of-book
-    lines are downstream of that single position. `[Next]` {cpu: hours, dev: low}
+  - ~~**Close the ownership hole.**~~ Fixed 2026-08-29. Stage 3 found 1 position
+    of 3657 where two winning lines recorded different moves: the check gated
+    which position a repair may BRANCH at but then committed the winning line's
+    whole path unconditionally, so a repair could overwrite a position an earlier
+    winner owns. Stage 2 now validates the full path against `owners` before
+    committing and falls through to the next candidate move instead, and the
+    summary reports how many wins were refused so the cost of the check is
+    visible. Stage 1 needed no change, it writes insert-only. Two diagnostics
+    were added with it: `ovr_ply`/`ovr_key` report the first position where the
+    written book serves a move DIFFERENT from the one mined for that line, which
+    measures an overwrite instead of inferring it, and `oob_key` records where
+    the book fell silent in the same form `models/book<N>.txt` uses.
+  - **Re-mine on the fixed miner and compare against book21.** In flight as
+    slot 22 (`ranking/refute_book22.log`, `ranking/refute_book22.tsv`), same
+    frozen roster snapshot and same oracle, so the only difference is the fix.
+    This is the test of the untested guess that the 7 out-of-book lines were all
+    downstream of the one overwritten position: if the guess is right, the
+    collision count goes to 0 and audit coverage rises from 231; if collisions go
+    to 0 and lines still leave the book, there is a second defect and `ovr_key`
+    will say so. Note the seven `oob_key` values on book21 are all DISTINCT,
+    which does NOT weigh against the guess, since lines crossing one overwritten
+    position face different opponents and so reach different successors.
+    `[Now]` {cpu: hours, dev: low}
+  - ~~**Check that the book21 audit reproduces.**~~ Done 2026-08-29, an
+    independent `--verify-only` replay against the same snapshot. The audit
+    matched exactly (237/238 won, the same 7 lines out of book at the same
+    plies), but the verified record moved 235-3-0 to 236-2-0 on a single row:
+    `model=111` at `time=150ms` as Black, which flipped L to W and moved its own
+    `oob_first` from 13 to 16. The 236 non-timed rows reproduced exactly, so the
+    memorization result is stable and the instability is confined to the two
+    cores that cannot be mined by construction. A timed line's verified result
+    should not be quoted to the unit.
   - **Declare it reference-class in `ranking/CHAMPION.md`, do not enter it as a
     champion.** A Bradley-Terry fit assigns one strength parameter per agent and
     this one is maximally intransitive: 230 of 238 lines won against

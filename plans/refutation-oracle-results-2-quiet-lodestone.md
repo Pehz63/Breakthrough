@@ -230,39 +230,113 @@ means the contamination is back.
 To see the defect rather than its absence, revert the two `^ s_ttCtx` in
 `src/ai_minimax.cpp` and re-run the test.
 
-## The ownership check has a hole, at the write and not the branch
+## The ownership check had a hole, at the write and not the branch
 
-Stage 3's own collision counter fired: **1 position of 3657 where two winning
-lines recorded different moves.** A position-keyed book holds one move per
-position, so the later line's move overwrote the earlier one's and the earlier
-line is broken.
+Stage 3's own collision counter fired on the book21 mine: **1 position of 3657
+where two winning lines recorded different moves.** A position-keyed book holds
+one move per position, so the later line's move overwrote the earlier one's and
+the earlier line was broken.
 
-The hole is locatable. Stage 2 gates which position a repair may BRANCH at:
+The hole was locatable. Stage 2 gated which position a repair may BRANCH at:
 
 ```cpp
 if (ow != owners.end() && ow->second > 0) continue;   // shared prefix, not ours to change
 ```
 
-but on a win it then commits the repair's ENTIRE path unconditionally:
+but on a win it then committed the repair's ENTIRE path unconditionally:
 
 ```cpp
 for (size_t q = 0; q < g.ourKeys.size(); q++) book[g.ourKeys[q]] = g.ourMoves[q];
 ```
 
-So the check guards the branch point and not the write. A repair that branches at
-a position it is allowed to change can still, further down its new line, cross a
-position an earlier winner owns and overwrite the move there. The fix is to
-validate the whole path against `owners` before committing and reject the repair
-if it would overwrite an owned position with a different move, falling through to
-the next candidate move rather than silently breaking a solved line.
+The check guarded the branch point and not the write. A repair that branches at a
+position it is allowed to change can still, further down its new continuation,
+cross a position an earlier winner owns and overwrite the move there.
 
-**Untested hypothesis, flagged as such:** the 7 lines that left the book may all
-be downstream of this single overwritten position, which would make the two
-symptoms one defect. Their `oob_first` plies are 8, 8, 9, 11, 12, 13 and 16,
-which is consistent with several lines crossing one position at different depths,
-but the miner does not report the colliding position's key, so this is a guess
-and not a measurement. Printing that key is the one-line change that would settle
-it.
+Fixed by validating the whole path before committing. On a win, every position on
+the new line is checked against `owners`, and if any owned position would receive
+a move different from the one already in the book, the win is refused and the
+search falls through to the next candidate move at that node:
+
+```cpp
+if (conflict) {
+    t.rejected++;
+    cout << "    reject: won, but our ply " << badQ << " would overwrite "
+         << refHexKey(g.ourKeys[badQ]) << ", owned by "
+         << owners[g.ourKeys[badQ]] << " won line(s)\n" << flush;
+    continue;                          // fall through to the next candidate move
+}
+```
+
+Stage 1 never needed this. It writes insert-only (`if (book.find(k) == book.end())`),
+so a stage-1 line always agrees with whatever the book already holds. Only stage 2
+overwrites.
+
+The check is deliberately conservative in one respect worth stating. `owners` is
+incremented and never decremented, so when stage 2 replaces a target's path the
+positions on its abandoned path stay marked as owned. That can refuse a repair
+that would in fact have been safe. It cannot admit an unsafe one, which is the
+direction that matters, and the summary now reports how many wins were refused so
+the cost is visible rather than silent.
+
+### Two diagnostics, because the collision count alone could not be acted on
+
+A count says a merge conflict happened. It does not say which lines it broke, and
+the guess that followed from it ("the 7 lines that left the book are probably all
+downstream of this one position") could not be checked against anything.
+
+**`ovr_ply` / `ovr_key`** measure it directly. During the coverage audit the
+replay stands on the same positions the mine recorded for that line, so an
+overwrite is observable: the book hands back a move DIFFERENT from the mined one
+at a position the line is replaying correctly. The audit now carries the mined
+path in and reports the first ply where that happens, with the position's hash.
+This is the difference between "these plies are consistent with one shared
+position" and "this line was overwritten at this position."
+
+**`oob_key`** records the position hash where the book first fell silent, in the
+same 16-digit form the book file uses, so the position can be grepped straight
+out of `models/book<N>.txt`.
+
+Both are `-1` / `0` when nothing happened, and `ovr_*` is blank under
+`--verify-only`, which loads a book with no mined path to compare against.
+
+### What the distinct oob keys do and do not establish
+
+Re-running the book21 audit with `oob_key` populated gives seven DISTINCT keys
+for the seven out-of-book lines. That is not evidence against the shared-collision
+explanation, and it is worth being explicit about why, because the naive reading
+is the opposite. If several lines cross an overwritten position K, each plays the
+same wrong move from K, but each faces a different opponent, so each receives a
+different reply and reaches a different successor position. Distinct oob keys are
+what the hypothesis predicts. The keys are recorded for future debugging, not as
+a test.
+
+The test is `ovr_key` on a fresh mine, which is why the fix is validated by
+re-mining rather than by re-auditing the old book.
+
+## The book21 audit reproduces, except on the timed cores
+
+Replaying `models/book21.txt` a second time through `--verify-only`, against the
+same frozen roster snapshot, is an independence check on every number quoted from
+the first run.
+
+| Measure | Mine run (2026-08-29) | Independent replay | Agrees |
+|---|---|---|---|
+| audit won | 237/238 | 237/238 | yes |
+| audit left the book | 7 | 7 | yes |
+| verify (W-L-D) | 235-3-0 | 236-2-0 | **no** |
+| `time=` targets won | 26/28 | 27/28 | **no** |
+
+Exactly one row of 238 changed: `ab(deep=6,tt,ord,time=150ms)@2.learned(model=111,
+78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` as Black,
+which flipped `L` to `W` and moved its own `oob_first` from ply 13 to ply 16. It is
+one of the two wall-clock-budgeted cores already known not to replay.
+
+The 236 non-timed rows reproduced exactly, including all seven out-of-book plies
+and the identity of every line in that set. So the memorization result is stable
+under replay and the instability is confined to the cores that cannot be mined by
+construction. It also means the verified total for a timed line is a coin flip
+between runs and should never be quoted to the unit.
 
 ## Running a long mine while another session works the same tree
 

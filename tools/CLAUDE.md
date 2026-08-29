@@ -306,7 +306,16 @@ Stages:
    moves filtered out of the search root (the same one-shot whitelist `cbook`
    uses) and replay. Positions a won line owns are left alone, which is how a real
    merge conflict surfaces as a `blocked_shared` row instead of quietly breaking a
-   solved line.
+   solved line. **Ownership is enforced at the write, not only at the branch.** A
+   repair that branches at a free position can still, further down its new
+   continuation, cross a position an earlier winner owns and want a different move
+   there, so a win is committed only after its WHOLE path is checked against the
+   owners map. A win that would overwrite an owned position is refused and the
+   search falls through to the next candidate move at that node (the `rejected`
+   column, and a `reject:` line naming the position). Stage 1 needs no such check,
+   it writes insert-only. The count is reported because refusing a win is a real
+   cost: a line that ends up conceded may have been solvable at the price of
+   breaking another.
 3. Prune to the entries a winning line actually walks, write
    `models/book<slot>.txt`, audit, then verify. Exit code 2 unless the book wins
    every line, on its own, through `openerBook`.
@@ -319,7 +328,21 @@ whatever their W/L says. The audit runs on every invocation, because the first
 version of this command reported 238/238 mined and 226-12 verified while 132 of the
 238 lines had silently fallen out of book. `--verify-only` runs the same audit plus
 verification against an existing book without mining or rewriting it, which is how
-that was diagnosed (`oob_first` in the TSV names our first unserved move).
+that was diagnosed (`oob_first` in the TSV names our first unserved move, and
+`oob_key` gives that position's hash in the same 16-digit form the book file uses,
+so it can be grepped straight out of `models/book<N>.txt`).
+
+**`ovr_ply` / `ovr_key` measure an overwrite instead of inferring one.** During the
+audit the replay stands on the same positions the mine recorded for that line, so
+if the book hands back a move DIFFERENT from the mined one at a position the line
+is replaying correctly, that line was overwritten by a later winner. Those two
+columns name the first ply where it happens and the position's hash. They are
+blank under `--verify-only`, which loads a book with no mined path to compare
+against. Reach for these before theorising about why a line left the book: a
+stage-3 collision count says only that a merge conflict happened somewhere, and
+several lines broken by ONE overwritten position will still show DISTINCT
+`oob_key` values, because each faces a different opponent and so reaches a
+different successor after the wrong move.
 
 ```powershell
 .\rank.exe refute --slot 21 --tries 4 --out ranking/refute_book21.tsv

@@ -5825,6 +5825,26 @@ static bool refSameMove(const RefMove& a, const RefMove& b) {
     return a.sx == b.sx && a.sy == b.sy && a.dx == b.dx;
 }
 
+// Same 16-digit form the book file and the report use, so a key printed by the
+// collision warning can be grepped straight out of models/book<N>.txt.
+static string refHexKey(unsigned long long k) {
+    std::ostringstream o;
+    o << std::hex << std::setw(16) << std::setfill('0') << k;
+    return o.str();
+}
+
+static string refMoveStr(const RefMove& m) {
+    std::ostringstream o;
+    o << m.sx << "," << m.sy << "->" << m.dx;
+    return o.str();
+}
+
+static string refPlural(int n, const char* noun) {
+    std::ostringstream o;
+    o << n << " " << noun << (n == 1 ? "" : "s");
+    return o.str();
+}
+
 // Bounds first, for the same reason openerBook checks them: tryMoveQuick* skips
 // bounds checks by design, so a bad entry must never index off the board.
 static bool refMoveLegal(int side, const RefMove& e) {
@@ -5869,6 +5889,11 @@ struct RefGame {
     bool probeIgnored;                            // the search returned an EXCLUDED move anyway
     int  oobFirst;                                // first of OUR plies the book did not serve (-1 = none)
     int  oobCount;                                // how many of OUR plies the book did not serve
+    unsigned long long oobKey;                    // position hash at oobFirst (0 if none)
+    int  overwritePly;                            // first of OUR plies where the book served a
+                                                  // move DIFFERENT from the one the mine recorded
+                                                  // at the same position (-1 = never)
+    unsigned long long overwriteKey;              // position hash there (0 if none)
 };
 
 // One full game, our side driven by the book with the oracle as fallback.
@@ -5882,13 +5907,16 @@ static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
                         const RankAgent& oppAg, const AgentSpec& oracle,
                         int ourColour, const string& boardFile,
                         int probeOurPly, const std::vector<RefMove>* exclude,
-                        RefGame& g) {
+                        RefGame& g,
+                        const std::vector<unsigned long long>* minedKeys = 0,
+                        const std::vector<RefMove>* minedMoves = 0) {
     if (!reloadBoard(boardFile)) return false;
     ttClear();
     g.outcome = 0; g.plies = 0;
     g.ourKeys.clear(); g.ourMoves.clear();
     g.probeExhausted = false; g.probeIgnored = false;
-    g.oobFirst = -1; g.oobCount = 0;
+    g.oobFirst = -1; g.oobCount = 0; g.oobKey = 0;
+    g.overwritePly = -1; g.overwriteKey = 0;
 
     const int ourSide = (ourColour == 0) ? White : Black;
     int victor = None;
@@ -5928,12 +5956,22 @@ static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
                     // The book was silent (or held an entry illegal here) and the
                     // oracle covered for it. On a line the book is supposed to own
                     // outright, that is the defect, so record where it first happened.
-                    if (g.oobFirst < 0) g.oobFirst = ourPly;
+                    if (g.oobFirst < 0) { g.oobFirst = ourPly; g.oobKey = key; }
                     g.oobCount++;
                 }
                 if (ourPly == probeOurPly && exclude)
                     for (size_t e = 0; e < exclude->size(); e++)
                         if (refSameMove((*exclude)[e], chosen)) g.probeIgnored = true;
+            }
+            // An overwrite is visible here and nowhere else: the replay stands on the
+            // SAME position the mine recorded for this line, and the book hands back a
+            // DIFFERENT move. That is a later winner having overwritten this line's
+            // entry, observed rather than inferred from where the line later fell out
+            // of book.
+            if (minedKeys && minedMoves && g.overwritePly < 0
+                && ourPly < (int)minedKeys->size() && (*minedKeys)[ourPly] == key
+                && !refSameMove(chosen, (*minedMoves)[ourPly])) {
+                g.overwritePly = ourPly; g.overwriteKey = key;
             }
             g.ourKeys.push_back(key);
             g.ourMoves.push_back(chosen);
@@ -5969,6 +6007,14 @@ struct RefTarget {
     bool auditWon;        // stage-3 audit: won replaying against the WRITTEN book
     int  oobFirst;        // stage-3 audit: first of OUR moves the book did not serve (-1 = none)
     int  oobCount;        // stage-3 audit: how many of OUR moves the book did not serve
+    unsigned long long oobKey;  // stage-3 audit: position hash at oobFirst (0 if none). Printed so
+                          // a line that left the book can be matched against the position a stage-3
+                          // collision overwrote, instead of the match being guessed from ply numbers.
+    int  rejected;        // stage-2 wins refused because committing the line would have
+                          // overwritten a position an already-won line depends on
+    int  overwritePly;    // stage-3 audit: first of OUR plies where the written book served a
+                          // move different from the one the mine recorded at that same position
+    unsigned long long overwriteKey;  // position hash there (0 if none)
     std::vector<unsigned long long> keys;
     std::vector<RefMove> moves;
 };
@@ -6049,6 +6095,8 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
             t.opp = &roster[i]; t.colour = c; t.status = 0;
             t.plies = 0; t.ourMoveCount = 0; t.triedNodes = 0; t.triedMoves = 0;
             t.blockedShared = false; t.auditWon = false; t.oobFirst = -1; t.oobCount = 0;
+            t.oobKey = 0; t.rejected = 0;
+            t.overwritePly = -1; t.overwriteKey = 0;
             targets.push_back(t);
         }
     }
@@ -6157,6 +6205,28 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
                 t.triedMoves++;
                 tried.push_back(g.ourMoves[k]);
                 if (g.outcome == 1) {
+                    // A win is not enough to commit. The branch check above clears only
+                    // the ONE position this probe changes; everything after it is a new
+                    // continuation, and it can walk back through a position an already-won
+                    // line depends on and want a different move there. Writing that would
+                    // silently break the earlier line, which is precisely the collision
+                    // stage 3 reports. Check the whole path, not just the branch point.
+                    size_t badQ = 0; bool conflict = false;
+                    for (size_t q = 0; q < g.ourKeys.size(); q++) {
+                        std::map<unsigned long long, int>::const_iterator qo = owners.find(g.ourKeys[q]);
+                        if (qo == owners.end() || qo->second <= 0) continue;
+                        std::map<unsigned long long, RefMove>::const_iterator qb = book.find(g.ourKeys[q]);
+                        if (qb != book.end() && !refSameMove(qb->second, g.ourMoves[q])) {
+                            badQ = q; conflict = true; break;
+                        }
+                    }
+                    if (conflict) {
+                        t.rejected++;
+                        cout << "    reject: won, but our ply " << badQ << " would overwrite "
+                             << refHexKey(g.ourKeys[badQ]) << ", owned by "
+                             << owners[g.ourKeys[badQ]] << " won line(s)\n" << flush;
+                        continue;                          // fall through to the next candidate move
+                    }
                     for (size_t q = 0; q < g.ourKeys.size(); q++) book[g.ourKeys[q]] = g.ourMoves[q];
                     for (size_t q = 0; q < g.ourKeys.size(); q++) owners[g.ourKeys[q]]++;
                     t.keys = g.ourKeys; t.moves = g.ourMoves;
@@ -6174,7 +6244,9 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         for (size_t j = 0; j <= i; j++) { if (targets[j].status != 0) done++; if (targets[j].status == 1) won++; }
         cout << "  " << (t.status == 1 ? "SOLVED  " : "CONCEDED") << "  "
              << (t.colour == 0 ? "W" : "B") << "  " << t.triedNodes << " nodes, "
-             << t.triedMoves << " moves tried" << (t.blockedShared ? ", every node shared" : "")
+             << t.triedMoves << " moves tried"
+             << (t.rejected > 0 ? ", " + refPlural(t.rejected, "win") + " rejected as unmergeable" : "")
+             << (t.blockedShared ? ", every node shared" : "")
              << "  " << t.opp->id << "\n" << flush;
     }
     if (budgetHit) cout << "  --max-games budget reached, remaining lines left unsolved\n";
@@ -6195,7 +6267,17 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
             if (targets[i].status != 1) continue;
             for (size_t k = 0; k < targets[i].keys.size(); k++) {
                 std::map<unsigned long long, RefMove>::iterator ex = pruned.find(targets[i].keys[k]);
-                if (ex != pruned.end() && !refSameMove(ex->second, targets[i].moves[k])) collisions++;
+                if (ex != pruned.end() && !refSameMove(ex->second, targets[i].moves[k])) {
+                    collisions++;
+                    // Name it. A count alone leaves "which lines did this break?" to be
+                    // guessed from ply numbers; the key can be matched exactly against
+                    // the oob_key of every line that left the book.
+                    cout << "  collision at " << refHexKey(targets[i].keys[k])
+                         << ": " << refMoveStr(ex->second) << " overwritten with "
+                         << refMoveStr(targets[i].moves[k]) << " at our ply " << k
+                         << " by " << (targets[i].colour == 0 ? "W" : "B") << " "
+                         << targets[i].opp->id << "\n" << flush;
+                }
                 pruned[targets[i].keys[k]] = targets[i].moves[k];
             }
         }
@@ -6239,10 +6321,12 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         RefTarget& t = targets[i];
         srand(20260827u);
         RefGame g;
-        if (!refPlayGame(pruned, *t.opp, oracle.spec, t.colour, board, -1, nullptr, g)) {
+        if (!refPlayGame(pruned, *t.opp, oracle.spec, t.colour, board, -1, nullptr, g,
+                         verifyOnly ? 0 : &t.keys, verifyOnly ? 0 : &t.moves)) {
             cout << "ERROR: audit replay failed for " << t.opp->id << "\n"; mlClearSlots(); return 1;
         }
-        t.oobFirst = g.oobFirst; t.oobCount = g.oobCount;
+        t.oobFirst = g.oobFirst; t.oobCount = g.oobCount; t.oobKey = g.oobKey;
+        t.overwritePly = g.overwritePly; t.overwriteKey = g.overwriteKey;
         t.auditWon = (g.outcome == 1);
         if (verifyOnly) {
             t.status = t.auditWon ? 1 : 2;
@@ -6299,10 +6383,22 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         out << "# oob_first: the first of OUR moves the book did not serve, so the fallback brain\n";
         out << "#   had to choose (-1 = the book covered the whole line). A line with oob_first\n";
         out << "#   >= 0 was carried by the brain, not by the book, whatever its result says.\n";
+        out << "# oob_key: the position hash at oob_first, in the same 16-digit form the\n";
+        out << "#   book file uses (0 = the book covered the whole line). Match it against\n";
+        out << "#   the keys the stage-3 collision warning prints, to see whether a line left\n";
+        out << "#   the book at a position a later winner overwrote, instead of inferring it\n";
+        out << "#   from ply numbers.\n";
+        out << "# ovr_ply / ovr_key: the first of OUR plies where the written book served a\n";
+        out << "#   move different from the one the mine recorded at that same position, and\n";
+        out << "#   the position hash there (-1 / 0 = never). A nonzero ovr_key is a measured\n";
+        out << "#   overwrite of this line by a later winner, not an inference from oob_first.\n";
+        out << "#   Blank under --verify-only, which has no mined path to compare against.\n";
+        out << "# rejected: stage-2 wins refused because committing the line would have\n";
+        out << "#   overwritten a position an already-won line depends on.\n";
         out << "# v_plies: half-moves in the openerBook verification game. A line that matches\n";
         out << "#   `plies` played the same length game the miner recorded.\n";
-        out << "colour\tmined\taudit\tverify\ttimed\tplies\tv_plies\tour_moves\toob_first\toob_count"
-               "\ttried_nodes\ttried_moves\tblocked_shared\topponent\n";
+        out << "colour\tmined\taudit\tverify\ttimed\tplies\tv_plies\tour_moves\toob_first\toob_count\toob_key\tovr_ply\tovr_key"
+               "\ttried_nodes\ttried_moves\trejected\tblocked_shared\topponent\n";
         for (size_t i = 0; i < targets.size(); i++) {
             const RefTarget& t = targets[i];
             out << (t.colour == 0 ? "W" : "B") << "\t" << (t.status == 1 ? 1 : 0)
@@ -6310,14 +6406,18 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
                 << "\t" << (t.opp->spec.timeBudgetMs > 0.0 ? 1 : 0) << "\t" << t.plies
                 << "\t" << vplies[i] << "\t" << t.ourMoveCount
                 << "\t" << t.oobFirst << "\t" << t.oobCount
+                << "\t" << refHexKey(t.oobKey)
+                << "\t" << t.overwritePly << "\t" << refHexKey(t.overwriteKey)
                 << "\t" << t.triedNodes << "\t" << t.triedMoves
+                << "\t" << t.rejected
                 << "\t" << (t.blockedShared ? 1 : 0) << "\t" << t.opp->id << "\n";
         }
     }
     out.close();
 
-    int blocked = 0, timedTargets = 0, timedWon = 0;
+    int blocked = 0, timedTargets = 0, timedWon = 0, rejectedWins = 0, rejectedLines = 0;
     for (size_t i = 0; i < targets.size(); i++) {
+        if (targets[i].rejected > 0) { rejectedWins += targets[i].rejected; rejectedLines++; }
         if (targets[i].blockedShared) blocked++;
         if (targets[i].opp->spec.timeBudgetMs > 0.0) {
             timedTargets++;
@@ -6332,12 +6432,34 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
     if (aLeft > 0)
         cout << "  Those " << aLeft << " lines were carried by the wearer's brain, not by the\n"
              << "  book, so the verified record below is NOT a memorization result for them.\n";
+    if (!verifyOnly) {
+        int ovr = 0, ovrLeft = 0;
+        for (size_t i = 0; i < targets.size(); i++) {
+            if (targets[i].overwritePly < 0) continue;
+            ovr++;
+            if (targets[i].oobFirst >= 0) ovrLeft++;
+        }
+        if (ovr > 0)
+            cout << "  " << ovr << " line(s) were overwritten: the book served a move other than\n"
+                 << "  the one mined for them, at a position they were replaying correctly. "
+                 << ovrLeft << " of\n  those also left the book. See ovr_ply/ovr_key in the report.\n";
+        else if (aLeft > 0)
+            cout << "  None of them was overwritten, so leaving the book has a cause other than\n"
+                 << "  one winning line clobbering another's entry.\n";
+    }
     cout << "verify: " << vWon << "-" << vLost << "-" << vDrew << " (W-L-D for the book's side) over "
          << targets.size() << " games, " << pruned.size() << " book entries\n";
     if (timedTargets > 0)
         cout << "  of which wall-clock-budgeted (time=) targets: " << timedWon << "/" << timedTargets << " won\n";
+    if (!verifyOnly && rejectedWins > 0)
+        cout << "  " << rejectedWins << " won repair(s) across " << rejectedLines
+             << " line(s) refused because committing them would have overwritten a\n"
+             << "  position an already-won line depends on. Each fell through to the next\n"
+             << "  candidate move, so a line still conceded is the cost of the check.\n";
     if (!verifyOnly && collisions > 0)
-        cout << "  " << collisions << " position(s) where two winning lines wanted different moves\n";
+        cout << "  " << collisions << " position(s) where two winning lines wanted different\n"
+             << "  moves. The write-side ownership check is supposed to make this zero, so a\n"
+             << "  nonzero count is a live bug, and stage 3 above prints the keys.\n";
     if (blocked > 0)
         cout << "  " << blocked << " conceded with every node on the losing line owned by an\n"
              << "  already-won line: a single position-keyed book cannot express those\n";
