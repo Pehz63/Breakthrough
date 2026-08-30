@@ -1102,19 +1102,24 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   canonical fit re-run. Developer pre-authorized this specific action
   ("if you notice any impact, do that next") ahead of the measurement.
 
-- **Re-certify all 6 category champions under the `ab(...)@2` identities.**
-  The version bump above retired every alpha-beta agent's game history at
-  once (the versioning scheme has no finer grain than per-module, so
-  `tt`-free agents were swept up too even though their play did not change).
-  `ranking/standings.tsv` for the `ab` head is now empty; every declaration in
-  `ranking/CHAMPION.md` names a `gone` identity with zero games under `@2` (see
-  that file's 2026-08-28 banner). This is a large re-play commitment (216
-  active agents, 23653 pairs at the last `rank.exe check`) -- **scope and
-  sequencing is a developer decision**, not yet made: e.g. whether to
-  re-certify all 6 categories at once vs. the 2 already-certified ones first,
-  and whether the existing `roster_top.txt`/`roster_top_time.txt` contender
-  lists are still the right boost target or need reconsidering now that the
-  whole field restarts from zero games together. `[Next]` {cpu: high, dev: medium}
+- ~~**Re-certify all 6 category champions under the `ab(...)@2` identities.**~~
+  Resolved 2026-08-30: rather than boosting a per-category contender subset,
+  filled the ENTIRE roster (`.\tools\run_rank.ps1 -Workers 10 --games N`, no
+  `--roster` filter) on a rung ladder N = 8, 16, 32, snapshotting
+  `ranking/standings.tsv`/`ratings.tsv` after each rung into
+  `ranking/recert_snapshots/`. Rank order was stable from rung 8 through rung
+  32 for every category's top field (openless x node's top-5 held identical
+  rank across all three rungs), so 32 was taken as converged. `rank.exe check
+  --games 32` confirms 0 pending across all 23,653 pairs (deterministic pairs
+  remain capped at their 2-game floor, unaffected by the target). This clears
+  CLAUDE.md rule 2 for all 6 categories in one fit, not just the 2 that had a
+  `roster_top*.txt` file. All 6 declarations in `ranking/CHAMPION.md` updated
+  from this fit; several reordered materially under `@2` (the TT fix's whole
+  point). `roster_top.txt`/`roster_top_time.txt` were bumped to `@2` IDs but
+  NOT used as the boost mechanism this round and now list a stale top-N (the
+  full-roster fill superseded them) -- leaving them as-is; the next
+  contender-only study should rebuild them from the current standings rather
+  than trust their listed order.
 
 - **Does the same replay mismatch confound `bookgen`'s measured book lift?**
   `bookgen` mines the line owner's moves out of stored games in which the owner
