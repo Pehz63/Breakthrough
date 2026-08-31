@@ -1010,18 +1010,36 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     behaviour-neutral, it never fired, and (c) **the ownership hole does NOT
     explain lines leaving the book** -- 12 left with 0 collisions, so that
     hypothesis is refuted.
-  - **Why does a WON line's opponent reply differently in the audit than during
-    mining?** The live explanation for out-of-book lines now the collision one is
-    refuted. Of the 12, seven are conceded lines with no coverage to lose. The
-    other five were mined as wins and all report `ovr_ply = -1`, so OUR moves
-    reproduced the mined line exactly up to the point the book fell silent, which
-    leaves the opponent's reply as the only thing that can have changed. The one
-    difference between the runs is that our side searches during mining and does
-    not during playback, so this is the same shape as the transposition-table
-    contamination. Test: log the opponent's chosen move per ply in both runs for
-    one of the five and diff them to name the ply, then bisect what state that ply
-    reads. Deduction, not measurement, until that is run. `[Next]` {cpu: minutes,
-    dev: medium}
+  - **DEFECT (indicated, not yet confirmed): a deterministic opponent does not
+    reproduce its replies when our side stops searching.** Not a theory. A
+    deterministic agent that plays differently across two runs of the same
+    position is broken whatever the cause, so this is a defect to confirm and
+    fix, and only its MECHANISM is an open question (theory 56).
+    - **What was measured.** On the clean A/B (slot 23), 12 lines left the book.
+      Seven are conceded lines with no coverage to lose. The other five were
+      mined as WINS and all five report `ovr_ply = -1`.
+    - **What that deduces.** `ovr_ply = -1` means no position exists where the
+      replay stands on a position the mine recorded and the book returns a
+      different move. So our moves reproduced the mined line exactly up to the
+      ply the book fell silent, and the book was not overwritten. The line still
+      reached a position the book had never seen, which leaves the opponent's
+      reply as the only thing that can have changed.
+    - **Why it is only INDICATED.** Every step above is inference from a negative
+      result. The opponent replying differently has never been watched directly.
+    - **Direct confirmation, one run.** Play the same deterministic opponent from
+      the same position twice, once with our side searching and once with our
+      side replaying book moves, and diff its chosen move per ply. That either
+      exhibits the defect or kills the deduction. Do this BEFORE any mechanism
+      work.
+    - **Blast radius to determine, and it may not be small.** In ordinary ranked
+      play both sides search, so the asymmetry does not arise. It arises whenever
+      one side is NOT searching, which is every book-wearing agent while in book
+      and plausibly every random-opener agent during its opener. That is 77
+      `.opener(...)` rows in `ranking/roster.txt`. Scope this before deciding
+      severity: if stored games between an opener-wearing agent and a searcher
+      are affected, the consequence is the same class as theory 54, which
+      invalidated every stored `tt`-vs-`tt` game and forced the `ab@1 -> @2` bump.
+    `[Now]` {cpu: minutes, dev: medium}
   - **The ownership check has never fired, so it is untested.** Correct by
     construction and behaviour-neutral on every workload run so far. A targeted
     test would construct two winning lines that genuinely want different moves at

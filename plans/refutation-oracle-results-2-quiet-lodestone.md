@@ -564,18 +564,28 @@ re-played, discarded, or kept with a banner is the same decision's other half.
   replay a slice of the store with the current binary and count how many stored
   `tt`-vs-`tt` games no longer reproduce their stored result. That number is the
   input to the roster decision above, and it is a few minutes of compute.
-- **Why does a WON line's opponent reply differently in the audit than during
-  mining?** This is the open question the ownership work replaced, and it is the
-  live explanation for out-of-book lines now that the collision hypothesis is
-  refuted. All five won-but-out-of-book lines report `ovr_ply = -1`, so our moves
-  reproduced the mined line exactly up to the point the book fell silent, which
-  leaves the opponent's reply as the only thing that can have changed. The one
-  difference between the two runs is that our side searches during mining and
-  does not during playback. The test: log the opponent's chosen move per ply in
-  both runs for one of the five and diff them, which names the ply, and then
-  bisect what state that ply reads. If it is real it is a second search-state
-  leak of the same family as the transposition-table defect, and the same
-  mine-then-replay harness that found the first one found this one.
+- **A DEFECT is indicated here, and it is not a theory.** Filed as a defect in
+  `todo.md`, not in the theory log, because a deterministic agent that plays
+  differently across two runs of the same position is broken whatever the cause.
+  Only the mechanism is an open question, and that is what theory 56 now holds.
+  The distinction is worth keeping: an entry in the theory log reads as a claim
+  that might settle either way, which is the wrong frame for a bug and makes
+  fixing it look optional.
+  The indication: all five won-but-out-of-book lines report `ovr_ply = -1`, so
+  our moves reproduced the mined line exactly up to the point the book fell
+  silent and the book was not overwritten. The line still reached a position the
+  book had never seen, which leaves the opponent's reply as the only thing that
+  can have changed. Every step of that is inference from a negative result, and
+  the opponent replying differently has never been watched directly, so the
+  defect is INDICATED and not confirmed.
+  Confirm it in one run before doing any mechanism work: play the same
+  deterministic opponent from the same position twice, once with our side
+  searching and once with our side replaying book moves, and diff its chosen move
+  per ply. Then bisect what state that ply reads. Scope the blast radius in the
+  same pass: in ordinary ranked play both sides search, so the asymmetry does not
+  arise, but it arises for every book-wearing agent while in book and plausibly
+  every random-opener agent during its opener, which is 77 `.opener(...)` rows in
+  `ranking/roster.txt`.
 - **Whether the ownership check ever fires is unknown.** It is correct by
   construction and behaviour-neutral on every workload run so far, which means it
   is also untested in the only way that counts. A targeted test would construct
