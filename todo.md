@@ -1010,6 +1010,35 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     behaviour-neutral, it never fired, and (c) **the ownership hole does NOT
     explain lines leaving the book** -- 12 left with 0 collisions, so that
     hypothesis is refuted.
+  - **Study the shared transposition table instead of only fixing it (theory 58).**
+    Developer proposal, 2026-08-31. The claim: a shared table degrades play through
+    its ORDERING channel alone, separately from the value channel, and the damage
+    concentrates on evaluators with large tie sets. Two code facts make it sharp.
+    `ttProbe` fills the move hint BEFORE the depth test and returns false after it
+    (`src/transposition.cpp`, "usable for ordering regardless of depth"), so the
+    ordering channel fired on entries too shallow for a cutoff and had strictly
+    more contact surface than the value channel. And `if (eval > best)` in
+    `src/ai_minimax.cpp` is strictly greater, so among tied moves the FIRST found
+    wins, which is what ordering decides.
+    - **Instrument needed, does not exist yet.** An ordering-only TT mode: keep the
+      `ttFrom`/`ttTo` hint, suppress the score-return path. Roughly a flag around
+      the `if (ttProbe(...)) return sc;` line at both probe sites. Plus a way to
+      re-share the key (undo the `s_ttCtx` mix) for the sharing arm.
+    - **Design.** 2x2 of {shared key, separated key} x {ordering-only, full TT},
+      crossed with an evaluator that has huge tie sets (`classic(chip=100)@2`) and
+      one that has few (a learned continuous-valued model). Prediction: the effect
+      concentrates on the chip counter.
+    - **Make "many ties" a number, not an assertion.** Instrument the search to
+      count, per node, how many children share the best score. That per-evaluator
+      tie rate is the covariate that should predict effect size, and it converts
+      the explanation from a story into a fitted relationship.
+    - **Run the poisoned control first.** Store the WORST move as the hint rather
+      than a foreign agent's best. It is the true adversarial case, it is cheaper
+      than the full grid, and it bounds the effect: if maximally poisoned ordering
+      costs little Elo, the theory is dead and the grid is unnecessary.
+    - Separate the two mechanisms by budget: unbudgeted fixed depth isolates
+      tie-breaking, `nodes=200k` adds the completed-plies effect.
+    `[Next]` {cpu: hours, dev: medium}
   - **DEFECT (indicated, not yet confirmed): a deterministic opponent does not
     reproduce its replies when our side stops searching.** Not a theory. A
     deterministic agent that plays differently across two runs of the same
