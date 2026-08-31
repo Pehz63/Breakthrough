@@ -3252,7 +3252,9 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << "`white win%`/`black win%` are this agent's own win rate when playing that color "
       << "(wins / (wins+losses) played as that color); a wide gap between the two is a first-move/"
       << "color-advantage signal, not a strength signal -- compare `white win%` to `black win%` on "
-      << "the SAME agent, never across agents. `division`/`track` classify the id into "
+      << "the SAME agent, never across agents. `white edge` = `white win%` - `black win%`, signed "
+      << "(`-` if either color has no games yet); positive means this agent wins more often as White "
+      << "than as Black. `division`/`track` classify the id into "
       << "`ranking/CHAMPION.md`'s 3-division (openless/opener8/dil20) x 2-track (node/time) category "
       << "scheme (`-` = a non-titled opener/dilution combination, e.g. a book opener); this is a "
       << "mechanical fact about the id, not a title-eligibility check (the d8/nb2m reference-class "
@@ -3301,11 +3303,18 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
             string division, track;
             rankCategoryOf(id, division, track);
             long long tw = a.winsW + a.lossesW, tb = a.winsB + a.lossesB;
-            string wPct = (tw > 0) ? fmtN(100.0 * a.winsW / tw, 0) + "%" : string("-");
-            string bPct = (tb > 0) ? fmtN(100.0 * a.winsB / tb, 0) + "%" : string("-");
+            double wRate = (tw > 0) ? 100.0 * a.winsW / tw : -1.0;
+            double bRate = (tb > 0) ? 100.0 * a.winsB / tb : -1.0;
+            string wPct = (tw > 0) ? fmtN(wRate, 0) + "%" : string("-");
+            string bPct = (tb > 0) ? fmtN(bRate, 0) + "%" : string("-");
+            string edge = "-";
+            if (tw > 0 && tb > 0) {
+                long long r = roundElo(wRate - bRate);   // integer round avoids a "-0%" display
+                edge = (r > 0 ? "+" : "") + std::to_string(r) + "%";
+            }
             f << "| " << rank << " | " << roundElo(fit.elo[i]) << (fit.provisional[i] ? "~" : "")
               << " | " << pm << " | " << fmtInt(a.games) << " | " << division << " | " << track
-              << " | " << wPct << " | " << bPct
+              << " | " << wPct << " | " << bPct << " | " << edge
               << " | " << fmtN(a.games > 0 ? (double)a.pliesSum / a.games : 0.0, 0)
               << " | " << (a.marginGames > 0 ? fmtN(a.marginSum / a.marginGames, 1) : string("-"))
               << " | " << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
@@ -3313,9 +3322,10 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
               << " | " << ms << " | " << nod << " | " << st << " | `" << rankReportId(id) << "` |\n";
         }
         static void head(std::ofstream& f) {
-            f << "| rank | Elo | +/- | games | division | track | white win% | black win% | avg plies "
-              << "| margin (end pieces) | ms/move | eff (Elo/2x cpu) | wall/mv | nodes/mv | state | id |\n";
-            f << "|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
+            f << "| rank | Elo | +/- | games | division | track | white win% | black win% | white edge "
+              << "| avg plies | margin (end pieces) | ms/move | eff (Elo/2x cpu) | wall/mv | nodes/mv "
+              << "| state | id |\n";
+            f << "|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
         }
     };
 
