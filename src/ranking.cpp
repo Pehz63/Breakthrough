@@ -1520,9 +1520,43 @@ string rankReportId(const string& id) {
                 size_t dc = inner.find(',');
                 string deepPart = (dc == string::npos) ? inner : inner.substr(0, dc);
                 string flags = (dc == string::npos) ? string() : inner.substr(dc + 1);
-                seg = (flags == "tt,ord,nodes=200k")
-                    ? ("AB(" + deepPart + ")" + tail)
-                    : ("AB(" + inner + ")" + tail);
+
+                std::vector<string> tokens;
+                if (!flags.empty()) {
+                    size_t start = 0;
+                    while (true) {
+                        size_t comma = flags.find(',', start);
+                        if (comma == string::npos) { tokens.push_back(flags.substr(start)); break; }
+                        tokens.push_back(flags.substr(start, comma - start));
+                        start = comma + 1;
+                    }
+                }
+                // tt/ord are assumed on (169/217 active agents carry tt, nearly always
+                // paired with ord) and dropped unconditionally when present. A handful
+                // of active agents deviate (an explicit tt/ord ablation study, e.g.
+                // ab(deep=6,ord,nodes=200k) with no tt) -- for those, print noTT/noOrd
+                // rather than silently rendering identically to the standard config.
+                // tt/ord are meaningless under noab (full minimax, no alpha-beta path),
+                // so no marker is added there.
+                bool hasTT = false, hasOrd = false, hasNoab = false;
+                std::vector<string> kept;
+                for (size_t k = 0; k < tokens.size(); k++) {
+                    if (tokens[k] == "tt") { hasTT = true; continue; }
+                    if (tokens[k] == "ord") { hasOrd = true; continue; }
+                    if (tokens[k] == "nodes=200k") continue;
+                    if (tokens[k] == "noab") hasNoab = true;
+                    kept.push_back(tokens[k]);
+                }
+                std::vector<string> out;
+                if (!hasNoab) {
+                    if (!hasTT) out.push_back("noTT");
+                    if (!hasOrd) out.push_back("noOrd");
+                }
+                for (size_t k = 0; k < kept.size(); k++) out.push_back(kept[k]);
+
+                string rebuilt = deepPart;
+                for (size_t k = 0; k < out.size(); k++) rebuilt += "," + out[k];
+                seg = "AB(" + rebuilt + ")" + tail;
             }
         } else if (seg.compare(0, 8, "learned(") == 0) {
             size_t close = seg.find(')', 8);
@@ -3186,11 +3220,12 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << "overshot its wall-clock budget instead (see `ranking/CHAMPION.md`'s time-budget defect note). "
       << "`margin` is the average end-of-game piece lead (own minus opponent). "
       << "`~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000). "
-      << "`id` here is a human-readable simplification (`rankReportId`): the AB head's flags are "
-      << "dropped entirely when they are exactly the default (`tt,ord,nodes=200k`), otherwise shown "
-      << "in full; a `learned(...)` core leads with its training regime and drops the content hash. "
-      << "This is NOT the canonical id -- quote `ranking/standings.tsv`'s `id` column instead when "
-      << "citing an agent anywhere else.\n\n";
+      << "`id` here is a human-readable simplification (`rankReportId`): `nodes=200k` (the default "
+      << "budget) and `tt`/`ord` are dropped unconditionally (assumed on for nearly the whole roster), "
+      << "but a `noTT`/`noOrd` marker is printed for the minority of agents that deviate rather than "
+      << "silently rendering identically to the standard config; a `learned(...)` core leads with its "
+      << "training regime and drops the content hash. This is NOT the canonical id -- quote "
+      << "`ranking/standings.tsv`'s `id` column instead when citing an agent anywhere else.\n\n";
     if (!fit.anchored)
         f << "**WARNING:** the anchor has no games yet, so all ratings are centered on mean 1000 instead of anchor = 0.\n\n";
 

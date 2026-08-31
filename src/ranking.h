@@ -177,11 +177,14 @@ std::string rankUpgradeId(const std::string& id);
 std::string rankDisplayId(const std::string& id);
 // Further human-facing simplification of rankDisplayId's output for report.md
 // ONLY (never for a canonical id, a doc citation, or the match store): capitalizes
-// the AB head and drops its flags entirely when they are exactly the project's
-// default (tt,ord,nodes=200k) -- any other combination is printed in full, so
-// eliding is all-or-nothing and never hides a real distinction -- and rewrites
-// each learned() segment to lead with its training regime name and drop the
-// content hash (identifies nothing to a human; model=N already distinguishes).
+// the AB head, drops nodes=200k (the default budget) when present, and drops tt/ord
+// unconditionally since they are assumed on (169/217 active agents carry tt, nearly
+// always paired with ord) -- but prints an explicit noTT/noOrd marker for the
+// minority of active agents that deviate (a tt/ord ablation study), so the common
+// case renders clean while a real distinction is never silently hidden. tt/ord are
+// not marked under noab (full minimax), where they are inapplicable rather than off.
+// Also rewrites each learned() segment to lead with its training regime name and
+// drop the content hash (identifies nothing to a human; model=N already distinguishes).
 std::string rankReportId(const std::string& id);
 // First 8 lowercase hex chars of FNV-1a-64 over a file's bytes ("" if unreadable).
 std::string rankFileHash8(const std::string& path);

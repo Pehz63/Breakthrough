@@ -221,11 +221,14 @@ cores on `eff_evaluator`, while `evaluator`/`id` keep the exact canonical form) 
 (per-game export) + `ranking/report.md` (W-L split by color, avg plies, end-piece margin, ms/move,
 `eff` = Elo / log2(1 + cpu_us/move), nodes/move, and an Elo-vs-CPU pareto-frontier table).
 **`report.md`'s `id` column is `rankReportId()`, a human-readable simplification, NOT the
-canonical id**: it drops the AB head's flags entirely when they are exactly the project's
-default (`tt,ord,nodes=200k`) -- any other combination (a different track, `qs`, `noab`, a
-missing `tt`/`ord`) is printed in full instead, so the elision never hides a real
-distinction -- and rewrites a `learned(...)` core to lead with its training regime name and
-drop the content hash. Never quote a `report.md` id anywhere that requires the canonical
+canonical id**: it drops `nodes=200k` (the default node budget) and drops `tt`/`ord`
+unconditionally, since they are assumed on for nearly the whole roster -- but the minority
+of active agents that deviate (a `tt`/`ord` ablation study) print an explicit `noTT`/`noOrd`
+marker rather than silently rendering identically to the standard config (no marker under
+`noab`, where `tt`/`ord` are inapplicable rather than off). Any other flag (a different
+track, `qs`, `margin=`, a different node/time budget value) is printed in full. It also
+rewrites a `learned(...)` core to lead with its training regime name and drop the content
+hash. Never quote a `report.md` id anywhere that requires the canonical
 form (`CLAUDE.md`'s ranking-claim hygiene rules, `ranking/CHAMPION.md`) -- read the `id`
 column of `ranking/standings.tsv`/`ranking/ratings.tsv` for that instead, which are
 untouched by this simplification. Learned agents embed an 8-hex model-file content hash in
