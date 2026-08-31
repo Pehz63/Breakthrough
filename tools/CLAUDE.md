@@ -218,7 +218,8 @@ retired identity or a mixed-head comparison cannot slip into a claim; its `eff_e
 column also elides the turn weight `t` when the search cannot act on it (no `qs`/`part`),
 since at fixed depth `t` shifts every leaf by one constant and reorders nothing -- compare
 cores on `eff_evaluator`, while `evaluator`/`id` keep the exact canonical form) + `ranking/games.tsv`
-(per-game export) + `ranking/report.md` (win% split by color, avg plies, end-piece margin, ms/move,
+(per-game export) + `ranking/report.md` (win% split by color plus a derived `white edge` = white win%
+- black win% column, avg plies, end-piece margin, ms/move,
 `eff` = Elo / log2(1 + cpu_us/move), nodes/move, and an Elo-vs-CPU pareto-frontier table). Its
 `division`/`track` columns (added 2026-08-31, `rankCategoryOf()`) classify each id into
 `ranking/CHAMPION.md`'s 3-division x 2-track category scheme by pattern-matching the id (`-` = a
