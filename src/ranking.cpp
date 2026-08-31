@@ -1500,6 +1500,58 @@ string rankDisplayId(const string& id) {
     return out;
 }
 
+string rankReportId(const string& id) {
+    static std::map<string, string> cache;
+    std::map<string, string>::iterator c = cache.find(id);
+    if (c != cache.end()) return c->second;
+
+    std::vector<string> segs;
+    string err;
+    string base = rankDisplayId(id);
+    if (!splitSegs(base, segs, err)) { cache[id] = base; return base; }
+
+    for (size_t i = 0; i < segs.size(); i++) {
+        string& seg = segs[i];
+        if (seg.compare(0, 3, "ab(") == 0) {
+            size_t close = seg.find(')', 3);
+            if (close != string::npos) {
+                string inner = seg.substr(3, close - 3);       // "deep=6,tt,ord,nodes=200k"
+                string tail = seg.substr(close + 1);           // "" or "@N"
+                size_t dc = inner.find(',');
+                string deepPart = (dc == string::npos) ? inner : inner.substr(0, dc);
+                string flags = (dc == string::npos) ? string() : inner.substr(dc + 1);
+                seg = (flags == "tt,ord,nodes=200k")
+                    ? ("AB(" + deepPart + ")" + tail)
+                    : ("AB(" + inner + ")" + tail);
+            }
+        } else if (seg.compare(0, 8, "learned(") == 0) {
+            size_t close = seg.find(')', 8);
+            if (close != string::npos) {
+                string inner = seg.substr(8, close - 8);
+                string tail = seg.substr(close + 1);
+                std::vector<string> fields;
+                size_t start = 0;
+                while (true) {
+                    size_t comma = inner.find(',', start);
+                    if (comma == string::npos) { fields.push_back(inner.substr(start)); break; }
+                    fields.push_back(inner.substr(start, comma - start));
+                    start = comma + 1;
+                }
+                // fields[0]=model=N, [1]=content hash, [2]=regime, [3..]=arch/shape/conn/risk
+                if (fields.size() >= 3) {
+                    string rebuilt = fields[2] + "," + fields[0];
+                    for (size_t k = 3; k < fields.size(); k++) rebuilt += "," + fields[k];
+                    seg = "learned(" + rebuilt + ")" + tail;
+                }
+            }
+        }
+    }
+    string out;
+    for (size_t i = 0; i < segs.size(); i++) { if (i) out += "."; out += segs[i]; }
+    cache[id] = out;
+    return out;
+}
+
 
 // ============================================================
 // ROSTER
@@ -3125,11 +3177,20 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << "compare only within this one fit. Full rules: `Docs/benchmarking.md`.\n\n";
     f << "Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, "
       << "anchor `" << anchorId << "` = Elo 0. `+/-` is one standard error. "
-      << "`cpu/mv` is per-move process CPU time in ms (contention-safe, valid in parallel runs). "
+      << "`ms/move` is per-move process CPU time in milliseconds, not a CPU-core count "
+      << "(contention-safe, valid in parallel runs). "
       << "`eff` = Elo / log2(1 + cpu_us/move), the Elo bought per doubling of per-move compute. "
       << "`wall/mv` prefers serial games; `*` marks a fallback that includes contended parallel moves. "
+      << "`nodes/mv` is the average search-node count per move, the direct way to check whether a "
+      << "`time=`-budgeted agent's actual node use looks like the `nodes=`-budgeted track's, or has "
+      << "overshot its wall-clock budget instead (see `ranking/CHAMPION.md`'s time-budget defect note). "
       << "`margin` is the average end-of-game piece lead (own minus opponent). "
-      << "`~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000).\n\n";
+      << "`~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000). "
+      << "`id` here is a human-readable simplification (`rankReportId`): the AB head's flags are "
+      << "dropped entirely when they are exactly the default (`tt,ord,nodes=200k`), otherwise shown "
+      << "in full; a `learned(...)` core leads with its training regime and drops the content hash. "
+      << "This is NOT the canonical id -- quote `ranking/standings.tsv`'s `id` column instead when "
+      << "citing an agent anywhere else.\n\n";
     if (!fit.anchored)
         f << "**WARNING:** the anchor has no games yet, so all ratings are centered on mean 1000 instead of anchor = 0.\n\n";
 
@@ -3159,10 +3220,10 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
               << " | " << (a.marginGames > 0 ? fmtN(a.marginSum / a.marginGames, 1) : string("-"))
               << " | " << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
               << " | " << effCol(fit.elo[i], cpu)
-              << " | " << ms << " | " << nod << " | " << st << " | `" << id << "` |\n";
+              << " | " << ms << " | " << nod << " | " << st << " | `" << rankReportId(id) << "` |\n";
         }
         static void head(std::ofstream& f) {
-            f << "| rank | Elo | +/- | games | W-L as White | W-L as Black | avg plies | margin | cpu/mv | eff | wall/mv | nodes/mv | state | id |\n";
+            f << "| rank | Elo | +/- | games | W-L as White | W-L as Black | avg plies | margin | ms/move | eff | wall/mv | nodes/mv | state | id |\n";
             f << "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
         }
     };
@@ -3206,7 +3267,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
             f << "## Compute efficiency (active agents)\n\n";
             f << "Sorted by per-move CPU time. `*` = on the Elo-vs-compute pareto frontier "
               << "(no other active agent is both stronger and cheaper).\n\n";
-            f << "| cpu ms/mv | Elo | eff | frontier | id |\n";
+            f << "| ms/move | Elo | eff | frontier | id |\n";
             f << "|---:|---:|---:|:---:|---|\n";
             for (size_t x = 0; x < byCpu.size(); x++) {
                 int i = byCpu[x];
@@ -3220,7 +3281,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                 }
                 f << "| " << fmtN(ci, 3) << " | " << roundElo(fit.elo[i]) << " | "
                   << effCol(fit.elo[i], ci) << " | " << (frontier ? "*" : "") << " | `"
-                  << fit.ids[i] << "` |\n";
+                  << rankReportId(fit.ids[i]) << "` |\n";
             }
             f << "\n";
         }
@@ -3232,7 +3293,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         if (eloBy.find(roster[i].id) == eloBy.end()) unrated.push_back(roster[i].id);
     if (!unrated.empty()) {
         f << "## Unrated roster agents (no games yet)\n\n";
-        for (size_t i = 0; i < unrated.size(); i++) f << "- `" << unrated[i] << "`\n";
+        for (size_t i = 0; i < unrated.size(); i++) f << "- `" << rankReportId(unrated[i]) << "`\n";
         f << "\nRun `rank.exe play` to schedule their games.\n\n";
     }
 
@@ -3247,7 +3308,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         f << "\n";
         for (size_t r = 0; r < activeOrder.size(); r++) {
             const string& rid = fit.ids[activeOrder[r]];
-            f << "| " << (r + 1) << " | `" << rid << "` |";
+            f << "| " << (r + 1) << " | `" << rankReportId(rid) << "` |";
             for (size_t c = 0; c < activeOrder.size(); c++) {
                 if (r == c) { f << " - |"; continue; }
                 const string& cid = fit.ids[activeOrder[c]];
@@ -3272,7 +3333,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         const string& id = fit.ids[i];
         string pm = (stateFor(state, id) == "anchor") ? string("(anchor)")
                   : ("+/- " + fmtN(fit.se[i], 0));
-        f << "### " << (r + 1) << ". `" << id << "` (Elo " << roundElo(fit.elo[i]) << " " << pm << ")\n\n";
+        f << "### " << (r + 1) << ". `" << rankReportId(id) << "` (Elo " << roundElo(fit.elo[i]) << " " << pm << ")\n\n";
 
         // Collect this agent's opponents from the pair aggregates.
         struct OppRow { string opp; PairAgg pa; bool meSmall; };
@@ -3315,7 +3376,7 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                 expS = fmtN(exp, 2);
                 dltS = (dlt >= 0 ? "+" : "") + fmtN(dlt, 2);
             }
-            f << "| `" << o.opp << "` | " << (long long)o.pa.n << " | " << w << "-" << l
+            f << "| `" << rankReportId(o.opp) << "` | " << (long long)o.pa.n << " | " << w << "-" << l
               << " | " << fmtN(sc, 2) << " | " << expS << " | " << dltS
               << " | " << fmtN((double)o.pa.pliesSum / o.pa.n, 0) << " |\n";
         }
