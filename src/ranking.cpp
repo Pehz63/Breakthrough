@@ -3221,6 +3221,66 @@ static void rankCategoryOf(const string& id, string& division, string& track) {
     // else: a non-titled opener/dilution combination -- left as "-".
 }
 
+// One precomputed active-agent row, shared by report.md's grouped table, flat
+// table, and exceptions section so each stat is computed once, not per-view.
+struct ActiveRow {
+    int idx;
+    string id, division, track;
+    double elo; bool provisional;
+    double se;
+    long long games;
+    bool hasMargin; double margin;
+    double avgPlies;
+    string edge;              // "+N%"/"-N%"/"0%"/"-"
+    double cpu;               // ms/move, -1 if unavailable
+    string effStr;
+    string wallStr, nodStr;   // pre-formatted wall/mv, nodes/mv (may carry '*')
+};
+
+static ActiveRow buildActiveRow(int i, const RankFit& fit, const std::map<string, AgentAgg>& agg) {
+    ActiveRow r;
+    r.idx = i;
+    r.id = fit.ids[i];
+    rankCategoryOf(r.id, r.division, r.track);
+    r.elo = fit.elo[i];
+    r.provisional = fit.provisional[i];
+    r.se = fit.se[i];
+    const AgentAgg& a = aggFor(agg, r.id);
+    r.games = a.games;
+    r.hasMargin = a.marginGames > 0;
+    r.margin = r.hasMargin ? a.marginSum / a.marginGames : 0.0;
+    r.avgPlies = (a.games > 0) ? (double)a.pliesSum / a.games : 0.0;
+    long long tw = a.winsW + a.lossesW, tb = a.winsB + a.lossesB;
+    r.edge = "-";
+    if (tw > 0 && tb > 0) {
+        double wRate = 100.0 * a.winsW / tw, bRate = 100.0 * a.winsB / tb;
+        long long rr = roundElo(wRate - bRate);
+        r.edge = (rr > 0 ? "+" : "") + std::to_string(rr) + "%";
+    }
+    r.cpu = cpuMsPerMove(a);
+    r.effStr = effCol(r.elo, r.cpu);
+    timingCols(a, r.wallStr, r.nodStr);
+    return r;
+}
+
+static double medianOf(std::vector<double> v) {
+    if (v.empty()) return 0.0;
+    std::sort(v.begin(), v.end());
+    size_t n = v.size();
+    return (n % 2 == 1) ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2.0;
+}
+
+static void meanStd(const std::vector<double>& v, double& mean, double& sd) {
+    mean = 0.0; sd = 0.0;
+    if (v.empty()) return;
+    for (size_t i = 0; i < v.size(); i++) mean += v[i];
+    mean /= (double)v.size();
+    if (v.size() < 2) return;
+    double ss = 0.0;
+    for (size_t i = 0; i < v.size(); i++) { double d = v[i] - mean; ss += d * d; }
+    sd = std::sqrt(ss / (double)(v.size() - 1));
+}
+
 static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                           const std::map<string, AgentAgg>& agg,
                           const std::map<string, string>& state,
@@ -3329,10 +3389,132 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
         }
     };
 
-    f << "## Ratings (active agents)\n\n";
-    Row::head(f);
+    // Active agents: precompute one ActiveRow per agent, then render three
+    // views from it (grouped, flat, exceptions) rather than recomputing per
+    // view. `order` (hence activeOrder) is already Elo-descending.
+    std::vector<ActiveRow> activeRows;
+    activeRows.reserve(activeOrder.size());
     for (size_t r = 0; r < activeOrder.size(); r++)
-        Row::emit(f, r + 1, activeOrder[r], fit, agg, state);
+        activeRows.push_back(buildActiveRow(activeOrder[r], fit, agg));
+
+    static const char* kBuckets[6][2] = {
+        {"openless", "node"}, {"openless", "time"},
+        {"opener8", "node"},  {"opener8", "time"},
+        {"dil20", "node"},    {"dil20", "time"},
+    };
+
+    f << "## Ratings by category (active agents)\n\n";
+    f << "The primary \"who's winning\" view: grouped into `ranking/CHAMPION.md`'s 6 titled "
+      << "categories (Elo-sorted within each group), so this never mixes agents across "
+      << "incomparable heads/loadouts the way one flat Elo sort would. A `+N%`/`-N%` `edge` is "
+      << "`white win%` - `black win%` for that agent; SE, game count, margin, and avg plies are "
+      << "not shown per row -- they only matter as exceptions, see below. Compute cost per row: "
+      << "`ms/move` OR `nodes/mv`, whichever this group's `track` actually budgets on.\n\n";
+    for (int b = 0; b < 6; b++) {
+        string wantDiv = kBuckets[b][0], wantTrk = kBuckets[b][1];
+        std::vector<const ActiveRow*> grp;
+        for (size_t r = 0; r < activeRows.size(); r++)
+            if (activeRows[r].division == wantDiv && activeRows[r].track == wantTrk)
+                grp.push_back(&activeRows[r]);
+        if (grp.empty()) continue;
+        f << "### " << wantDiv << " x " << wantTrk << "\n\n";
+        f << "| rank | Elo | edge | " << (wantTrk == string("time") ? "ms/move" : "nodes/mv") << " | eff | id |\n";
+        f << "|---:|---:|---:|---:|---:|---|\n";
+        for (size_t k = 0; k < grp.size(); k++) {
+            const ActiveRow& r = *grp[k];
+            f << "| " << (k + 1) << " | " << roundElo(r.elo) << (r.provisional ? "~" : "")
+              << " | " << r.edge << " | " << (wantTrk == string("time") ? r.wallStr : r.nodStr)
+              << " | " << r.effStr << " | `" << rankReportId(r.id) << "` |\n";
+        }
+        f << "\n";
+    }
+    {
+        std::vector<const ActiveRow*> other;
+        for (size_t r = 0; r < activeRows.size(); r++)
+            if (activeRows[r].division == "-" || activeRows[r].track == "-") other.push_back(&activeRows[r]);
+        if (!other.empty()) {
+            f << "### other (book openers, non-titled opener/dilution values, non-standard budgets)\n\n";
+            f << "| rank | Elo | edge | ms/move | nodes/mv | eff | id |\n";
+            f << "|---:|---:|---:|---:|---:|---:|---|\n";
+            for (size_t k = 0; k < other.size(); k++) {
+                const ActiveRow& r = *other[k];
+                f << "| " << (k + 1) << " | " << roundElo(r.elo) << (r.provisional ? "~" : "")
+                  << " | " << r.edge << " | " << (r.cpu >= 0.0 ? fmtN(r.cpu, 2) : string("-"))
+                  << " | " << r.nodStr << " | " << r.effStr << " | `" << rankReportId(r.id) << "` |\n";
+            }
+            f << "\n";
+        }
+    }
+
+    f << "## All active agents (flat)\n\n";
+    f << "Quick global scan across every category at once, by raw Elo -- NOT a valid ranking "
+      << "across the `division`/`track` boundary (an agent here can outrank a real contender "
+      << "purely by playing a cheaper or reference-class configuration); use the grouped tables "
+      << "above for any \"who's winning\" claim.\n\n";
+    f << "| rank | Elo | division | track | eff | id |\n";
+    f << "|---:|---:|---|---|---:|---|\n";
+    for (size_t r = 0; r < activeRows.size(); r++) {
+        const ActiveRow& row = activeRows[r];
+        f << "| " << (r + 1) << " | " << roundElo(row.elo) << (row.provisional ? "~" : "")
+          << " | " << row.division << " | " << row.track << " | " << row.effStr
+          << " | `" << rankReportId(row.id) << "` |\n";
+    }
+    f << "\n";
+
+    // Notable exceptions: per-group median/mean+stddev on SE, games, margin,
+    // avg plies, flagging only agents that deviate -- the "did anything look
+    // off" half of this report's job. Skipped for a group under 4 members,
+    // where a median/stddev is not meaningful.
+    f << "## Notable exceptions (active agents)\n\n";
+    f << "Flagged only when an agent deviates from its OWN division x track group -- most "
+      << "agents appear here zero times. `high SE` = needs more games before its rank is "
+      << "trustworthy; `few games` = thin data even if SE looks fine; `margin outlier`/"
+      << "`plies outlier` = end-game piece lead or game length far from its peers, worth a look. "
+      << "(Every active agent's `wall/mv`/`nodes/mv` carries the `*` fallback marker -- this "
+      << "roster is always played via sharded parallel workers, never serially, so that is a "
+      << "property of the whole store, not a per-agent exception, and is not flagged here.)\n\n";
+    bool anyFlag = false;
+    for (int b = -1; b < 6; b++) {
+        string wantDiv = (b >= 0) ? kBuckets[b][0] : "", wantTrk = (b >= 0) ? kBuckets[b][1] : "";
+        std::vector<const ActiveRow*> grp;
+        for (size_t r = 0; r < activeRows.size(); r++) {
+            bool inOther = (activeRows[r].division == "-" || activeRows[r].track == "-");
+            if (b < 0) { if (inOther) grp.push_back(&activeRows[r]); }
+            else if (!inOther && activeRows[r].division == wantDiv && activeRows[r].track == wantTrk)
+                grp.push_back(&activeRows[r]);
+        }
+        if ((int)grp.size() < 4) continue;
+        std::vector<double> ses, gamesD, margins, pliesV;
+        for (size_t k = 0; k < grp.size(); k++) {
+            ses.push_back(grp[k]->se);
+            gamesD.push_back((double)grp[k]->games);
+            if (grp[k]->hasMargin) margins.push_back(grp[k]->margin);
+            pliesV.push_back(grp[k]->avgPlies);
+        }
+        double medSE = medianOf(ses), medGames = medianOf(gamesD);
+        double mMargin, sdMargin, mPlies, sdPlies;
+        meanStd(margins, mMargin, sdMargin);
+        meanStd(pliesV, mPlies, sdPlies);
+        string label = (b >= 0) ? (wantDiv + " x " + wantTrk) : "other";
+        for (size_t k = 0; k < grp.size(); k++) {
+            const ActiveRow& r = *grp[k];
+            std::vector<string> flags;
+            if (medSE > 0.0 && r.se > 1.5 * medSE)
+                flags.push_back("high SE (" + fmtN(r.se, 0) + " vs group median " + fmtN(medSE, 0) + ")");
+            if (medGames > 0.0 && (double)r.games < 0.5 * medGames)
+                flags.push_back("few games (" + fmtInt(r.games) + " vs group median " + fmtInt((long long)medGames) + ")");
+            if (r.hasMargin && sdMargin > 0.0 && std::fabs(r.margin - mMargin) > 2.0 * sdMargin)
+                flags.push_back("margin outlier (" + fmtN(r.margin, 1) + " vs group mean " + fmtN(mMargin, 1) + ")");
+            if (sdPlies > 0.0 && std::fabs(r.avgPlies - mPlies) > 2.0 * sdPlies)
+                flags.push_back("plies outlier (" + fmtN(r.avgPlies, 0) + " vs group mean " + fmtN(mPlies, 0) + ")");
+            if (flags.empty()) continue;
+            anyFlag = true;
+            f << "- `" << rankReportId(r.id) << "` (" << label << ", Elo " << roundElo(r.elo) << "): ";
+            for (size_t fi = 0; fi < flags.size(); fi++) f << (fi ? "; " : "") << flags[fi];
+            f << "\n";
+        }
+    }
+    if (!anyFlag) f << "None.\n";
     f << "\n";
 
     if (!otherOrder.empty()) {

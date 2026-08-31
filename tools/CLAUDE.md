@@ -218,15 +218,20 @@ retired identity or a mixed-head comparison cannot slip into a claim; its `eff_e
 column also elides the turn weight `t` when the search cannot act on it (no `qs`/`part`),
 since at fixed depth `t` shifts every leaf by one constant and reorders nothing -- compare
 cores on `eff_evaluator`, while `evaluator`/`id` keep the exact canonical form) + `ranking/games.tsv`
-(per-game export) + `ranking/report.md` (win% split by color plus a derived `white edge` = white win%
-- black win% column, avg plies, end-piece margin, ms/move,
-`eff` = Elo / log2(1 + cpu_us/move), nodes/move, and an Elo-vs-CPU pareto-frontier table). Its
-`division`/`track` columns (added 2026-08-31, `rankCategoryOf()`) classify each id into
-`ranking/CHAMPION.md`'s 3-division x 2-track category scheme by pattern-matching the id (`-` = a
-non-titled opener/dilution combination, e.g. a book opener) -- a mechanical fact about the id, NOT
-the reference-class eligibility check, so the d8/nb2m oracle still shows `openless`/`node` here
-despite being excluded from holding that title. `games`/`nodes/mv` are comma-formatted (`fmtInt()`)
-since both can run into six figures.
+(per-game export) + `ranking/report.md`. Active agents (2026-08-31 redesign) get three views
+instead of one flat table: **"Ratings by category"** groups into `ranking/CHAMPION.md`'s 6
+division x track buckets (`rankCategoryOf()`, pattern-matches the id -- mechanical fact only, NOT
+the reference-class eligibility check, so the d8/nb2m oracle still shows `openless`/`node` despite
+being excluded from that title) and sorts by Elo WITHIN each group, so it never mixes incomparable
+heads/loadouts into one order the way a flat sort does; per-row columns are just Elo, `white edge`
+(= white win% - black win%), the track's own compute column, `eff`, and id. **"All active agents
+(flat)"** is a quick global scan by raw Elo, explicitly marked not a valid cross-category ranking.
+**"Notable exceptions"** is where SE/games/margin/avg-plies live now -- not shown per row at all,
+only listed when an agent deviates from its own group's median/mean (high SE, few games, margin or
+plies outlier). The OLD full-column table (color-split win%, avg plies, margin, `ms/move`, `eff`,
+`wall/mv`, `nodes/mv`, `state`) still covers **"Inactive and retired agents"**, where exhaustive
+detail is the actual use case. `games`/`nodes/mv` are comma-formatted (`fmtInt()`) throughout since
+both can run into six figures.
 **`report.md`'s `id` column is `rankReportId()`, a human-readable simplification, NOT the
 canonical id**: it drops `nodes=200k` (the default node budget) and drops `tt`/`ord`
 unconditionally, since they are assumed on for nearly the whole roster -- but the minority
