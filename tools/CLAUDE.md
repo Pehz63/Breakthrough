@@ -218,8 +218,14 @@ retired identity or a mixed-head comparison cannot slip into a claim; its `eff_e
 column also elides the turn weight `t` when the search cannot act on it (no `qs`/`part`),
 since at fixed depth `t` shifts every leaf by one constant and reorders nothing -- compare
 cores on `eff_evaluator`, while `evaluator`/`id` keep the exact canonical form) + `ranking/games.tsv`
-(per-game export) + `ranking/report.md` (W-L split by color, avg plies, end-piece margin, ms/move,
-`eff` = Elo / log2(1 + cpu_us/move), nodes/move, and an Elo-vs-CPU pareto-frontier table).
+(per-game export) + `ranking/report.md` (win% split by color, avg plies, end-piece margin, ms/move,
+`eff` = Elo / log2(1 + cpu_us/move), nodes/move, and an Elo-vs-CPU pareto-frontier table). Its
+`division`/`track` columns (added 2026-08-31, `rankCategoryOf()`) classify each id into
+`ranking/CHAMPION.md`'s 3-division x 2-track category scheme by pattern-matching the id (`-` = a
+non-titled opener/dilution combination, e.g. a book opener) -- a mechanical fact about the id, NOT
+the reference-class eligibility check, so the d8/nb2m oracle still shows `openless`/`node` here
+despite being excluded from holding that title. `games`/`nodes/mv` are comma-formatted (`fmtInt()`)
+since both can run into six figures.
 **`report.md`'s `id` column is `rankReportId()`, a human-readable simplification, NOT the
 canonical id**: it drops `nodes=200k` (the default node budget) and drops `tt`/`ord`
 unconditionally, since they are assumed on for nearly the whole roster -- but the minority

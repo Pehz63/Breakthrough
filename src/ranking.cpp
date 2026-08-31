@@ -152,6 +152,21 @@ static string fmtN(double v, int decimals) {
     return string(b);
 }
 
+// Thousands-separated integer, for report.md columns large enough to be hard
+// to read at a glance (games, nodes/move can run into six figures).
+static string fmtInt(long long v) {
+    bool neg = v < 0;
+    string digits = std::to_string(neg ? -v : v);
+    string out;
+    int cnt = 0;
+    for (int i = (int)digits.size() - 1; i >= 0; i--) {
+        out += digits[i];
+        if (++cnt % 3 == 0 && i != 0) out += ',';
+    }
+    std::reverse(out.begin(), out.end());
+    return neg ? ("-" + out) : out;
+}
+
 // ============================================================
 // LABELLED NUMBERS
 // ============================================================
@@ -2997,7 +3012,7 @@ static void timingCols(const AgentAgg& a, string& msS, string& nodS) {
     double ms  = (mv > 0) ? (serial ? a.msSerial : a.msAll) / mv : 0.0;
     double nod = (mv > 0) ? (serial ? a.nodSerial : a.nodAll) / mv : 0.0;
     msS  = fmtN(ms, 2) + (serial ? "" : "*");
-    nodS = fmtN(nod, 0) + (serial ? "" : "*");
+    nodS = fmtInt((long long)(nod + 0.5)) + (serial ? "" : "*");
 }
 
 static double eloExpectedScore(double ra, double rb) {
@@ -3183,6 +3198,29 @@ static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
     }
 }
 
+// Classifies a CANONICAL id into ranking/CHAMPION.md's 3-division x 2-track
+// category scheme, for report.md's division/track columns. Mechanical fact
+// about the id only -- does NOT encode the reference-class eligibility
+// exclusion (the d8/nb2m oracle), which is a separate title-holding judgment
+// documented in CHAMPION.md, not a property of the id itself.
+static void rankCategoryOf(const string& id, string& division, string& track) {
+    division = "-"; track = "-";
+    size_t dot = id.find('.');
+    string head = (dot == string::npos) ? id : id.substr(0, dot);
+    if (head.find("nodes=") != string::npos) track = "node";
+    else if (head.find("time=") != string::npos) track = "time";
+
+    bool hasOpener8 = id.find(".opener(rand,moves=8)@") != string::npos;
+    bool hasDil20 = id.find(".dil(prob=20)@") != string::npos;
+    bool hasAnyOpener = id.find(".opener(") != string::npos;
+    bool hasAnyDil = id.find(".dil(") != string::npos;
+
+    if (hasOpener8 && !hasAnyDil) division = "opener8";
+    else if (hasDil20 && !hasAnyOpener) division = "dil20";
+    else if (!hasAnyOpener && !hasAnyDil) division = "openless";
+    // else: a non-titled opener/dilution combination -- left as "-".
+}
+
 static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
                           const std::map<string, AgentAgg>& agg,
                           const std::map<string, string>& state,
@@ -3211,14 +3249,26 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << "compare only within this one fit. Full rules: `Docs/benchmarking.md`.\n\n";
     f << "Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, "
       << "anchor `" << anchorId << "` = Elo 0. `+/-` is one standard error. "
+      << "`white win%`/`black win%` are this agent's own win rate when playing that color "
+      << "(wins / (wins+losses) played as that color); a wide gap between the two is a first-move/"
+      << "color-advantage signal, not a strength signal -- compare `white win%` to `black win%` on "
+      << "the SAME agent, never across agents. `division`/`track` classify the id into "
+      << "`ranking/CHAMPION.md`'s 3-division (openless/opener8/dil20) x 2-track (node/time) category "
+      << "scheme (`-` = a non-titled opener/dilution combination, e.g. a book opener); this is a "
+      << "mechanical fact about the id, not a title-eligibility check (the d8/nb2m reference-class "
+      << "oracle still shows `openless`/`node` here even though CHAMPION.md excludes it from holding "
+      << "that title). "
       << "`ms/move` is per-move process CPU time in milliseconds, not a CPU-core count "
       << "(contention-safe, valid in parallel runs). "
-      << "`eff` = Elo / log2(1 + cpu_us/move), the Elo bought per doubling of per-move compute. "
+      << "`eff (Elo/2x cpu)` = Elo / log2(1 + cpu_us/move), the Elo bought per doubling of per-move "
+      << "compute -- a rough dollars-per-Elo-point measure across agents of different cost, not a "
+      << "standalone quality score. "
       << "`wall/mv` prefers serial games; `*` marks a fallback that includes contended parallel moves. "
       << "`nodes/mv` is the average search-node count per move, the direct way to check whether a "
       << "`time=`-budgeted agent's actual node use looks like the `nodes=`-budgeted track's, or has "
       << "overshot its wall-clock budget instead (see `ranking/CHAMPION.md`'s time-budget defect note). "
-      << "`margin` is the average end-of-game piece lead (own minus opponent). "
+      << "`margin (end pieces)` is the average end-of-game piece lead (own minus opponent) -- positive "
+      << "means this agent usually finishes with more pieces than its opponent, whether or not it won. "
       << "`~` marks agents whose games do not connect to the anchor (rated relative to their own mean of 1000). "
       << "`id` here is a human-readable simplification (`rankReportId`): `nodes=200k` (the default "
       << "budget) and `tt`/`ord` are dropped unconditionally (assumed on for nearly the whole roster), "
@@ -3248,9 +3298,14 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
             string ms, nod;
             timingCols(a, ms, nod);
             double cpu = cpuMsPerMove(a);
+            string division, track;
+            rankCategoryOf(id, division, track);
+            long long tw = a.winsW + a.lossesW, tb = a.winsB + a.lossesB;
+            string wPct = (tw > 0) ? fmtN(100.0 * a.winsW / tw, 0) + "%" : string("-");
+            string bPct = (tb > 0) ? fmtN(100.0 * a.winsB / tb, 0) + "%" : string("-");
             f << "| " << rank << " | " << roundElo(fit.elo[i]) << (fit.provisional[i] ? "~" : "")
-              << " | " << pm << " | " << a.games
-              << " | " << a.winsW << "-" << a.lossesW << " | " << a.winsB << "-" << a.lossesB
+              << " | " << pm << " | " << fmtInt(a.games) << " | " << division << " | " << track
+              << " | " << wPct << " | " << bPct
               << " | " << fmtN(a.games > 0 ? (double)a.pliesSum / a.games : 0.0, 0)
               << " | " << (a.marginGames > 0 ? fmtN(a.marginSum / a.marginGames, 1) : string("-"))
               << " | " << (cpu >= 0.0 ? fmtN(cpu, 2) : string("-"))
@@ -3258,8 +3313,9 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
               << " | " << ms << " | " << nod << " | " << st << " | `" << rankReportId(id) << "` |\n";
         }
         static void head(std::ofstream& f) {
-            f << "| rank | Elo | +/- | games | W-L as White | W-L as Black | avg plies | margin | ms/move | eff | wall/mv | nodes/mv | state | id |\n";
-            f << "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
+            f << "| rank | Elo | +/- | games | division | track | white win% | black win% | avg plies "
+              << "| margin (end pieces) | ms/move | eff (Elo/2x cpu) | wall/mv | nodes/mv | state | id |\n";
+            f << "|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n";
         }
     };
 
