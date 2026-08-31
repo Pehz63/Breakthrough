@@ -1014,7 +1014,10 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     reproduce its replies when our side stops searching.** Not a theory. A
     deterministic agent that plays differently across two runs of the same
     position is broken whatever the cause, so this is a defect to confirm and
-    fix, and only its MECHANISM is an open question (theory 56).
+    fix, and only its MECHANISM is an open question. The mechanism guess is
+    recorded below rather than in the theory log, which is for claims about how
+    the domain works and not for root-cause guesses that a debugging session
+    discards.
     - **What was measured.** On the clean A/B (slot 23), 12 lines left the book.
       Seven are conceded lines with no coverage to lose. The other five were
       mined as WINS and all five report `ovr_ply = -1`.

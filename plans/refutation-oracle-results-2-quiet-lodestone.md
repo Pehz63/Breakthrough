@@ -567,10 +567,14 @@ re-played, discarded, or kept with a banner is the same decision's other half.
 - **A DEFECT is indicated here, and it is not a theory.** Filed as a defect in
   `todo.md`, not in the theory log, because a deterministic agent that plays
   differently across two runs of the same position is broken whatever the cause.
-  Only the mechanism is an open question, and that is what theory 56 now holds.
-  The distinction is worth keeping: an entry in the theory log reads as a claim
-  that might settle either way, which is the wrong frame for a bug and makes
-  fixing it look optional.
+  Only the mechanism is an open question, and it is recorded with the defect
+  rather than in the theory log. Two distinctions worth keeping. An entry in the
+  theory log reads as a claim that might settle either way, which is the wrong
+  frame for a bug and makes fixing it look optional. And a root-cause guess is
+  not a theory about how the domain works: it lasts one debugging session, and
+  since the defect here is only INDICATED, a failed deduction would not refute
+  such an entry, it would leave it explaining nothing. Theory 56 is a tombstone
+  for exactly this reason.
   The indication: all five won-but-out-of-book lines report `ovr_ply = -1`, so
   our moves reproduced the mined line exactly up to the point the book fell
   silent and the book was not overwritten. The line still reached a position the
