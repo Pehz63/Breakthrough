@@ -140,6 +140,49 @@ against the same seams.
     merely defusing a threat, or the capturing piece being the defender's OWN last piece
     needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]` {cpu: minutes, dev: high}
 
+## Budget-parity rebuild (PLANNED, not started)
+
+- **Re-run every agent-production regime under matched training compute, on both
+  compute tracks.** Full plan: `plans/budget-parity-plan-1-steady-meridian.md`
+  (written 2026-09-01, nothing executed yet). 8 regimes in scope, 3 deferred.
+  Developer decisions recorded in the plan's "Decisions taken" section.
+  **The finding that drives it: neither track currently constrains compute.**
+  Measured over 623,774 rows of `ranking/matches.jsonl`, the node track runs at
+  21-46% of its 200k budget and the time track at 7.5-12% of its 150ms budget,
+  because `deep=6` caps iterative deepening before either budget binds
+  (`src/ai_minimax.cpp`). The same core costs 41,841 nodes/move on the node head
+  and 41,819 on the time head, so the two tracks are today the same instrument
+  measured twice. `[Now]` {cpu: days, dev: high}
+  - Cross-cutting prerequisites, all blocking (plan Part 1): raise `deep=` to a
+    non-binding ceiling; fix `time=` enforcement (the one-line pre-iteration check
+    in the item below is NOT sufficient once the depth cap lifts, see plan P2);
+    instrument node/leaf counters in `src/ai_gumbel.cpp`; add wall-clock rungs to
+    every trainer; fix the `games=` provenance bug (plan P5); add training-compute
+    instrumentation; refresh `ranking/climb_roster.txt`
+  - **`ranking/climb_roster.txt` is dead**: 8 of its 10 lines are `@1` identities
+    retired by the TT version bump, so a hill climb today silently falls back to 2
+    live opponents `[Now]` {cpu: seconds, dev: low}
+  - **The `games=` field in every TD-Leaf model header is wrong.** Provenance is
+    written before the training loop from `cfg.games`, and `tools/tdleaf_study.ps1`
+    passes the ladder's last rung, so every checkpoint from one run claims the same
+    count. slot169 says `games=4000` but trained on 1,500 (`ranking/roster.txt:421`).
+    Confirmed twice, also on slot131. The openless x node champion's training cost
+    is misstated 2.67x `[Now]` {cpu: seconds, dev: low}
+  - **`pool_games` is not one regime.** The tag is emitted for any
+    `teacher=replay:<path>` (`src/ranking.cpp:430`) and spans ~195 Elo between
+    found-data replay (slot99, 934) and pairgen arms (slot96, 1129). Split into
+    three regimes for any comparison `[Now]` {cpu: seconds, dev: low}
+  - **position_elo's label store is discarded, not salvaged.** 41.7% of its
+    1,247,684 games are `tt`-vs-`tt`, and 100% of its labels depend on a ratings
+    snapshot frozen 2026-07-19 over a contaminated store. Developer decision
+    2026-09-01: redesign the labeling campaign to fit a wall-clock budget
+    (see `TT CROSS-AGENT CONTAMINATION`, `Docs/corrections.md`) `[Now]` {cpu: hours, dev: medium}
+  - Open questions carried to the plan's Part 5, needing developer answers before
+    execution: the sigma head's fate, whether the time-track control drops `tt`,
+    whether the fast-tanh leaf-tail optimization is in scope, what happens if a
+    regime is still improving at the 8h rung, and whether contaminated-era
+    checkpoints stay rostered
+
 ## Models (value head: board -> scalar)
 - Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]` {cpu: days, dev: high}
 - NNUE-style value model (efficiently updatable; should plug into the incremental `g_evalPos`).
