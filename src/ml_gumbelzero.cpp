@@ -1,4 +1,5 @@
 #include "ml_gumbelzero.h"
+#include "train_budget.h"
 #include "ai_gumbel.h"
 #include "ml_model.h"
 #include "ml_eval.h"
@@ -96,6 +97,8 @@ GumbelZeroConfig gumbelZeroDefaults() {
     c.batchSize      = 32;
     c.ckptEvery      = 0;
     c.reportEvery    = 10;
+    c.wallStopSec    = 0.0;
+    c.resumeFrom     = "";
     return c;
 }
 
@@ -140,27 +143,80 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     if (usePolicyMlp) static_cast<MLPModel*>(policyHead)->initRandom();
     JointModel*  model = new JointModel(valueHead, policyHead);
 
+    // ---- Training-compute meter and wall-clock ladder (src/train_budget.h) ----
+    TrainBudget budget = tbDefaults();
+    budget.wallCkptAt  = cfg.wallCkptAt;
+    budget.wallStopSec = cfg.wallStopSec;
+
+    // ---- Resume: continue a previous run's ladder with its weights ----
+    if (!cfg.resumeFrom.empty()) {
+        Model* prev = loadModel(cfg.resumeFrom);
+        if (!prev) { cout << "ERROR: cannot load resume model " << cfg.resumeFrom << "\n"; delete model; return 1; }
+        JointModel* pj = dynamic_cast<JointModel*>(prev);
+        if (!pj) {
+            cout << "ERROR: " << cfg.resumeFrom << " is not a joint model.\n";
+            delete prev; delete model; return 1;
+        }
+        if (!tbParsePrior(prev->teacher, budget, "games")) {
+            cout << "ERROR: " << cfg.resumeFrom << " carries no spend stamp"
+                 << " (games=/secs=/nodes=), so its ladder cannot be continued.\n";
+            delete prev; delete model; return 1;
+        }
+        delete model;                 // the freshly-built architecture is discarded
+        model = pj;
+        valueHead  = pj->valueHead;
+        policyHead = pj->policyHead;
+        cout << "Resuming from " << cfg.resumeFrom << ": "
+             << budget.priorUnits << " games, " << budget.priorSec << " s, "
+             << budget.priorNodes << " nodes already spent\n";
+    }
+
+    // Provenance splits into the RECIPE (fixed by the command line) and the
+    // SPEND (only knowable at a save point). The recipe is built once here, the
+    // spend appended at each save by the saver below -- see trainTDLeaf.
+    string provRecipe, provTail;
     {
         std::ostringstream prov;
         prov << "gumbelzero(sims=" << cfg.simBudget << ",lr=" << cfg.lr << ",l2=" << cfg.l2
              << ",replay=" << cfg.replayCapacity << ",warmup=" << cfg.replayWarmup
-             << ",batch=" << cfg.batchSize << ",games=" << cfg.games
-             << ",open=" << cfg.openPlies << ",seed=" << cfg.seed << ") init:scratch";
+             << ",batch=" << cfg.batchSize
+             << ",open=" << cfg.openPlies << ",seed=" << cfg.seed;
+        provRecipe = prov.str();
+
+        std::ostringstream tail;
+        tail << ") " << (cfg.resumeFrom.empty() ? string("init:scratch")
+                                                : ("resume:" + cfg.resumeFrom));
         if (useMlp) {
-            prov << " mlp(";
-            for (size_t i = 0; i < hidden.size(); i++) { if (i) prov << ","; prov << hidden[i]; }
-            prov << ")";
+            tail << " mlp(";
+            for (size_t i = 0; i < hidden.size(); i++) { if (i) tail << ","; tail << hidden[i]; }
+            tail << ")";
         } else if (useConv) {
-            prov << " conv(ch=";
-            for (size_t i = 0; i < convChannels.size(); i++) { if (i) prov << ","; prov << convChannels[i]; }
-            prov << ";fc=";
-            for (size_t i = 0; i < convFcHidden.size(); i++) { if (i) prov << ","; prov << convFcHidden[i]; }
-            prov << ";policy=" << (cfg.policyMlp ? "mlp" : "linear");
-            prov << ")";
+            tail << " conv(ch=";
+            for (size_t i = 0; i < convChannels.size(); i++) { if (i) tail << ","; tail << convChannels[i]; }
+            tail << ";fc=";
+            for (size_t i = 0; i < convFcHidden.size(); i++) { if (i) tail << ","; tail << convFcHidden[i]; }
+            tail << ";policy=" << (cfg.policyMlp ? "mlp" : "linear");
+            tail << ")";
         }
-        model->teacher = prov.str();
+        provTail = tail.str();
     }
-    cout << "Gumbel-Zero: " << model->teacher << "\n";
+    // Attach the spend this checkpoint actually represents, then save. Every
+    // save in this function goes through here (see trainTDLeaf's header).
+    struct Saver {
+        Model* model; const string& recipe; const string& tail; const TrainBudget& b;
+        bool save(const string& path) const {
+            model->teacher = recipe + tbStamp(b, "games") + tail;
+            return model->save(path);
+        }
+    } saver = { model, provRecipe, provTail, budget };
+
+    cout << "Gumbel-Zero: " << provRecipe << ",..." << provTail << "\n";
+    if (cfg.wallStopSec > 0.0 || !cfg.wallCkptAt.empty()) {
+        cout << "Wall ladder:";
+        for (size_t k = 0; k < cfg.wallCkptAt.size(); k++) cout << " " << cfg.wallCkptAt[k] << "s";
+        if (cfg.wallStopSec > 0.0) cout << "   stop at " << cfg.wallStopSec << "s";
+        cout << "  (cumulative)\n";
+    }
 
     // Scratch slot for the model actually being trained AND searched (search
     // reads the SAME object being trained, so each game is played by the
@@ -175,12 +231,22 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
     long long trainedSteps = 0;
     int wWins = 0, bWins = 0, draws = 0;
 
-    const int totalGames = std::max(cfg.games, maxLadderRungGZ(cfg.ckptAt));
+    // A non-positive game count with no game-count ladder means the wall clock
+    // alone governs the run length (mirrors ml_tdleaf.cpp).
+    const int totalGames = (cfg.games <= 0 && cfg.ckptAt.empty())
+                         ? 0 : std::max(cfg.games, maxLadderRungGZ(cfg.ckptAt));
 
     std::vector<const GumbelZeroRecord*> batch;
     double logits[ML_MAX_MOVES], gOut[ML_MAX_MOVES];
 
-    for (int g = 0; g < totalGames; g++) {
+    tbBegin(budget);
+    bool stoppedOnWall = false;
+    const int gameBase = (int)budget.priorUnits;
+
+    for (int g = gameBase; totalGames <= 0 || g < totalGames; g++) {
+        // Checked between games, like TD-Leaf's: a game is the smallest unit
+        // that produces a complete set of replay records.
+        if (tbShouldStop(budget)) { stoppedOnWall = true; break; }
         reloadBoard(cfg.boardFile);
         int victor = None;
 
@@ -252,33 +318,64 @@ int trainGumbelZero(const GumbelZeroConfig& cfg) {
 
         int oc = gameOutcomeGZ(victor);
         if (oc == 1) wWins++; else if (oc == 2) bWins++; else draws++;
+        budget.units++;   // one completed game
 
         if (cfg.reportEvery > 0 && ((g + 1) % cfg.reportEvery == 0)) {
-            cout << "  game " << (g + 1) << "/" << totalGames
-                 << "  W-B-D " << wWins << "-" << bWins << "-" << draws
+            cout << "  game " << (g + 1);
+            if (totalGames > 0) cout << "/" << totalGames;
+            cout << "  W-B-D " << wWins << "-" << bWins << "-" << draws
                  << "  buffer " << buffer.size() << "/" << buffer.capacity()
-                 << "  trained " << trainedSteps << "\n";
+                 << "  trained " << trainedSteps
+                 << "  elapsed " << tbElapsed(budget) << "s"
+                 << "  nodes " << tbNodes(budget) << "\n";
             cout.flush();
         }
         if (cfg.ckptEvery > 0 && ((g + 1) % cfg.ckptEvery == 0))
-            model->save(cfg.outPath + "_ckpt" + std::to_string(g + 1) + ".txt");
+            saver.save(cfg.outPath + "_ckpt" + std::to_string(g + 1) + ".txt");
         for (size_t k = 0; k < cfg.ckptAt.size(); k++)
             if (cfg.ckptAt[k] == g + 1) {
                 string lp = cfg.outPath + "_g" + std::to_string(g + 1) + ".txt";
-                model->save(lp);
+                saver.save(lp);
                 cout << "  [ladder] " << (g + 1) << " games -> " << lp << "\n";
                 cout.flush();
             }
+        double mark = 0.0;
+        while (tbTakeDueMark(budget, mark)) {
+            string wp = tbMarkPath(cfg.outPath, mark);
+            saver.save(wp);
+            cout << "  [wall] " << mark << "s mark (" << tbElapsed(budget)
+                 << "s actual, " << (g + 1) << " games) -> " << wp << "\n";
+            cout.flush();
+        }
+    }
+
+    // A wall stop can land between two marks: write any rung the run reached
+    // but had not yet checkpointed.
+    {
+        double mark = 0.0;
+        while (tbTakeDueMark(budget, mark)) {
+            string wp = tbMarkPath(cfg.outPath, mark);
+            saver.save(wp);
+            cout << "  [wall] " << mark << "s mark (" << tbElapsed(budget)
+                 << "s actual) -> " << wp << "\n";
+        }
     }
 
     const string outFile = cfg.outPath + ".txt";
-    bool saved = model->save(outFile);
+    bool saved = saver.save(outFile);
 
-    cout << "\nGumbel-Zero done: " << cfg.games << " games (" << wWins << " W / "
-         << bWins << " B / " << draws << " draw)\n";
+    // W/B/D count THIS process's games; the cumulative total also covers games
+    // a --resume carried in.
+    cout << "\nGumbel-Zero done: " << budget.units << " games this run ("
+         << wWins << " W / " << bWins << " B / " << draws << " draw)"
+         << (stoppedOnWall ? "  [stopped on wall clock]" : "") << "\n";
+    cout << "  cumulative: " << tbUnits(budget) << " games\n";
+    cout << "  training compute: " << tbElapsed(budget) << " s wall, "
+         << tbNodes(budget) << " search nodes\n";
     cout << "  trained steps: " << trainedSteps
          << "   replay buffer: " << buffer.size() << "/" << buffer.capacity() << "\n";
     cout << "  model -> " << outFile << (saved ? "" : "  (SAVE FAILED)") << "\n";
+    cout << "  provenance: " << model->teacher << "\n";
 
     mlClearSlots();                 // frees the model
     return saved ? 0 : 1;

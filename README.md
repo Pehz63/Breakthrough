@@ -64,7 +64,7 @@ for visually and how to capture matchup-gated controls.
 | `moves.cpp` | Move validation, execution, simulation, player input, move routing |
 | `ai_eval.cpp` | Evaluator registry (`g_evaluators`) + each evaluator's scoring function, and `evaluateBoard`, the board heuristic used by minimax and the move dispatcher |
 | `ai_random.cpp` | `playOpener*`, `pureRandom*`, `tieredRandom*`, `smartRandom*` |
-| `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets, opt-in transposition/ordering/aspiration/quiescence |
+| `ai_minimax.cpp` | `miniMax*`, `maxAlphaBeta`, `minAlphaBeta`, iterative deepening + node/time budgets (a time budget is enforced by a sticky expiry flag, a 256-node clock sample, and a predictive check that declines to start a depth it cannot finish), opt-in transposition/ordering/aspiration/quiescence |
 | `ml_features.cpp` | Board (value) + move (policy) feature extraction and legal-move generation; value features v1 (dense aggregates) and v2 (sparse piece-square) |
 | `ml_model.cpp` | `Model` base + `LinearModel`, model-type registry, save/load (`type=` format) |
 | `ml_eval.cpp` | Model slots, `mlValueScore` (LearnedValue), `mlRateMoves` (policy), incremental v2 accumulator (`mlIncrementalBegin`/`mlLeafScore`) |
@@ -73,6 +73,7 @@ for visually and how to capture matchup-gated controls.
 | `agents.cpp` | `AgentSpec` composition + `agentChooseMove` (search/policy + dilution) |
 | `datastore.cpp` | Append-only JSONL writer + canonical position keys (also the TT hash) |
 | `transposition.cpp` | Opt-in transposition table (`g_useTT`): probe/store + best-move ordering hint |
+| `train_budget.cpp` | Shared training-compute meter: wall-clock checkpoint rungs, hard stop, resume, and the `games=`/`secs=`/`nodes=` spend stamp in every checkpoint's provenance |
 | `ml_train.cpp` | Training regimes, Elo, tournaments, checkpoints, manifest + doc export |
 | `ranking.cpp` | Persistent agent Elo ranking: canonical agent-ID codec, roster file, append-only match store, incremental scheduler, anchored Bradley-Terry fit, reports |
 | `tools/train_main.cpp` | `train.exe` CLI front end |

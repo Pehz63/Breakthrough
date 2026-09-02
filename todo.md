@@ -153,21 +153,54 @@ against the same seams.
   (`src/ai_minimax.cpp`). The same core costs 41,841 nodes/move on the node head
   and 41,819 on the time head, so the two tracks are today the same instrument
   measured twice. `[Now]` {cpu: days, dev: high}
-  - Cross-cutting prerequisites, all blocking (plan Part 1): raise `deep=` to a
+  - ~~Cross-cutting prerequisites, all blocking (plan Part 1): raise `deep=` to a
     non-binding ceiling; fix `time=` enforcement (the one-line pre-iteration check
     in the item below is NOT sufficient once the depth cap lifts, see plan P2);
     instrument node/leaf counters in `src/ai_gumbel.cpp`; add wall-clock rungs to
     every trainer; fix the `games=` provenance bug (plan P5); add training-compute
-    instrumentation; refresh `ranking/climb_roster.txt`
-  - **`ranking/climb_roster.txt` is dead**: 8 of its 10 lines are `@1` identities
+    instrumentation; refresh `ranking/climb_roster.txt`~~ **All 8 landed 2026-09-01**,
+    results in `plans/budget-parity-results-1-steady-meridian.md`. Part 2 is unblocked.
+  - **Pending developer decision: is the `ab` explorer's code version bumped `@2` ->
+    `@3` for the `time=` enforcement fix?** Not bumped so far. The fix changes what a
+    `time=` head computes (7.14% of stored games involving one no longer replay, versus
+    0.0% for games involving none), but module versions have no finer grain than
+    per-module, so a bump re-identifies all 211 active `ab(...)` lines and orphans
+    814,817 of 815,597 stored games to correct the 33.6% that carry a `time=` head. The
+    node track is provably byte-identical across the fix. Full tradeoff, and the
+    contrast with the 2026-08-27 TT bump that did fire, in `TIME BUDGET NOT ENFORCED`,
+    `Docs/corrections.md` `[Now]` {cpu: none, dev: low}
+  - **`rankAgentIsDeterministic` misclassifies every `time=` agent, and P1 makes it
+    worse.** It derives determinism from whether an agent draws `rand()`, and a `time=`
+    agent draws none, so `pairGameTarget` pins any two of them at exactly 2 games as
+    both floor and ceiling. But a wall-clock search stops where machine load puts it,
+    so those 2 games are SAMPLES of a noisy process, not replays of one game. Measured
+    2026-09-01 on the fixed binary: `rank.exe determinism --replicas 3 --only
+    "time=150ms"` exits 2 with 31 of 34 subject-colours reproducing, and the 3 that do
+    not are exactly the ones where the budget BINDS -- both colours of the new
+    `ab(deep=12,tt,ord,time=150ms)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1`
+    and White of the `deep=6` model=113 core. Since P1's whole purpose is to make the
+    budget bind on every core, the `deep=12` time track is genuinely stochastic and its
+    pairs need real game targets. Theory 59 in `Docs/theories.md`. Changing the
+    classifier raises those pairs' targets and re-opens the 3 time-track
+    certifications, so it is a deliberate scheduling decision, not a slip-in fix
+    `[Now]` {cpu: hours, dev: medium}
+  - **Re-certify the 3 `time=150ms` categories.** Their titles were decided under a
+    budget that did not bind (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`).
+    Holders are not vacated, but the three time rows in `ranking/CHAMPION.md` are not a
+    wall-clock-normalized comparison until refilled and refit on the fixed binary
+    `[Now]` {cpu: hours, dev: low}
+  - ~~**`ranking/climb_roster.txt` is dead**: 8 of its 10 lines are `@1` identities
     retired by the TT version bump, so a hill climb today silently falls back to 2
-    live opponents `[Now]` {cpu: seconds, dev: low}
-  - **The `games=` field in every TD-Leaf model header is wrong.** Provenance is
+    live opponents~~ Rebuilt 2026-09-01: 11 all-stochastic rungs spanning Elo 0 to
+    1093, ceiling raised so a d6-head candidate is bracketed rather than sweeping
+  - ~~**The `games=` field in every TD-Leaf model header is wrong.** Provenance is
     written before the training loop from `cfg.games`, and `tools/tdleaf_study.ps1`
     passes the ladder's last rung, so every checkpoint from one run claims the same
     count. slot169 says `games=4000` but trained on 1,500 (`ranking/roster.txt:421`).
     Confirmed twice, also on slot131. The openless x node champion's training cost
-    is misstated 2.67x `[Now]` {cpu: seconds, dev: low}
+    is misstated 2.67x~~ Fixed 2026-09-01: provenance is now written after the loop
+    from what was actually spent, and carries `secs=` and `nodes=` alongside `games=`.
+    Checkpoints written before that date still carry the wrong count
   - **`pool_games` is not one regime.** The tag is emitted for any
     `teacher=replay:<path>` (`src/ranking.cpp:430`) and spans ~195 Elo between
     found-data replay (slot99, 934) and pairgen arms (slot96, 1129). Split into
@@ -177,11 +210,12 @@ against the same seams.
     snapshot frozen 2026-07-19 over a contaminated store. Developer decision
     2026-09-01: redesign the labeling campaign to fit a wall-clock budget
     (see `TT CROSS-AGENT CONTAMINATION`, `Docs/corrections.md`) `[Now]` {cpu: hours, dev: medium}
-  - Open questions carried to the plan's Part 5, needing developer answers before
+  - ~~Open questions carried to the plan's Part 5, needing developer answers before
     execution: the sigma head's fate, whether the time-track control drops `tt`,
     whether the fast-tanh leaf-tail optimization is in scope, what happens if a
     regime is still improving at the 8h rung, and whether contaminated-era
-    checkpoints stay rostered
+    checkpoints stay rostered~~ All 5 answered by the developer 2026-09-01, inline in
+    the plan's Part 5
 
 ## Models (value head: board -> scalar)
 - Convolutional NN value model (board as an 8x8xC grid; local spatial filters for walls/columns/forwardness) `[Later]` {cpu: days, dev: high}

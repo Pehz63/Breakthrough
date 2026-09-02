@@ -188,11 +188,24 @@ extern int    g_gumbelRootM;
 // Per-move search telemetry, written by miniMaxWhite/Black and read by the UIs and the
 // tournament. g_lastEffDepth is fractional: completedDepth + (root moves searched in the
 // cut iteration / total legal root moves), so 5.7 = depth 5 done, 70% into depth 6.
-enum BudgetKind { BUDGET_NONE = 0, BUDGET_DEPTH = 1, BUDGET_NODE = 2, BUDGET_TIME = 3 };
+// BUDGET_SIMS is Gumbel MCTS's own cap (src/ai_gumbel.cpp): a `gaz(sims=N)`
+// search ends when its simulation allowance runs out, which is none of the
+// three alpha-beta caps. Appended rather than inserted so every stored value
+// keeps its meaning.
+enum BudgetKind { BUDGET_NONE = 0, BUDGET_DEPTH = 1, BUDGET_NODE = 2, BUDGET_TIME = 3,
+                  BUDGET_SIMS = 4 };
 extern double g_lastEffDepth;
 extern int    g_lastBudgetKind;   // BudgetKind: which cap ended the last search
 extern unsigned long long g_lastNodes;
 extern unsigned long long g_lastLeafs;
+
+// Process-lifetime sum of g_lastNodes over every agentChooseMove search. The
+// per-move telemetry above is overwritten by the next move, so a trainer that
+// wants to report the search nodes a whole training run consumed has nothing to
+// read; this counter is that total. Accumulated in agents.cpp (one add per
+// move, no effect on any search), read through src/train_budget.h. Never reset
+// mid-process: callers take a baseline and subtract.
+extern unsigned long long g_trainNodesTotal;
 
 // Console toggle: 1 = print per-move board evaluations, 0 = hide them.
 extern int SHOW_EVAL;

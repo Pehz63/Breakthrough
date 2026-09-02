@@ -170,3 +170,91 @@ non-`tt` alike (the versioning scheme has no finer grain than per-module), so
 games; their entire pre-fix history sits under the frozen `@1` identity, `gone` in
 a refit. See `ranking/CHAMPION.md` for what this means for the category champions
 and `todo.md` for the re-certification task.
+
+---
+
+## `TIME BUDGET NOT ENFORCED` - flagged 2026-09-01
+
+**Scope: every stored game played by an agent whose search head carries a
+`time=` budget, up to 2026-09-01.** 274,260 of the 815,597 loaded store rows
+(33.6%) involve at least one, all of them on the single head
+`ab(deep=6,tt,ord,time=150ms)@2`. Like `TT CROSS-AGENT CONTAMINATION`, this is a
+code defect rather than a writing defect: a class of number the engine produced
+wrongly, not a class of sloppy claim.
+
+`budgetTripped()` (`src/ai_minimax.cpp`) sampled the wall clock once per 4096
+nodes and kept no memory of the answer. A node that found the deadline already
+past returned true, but the other 4095 nodes in that window never asked, so they
+recursed to full depth regardless. The iterative-deepening loop had no check at
+all before starting a new depth iteration, so a search that had 19 ms left would
+begin a depth costing hundreds of milliseconds. `time=` therefore did not bound
+anything, it was a soft hint the search overshot by a factor that grew with the
+core's per-node cost.
+
+**Measured pre-fix overshoot**, one chip-counting core
+(`ab(deep=12,tt,ord,time=Xms)@2.classic(chip=100)@2`) at three settings, serial
+play on a scratch roster, realized ms/move against the flag:
+
+| flag | pre-fix ms/move | post-fix ms/move |
+|---|---|---|
+| `time=50ms` | 193.78 (3.9x over) | 20.18 |
+| `time=150ms` | 900.30 (6.0x over) | 58.52 |
+| `time=450ms` | 3217.37 (7.1x over) | 180.89 |
+
+Post-fix the realized ratios are 2.90x and 3.09x against a flag ratio of 3.0x,
+so the flag now controls the spend. The pre-fix run was stopped after 9 of 12
+games because it was unbounded by construction, so the numbers above are its
+per-move means over the games it completed.
+
+**What this does and does not license.** It does NOT mean the time track's Elo
+numbers are wrong by a known amount, and it does NOT touch the node track: a
+`rank.exe determinism --replicas 2` run over 16 `nodes=200k` agents (32
+subject-colours) produced byte-identical TSVs before and after the fix, node
+counts included. What it does mean:
+
+1. **A `time=` agent's stored per-move cost is not what its ID claims.** Any
+   claim resting on the time track's realized ms/move, nodes/move, or effective
+   depth is measuring a search that ran past its budget. Re-measure.
+2. **The time track was not a wall-clock instrument.** At `deep=6` almost every
+   core finished depth 6 before the budget mattered, so the head behaved as a
+   fixed-depth head for all but the slowest evaluators, which is why the node
+   and time tracks recorded near-identical node counts for the same core
+   (41,841 versus 41,819 nodes/move). Do not describe pre-fix time-track results
+   as a compute-normalized comparison.
+3. **Some stored `time=` games no longer replay.** Measured 2026-09-01 as a
+   reproducibility proxy, same design as the `TT CROSS-AGENT CONTAMINATION`
+   measurement: replaying a random sample of stored rows under the fixed binary
+   via `rank.exe extract` gave 13 of 182 replayable games mismatching (7.14%,
+   Wilson 95% CI 4.2% to 11.8%) for rows involving a `time=150ms` agent, against
+   0 of 240 (0.0%) for rows involving none (Fisher two-sided p = 1.4e-05). The
+   control's zero rate means there is no measurable general replay drift today,
+   so the 7.14% is attributable to this fix rather than to a floor. 29.5% of the
+   affected population involves `model=111`, `model=113`, or `model=96`, the
+   three cores a determinism probe independently showed changing play, which is
+   consistent with the effect being concentrated in the cores slow enough that
+   depth 6 never fit inside 150 ms.
+
+**The `ab` explorer's code version was NOT bumped.** This is the opposite call
+from `TT CROSS-AGENT CONTAMINATION` and the reasoning is the collateral, not the
+severity. Module versions have no finer grain than per-module, so bumping `ab`
+to `@3` would re-identify all 211 active `ab(...)` roster lines and orphan
+814,817 of 815,597 stored games (99.9%) to correct reproducibility on the 33.6%
+that involve a `time=` head, while the node track is provably untouched. The TT
+bump's collateral was proportionate because that defect reached every `tt`
+agent. This one does not. Recorded as a pending developer decision rather than a
+settled one: bumping later remains possible, and this entry is what makes the
+tradeoff enumerable if it is revisited.
+
+**Fixed** 2026-09-01 by making the expiry sticky (once any node sees the
+deadline pass, every later node in that search returns immediately without
+re-reading the clock), tightening the sampling mask from 4096 to 256 nodes, and
+adding a pre-iteration predictive check that declines to start a depth whose
+projected cost exceeds the remaining time. The projection uses the search's OWN
+last two iteration times, never an assumed per-ply growth factor, because
+branching depends on the evaluator's move-ordering quality and does not transfer
+between cores. Node budgets are deliberately excluded from the predictive check:
+a node budget is exact and needs no forecast.
+
+**Affected:** `ranking/CHAMPION.md` (openless x time, opener8 x time, dil20 x
+time rows), `plans/budget-parity-plan-1-steady-meridian.md` (source), `todo.md`
+(citation sites).

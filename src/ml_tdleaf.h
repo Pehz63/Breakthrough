@@ -85,12 +85,34 @@ struct TDLeafConfig {
     // are NOT independent replicates -- only distinct seeds are.)
     std::vector<int> ckptAt;
     int    reportEvery;             // progress line every N games (0 = off)
+
+    // Wall-clock rung ladder (src/train_budget.h). Training compute is
+    // normalized on wall clock across regimes, so the rungs a comparison needs
+    // are cumulative SECONDS, not game counts: a fast recipe and a slow one at
+    // "1000 games" have not spent the same compute, and that is the whole thing
+    // the ladder exists to equalize. wallCkptAt writes outPath + "_t<sec>.txt"
+    // at each mark, wallStopSec ends the run. Both empty/0 = off, and the
+    // game-count ladder above is unaffected, so a run can carry either or both.
+    std::vector<double> wallCkptAt;
+    double wallStopSec;
+    // Continue a previous run's ladder instead of starting a new one: loads the
+    // model AND its recorded spend, so a run stopped at 8h and resumed reaches
+    // 16h cumulative rather than 8h twice. Takes precedence over initModel.
+    string resumeFrom;
 };
 
 // Fill a config with the defaults the CLI uses (so tests and callers agree).
 TDLeafConfig tdLeafDefaults();
 
 // Run the regime. Returns 0 on success. Writes outPath + ".txt" (and
-// outPath + "_ckptN.txt" when ckptEvery > 0), with a `teacher=` provenance line
-// recording the full recipe so two differently-configured runs never collide.
+// outPath + "_ckptN.txt" when ckptEvery > 0, outPath + "_gN.txt" per game-count
+// rung, outPath + "_t<sec>.txt" per wall-clock rung), each with a `teacher=`
+// provenance line recording the full recipe so two differently-configured runs
+// never collide.
+//
+// Provenance is composed and attached IMMEDIATELY BEFORE EACH SAVE, from the
+// spend that save actually represents, never once up front from the requested
+// configuration. Writing it up front is how every checkpoint of a laddered run
+// came to claim the last rung's game count: slot169's header says games=4000
+// and it trained on 1,500 (plans/budget-parity-plan-1-steady-meridian.md, P5).
 int trainTDLeaf(const TDLeafConfig& cfg);

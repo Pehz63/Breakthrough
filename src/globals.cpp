@@ -67,4 +67,5 @@ double g_lastEffDepth = 0.0;
 int    g_lastBudgetKind = BUDGET_NONE;
 unsigned long long g_lastNodes = 0;
 unsigned long long g_lastLeafs = 0;
+unsigned long long g_trainNodesTotal = 0;
 int SHOW_EVAL = -1;

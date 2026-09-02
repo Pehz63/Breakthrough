@@ -8,6 +8,7 @@
 #include "board_io.h"
 #include "datastore.h"
 #include "transposition.h"
+#include "train_budget.h"
 #include <vector>
 #include <cmath>
 #include <sstream>
@@ -155,6 +156,8 @@ TDLeafConfig tdLeafDefaults() {
     c.featureVersion = 2;
     c.ckptEvery   = 0;
     c.reportEvery = 50;
+    c.wallStopSec = 0.0;
+    c.resumeFrom  = "";
     return c;
 }
 
@@ -172,20 +175,43 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     srand(cfg.seed);
     PRNT = 0;
 
-    // ---- Model: load an initialisation or build a fresh one ----
+    // ---- Training-compute meter and wall-clock ladder (src/train_budget.h) ----
+    TrainBudget budget = tbDefaults();
+    budget.wallCkptAt  = cfg.wallCkptAt;
+    budget.wallStopSec = cfg.wallStopSec;
+
+    // ---- Model: resume a run, load an initialisation, or build a fresh one ----
     Model* model = nullptr;
     string provInit;
-    if (!cfg.initModel.empty()) {
-        model = loadModel(cfg.initModel);
-        if (!model) { cout << "ERROR: cannot load init model " << cfg.initModel << "\n"; return 1; }
+    const string loadFrom = !cfg.resumeFrom.empty() ? cfg.resumeFrom : cfg.initModel;
+    if (!loadFrom.empty()) {
+        model = loadModel(loadFrom);
+        if (!model) { cout << "ERROR: cannot load model " << loadFrom << "\n"; return 1; }
         if (model->head() != HEAD_VALUE) {
-            cout << "ERROR: " << cfg.initModel << " is not a value model.\n";
+            cout << "ERROR: " << loadFrom << " is not a value model.\n";
             delete model; return 1;
         }
-        provInit = "init:" + cfg.initModel;
+        if (!cfg.resumeFrom.empty()) {
+            // Resume: carry the checkpoint's own recorded spend forward, so the
+            // ladder stays cumulative and a rung already written is not rewritten.
+            if (!tbParsePrior(model->teacher, budget, "games")) {
+                cout << "ERROR: " << cfg.resumeFrom << " carries no spend stamp"
+                     << " (games=/secs=/nodes=), so its ladder cannot be continued.\n";
+                delete model; return 1;
+            }
+            // The resumed file's provenance is the source of the recipe prefix
+            // only for reporting; the recipe itself comes from THIS command line,
+            // which is the caller's responsibility to keep identical.
+            provInit = "resume:" + cfg.resumeFrom;
+            cout << "Resuming from " << cfg.resumeFrom << ": "
+                 << budget.priorUnits << " games, " << budget.priorSec << " s, "
+                 << budget.priorNodes << " nodes already spent\n";
+        } else {
+            provInit = "init:" + cfg.initModel;
+        }
         if (cfg.featureVersion != 2)
-            cout << "NOTE: --feature-version ignored (" << cfg.initModel
-                 << "'s own feature version governs when --init is set)\n";
+            cout << "NOTE: --feature-version ignored (" << loadFrom
+                 << "'s own feature version governs when --init/--resume is set)\n";
     } else {
         const int featVer = (cfg.featureVersion == 1) ? 1 : 2;
         const int featCount = (featVer == 1) ? MLV_FEATURES : MLV2_FEATURES;
@@ -224,6 +250,10 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     agent.useMoveOrder  = true;
     agent.randomMoveProb = 0.0;      // exploration is handled explicitly below
 
+    // Provenance is split into the RECIPE (fixed by the command line) and the
+    // SPEND (only knowable once a save point is reached). The recipe is built
+    // once here; the spend is appended at each save by stampProvenance below.
+    string provRecipe;
     {
         std::ostringstream prov;
         prov << "tdleaf(lambda=" << cfg.lambda << ",lr=" << cfg.lr;
@@ -231,16 +261,33 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
             prov << "->" << cfg.lrFloor << "/" << cfg.lrDecayGames << "g";
         prov << ",l2=" << cfg.l2 << ",d" << cfg.depth;
         if (cfg.nodeBudget) prov << ",nb" << cfg.nodeBudget;
-        prov << ",games=" << cfg.games << ",batch=" << cfg.batchGames
+        prov << ",batch=" << cfg.batchGames
              << ",open=" << cfg.openPlies << ",explore=" << cfg.explore;
         if (cfg.exploreDecayGames > 0)
             prov << "->" << cfg.exploreFloor << "/" << cfg.exploreDecayGames << "g";
-        prov << ",seed=" << cfg.seed << ") " << provInit;
-        model->teacher = prov.str();
+        prov << ",seed=" << cfg.seed;
+        provRecipe = prov.str();
     }
-    cout << "TD-Leaf: " << model->teacher << "\n";
+    // Attach the spend this checkpoint actually represents, then save. Every
+    // save in this function goes through here, which is what keeps a rung's
+    // header honest -- see the header comment on trainTDLeaf.
+    struct Saver {
+        Model* model; const string& recipe; const string& init; const TrainBudget& b;
+        bool save(const string& path) const {
+            model->teacher = recipe + tbStamp(b, "games") + ") " + init;
+            return model->save(path);
+        }
+    } saver = { model, provRecipe, provInit, budget };
+
+    cout << "TD-Leaf: " << provRecipe << ",...) " << provInit << "\n";
     cout << "Model: type=" << model->typeName() << " featVer=" << featVer
          << " trainable=" << head->typeName() << "\n";
+    if (cfg.wallStopSec > 0.0 || !cfg.wallCkptAt.empty()) {
+        cout << "Wall ladder:";
+        for (size_t k = 0; k < cfg.wallCkptAt.size(); k++) cout << " " << cfg.wallCkptAt[k] << "s";
+        if (cfg.wallStopSec > 0.0) cout << "   stop at " << cfg.wallStopSec << "s";
+        cout << "  (cumulative)\n";
+    }
 
     // ---- Instrument diagnostics (see the standing "validate the instrument" rule) ----
     long long pvDepthSum = 0, pvCount = 0, pvTruncated = 0;
@@ -258,14 +305,27 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     std::vector<PVStep> steps;
 
     // Run at least as far as the highest ladder rung, so `--ckpt-at` alone is
-    // enough to specify a run and no rung is silently never written.
-    const int totalGames = std::max(cfg.games, maxLadderRung(cfg.ckptAt));
+    // enough to specify a run and no rung is silently never written. A
+    // non-positive game count means the wall clock alone governs the length.
+    const int totalGames = (cfg.games <= 0 && cfg.ckptAt.empty())
+                         ? 0 : std::max(cfg.games, maxLadderRung(cfg.ckptAt));
 
     // Declared outside the loop so the final partial-batch flush (after the loop
     // ends) can apply the LAST game's scheduled lr rather than going out of scope.
     double effLr = cfg.lr, effExplore = cfg.explore;
 
-    for (int g = 0; g < totalGames; g++) {
+    tbBegin(budget);
+    bool stoppedOnWall = false;
+    // The game index used by the lr/explore schedules and the game-count ladder
+    // is CUMULATIVE across a resume, so a resumed run continues the same
+    // schedule instead of restarting it at game 0.
+    const int gameBase = (int)budget.priorUnits;
+
+    for (int g = gameBase; totalGames <= 0 || g < totalGames; g++) {
+        // Wall-clock stop is checked BETWEEN games: a game is the smallest unit
+        // whose training signal is complete (the outcome z is needed before any
+        // gradient can be formed), so cutting one mid-way would throw it away.
+        if (tbShouldStop(budget)) { stoppedOnWall = true; break; }
         // Independence: a stale table would make a game's result depend on which
         // games preceded it (the cross-game TT pollution defect fixed elsewhere in
         // this project). Every game starts from a clean table.
@@ -359,23 +419,38 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
             batchX.clear(); batchG.clear();
         }
 
+        budget.units++;   // one completed game
+
         if (cfg.reportEvery > 0 && ((g + 1) % cfg.reportEvery == 0)) {
-            cout << "  game " << (g + 1) << "/" << totalGames
-                 << "  W-B-D " << wWins << "-" << bWins << "-" << draws
+            cout << "  game " << (g + 1);
+            if (totalGames > 0) cout << "/" << totalGames;
+            cout << "  W-B-D " << wWins << "-" << bWins << "-" << draws
                  << "  trained " << trainedPositions
                  << "  meanPV " << (pvCount ? (double)pvDepthSum / pvCount : 0.0)
+                 << "  elapsed " << tbElapsed(budget) << "s"
+                 << "  nodes " << tbNodes(budget)
                  << "\n";
             cout.flush();
         }
         if (cfg.ckptEvery > 0 && ((g + 1) % cfg.ckptEvery == 0))
-            model->save(cfg.outPath + "_ckpt" + std::to_string(g + 1) + ".txt");
+            saver.save(cfg.outPath + "_ckpt" + std::to_string(g + 1) + ".txt");
         for (size_t k = 0; k < cfg.ckptAt.size(); k++)
             if (cfg.ckptAt[k] == g + 1) {
                 string lp = cfg.outPath + "_g" + std::to_string(g + 1) + ".txt";
-                model->save(lp);
+                saver.save(lp);
                 cout << "  [ladder] " << (g + 1) << " games -> " << lp << "\n";
                 cout.flush();
             }
+        // Wall-clock rungs. A loop, not an if: one long game can carry the run
+        // past several marks, and every rung the ladder asked for must exist.
+        double mark = 0.0;
+        while (tbTakeDueMark(budget, mark)) {
+            string wp = tbMarkPath(cfg.outPath, mark);
+            saver.save(wp);
+            cout << "  [wall] " << mark << "s mark (" << tbElapsed(budget)
+                 << "s actual, " << (g + 1) << " games) -> " << wp << "\n";
+            cout.flush();
+        }
     }
 
     // Flush a partial batch so no game's signal is silently dropped.
@@ -386,11 +461,32 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         batchX.clear(); batchG.clear();
     }
 
-    const string outFile = cfg.outPath + ".txt";
-    bool saved = model->save(outFile);
+    // A wall-clock stop can land between two marks, so write any rung the run
+    // reached but had not yet checkpointed before the final save.
+    {
+        double mark = 0.0;
+        while (tbTakeDueMark(budget, mark)) {
+            string wp = tbMarkPath(cfg.outPath, mark);
+            saver.save(wp);
+            cout << "  [wall] " << mark << "s mark (" << tbElapsed(budget)
+                 << "s actual) -> " << wp << "\n";
+        }
+    }
 
-    cout << "\nTD-Leaf done: " << cfg.games << " games (" << wWins << " W / "
-         << bWins << " B / " << draws << " draw)\n";
+    const string outFile = cfg.outPath + ".txt";
+    bool saved = saver.save(outFile);
+
+    // W/B/D count THIS process's games; the cumulative total also covers any
+    // games a --resume carried in, whose outcomes this process never saw.
+    cout << "\nTD-Leaf done: " << budget.units << " games this run ("
+         << wWins << " W / " << bWins << " B / " << draws << " draw)"
+         << (stoppedOnWall ? "  [stopped on wall clock]" : "") << "\n";
+    cout << "  cumulative: " << tbUnits(budget) << " games\n";
+    cout << "  training compute: " << tbElapsed(budget) << " s wall, "
+         << tbNodes(budget) << " search nodes";
+    if (tbElapsed(budget) > 0.0)
+        cout << "  (" << (double)tbNodes(budget) / tbElapsed(budget) << " nodes/s)";
+    cout << "\n";
     cout << "  trained positions: " << trainedPositions
          << "   skipped (decided leaf): " << skippedDecided << "\n";
     cout << "  mean PV depth reached: "
@@ -399,6 +495,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     if (pvCount) cout << " (" << (100.0 * pvTruncated / pvCount) << "%)";
     cout << "\n";
     cout << "  model -> " << outFile << (saved ? "" : "  (SAVE FAILED)") << "\n";
+    cout << "  provenance: " << model->teacher << "\n";
 
     mlClearSlots();                 // frees the model
     return saved ? 0 : 1;

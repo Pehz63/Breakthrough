@@ -1750,3 +1750,62 @@ TEST_CASE("mlcNearest - picks the cluster whose centroid the position resembles"
     empty.ply = 0; empty.points = 0;
     REQUIRE(mlcNearest(empty, mlcMake(lo, 1)) == -1);
 }
+
+// ============================================================
+// LEARNED LEAF TAIL: THE FAST PATH MUST BE BIT-EXACT
+// ============================================================
+// Every learned agent's canonical id carries `learned(...)@1`. A leaf tail that
+// rounded differently for ANY input would be a behavior change, so the fast
+// table-interpolated path in ml_eval.cpp is required to return the identical
+// int as the plain std::tanh + lround tail for every input, not merely a close
+// one. These sweeps are that guarantee.
+
+TEST_CASE("learned leaf tail - fast squash is bit-identical to the reference over a dense sweep") {
+    const float scales[] = { 900.0f, 1.0f, 100.0f, 400.0f, 1000.0f };
+    int mismatches = 0;
+    double firstBadOut = 0.0; float firstBadScale = 0.0f;
+    for (int si = 0; si < 5; si++) {
+        // Dense over the range a value head actually produces, plus well past
+        // where tanh saturates.
+        for (int k = -300000; k <= 300000; k++) {
+            double out = (double)k / 10000.0;      // -30 .. +30 in steps of 1e-4
+            int a = mlSquashToEvalFast(out, scales[si]);
+            int b = mlSquashToEvalReference(out, scales[si]);
+            if (a != b && mismatches == 0) { firstBadOut = out; firstBadScale = scales[si]; }
+            if (a != b) mismatches++;
+        }
+    }
+    INFO("first mismatch at out=" << firstBadOut << " scale=" << firstBadScale);
+    REQUIRE(mismatches == 0);
+}
+
+TEST_CASE("learned leaf tail - fast squash matches the reference on edge and extreme inputs") {
+    const double outs[] = {
+        0.0, -0.0, 1e-18, -1e-18, 0.5, -0.5, 1.0, -1.0,
+        7.999999, 8.0, 8.000001, 19.0, 19.06, 25.0, 100.0, 1e6,
+        -7.999999, -8.0, -8.000001, -19.0, -25.0, -100.0, -1e6
+    };
+    // Scales stop at 1e9: past |tanh(out)*scale| = LONG_MAX the reference's own
+    // lround is undefined (MSVC's long is 32 bits), so there is nothing defined
+    // to be exact against. Every value head this project trains uses 900.
+    const float scales[] = { 900.0f, 1.0f, 0.0f, 1e9f };
+    for (size_t i = 0; i < sizeof(outs)/sizeof(outs[0]); i++)
+        for (int s = 0; s < 4; s++) {
+            INFO("out=" << outs[i] << " scale=" << scales[s]);
+            REQUIRE(mlSquashToEvalFast(outs[i], scales[s])
+                    == mlSquashToEvalReference(outs[i], scales[s]));
+        }
+}
+
+TEST_CASE("learned leaf tail - fast squash is bit-identical on pseudo-random inputs") {
+    srand(20260901);
+    int mismatches = 0;
+    for (int i = 0; i < 400000; i++) {
+        // Two magnitudes: the ordinary operating range and a heavy tail.
+        double u = ((double)rand() / (double)RAND_MAX) * 2.0 - 1.0;
+        double out = (i % 4 == 0) ? u * 60.0 : u * 6.0;
+        float scale = (i % 3 == 0) ? 1.0f : 900.0f;
+        if (mlSquashToEvalFast(out, scale) != mlSquashToEvalReference(out, scale)) mismatches++;
+    }
+    REQUIRE(mismatches == 0);
+}

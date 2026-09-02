@@ -12,6 +12,7 @@
 #include "ml_train.h"
 #include "ml_tdleaf.h"
 #include "ml_gumbelzero.h"
+#include "train_budget.h"
 #include "ml_eval.h"
 #include <cstring>
 #include <cstdlib>
@@ -95,6 +96,28 @@ static std::vector<int> getIntList(int argc, char** argv, const char* key) {
     }
     return v;
 }
+// Wall-clock rung ladder, shared by every regime that has one (src/train_budget.h).
+// Reads --wall-ckpt-at "7200,14400,28800" and --wall-stop <seconds>; either may
+// appear alone, and --wall-stop defaults to the last mark so the common case is
+// one flag. When a wall stop is in force and the caller did NOT ask for a game
+// count, `games` is zeroed so the clock alone decides the run length: leaving the
+// regime's default game count in place would silently cap a timed run.
+// Returns false (after printing) on a malformed mark list.
+static bool getWallLadder(int argc, char** argv, std::vector<double>& marks,
+                          double& stopSec, int& games) {
+    const char* s = getOpt(argc, argv, "--wall-ckpt-at", nullptr);
+    if (s) {
+        std::string err;
+        if (!tbParseMarks(s, marks, err)) {
+            cout << "ERROR: --wall-ckpt-at " << err << "\n";
+            return false;
+        }
+    }
+    stopSec = getDbl(argc, argv, "--wall-stop", marks.empty() ? 0.0 : marks.back());
+    if (stopSec > 0.0 && !getOpt(argc, argv, "--games", nullptr)) games = 0;
+    return true;
+}
+
 // Presence flag, e.g. "--ablate".
 static bool hasFlag(int argc, char** argv, const char* key) {
     for (int i = 2; i < argc; i++) if (std::strcmp(argv[i], key) == 0) return true;
@@ -364,6 +387,8 @@ int main(int argc, char** argv) {
         c.ckptEvery   = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
         c.ckptAt      = getIntList(argc, argv, "--ckpt-at");
         c.reportEvery = getInt(argc, argv, "--report-every", c.reportEvery);
+        c.resumeFrom  = getOpt(argc, argv, "--resume", "");
+        if (!getWallLadder(argc, argv, c.wallCkptAt, c.wallStopSec, c.games)) return 1;
         rc = trainTDLeaf(c);
     } else if (cmd == "gumbelzero") {
         GumbelZeroConfig c = gumbelZeroDefaults();
@@ -385,6 +410,8 @@ int main(int argc, char** argv) {
         c.ckptEvery      = getInt(argc, argv, "--ckpt-every", c.ckptEvery);
         c.ckptAt         = getIntList(argc, argv, "--ckpt-at");
         c.reportEvery    = getInt(argc, argv, "--report-every", c.reportEvery);
+        c.resumeFrom     = getOpt(argc, argv, "--resume", "");
+        if (!getWallLadder(argc, argv, c.wallCkptAt, c.wallStopSec, c.games)) return 1;
         rc = trainGumbelZero(c);
     } else if (cmd == "run-config") {
         const char* rid = getOpt(argc, argv, "--run", nullptr);

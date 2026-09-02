@@ -4,16 +4,32 @@
 # rating in ranking/ratings.tsv, so these must first be rated by a full
 # `rank.exe run` on the main roster (ranking/roster.txt). A reduced pool keeps each
 # hill-climb evaluation cheap; point the climber at ranking/roster.txt for full
-# fidelity instead. Opponents lean on the diluted strong-d6 ladder so games are
-# non-deterministic (smooth win rates, few ties). Exactly one anchor is required.
+# fidelity instead. Exactly one anchor is required.
+#
+# Two properties the pool is built for:
+#
+#  1. Every member draws from rand() (dilution, the rand opener, or SmartRandom),
+#     so the candidate's score against each is a real win RATE rather than a
+#     0/2-or-2/2 step. A deterministic-vs-deterministic pair replays one game per
+#     colour however many are requested, which makes the fitness landscape jumpy.
+#  2. The rungs span roughly 0 to 1100 Elo with no gap wider than ~200, so a
+#     candidate is bracketed rather than sweeping the pool. gauntlet's 1-D MLE is
+#     unidentified when a candidate beats everything, and the strongest agents a
+#     climb reaches (the d6/nb200k head rates its bare classic core at 1124) sit
+#     above every ladder rung a pure dilution pool can supply. The ceiling rung is
+#     therefore a learned core wearing a random opener, at 17 ms/move.
+#
+# Elo values quoted below are from the 2026-09-01 full-roster fit and are ordering
+# guidance only: never compare them against a number from a different fit.
 
 anchor  rand@1
 on      smart(pieces=6)@1
-on      ab(deep=3)@1.classic(chip=100)@2
-on      ab(deep=4)@1.classic(chip=100)@2
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=10)@1
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=22)@1
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=43)@1
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=63)@1
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=3)@1
-on      ab(deep=6,tt,ord,nodes=200k)@1.classic(chip=100)@2.dil(prob=30,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=75)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=52)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=35)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=22)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=60,deep=3)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=15,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1

@@ -128,13 +128,26 @@ struct GumbelZeroConfig {
     int    ckptEvery;         // checkpoint every N games (0 = off)
     std::vector<int> ckptAt;  // game-count ladder, same mechanism as TD-Leaf's --ckpt-at
     int    reportEvery;
+
+    // Wall-clock rung ladder and resume, identical in meaning to TD-Leaf's
+    // (src/ml_tdleaf.h, src/train_budget.h): cumulative second marks written as
+    // outPath + "_t<sec>.txt", a hard cumulative stop, and a checkpoint to
+    // continue the same ladder from. Empty/0/"" = off.
+    std::vector<double> wallCkptAt;
+    double wallStopSec;
+    string resumeFrom;
 };
 
 // Fill a config with the defaults the CLI uses (so tests and callers agree).
 GumbelZeroConfig gumbelZeroDefaults();
 
 // Run the regime. Returns 0 on success. Writes outPath + ".txt" (and
-// outPath + "_gN.txt" for each ckptAt rung), with a `teacher=` provenance
-// line recording the full recipe (`gumbelzero(...)`, recognized by
-// src/ranking.cpp's regime classifier as "gumbel_self").
+// outPath + "_gN.txt" for each ckptAt rung, outPath + "_t<sec>.txt" for each
+// wall-clock rung), with a `teacher=` provenance line recording the full recipe
+// (`gumbelzero(...)`, recognized by src/ranking.cpp's regime classifier as
+// "gumbel_self").
+//
+// Provenance is composed immediately before each save from the spend that save
+// actually represents, never once up front from the requested configuration --
+// see trainTDLeaf's header comment for the defect that rule exists to prevent.
 int trainGumbelZero(const GumbelZeroConfig& cfg);

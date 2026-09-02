@@ -40,6 +40,8 @@ enum TestScratchSlot {
     kScratchSlotGumbelZeroLoad   = ML_SLOTS - 8,  // "trainGumbelZero - Pass 1 sanity..." (post-training reload)
     kScratchSlotGumbelZeroMlpLoad = ML_SLOTS - 9,  // "trainGumbelZero - mlp model-type..." (post-training reload)
     kScratchSlotGumbelZeroConvLoad = ML_SLOTS - 10, // "trainGumbelZero - conv model-type..." (post-training reload)
+    kScratchSlotGumbelTelemetry  = ML_SLOTS - 11, // "gumbelSearch - writes node/leaf/eff-depth telemetry" + the budget-tracking test below it (deliberately shared: same joint model, back-to-back)
+    kScratchSlotTDLeafWallLadder = ML_SLOTS - 12, // "trainTDLeaf - wall-clock rungs and honest provenance"
 };
 
 // Copy layout[x][y] into board[][] and recalculate all global counters.

@@ -284,6 +284,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `agents.cpp/.h` | `AgentSpec` composition (brain + dilution + budgets + toggles), `agentChooseMove` |
 | `datastore.cpp/.h` | Append-only JSONL + canonical `positionKey` (also keys the TT) |
 | `transposition.cpp/.h` | Opt-in transposition table (inert unless `useTT`) |
+| `train_budget.cpp/.h` | Shared training-compute meter: wall-clock checkpoint rungs, hard stop, node/game/second accounting, and the `secs=`/`nodes=`/`games=` provenance stamp every regime writes and `--resume` reads back |
 | `ml_train.cpp/.h` | Trainer: self-play, supervised value + imitation policy, tournament play/rate, run archive |
 | `ranking.cpp/.h` | Persistent Elo ranking: ID codec, roster, match store, scheduler, BT fit, subcommands (incl. the posgen/label/labelfit position-oracle pipeline) |
 

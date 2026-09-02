@@ -87,6 +87,13 @@ AgentSpec agentMakePolicy(const char* name, int chooser, int chooserParam, int m
 // MOVE SELECTION (composes explorer/chooser + dilution)
 // ============================================================
 int agentChooseMove(const AgentSpec& a, int side) {
+    // Training-compute meter (src/train_budget.h). Cleared here so a move that
+    // never searches (a policy brain, a diluted random move) contributes zero
+    // rather than the previous move's count, and summed after the explorer runs
+    // so a trainer can report the search nodes a whole run consumed. One 64-bit
+    // add per move: nothing inside the search sees it.
+    g_lastNodes = 0;
+
     // Dilution: with probability randomMoveProb, weaken this move. The diluted move is
     // either a fully random move (dilDepth <= 0) or a shallower depth-dilDepth search
     // (dilDepth > 0, search brain only) for a plausible-but-weaker blunder.
@@ -130,6 +137,7 @@ int agentChooseMove(const AgentSpec& a, int side) {
     g_gumbelRootM = a.gumbelRootM;
 
     int victor = g_explorers[e].fn(side, a.evaluator, params, depth);
+    g_trainNodesTotal += g_lastNodes;
 
     g_nodeBudget = savedNode; g_timeBudgetMs = savedTime;
     g_useAlphaBeta = savedAB; g_useTT = savedTT; g_useMoveOrder = savedMO;

@@ -497,3 +497,40 @@ off     gaz(sims=300,cvisit=1000,cscale=40,m=8)@1.learned(model=1533,57845dcd,gu
 # of a future Workflow B certification refit, not certified yet.
 #   conv(16,16,16)+fc32+policy-mlp  sims=300 cvisit=400 cscale=70 m=16  seed 8975  Elo 1003 +/- 20 (3-seed mean 953.0)
 off     gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1849,a1dea895,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1
+
+# --- Budget-parity Part 1: deep=12 heads on both compute tracks ------------
+# Added 2026-09-01 (plans/budget-parity-plan-1-steady-meridian.md, P1).
+#
+# Why: at deep=6 neither track's budget binds. Iterative deepening finishes
+# depth 6 and stops on the DEPTH cap, so the same core spends 41,841 nodes/move
+# on the nodes=200k head and 41,819 on the time=150ms head -- 21% of one budget
+# and 8% of the other. The two tracks are currently one instrument measured
+# twice. deep=12 is a ceiling chosen to be unreachable rather than a target, so
+# whichever budget the head names is the only thing that stops the search.
+#
+# deep= is an ID parameter, not a module version (src/ranking.cpp's head
+# grammar), so these are new agents with zero games and nothing existing is
+# re-identified. The deep=6 twins above stay rostered and active: they are the
+# continuity anchor that makes the depth-cap delta measurable per core.
+#
+# Two cores, both tracks, so realized depth is measured rather than projected
+# (the plan's x3.41 per-ply growth is Classic's own branching factor and does
+# not transfer to another evaluator). classic(chip=100)@2 is the cheapest core
+# in the field and the openless x time champion. model=169 is the openless x
+# node champion. Adding a third core is one line per core per track.
+#
+# The time track carries tt (developer decision 2026-09-01, plan Part 5 answer
+# 2: roster the tt variant only, not a no-tt control).
+
+# openless x node, non-binding depth ceiling
+on      ab(deep=12,tt,ord,nodes=200k)@2.classic(chip=100)@2
+on      ab(deep=12,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+
+# openless x time, non-binding depth ceiling
+on      ab(deep=12,tt,ord,time=150ms)@2.classic(chip=100)@2
+on      ab(deep=12,tt,ord,time=150ms)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+
+# The time track had no model=169 core at all, so its deep=6 twin is added here
+# rather than inherited from the cohort above. Without it the deep=6 -> deep=12
+# delta is measurable for classic on both tracks but for model=169 on only one.
+on      ab(deep=6,tt,ord,time=150ms)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1

@@ -29,32 +29,105 @@ static int  s_budgetCause = BUDGET_NONE;     // BUDGET_NODE / BUDGET_TIME when s
 
 namespace {
     using Clock = std::chrono::steady_clock;
+    Clock::time_point s_timeStart;
     Clock::time_point s_timeDeadline;
     bool s_timeOn = false;
+    // Sticky: set the first time a sampled clock read finds the deadline past.
+    // See the comment on TIME_CHECK_MASK for why this flag is load-bearing.
+    bool s_timeExpired = false;
 }
 
-// True once the active per-move budget (node count or wall clock) is exhausted. The
-// time check is gated on a node-count mask so clock::now() is not called per node.
+// How often the wall-clock deadline is actually read, as a node-count mask.
+//
+// Sized from measurement, not guessed. steady_clock::now() costs 22.0 ns on this
+// machine (measured 2026-09-01 over 20M calls against a 0.18 ns/iteration empty
+// loop, two runs: 22.13 and 21.89 ns). The cheapest core in the roster costs
+// about 270 ns/node at the d6/tt/ord head, so checking every 256 nodes adds
+// 22/256 = 0.086 ns/node, under 0.04% of node cost, while bounding the sampling
+// granularity at 256 * 270 ns = 69 us, under 0.05% of a 150 ms budget. Checking
+// every node would cost 8%, and the previous 4096 left the granularity at 1.1 ms
+// for no measurable saving over 256.
+static const unsigned long long TIME_CHECK_MASK = 255ULL;
+
+// True once the active per-move budget (node count or wall clock) is exhausted.
+//
+// The node deadline is exact and checked on EVERY node, so once it passes, every
+// subsequent node returns immediately and the search unwinds at once.
+//
+// The wall clock cannot be read that often, so it is sampled. The sampling must
+// be paired with the sticky s_timeExpired flag, and without it the time budget
+// does not bind at all: a bare `(nodes & mask) == 0 && now() >= deadline` test
+// lets the 255 nodes out of every 256 that do not sample the clock proceed to
+// full recursion, so a search past its deadline keeps expanding the tree and
+// merely prunes one node in 256. That is how a `time=150ms` agent could run an
+// entire extra iteration past its budget. With the flag, the first sampled
+// expiry converts every later node into an immediate leaf return.
 static inline bool budgetTripped(unsigned long long nodes) {
     if (g_nodeDeadline && nodes >= g_nodeDeadline) { s_budgetCause = BUDGET_NODE; return true; }
-    if (s_timeOn && (nodes & 4095ULL) == 0 && Clock::now() >= s_timeDeadline) {
-        s_budgetCause = BUDGET_TIME; return true;
+    if (s_timeOn) {
+        if (s_timeExpired) { s_budgetCause = BUDGET_TIME; return true; }
+        if ((nodes & TIME_CHECK_MASK) == 0 && Clock::now() >= s_timeDeadline) {
+            s_timeExpired = true;
+            s_budgetCause = BUDGET_TIME;
+            return true;
+        }
     }
     return false;
 }
 
 static const char* budgetKindName(int k) {
     return k == BUDGET_NODE ? "node" : k == BUDGET_TIME ? "time"
-         : k == BUDGET_DEPTH ? "depth" : "none";
+         : k == BUDGET_DEPTH ? "depth" : k == BUDGET_SIMS ? "sims" : "none";
 }
 
-// Seed s_timeOn / s_timeDeadline from g_timeBudgetMs at the start of a top-level search.
+// Seed the wall-clock state from g_timeBudgetMs at the start of a top-level search.
 static inline void seedTimeBudget() {
     s_timeOn = (g_timeBudgetMs > 0.0);
-    if (s_timeOn)
-        s_timeDeadline = Clock::now()
+    s_timeExpired = false;
+    if (s_timeOn) {
+        s_timeStart = Clock::now();
+        s_timeDeadline = s_timeStart
             + std::chrono::duration_cast<Clock::duration>(
                   std::chrono::duration<double, std::milli>(g_timeBudgetMs));
+    }
+}
+
+// Milliseconds elapsed in this search so far (0 when no wall budget is set).
+static inline double elapsedMs() {
+    if (!s_timeOn) return 0.0;
+    return std::chrono::duration<double, std::milli>(Clock::now() - s_timeStart).count();
+}
+
+// Whether the next iterative-deepening iteration can be expected to FIT in the
+// wall clock that is left, given how this search's own iterations have grown.
+//
+// Why a plain "is the deadline past" test is not enough: under a non-binding
+// depth ceiling, an iteration that finishes comfortably inside the budget is
+// followed by one costing several times as much, and the deadline has not
+// passed at the moment the decision is made. The cheapest core finishes depth 8
+// at about 131 ms of a 150 ms budget, sees 19 ms left, and starts a depth 9 that
+// cannot possibly fit. The sticky flag above bounds the damage to the budget,
+// but the whole iteration is then discarded (a cut iteration is dropped unless
+// g_keepPartial), so the time buys nothing.
+//
+// The growth factor is measured from THIS search's own last two iterations, not
+// assumed. It has to be: the per-ply factor is a property of an evaluator's move
+// ordering, and the measured 3.41 for the chip counter on the tt,ord path is
+// that core's alone (the bare unbudgeted ladder gives 5.6 for the same search).
+// Until two iterations have been timed there is nothing to extrapolate from, so
+// the check abstains and the iteration runs -- which also guarantees a move.
+//
+// Node budgets deliberately do NOT get this check. Their in-recursion test is
+// exact and per-node, so they overshoot by nothing, and adding a predictive
+// stop would change every node-track agent's play.
+static inline bool nextIterationFits(double prevIterMs, double lastIterMs) {
+    if (!s_timeOn) return true;                       // no wall clock to fit inside
+    if (!(prevIterMs > 0.05) || !(lastIterMs > 0.0)) return true;   // too little signal yet
+    double growth = lastIterMs / prevIterMs;
+    if (growth < 1.0) growth = 1.0;                   // never predict a cheaper next ply
+    double predicted = lastIterMs * growth;
+    double remaining = std::chrono::duration<double, std::milli>(s_timeDeadline - Clock::now()).count();
+    return remaining > predicted;
 }
 
 // === MOVE ORDERING + TRANSPOSITION (opt-in) ===
@@ -417,7 +490,15 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
         // Budgeted: iterative deepening sharing one node/time pool. Keep the best move
         // from the deepest iteration that finished within budget; a cut iteration is
         // discarded unless g_keepPartial adopts its (provisional) best move.
+        double prevIterMs = 0.0, lastIterMs = 0.0;
         for (int d = 1; d <= depth; d++) {
+            // Wall clock only: decline an iteration this search's own measured
+            // per-ply growth says cannot fit (see nextIterationFits).
+            if (d > 1 && !nextIterationFits(prevIterMs, lastIterMs)) {
+                budgetKind = BUDGET_TIME;
+                break;
+            }
+            double iterStartMs = elapsedMs();
             s_budgetHit = false;
             s_budgetCause = BUDGET_NONE;
             int mx = -1, my = 0, mz = 0, rootDeep = 0, rootTotal = 0;
@@ -451,6 +532,8 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
 
             moveX1 = mx; moveY = my; moveX2 = mz; alpha = a;       // full iteration completed
             completedDepth = d;
+            prevIterMs = lastIterMs;
+            lastIterMs = elapsedMs() - iterStartMs;
             if (g_nodeDeadline && nodes >= g_nodeDeadline) { budgetKind = BUDGET_NODE; break; }
             if (alpha >= WhiteWin - 1024 || alpha <= BlackWin + 1024) { budgetKind = BUDGET_DEPTH; break; }
         }
@@ -572,7 +655,14 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
         completedDepth = depth;
         budgetKind = BUDGET_DEPTH;
     } else {
+        double prevIterMs = 0.0, lastIterMs = 0.0;
         for (int d = 1; d <= depth; d++) {
+            // Mirrors searchRootWhite's driver: see nextIterationFits.
+            if (d > 1 && !nextIterationFits(prevIterMs, lastIterMs)) {
+                budgetKind = BUDGET_TIME;
+                break;
+            }
+            double iterStartMs = elapsedMs();
             s_budgetHit = false;
             s_budgetCause = BUDGET_NONE;
             int mx = -1, my = 0, mz = 0, rootDeep = 0, rootTotal = 0;
@@ -606,6 +696,8 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
 
             moveX1 = mx; moveY = my; moveX2 = mz; beta = b;
             completedDepth = d;
+            prevIterMs = lastIterMs;
+            lastIterMs = elapsedMs() - iterStartMs;
             if (g_nodeDeadline && nodes >= g_nodeDeadline) { budgetKind = BUDGET_NODE; break; }
             if (beta <= BlackWin + 1024 || beta >= WhiteWin - 1024) { budgetKind = BUDGET_DEPTH; break; }
         }

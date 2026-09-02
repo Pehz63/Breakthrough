@@ -289,3 +289,60 @@ TEST_CASE("GumbelMCTS - a saved JointModel loads and plays through the real sear
 
     mlClearSlots();
 }
+
+// ============================================================
+// NODE / LEAF TELEMETRY (the node track's instrument for gaz)
+// ============================================================
+// src/ranking.cpp's playOneGame credits per-move node and eff-depth telemetry
+// only when `brain == BRAIN_SEARCH && g_lastNodes > 1`. Nothing in
+// ai_gumbel.cpp ever wrote those globals, so every stored Gumbel game recorded
+// nodes_per_move = 0 and the node compute track could not be calibrated for
+// this explorer at all. These tests are the instrument check: they assert the
+// counters are written, are internally consistent, and MOVE when the knob that
+// should move them moves.
+
+TEST_CASE("gumbelSearch - writes node/leaf/eff-depth telemetry") {
+    srand(4242);
+    LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    for (int i = 0; i < value->n; i++) value->w[i] = 0.01f * (((i * 7) % 23) - 11);
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    for (int i = 0; i < policy->n; i++) policy->w[i] = 0.05f * (((i * 5) % 11) - 5);
+    JointModel* jm = new JointModel(value, policy);
+    mlSetModel(kScratchSlotGumbelTelemetry, jm);
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    g_lastNodes = 0; g_lastLeafs = 0; g_lastEffDepth = 0.0; g_lastBudgetKind = BUDGET_NONE;
+    gumbelSearch(White, kScratchSlotGumbelTelemetry, 128, nullptr);
+
+    // The gate ranking.cpp uses. Below this the move is silently uncounted.
+    REQUIRE(g_lastNodes > 1);
+    REQUIRE(g_lastLeafs > 0);
+    REQUIRE(g_lastLeafs <= g_lastNodes);       // a leaf is a node that was not descended
+    REQUIRE(g_lastEffDepth >= 1.0);            // the root move itself is ply 1
+    REQUIRE(g_lastBudgetKind == BUDGET_SIMS);  // sims, not node/time/depth
+    mlClearSlots();
+}
+
+TEST_CASE("gumbelSearch - node count tracks the simulation budget (validates the counter, not just its presence)") {
+    srand(4243);
+    LinearModel* value = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    for (int i = 0; i < value->n; i++) value->w[i] = 0.01f * (((i * 7) % 23) - 11);
+    LinearModel* policy = new LinearModel(HEAD_POLICY, mlMoveFeatureVersion(), MLM_FEATURES, 1.0f);
+    for (int i = 0; i < policy->n; i++) policy->w[i] = 0.05f * (((i * 5) % 11) - 5);
+    JointModel* jm = new JointModel(value, policy);
+    mlSetModel(kScratchSlotGumbelTelemetry, jm);
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    srand(77);
+    gumbelSearch(White, kScratchSlotGumbelTelemetry, 32, nullptr);
+    unsigned long long small = g_lastNodes;
+
+    REQUIRE(reloadBoard("boards\\board1.txt") == true);
+    srand(77);
+    gumbelSearch(White, kScratchSlotGumbelTelemetry, 512, nullptr);
+    unsigned long long large = g_lastNodes;
+
+    // A counter that returned a constant would pass the presence test above.
+    REQUIRE(large > small);
+    mlClearSlots();
+}

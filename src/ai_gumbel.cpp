@@ -157,6 +157,33 @@ static void gumbelScorePriors(const Move* moves, int n, int side, JointModel* jm
 // SEARCH TREE
 // ============================================================
 namespace {
+
+// Per-search node/leaf/depth accounting, written into g_lastNodes / g_lastLeafs
+// / g_lastEffDepth / g_lastBudgetKind before gumbelSearch returns.
+//
+// Why this exists: src/ranking.cpp's playOneGame credits node and eff-depth
+// telemetry only when `brain == BRAIN_SEARCH && g_lastNodes > 1`, and nothing
+// in this file ever wrote those globals, so every stored Gumbel game recorded
+// zero nodes and zero effective depth. Wall clock was always measured (the
+// game runner times every move regardless of explorer), so the TIME track
+// could be calibrated for `gaz` and the NODE track could not.
+//
+// The two counts mean here what they mean in ai_minimax.cpp: `nodes` is tree
+// nodes visited, `leafs` is the subset that were evaluated rather than
+// descended through. Depth is counted in plies from the root position, with
+// the root move itself as ply 1, matching ml_tdleaf.cpp's `reached = 1 +
+// steps.size()` convention. g_lastEffDepth is reported as the MEAN leaf depth
+// over the search, which is the closest honest analogue of alpha-beta's
+// "completed depth + cut fraction": a Gumbel search has no single depth it
+// completed, it has a distribution of how deep its simulations went.
+struct GumbelCounters {
+    unsigned long long nodes = 0;
+    unsigned long long leafs = 0;
+    unsigned long long depthSum = 0;
+    void leafReached(int depth) { leafs++; depthSum += (unsigned long long)depth; }
+    double meanLeafDepth() const { return leafs ? (double)depthSum / (double)leafs : 0.0; }
+};
+
 struct GNode {
     bool   expanded = false;
     bool   terminal = false;
@@ -178,7 +205,9 @@ struct GNode {
 // (and every descendant's) visit/value stats, and returns the backed-up
 // white-centric value. Reverses every simulate/unsimulate it applies before
 // returning, so the live board is unchanged on exit.
-static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
+static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget,
+                             GumbelCounters& ctr, int depth) {
+    ctr.nodes++;                          // one tree node visited by this call
     if (!node->terminal) {
         bool term = false; double termVal = 0.0;
         if (side == White) {
@@ -191,6 +220,7 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
         if (term) { node->terminal = true; node->terminalValue = termVal; node->expanded = true; }
     }
     if (node->terminal) {
+        ctr.leafReached(depth);           // decided position: this IS the leaf
         node->visitCount++; node->valueSum += node->terminalValue;
         return node->terminalValue;
     }
@@ -203,6 +233,7 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
             // distinct from the canWin* checks above (cached here so a
             // revisit doesn't re-run generateMoves).
             double v = (side == White) ? -1.0 : 1.0;
+            ctr.leafReached(depth);       // no legal move: a terminal leaf
             node->terminal = true; node->terminalValue = v; node->expanded = true;
             node->visitCount++; node->valueSum += v;
             return v;
@@ -211,6 +242,7 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
         for (int i = 0; i < n; i++) node->moves[i] = mv[i];
         gumbelScorePriors(mv, n, side, gumbelModelForSlot(slot), node->logits);
         node->expanded = true;
+        ctr.leafReached(depth);           // newly expanded: evaluated, not descended
         double v = gumbelLeafValue(side, slot);
         node->visitCount++; node->valueSum += v;
         return v;
@@ -219,6 +251,7 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
     if (plyBudget <= 0) {
         // Safety stand-pat (mirrors QS_MAX_PLY): does not expand further,
         // essentially never reached at realistic simulation budgets.
+        ctr.leafReached(depth);           // safety stand-pat: also a leaf read
         double v = gumbelLeafValue(side, slot);
         node->visitCount++; node->valueSum += v;
         return v;
@@ -244,7 +277,8 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
     bool isCap = (side == White) ? simulateMoveWhite(mv.sx, mv.sy, mv.dx)
                                   : simulateMoveBlack(mv.sx, mv.sy, mv.dx);
     int otherSide = (side == White) ? Black : White;
-    double v = gumbelSimulate(node->children[sel], otherSide, slot, plyBudget - 1);
+    double v = gumbelSimulate(node->children[sel], otherSide, slot, plyBudget - 1,
+                              ctr, depth + 1);
     if (side == White) unsimulateMoveWhite(mv.sx, mv.sy, mv.dx, isCap);
     else                unsimulateMoveBlack(mv.sx, mv.sy, mv.dx, isCap);
     node->visitCount++; node->valueSum += v;
@@ -254,10 +288,24 @@ static double gumbelSimulate(GNode* node, int side, int slot, int plyBudget) {
 // ============================================================
 // ROOT ORCHESTRATION
 // ============================================================
+// Write this search's counters into the per-move telemetry globals every other
+// part of the project reads (src/ranking.cpp's playOneGame, ml_train.cpp's
+// tournament stats). Called on EVERY return path, including the trivial ones,
+// so a Gumbel move never leaves the previous move's numbers standing.
+static void publishGumbelTelemetry(const GumbelCounters& ctr) {
+    g_lastNodes      = ctr.nodes;
+    g_lastLeafs      = ctr.leafs;
+    g_lastEffDepth   = ctr.meanLeafDepth();
+    g_lastBudgetKind = BUDGET_SIMS;
+}
+
 int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
+    GumbelCounters ctr;
+    ctr.nodes = 1;                        // the root, mirroring miniMax*'s own nodes++
+
     Move rootMoves[ML_MAX_MOVES];
     int n = generateMoves(side, rootMoves);
-    if (n == 0) return (side == White) ? BlackWin : WhiteWin;
+    if (n == 0) { publishGumbelTelemetry(ctr); return (side == White) ? BlackWin : WhiteWin; }
 
     // Immediate-win shortcut (matches greedyExplore's own generated-move scan).
     for (int i = 0; i < n; i++) {
@@ -267,6 +315,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
             info->moveCount = 0;
             info->rootValue = info->searchValue = (side == White) ? 1.0 : -1.0;
         }
+        publishGumbelTelemetry(ctr);
         return (side == White)
             ? playMoveWhite(rootMoves[i].sx, rootMoves[i].sy, rootMoves[i].dx)
             : playMoveBlack(rootMoves[i].sx, rootMoves[i].sy, rootMoves[i].dx);
@@ -288,6 +337,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
             info->completedQ[0] = moverRelative(rootLeafValue, side);
             info->visitCounts[0] = 0; info->rootValue = info->searchValue = rootLeafValue;
         }
+        publishGumbelTelemetry(ctr);
         return (side == White)
             ? playMoveWhite(root.moves[0].sx, root.moves[0].sy, root.moves[0].dx)
             : playMoveBlack(root.moves[0].sx, root.moves[0].sy, root.moves[0].dx);
@@ -310,7 +360,10 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
             for (int s = 0; s < perCand; s++) {
                 bool isCap = (side == White) ? simulateMoveWhite(mv.sx, mv.sy, mv.dx)
                                               : simulateMoveBlack(mv.sx, mv.sy, mv.dx);
-                double v = gumbelSimulate(root.children[mi], otherSide, slot, kGumbelMaxSimPlies);
+                // depth 1: this node is the position after ONE root move, so a
+                // leaf here means the search saw one ply.
+                double v = gumbelSimulate(root.children[mi], otherSide, slot,
+                                          kGumbelMaxSimPlies, ctr, 1);
                 if (side == White) unsimulateMoveWhite(mv.sx, mv.sy, mv.dx, isCap);
                 else                unsimulateMoveBlack(mv.sx, mv.sy, mv.dx, isCap);
                 root.visitCount++; root.valueSum += v;
@@ -356,6 +409,7 @@ int gumbelSearch(int side, int slot, int simBudget, GumbelRootInfo* info) {
         }
     }
 
+    publishGumbelTelemetry(ctr);
     const Move& winMove = root.moves[chosen];
     return (side == White)
         ? playMoveWhite(winMove.sx, winMove.sy, winMove.dx)

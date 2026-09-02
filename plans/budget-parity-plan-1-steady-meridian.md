@@ -507,18 +507,29 @@ prunes 3x worse than Classic. That is a different experiment than this round run
 
 # Part 5: open questions for the developer
 
+Answered by the developer on 2026-09-01:
+
 1. **Does the sigma head survive in position_elo?** Dropping it buys mu-head compute
    under a tight budget. It is weakly supported and its only proposed use was
    refuted, but removing it changes what the regime is.
+   **Answer: DROP.**
 2. **Should the time-track control drop `tt`?** The measurement says `tt` costs wall
    clock (8.02 versus 11.26 ms/move). Rostering both answers it empirically and costs
    one extra agent.
+   **Answer: KEEP `tt` ONLY** (roster only the `tt` variant for the time= track).
 3. **Is P8 (fast tanh) in or out?** It is the largest single wall-clock win available
    to four regimes at once, and it must land before the study or not at all.
+   **Answer: IN.** Implement before any Part 2 comparison runs, never mid-study.
 4. **What happens if a regime is still improving at 8h?** The stated rule is to
    confirm before doubling. Worth deciding in advance whether a 16h rung runs for
    that regime alone (breaking rung parity) or for all of them (preserving it at 2x
    the cost).
+   **Answer: 16h for that regime alone.** Rung parity breaks for the affected
+   regime; the others stop at 8h. Resume support is therefore in scope for P4,
+   not just checkpoint marks and a hard stop.
 5. **Do the old contaminated-era checkpoints stay rostered** as frozen historical
    reference, or come off entirely? They cannot be compared to the new cohort, but
    removing them changes the fit population again.
+   **Answer: KEEP fully active,** not marked frozen or retired. They are valid
+   agents, likely weaker, but comparable like any other roster entry rather than
+   given retired-agent semantics.

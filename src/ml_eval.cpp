@@ -50,16 +50,141 @@ void mlAutoLoadDefaultSlots() {
 // with the +/-WIN sentinels handled by nearWinCheck / canWin*.
 static const int ML_EVAL_CAP = INT_MAX - 4096;   // < WhiteWin-1024, > BlackWin+1024 when negated
 
+// ---- Fast, BIT-EXACT leaf tail -------------------------------------------
+//
+// Every learned value score ends in the same four steps: tanh squash, scale,
+// round, clamp. On a wall-clock leaderboard that tail is per-leaf currency, and
+// it is the one thing the integer heuristic evaluators never pay. Measured on
+// this machine (2026-09-01, 20M calls against a 0.73 ns/call load-and-add
+// baseline, two runs agreeing to 0.15 ns): std::tanh 10.7 ns, the whole tail
+// 17.3 ns, so lround plus the clamp is the other 6.6 ns -- lround is a libm
+// call on MSVC, not an instruction.
+//
+// **Exactness is a hard requirement, not a nicety.** Every learned agent's
+// canonical id carries `learned(...)@1`, and an eval that returns a different
+// integer for any input is a behavior change that would have to bump that
+// module version and re-identify the whole learned roster. So both halves below
+// return the SAME int as `lround(std::tanh(out) * scale)` for every input whose
+// product fits a 32-bit long, and tests/test_train_budget.cpp's siblings in
+// tests/test_ml.cpp assert that over a dense sweep plus the edge cases.
+//
+// The fit-a-long qualifier is not a loophole for the leaf: `out_scale` is 900
+// for every value head this project trains (1.0 for a policy head), so the
+// product never leaves +-900. Past |tanh(out) * scale| = LONG_MAX the SHIPPED
+// reference is itself undefined -- lround returns a long and MSVC's long is 32
+// bits -- so there is no defined behavior to be exact against. The fast path
+// stays well defined there by rounding and clamping in long long.
+//
+// Two independent pieces:
+//
+//  1. `roundHalfAway` replaces lround with no approximation at all. Truncating
+//     to an integer and subtracting is exact for any |a| < 2^52, so the
+//     fractional part is exact and the `>= 0.5` test reproduces lround's
+//     round-half-away-from-zero rule directly. (The obvious `(long)(s + 0.5)`
+//     shortcut does NOT: at s = 0.49999999999999994 the addition itself rounds
+//     up to 1.0 and the result is 1 where lround gives 0.)
+//
+//  2. `fastTanhAbs` is a linear interpolation over a 1024-interval table of
+//     tanh on [0, 8], with a proven error bound, followed by a check that the
+//     bound cannot straddle a rounding boundary. When it can (about 2% of
+//     inputs at scale 900), the code falls through to std::tanh. The bound:
+//     linear interpolation of a twice-differentiable function has error at most
+//     h^2/8 * max|f''|, with h = 1/128 and max|tanh''| = 4/(3*sqrt(3)) =
+//     0.7698, giving 5.9e-6; float storage adds ~6e-8; past x = 8 the value is
+//     pinned at tanh(8) with error at most 1 - tanh(8) = 2.3e-7. TANH_EPS =
+//     1e-5 covers all three with room to spare.
+static const double TANH_XMAX = 8.0;
+static const int    TANH_STEPS = 1024;                       // intervals over [0, XMAX]
+static const double TANH_INV_H = (double)TANH_STEPS / TANH_XMAX;
+static const double TANH_EPS  = 1e-5;                        // bound on |approx - tanh|
+
+namespace {
+struct TanhTable {
+    float v[TANH_STEPS + 1];
+    double atMax;
+    TanhTable() {
+        for (int i = 0; i <= TANH_STEPS; i++)
+            v[i] = (float)std::tanh((double)i / TANH_INV_H);
+        atMax = std::tanh(TANH_XMAX);
+    }
+};
+// Namespace scope, not a function-local static: a local static would pay a
+// thread-safe-initialisation guard check on every leaf.
+const TanhTable g_tanhTable;
+}
+
+// |tanh| for a >= 0, within TANH_EPS. Never used on its own -- always paired
+// with the boundary check in mlSquashToEval.
+static inline double fastTanhAbs(double a) {
+    double u = a * TANH_INV_H;
+    if (u >= (double)TANH_STEPS) return g_tanhTable.atMax;
+    int i = (int)u;
+    double frac = u - (double)i;
+    double lo = (double)g_tanhTable.v[i];
+    return lo + frac * ((double)g_tanhTable.v[i + 1] - lo);
+}
+
+// Bit-exact replacement for lround over the range a leaf eval can produce.
+// Returns long long rather than lround's long: MSVC's long is 32 bits, and the
+// clamp below is applied in the wider type so an out-of-range product saturates
+// instead of wrapping.
+static inline long long roundHalfAway(double s) {
+    bool neg = (s < 0.0);
+    double a = neg ? -s : s;
+    long long n = (long long)a;            // truncation toward zero
+    double frac = a - (double)n;           // exact: n is the integer part of a
+    if (frac >= 0.5) n++;
+    return neg ? -n : n;
+}
+
+// Clamp into the eval band. Taken in long long so a product larger than a 32-bit
+// long saturates rather than wrapping.
+static inline int clampToEvalCap(long long e) {
+    if (e >  (long long)ML_EVAL_CAP) return  ML_EVAL_CAP;
+    if (e < -(long long)ML_EVAL_CAP) return -ML_EVAL_CAP;
+    return (int)e;
+}
+
 // Shared tail of every learned value score: tanh squash, scale, round, clamp.
 // Used by both the full-scan path (mlValueScore) and the incremental leaf read
 // (mlLeafScore) so the two can never diverge in how a raw output becomes an eval.
 static int mlSquashToEval(double out, float scale) {
+    const double absScale = (scale < 0.0f) ? -(double)scale : (double)scale;
+    const double absOut   = (out < 0.0) ? -out : out;
+
+    // Magnitude first, sign applied at the end: tanh is odd, so |tanh(out)*scale|
+    // = |tanh|out|| * |scale| exactly, and doing the boundary check on a
+    // non-negative number keeps the truncation and the 0.5 test simple.
+    double mag = fastTanhAbs(absOut) * absScale;
+
+    // Guard the truncation below and skip a scale so large the clamp decides
+    // the answer anyway.
+    if (mag < 4503599627370496.0) {            // 2^52
+        double slack = TANH_EPS * absScale;
+        double frac = mag - (double)(long long)mag;   // exact
+        // The whole error band sits inside one rounding bucket, so the
+        // approximation's rounding IS the true rounding.
+        if (frac - 0.5 > slack || 0.5 - frac > slack) {
+            bool neg = (out < 0.0) != (scale < 0.0f);
+            return clampToEvalCap(roundHalfAway(neg ? -mag : mag));
+        }
+    }
+    // Too close to a rounding boundary (or out of the fast path's range):
+    // settle it with the transcendental.
+    return clampToEvalCap(roundHalfAway(std::tanh(out) * (double)scale));
+}
+
+// Reference implementation, kept so tests can assert the fast path above is
+// bit-identical to the tail this project shipped before it.
+int mlSquashToEvalReference(double out, float scale) {
     double scaled = std::tanh(out) * scale;   // bounded in (-out_scale, out_scale)
     int v = (int)lround(scaled);
     if (v >  ML_EVAL_CAP) v =  ML_EVAL_CAP;
     if (v < -ML_EVAL_CAP) v = -ML_EVAL_CAP;
     return v;
 }
+
+int mlSquashToEvalFast(double out, float scale) { return mlSquashToEval(out, scale); }
 
 int mlValueScore(int turnColor, int slot) {
     int nw = nearWinCheck(turnColor);

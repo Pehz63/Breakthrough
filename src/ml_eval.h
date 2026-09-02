@@ -122,3 +122,16 @@ inline void mlAccSubColumn(int idx) {
 // writing raw scores to scoresOut[] (may be null). Returns the index of the
 // best-scoring move, or -1 if the slot has no usable policy model.
 int mlRateMoves(int side, int slot, const Move* moves, int n, float* scoresOut);
+
+// The shared learned leaf tail (tanh squash -> scale -> round -> clamp), exposed
+// in two forms so a test can hold them against each other. `Fast` is what every
+// leaf actually calls: a table-interpolated tanh with a rounding-boundary check
+// that falls back to the transcendental whenever its error band could straddle a
+// bucket edge. `Reference` is the plain std::tanh + lround tail this project
+// shipped before it. **They must return the identical int for every input.** A
+// learned agent's canonical id carries `learned(...)@1`, so a tail that rounded
+// differently anywhere would be a behavior change requiring that module version
+// to bump and the whole learned roster to be re-identified. tests/test_ml.cpp
+// sweeps them against each other; see src/ml_eval.cpp for the error bound.
+int mlSquashToEvalFast(double out, float scale);
+int mlSquashToEvalReference(double out, float scale);

@@ -1,5 +1,18 @@
 # Reigning Champions (single source of truth)
 
+> **[TIME BUDGET NOT ENFORCED - flagged 2026-09-01]** Every `time=150ms` title
+> below (openless x time, opener8 x time, dil20 x time) was decided by games in
+> which the wall-clock budget did not actually bound the search. `time=` was a
+> soft hint the search overshot by 3.9x to 7.1x, and at `deep=6` most cores
+> finished depth 6 before it mattered at all, so the time head behaved as a
+> fixed-depth head rather than a compute-normalized one. The three titles are
+> still real results between real agents and the holders are not vacated, but
+> they are NOT a wall-clock-normalized comparison and must not be described as
+> one. The node track is unaffected and provably byte-identical across the fix.
+> Fixed 2026-09-01. Re-certification of the three time categories is pending.
+> Full entry, including the measured overshoot table and the 7.14% stored-game
+> replay divergence, in `Docs/corrections.md`.
+
 > **[RE-CERTIFIED 2026-08-30]** All 6 categories re-certified under the `@2`
 > identities the 2026-08-28 banner below retired. Method: rather than boosting
 > a per-category contender subset, the ENTIRE roster (218 active agents,
@@ -262,9 +275,9 @@ indexed parts. Read `ranking/standings.tsv` yourself to reproduce any row.
 | **openless x node** | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` **co-champion with model=602** | **1292 +/- 12** | 3404 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1`, 1284 +/- 12 (gap 8 / SE 17.0 = 0.5 SE -- **statistically tied**); model=349 a clear 3rd at 1227 +/- 10 (gap from co-champions 57-65 / SE 15.6 = 3.7-4.2 SE) |
 | **opener8 x node** | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **927 +/- 5** | 6944 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 919 +/- 5 (gap 8 / SE 7.1 = 1.1 SE -- **statistically tied**, same pair, same champion, as the pre-fix fit) |
 | **dil20 x node** | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` **TITLE CHANGED** | **682 +/- 5** | 6944 | `ab(deep=6,tt,ord,nodes=200k)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.dil(prob=20)@1`, 670 +/- 5 (gap 12 / SE 7.1 = 1.7 SE); classic close behind at 669 +/- 5. The pre-fix champion, model=98, is now 4th at 664 +/- 5 |
-| **openless x time** | `ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2` **3-way co-champion with model=98, model=96** | **1122 +/- 9** | 3404 | model=98, 1119 +/- 9 and model=96, 1117 +/- 9 (max gap among the three 5 / SE 12.7 = 0.4 SE -- **statistically tied**); model=10 a clear 4th at 1090 +/- 8 (gap from top 32 / SE 12.4 = 2.6 SE) |
-| **opener8 x time** | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **928 +/- 5** | 6944 | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 924 +/- 5 (gap 4 / SE 7.1 = 0.6 SE -- **statistically tied**, same pair, same champion, as the pre-fix fit) |
-| **dil20 x time** | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` **RESOLVED** | **696 +/- 5** | 6944 | `ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2.dil(prob=20)@1`, 675 +/- 5 (gap 21 / SE 7.1 = 3.0 SE). The pre-fix fit had this exact pair as an exact tie at 558/558 |
+| **openless x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2` **3-way co-champion with model=98, model=96** | **1122 +/- 9** | 3404 | model=98, 1119 +/- 9 and model=96, 1117 +/- 9 (max gap among the three 5 / SE 12.7 = 0.4 SE -- **statistically tied**); model=10 a clear 4th at 1090 +/- 8 (gap from top 32 / SE 12.4 = 2.6 SE) |
+| **opener8 x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **928 +/- 5** | 6944 | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 924 +/- 5 (gap 4 / SE 7.1 = 0.6 SE -- **statistically tied**, same pair, same champion, as the pre-fix fit) |
+| **dil20 x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@2.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` **RESOLVED** | **696 +/- 5** | 6944 | `ab(deep=6,tt,ord,time=150ms)@2.classic(chip=100)@2.dil(prob=20)@1`, 675 +/- 5 (gap 21 / SE 7.1 = 3.0 SE). The pre-fix fit had this exact pair as an exact tie at 558/558 |
 
 ### Evidence level, stated honestly
 
@@ -340,9 +353,9 @@ addition, 218 active agents.
 | **openless x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | **1036 +/- 10** | 1975 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 995 +/- 8 (gap 41 / SE 12.8 = 3.2 SE) |
 | **opener8 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **777 +/- 9** | 1840 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 765 +/- 9 (gap 12 / SE 12.7 -- statistically tied) |
 | **dil20 x node** | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1.dil(prob=20)@1` | **553 +/- 10** | 1736 | `ab(deep=6,tt,ord,nodes=200k)@1.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1.dil(prob=20)@1`, 543 +/- 10 (gap 10 / SE 14.1 -- statistically tied) |
-| **openless x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | **982 +/- 14** | 1052 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 939 +/- 14 (gap 43 / SE 19.8 = 2.2 SE) |
-| **opener8 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **791 +/- 9** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 788 +/- 9 (gap 3 / SE 12.7 -- statistically tied) |
-| **dil20 x time** | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` | **558 +/- 10** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1`, exact tie at 558 +/- 10 |
+| **openless x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | **982 +/- 14** | 1052 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1`, 939 +/- 14 (gap 43 / SE 19.8 = 2.2 SE) |
+| **opener8 x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1.opener(rand,moves=8)@1` | **791 +/- 9** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1`, 788 +/- 9 (gap 3 / SE 12.7 -- statistically tied) |
+| **dil20 x time** (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`) | `ab(deep=6,tt,ord,time=150ms)@1.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1` | **558 +/- 10** | 1736 | `ab(deep=6,tt,ord,time=150ms)@1.classic(chip=100)@2.dil(prob=20)@1`, exact tie at 558 +/- 10 |
 
 **openless x node and openless x time were certified at 32 games/pair**
 (2026-08-27, `ranking/roster_top.txt` / `ranking/roster_top_time.txt`, a
