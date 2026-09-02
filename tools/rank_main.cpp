@@ -386,7 +386,8 @@ int main(int argc, char** argv) {
     } else if (cmd == "agree") {
         rc = rankMoveAgree(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
                            getInt(argc, argv, "--games", 6), board,
-                           getInt(argc, argv, "--open-plies", 6), seed);
+                           getInt(argc, argv, "--open-plies", 6), seed, 0,
+                           getOpt(argc, argv, "--out", ""));
     } else if (cmd == "posgen") {
         rc = rankPosGen(store, board,
                         getOpt(argc, argv, "--out-train", "data/labels/pool_train.jsonl"),

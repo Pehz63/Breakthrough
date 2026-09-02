@@ -258,3 +258,67 @@ a node budget is exact and needs no forecast.
 **Affected:** `ranking/CHAMPION.md` (openless x time, opener8 x time, dil20 x
 time rows), `plans/budget-parity-plan-1-steady-meridian.md` (source), `todo.md`
 (citation sites).
+
+## `POSGEN POOL NOT REPRODUCIBLE` - flagged 2026-09-02
+
+**Scope: every position pool built by `rank.exe posgen` from a store containing
+`time=` agents, which is every pool built to date.** Like `TIME BUDGET NOT
+ENFORCED`, of which this is a downstream consequence, it is a code defect rather
+than a writing defect. The affected claim is the word "deterministic" in
+`ML.md`'s pipeline description, and any statement that a pool can be regenerated
+from its seed.
+
+`posgen` replays a seeded sample of stored games and compares each replay's
+outcome to the stored one, dropping the game when they differ
+(`mismatchSkipped`, `src/ranking.cpp`). The guard is correct and makes the tool
+SAFE: a game that no longer reproduces never contributes positions. It does not
+make the tool DETERMINISTIC, because a `time=` agent's replay depends on machine
+load, so *which* games get dropped changes between runs. The pool is a function
+of the sample minus the drops, so the pool changes too.
+
+**Measured, `ranking/matches.jsonl` at 623,774 rows of which 274,260 (44%)
+involve a `time=` agent.** Same seed (123), same targets, same board, twelve
+identical invocations:
+
+| condition | determinism mismatches | pool vs the idle baseline |
+|---|---|---|
+| idle, run 1 | 2 | (baseline) |
+| idle, run 2 | 2 | identical |
+| under 14-way CPU load, run 1 | 6 | DIFFERS |
+| under 14-way CPU load, run 2 | 1 | DIFFERS |
+| under 14-way CPU load, run 3 | 2 | identical |
+
+The two idle runs also disagreed on the near-win skip counter (44 versus 43)
+without the difference reaching the kept positions, so the drift is present even
+unloaded and the idle match is luck rather than a guarantee.
+
+**What this does and does not invalidate.** It does NOT make existing labels
+wrong. Every position in a pool is a real position from a game that replayed
+correctly, and the `label` and `labelfit` stages downstream are unaffected: they
+consume whatever pool they are given. What it invalidates is REGENERABILITY. A
+pool cannot be rebuilt from its seed, so any result that says "rerun posgen with
+seed N to reproduce this" is not actionable, and two pools built from the same
+seed on different machines or under different load are not the same pool and
+must not be treated as one.
+
+**What to do instead.** Treat a pool file as the artifact of record and archive
+it, rather than treating the seed as sufficient provenance. When a pool must be
+reproducible, build it from a store filtered to agents with no live wall-clock
+budget.
+
+**Self-limiting.** Once the `time=150ms` roster lines are retired in favour of
+compute-normalized agents that carry no live clock, every newly stored row
+becomes replayable and pools built from the post-migration store are
+reproducible. The defect is bounded by the rows already stored.
+
+**Known consequence not yet addressed.** The test
+`rank posgen - deduped, stratified, deterministic pools`
+(`tests/test_ranking.cpp`) asserts byte-identical reproduction across two runs
+over the live store, so it fails intermittently under CPU load. Reproduced once
+in 8 suite runs against a concurrent `rank.exe play` job, and once earlier in
+normal use. It is asserting a property the tool does not have. Deliberately left
+in place (developer decision, 2026-09-02: document the defect, change no code),
+so a red suite run showing exactly this test is a known issue and not a
+regression. See `todo.md`.
+
+---

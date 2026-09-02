@@ -5357,7 +5357,8 @@ static void agreeWilson(long k, long n, double& lo, double& hi) {
 // runs `oth` from the identical position, compares, then leaves the board on
 // the DRIVER's move so the game follows the driver. Returns the driver's
 // victor code.
-static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, AgreeStat& st) {
+static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, AgreeStat& st,
+                     std::ofstream* tsv, int dir, int game, int ply) {
     Move legal[ML_MAX_MOVES];
     int nLegal = generateMoves(side, legal);
 
@@ -5382,6 +5383,18 @@ static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, Agree
 
     restoreBoardSnapshot(after);   // follow the driver
 
+    // Per-ply dump. `drv_cd`/`oth_cd` are the COMPLETED depth, floor of the
+    // effective depth, and they are the decision-relevant number: without `part`
+    // a budget-cut iteration is discarded (ai_minimax.cpp, `adopt`), so an agent
+    // reporting effective depth 6.3 plays its completed depth-6 move and the 30%
+    // of root moves it looked at under depth 7 changed nothing.
+    if (tsv) {
+        (*tsv) << dir << "\t" << game << "\t" << ply << "\t"
+               << (side == White ? "W" : "B") << "\t" << nLegal << "\t"
+               << drvDepth << "\t" << (int)drvDepth << "\t" << (unsigned long long)drvNodes << "\t"
+               << othDepth << "\t" << (int)othDepth << "\t" << (unsigned long long)othNodes << "\t"
+               << (agreed ? 1 : 0) << "\n";
+    }
     if (nLegal <= 1) { st.forced++; return victor; }
     st.polls++;
     if (agreed) st.same++;
@@ -5399,7 +5412,8 @@ static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, Agree
 // deterministic, so without them every game would be the same trajectory.
 static void agreeRunDirection(const RankAgent& drv, const RankAgent& oth,
                               int games, const string& boardFile, int openPlies,
-                              unsigned runSeed, AgreeStat& st, long& gamesUsed) {
+                              unsigned runSeed, AgreeStat& st, long& gamesUsed,
+                              std::ofstream* tsv, int dir) {
     for (int g = 0; g < games; g++) {
         if (!reloadBoard(boardFile)) { cout << "ERROR: cannot load board " << boardFile << "\n"; return; }
         srand(gameSeed(drv.id, oth.id, g, runSeed));
@@ -5413,7 +5427,7 @@ static void agreeRunDirection(const RankAgent& drv, const RankAgent& oth,
         gamesUsed++;
         for (int h = openPlies; h < 400; h++) {
             int side = (h % 2 == 0) ? White : Black;
-            int v = agreeStep(drv, oth, side, st);
+            int v = agreeStep(drv, oth, side, st, tsv, dir, g, h);
             if (gameOutcome(v)) break;
         }
         double lo, hi; agreeWilson(st.same, st.polls, lo, hi);
@@ -5452,7 +5466,7 @@ static void agreeReport(const string& drvId, const string& othId,
 
 int rankMoveAgree(const string& idA, const string& idB, int games,
                   const string& boardFile, int openPlies, unsigned runSeed,
-                  double* pooledAgreementOut) {
+                  double* pooledAgreementOut, const string& outTsv) {
     if (pooledAgreementOut) *pooledAgreementOut = -1.0;
     if (games <= 0)     { cout << "ERROR: --games must be positive\n"; return 1; }
     if (openPlies <= 0) { cout << "ERROR: agree needs --open-plies > 0 (both agents are deterministic)\n"; return 1; }
@@ -5472,13 +5486,24 @@ int rankMoveAgree(const string& idA, const string& idB, int games,
          << "searcher context, so otherwise the second would read the first's\n"
          << "entries). Forced plies (<= 1 legal move) are excluded.\n";
 
+    std::ofstream tsv;
+    if (!outTsv.empty()) {
+        size_t sl = outTsv.find_last_of("/\\");
+        if (sl != string::npos) ensureDir(outTsv.substr(0, sl));
+        tsv.open(outTsv.c_str());
+        if (!tsv) { cout << "ERROR: cannot write " << outTsv << "\n"; return 1; }
+        tsv << "dir\tgame\tply\tside\tlegal\tdrv_eff\tdrv_cd\tdrv_nodes\toth_eff\toth_cd\toth_nodes\tagreed\n";
+    }
+    std::ofstream* tsvp = outTsv.empty() ? 0 : &tsv;
+
     cout << "\n--- direction 1: A drives, B polled ---\n";
     AgreeStat s1; long used1 = 0;
-    agreeRunDirection(A, B, games, boardFile, openPlies, runSeed, s1, used1);
+    agreeRunDirection(A, B, games, boardFile, openPlies, runSeed, s1, used1, tsvp, 1);
 
     cout << "\n--- direction 2: B drives, A polled ---\n";
     AgreeStat s2; long used2 = 0;
-    agreeRunDirection(B, A, games, boardFile, openPlies, runSeed + 7919u, s2, used2);
+    agreeRunDirection(B, A, games, boardFile, openPlies, runSeed + 7919u, s2, used2, tsvp, 2);
+    if (tsvp) { tsv.close(); cout << "\nper-ply rows -> " << outTsv << "\n"; }
 
     mlClearSlots();
 

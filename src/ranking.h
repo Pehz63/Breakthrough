@@ -616,7 +616,15 @@ void rankCategoryOf(const std::string& id, std::string& division, std::string& t
 
 int rankMoveAgree(const std::string& idA, const std::string& idB, int games,
                   const std::string& board, int openPlies, unsigned runSeed,
-                  double* pooledAgreementOut = 0);
+//
+// outTsv, when non-empty, receives one row per polled ply. Its `drv_cd`/`oth_cd`
+// columns are the COMPLETED depth (floor of the effective depth) and are the
+// decision-relevant number: without `part` a budget-cut iteration is discarded
+// (see ai_minimax.cpp's `adopt`), so an agent whose effective depth reads 6.3
+// plays its completed depth-6 move and the 30% of root moves it examined under
+// depth 7 changed nothing.
+                  double* pooledAgreementOut = 0,
+                  const std::string& outTsv = std::string());
 
 // ---- Position-oracle label pipeline (posgen / label / labelfit) ----
 // Measures per-position Elo advantage empirically: posgen builds a pool of

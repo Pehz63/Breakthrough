@@ -478,7 +478,11 @@ logit is 400/ln(10) = 173.7 Elo (`ELO_PER_LOGIT`).
 Pipeline stages (first three are `rank.exe`, rest are `train.exe`):
 
 1. `posgen` builds position pools from stored games: deterministic replay
-   sample, deduped by canonical enc, stratified by ply band and material,
+   sample (see `POSGEN POOL NOT REPRODUCIBLE`, `Docs/corrections.md`. The
+   replay is SAFE but not reproducible while the store holds `time=` agents,
+   because which games the mismatch guard drops depends on machine load, so a
+   pool cannot be rebuilt from its seed), deduped by canonical enc, stratified
+   by ply band and material,
    decided positions skipped, split into hash-disjoint train and eval tiers
    (hash % 17). Rows: `{"enc","h","ply","stm","md","seen"}`.
 2. `label` plays a DESIGNED ladder of fresh games from every pool position:

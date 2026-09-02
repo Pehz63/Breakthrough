@@ -368,6 +368,246 @@ theory 59 and as a `todo.md` item.
 
 ---
 
+### A budget-cut iteration is DISCARDED, so effective depth is the wrong statistic
+
+Every effective-depth number in the sections above is a mean, and the mean is
+the wrong summary. `src/ai_minimax.cpp`, in the budgeted iterative-deepening
+branch:
+
+```cpp
+bool adopt = (moveX1 == -1) || (g_keepPartial && mx != -1 && a > alphaPrev);
+```
+
+Without `part` (`g_keepPartial`), a budget-cut iteration is thrown away and the
+move played comes from the last iteration that FINISHED. No roster agent carries
+`part`. So an agent whose effective depth reads 6.3 does not play a
+30%-of-depth-7 move, it plays the completed depth-6 move, and `cutFraction` is
+telemetry. The decision-relevant statistic is the COMPLETED depth, the floor of
+the effective depth, and its distribution rather than its mean.
+
+**Measured, and the discard is total.** `rank.exe agree` with
+`ab(deep=12,tt,ord,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1`
+driving against `ab(deep=6,tt,ord)@2` on the same core, one direction, bucketed
+by what the driver actually completed:
+
+| bucket | plies | agrees with `deep=6` |
+|---|---|---|
+| budget-limited, completed depth 5 | 16 | 8 (50.0%) |
+| budget-limited, completed depth 6 | 233 | **233 (100.0%)** |
+| budget-limited, completed depth 7 | 34 | 28 (82.4%) |
+| budget-limited, completed depth 8 | 4 | 3 (75.0%) |
+| search ended on its own, budget never bound | 40 | 40 (100.0%) |
+
+233 of 233. When the node-budget agent completes depth 6, it plays exactly the
+`deep=6` move, every time, despite having searched part of a depth-7 iteration
+first. The disagreements come entirely from plies where it completed a DIFFERENT
+depth.
+
+Two controls make that number mean what it says.
+
+**Iterative deepening is not itself the variable.**
+`ab(deep=6,tt,ord,nodes=999999k)@2` takes the budgeted branch, runs depths 1
+through 6, never trips the cap, and completes depth 6 with no partial iteration
+at all. Against a direct `ab(deep=6,tt,ord)@2` it agrees **99.6%** (782 of 785).
+So the iterative-deepening-plus-transposition-table path and a direct
+fixed-depth search reach the same move, and the 100% above is not being propped
+up by a confound in the other direction.
+
+**The plies excluded were genuinely not budget-limited.** Median nodes by
+completed-depth bucket under a 200,000-node cap: depth 1 -> 234 nodes, depth 3
+-> 2,876, depth 5 -> 200,031, depth 6 -> 200,067, depth 7 -> 200,071, depth 8 ->
+200,052. The depth-1 and depth-3 plies are `nearWinCheck` short-circuits that
+ended on their own, roughly 9% of plies, and they are what dragged the earlier
+mean-effective-depth figures below the true completed depth. `classic`'s
+`deep=9` agent reporting a mean effective depth of 8.35 is this, not a budget
+effect.
+
+**The node budget itself binds tightly**, unlike the pre-fix time budget. Over
+287 budget-limited plies at `nodes=200k`: p50 1.00x, p90 1.00x, p95 1.00x, p99
+1.77x, max 3.50x, with 4 plies (1.4%) over 1.05x and total spend 1.014x nominal.
+
+### Is a partial iteration worth most of the next ply? No.
+
+The intuition is that with good move ordering the first root moves searched in
+the next iteration are the important ones, so a partial iteration should be
+close to a completed one. Measured on
+`learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` at `nodes=200k`,
+6 games per direction:
+
+| pair | agreement | 95% CI | polls |
+|---|---|---|---|
+| `nodes=200k` (discards the cut iteration) vs `deep=6` | 92.2% | 90.0-93.9% | 743 |
+| `nodes=200k` vs `deep=7` | 56.4% | 52.7-60.1% | 693 |
+| `nodes=200k,part` (adopts it) vs `nodes=200k` | 75.0% | 71.7-78.0% | 708 |
+| `nodes=200k,part` vs `deep=7` | 52.6% | 49.1-56.1% | 776 |
+
+Adopting the cut iteration changes the move 25% of the time, so it is not
+inert. But it does not move the agent toward the next ply: the `part` agent
+agrees with `deep=7` **52.6%**, no better than the discarding agent's 56.4%, and
+the two intervals overlap. Keeping a partial iteration makes an agent that is
+neither `deep=6` nor `deep=7`, rather than an approximation of `deep=7`.
+
+So effective depth 6.3 is not "about a 7". For the roster's agents it IS a 6,
+exactly. For a hypothetical `part` agent it would be neither.
+
+### The turn weight under mixed ply parity
+
+The concern is real in principle: the turn weight is inert at fixed depth
+because it shifts every leaf by the same constant, but a partial iteration
+leaves some root moves evaluated at depth 6 and others at depth 7, so the leaves
+sit at mixed parity and the constant no longer cancels. Two measurements say it
+does not bite here.
+
+**Without `part` it cannot bite at all.** The 233-of-233 result above is the
+proof: the node agent's move is byte-identical to a search that never ran a
+depth-7 ply, so whatever the mixed-parity leaves computed never reached the root
+decision. The ID codec already encodes this, gating the weight's visibility on
+`turnLive = a.useQuiescence || a.keepPartial` (`src/ranking.cpp`). It is not a
+loose convention: the codec REFUSES
+`ab(deep=12,tt,ord,nodes=200k)@2.classic(turn=0,chip=100)@2` as non-canonical
+and rewrites it to `classic(chip=100)@2`, and under `part` it refuses
+`classic(chip=100)@2` and demands `classic(turn=1,chip=100)@2`. The comparison
+is unrepresentable in exactly the case where it would be meaningless.
+
+**With `part` it still did not bite, on this core.**
+`ab(deep=12,tt,ord,part,nodes=200k)@2.classic(turn=0,chip=100)@2` against the
+same agent with `turn=1`: **100% agreement, 426 of 426 polls.** Classic's turn
+weight is 1 against a chip weight of 100, so the adoption test `a > alphaPrev`
+would need two candidate scores within 2 points to flip, and it never happened.
+
+Limits worth stating. This is one core and one weight ratio. A learned
+evaluator's side-to-move term (`g_mlStmW`) is learned rather than configured and
+has no `turn` id parameter, so it cannot be A/B tested through the id path at
+all. That gap does not affect any current conclusion, because no roster agent
+uses `part` and point one closes the case for them, but it would matter
+immediately if `part` were ever adopted for a learned core.
+
+**Consequence for the earlier agreement numbers.** The worry was that a poorly
+tuned turn weight might be inflating the cross-depth disagreement reported in
+the sections above. It is not. Those agents do not carry `part`, their
+partial iterations are discarded whole, and the turn weight is elided from their
+ids precisely because it does nothing. The measured disagreement between a
+fixed-depth and a node-budget agent is a real difference in the depth each one
+completes, not an artifact of a mistuned constant.
+
+---
+
+### Completed-depth census, 15 cores at two node budgets
+
+`rank.exe agree` with each core's node-budget agent driving against a trivial
+`ab(deep=1)@2` on the same core, 6 games, direction 1 only, so the driver column
+gives the completed-depth distribution. Plies whose search ended on its own
+(node count under half the budget, the `nearWinCheck` short-circuits) are
+excluded, since the budget never bound there.
+
+| core | 200k plies | <= d5 | d6 | >= d7 | 250k plies | <= d5 | d6 | >= d7 |
+|---|---|---|---|---|---|---|---|---|
+| MLP `model=113` | 321 | **15.9%** | 74% | 10% | 350 | 5.7% | 77% | 17% |
+| lin `model=76` | 298 | 13.1% | 74% | 13% | 337 | 4.5% | 71% | 25% |
+| MLP `model=111` | 328 | 10.4% | 79% | 11% | 311 | **6.8%** | 85% | 8% |
+| lin `model=169` | 349 | 7.4% | 76% | 17% | 334 | 2.1% | 69% | 29% |
+| lin `model=10` | 301 | 6.0% | 72% | 22% | 296 | 3.4% | 81% | 16% |
+| lin `model=96` | 324 | 5.2% | 66% | 29% | 308 | 1.3% | 70% | 28% |
+| lin `model=3` | 309 | 5.2% | 76% | 18% | 309 | 1.9% | 71% | 28% |
+| lin `model=98` | 315 | 4.4% | 77% | 18% | 328 | 0.6% | 70% | 30% |
+| lin `model=8` | 300 | 4.3% | 81% | 14% | 311 | 1.0% | 67% | 32% |
+| lin `model=4` | 305 | 3.9% | 80% | 16% | 377 | 0.8% | 60% | 40% |
+| `classic(chip=100)@2` | 183 | 2.7% | 66% | 32% | 166 | 2.4% | 52% | 45% |
+| lin `model=94` | 261 | 1.5% | 81% | 17% | 306 | 0.7% | 58% | 41% |
+| lin `model=99` | 314 | 1.3% | 68% | 31% | 290 | 0.7% | 57% | 43% |
+| lin `model=97` | 345 | 1.2% | **29%** | **70%** | 393 | 0.5% | 28% | 72% |
+| lin `model=95` | 360 | 0.8% | 62% | 37% | 378 | **0.0%** | 59% | 41% |
+
+Summary of the sub-depth-6 share, which is the number `nodes=250k` was proposed
+to fix:
+
+| budget | min | max | mean |
+|---|---|---|---|
+| `nodes=200k` | 0.8% | 15.9% | 5.6% |
+| `nodes=250k` | 0.0% | 6.8% | **2.2%** |
+
+**250k does what it was proposed to do.** The mean share of plies that fail to
+reach depth 6 drops from 5.6% to 2.2%, and the worst core, the MLP
+`model=113`, goes from 15.9% to 5.7%. The two MLP cores were the ones the change
+helps most, which is the right target since they were the worst off.
+
+**It does not make depth more consistent, though.** The mass moves out of depth
+5 and into depth 7 rather than concentrating on depth 6: the mean depth-6 share
+is roughly flat (about 72% to 68%) while the depth-7-or-deeper share rises from
+a mean of 24% to 33%. And the spread ACROSS cores does not tighten. Mean
+completed depth runs 5.95 to 6.79 at 200k (0.84 plies) and 6.02 to 6.94 at 250k
+(0.92 plies).
+
+`model=97` is the standout in both columns: 70% of its budget-limited plies
+reach depth 7 or deeper at `nodes=200k`, against 10% for `model=113`. It is the
+same core that was the speed outlier in the fixed-depth ladder (100.3 ms and
+453k nodes at `deep=8`, the smallest tree of the 12 linear cores). Its tree is
+small enough that 200k nodes buys it a whole extra ply relative to most of the
+roster.
+
+### CORRECTION to the mean-effective-depth figures above
+
+The earlier claim in this document that all 15 cores at `nodes=200k` "land
+within 0.43 plies of each other" is a statement about the mean of the EFFECTIVE
+depth, and it overstates the depth uniformity of the node track for two reasons.
+
+1. **Mean effective depth is contaminated.** About 9% of plies are
+   `nearWinCheck` short-circuits that end on their own at completed depth 1 or 3
+   (median 234 and 2,876 nodes against a 200,000-node cap). They drag every
+   mean down. This is also why a `deep=9` fixed-depth agent reports a mean
+   effective depth of 8.35 rather than 9.0.
+2. **Effective depth is not what the agent plays.** Its fractional part is a
+   discarded iteration.
+
+The corrected statistic on the same runs, mean COMPLETED depth over
+budget-limited plies: **5.95 to 6.79 at `nodes=200k`, a 0.84-ply spread.** The
+qualitative conclusion that a node budget normalizes depth far more than wall
+clock still holds, since the wall-clock spread at the same budget is 18.4x, but
+the tightness of that normalization was overstated by roughly a factor of two.
+Theory 60 in `Docs/theories.md` carries the same correction.
+
+### Over half the node budget is spent on a discarded iteration
+
+For each budget-limited ply, the nodes attributable to the completed depth are
+that core's measured nodes/move at that FIXED depth (from the calibration
+ladder), and the rest went into the cut iteration that `adopt` throws away.
+
+| core | 200k: mean completed depth | 200k: budget discarded | 250k: mean completed depth | 250k: budget discarded |
+|---|---|---|---|---|
+| `classic(chip=100)@2` | 6.33 | 68% | 6.44 | 70% |
+| lin `model=10` | 6.20 | 49% | 6.14 | 59% |
+| MLP `model=111` | 6.00 | 62% | 6.02 | 69% |
+| MLP `model=113` | 5.95 | 62% | 6.12 | 67% |
+| lin `model=169` | 6.10 | 51% | 6.31 | 48% |
+| lin `model=3` | 6.13 | 56% | 6.28 | 55% |
+| lin `model=4` | 6.13 | 55% | 6.44 | 44% |
+| lin `model=76` | 6.00 | 54% | 6.29 | 53% |
+| lin `model=8` | 6.10 | 58% | 6.33 | 51% |
+| lin `model=94` | 6.17 | 59% | 6.45 | 45% |
+| lin `model=95` | 6.42 | 47% | 6.48 | 48% |
+| lin `model=96` | 6.27 | 50% | 6.29 | 54% |
+| lin `model=97` | 6.79 | 30% | 6.94 | 38% |
+| lin `model=98` | 6.16 | 53% | 6.30 | 51% |
+| lin `model=99` | 6.31 | 53% | 6.45 | 51% |
+
+**Mean 54% of the budget discarded at `nodes=200k` (range 30% to 68%), and
+mean 54% again at `nodes=250k` (range 38% to 70%).** Raising the budget does not
+help, because the waste is structural: with per-ply cost growth of 3.4x to 4.4x,
+a budget that lands between two completed depths spends whatever is left over on
+an iteration it will not use, and moving the budget just moves where it lands.
+
+So a `nodes=200k` agent is, in effect, a depth-6 agent paying roughly 2.2x the
+cost of a depth-6 search. That is not an error, it is what any budgeted
+iterative-deepening search without partial adoption does. It does mean the node
+track's compute is buying about half as much depth as its node count suggests,
+and it is the strongest argument for evaluating `part` on its merits: `part` is
+the only mechanism that recovers anything from that 54%. Whether recovering it
+makes an agent STRONGER is an Elo question and is not measured here. What is
+measured is that `part` changes the move 25% of the time and does not move the
+agent toward the next completed ply.
+
+---
+
 ## Divergences from the plan
 
 | Plan said | What was done | Why |
@@ -643,7 +883,11 @@ games:
 | `learned(model=111,...,mlp)@1` | 527.4 | 5.89 | 179,671 |
 
 **Effective depth spans 0.43 plies (5.88 to 6.32) while wall clock spans
-18.4x (28.7 to 527.4 ms/move).** That is the cleanest statement of what the two
+18.4x (28.7 to 527.4 ms/move).** (The 0.43 figure is superseded: it is a spread
+of MEAN EFFECTIVE depth, which is contaminated by short-circuit plies and is not
+what the agent plays. The corrected statistic is a 0.84-ply spread in mean
+COMPLETED depth. See "CORRECTION to the mean-effective-depth figures above"
+below. The 18.4x wall-clock spread is unaffected.) That is the cleanest statement of what the two
 tracks are:
 
 - **A node budget normalizes search DEPTH.** Every core reaches about the same
