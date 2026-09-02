@@ -29,6 +29,7 @@ static void seedEvalParams(AgentSpec& a, int evaluator) {
 static void seedAgentDefaults(AgentSpec& a) {
     a.nodeBudget = 0;
     a.timeBudgetMs = 0.0;
+    a.calTargetMs = 0.0;
     a.useAlphaBeta = true;
     a.useTT = false;
     a.useMoveOrder = false;

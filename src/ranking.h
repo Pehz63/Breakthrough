@@ -592,6 +592,32 @@ int rankOpenerBias(const std::string& idA, const std::string& idB, int games,
 int rankOpenerSwap(const std::string& idA, const std::string& idB, int games,
                    const std::string& board, int openPlies, unsigned runSeed);
 
+// Move agreement between two agents sharing one core but carrying different
+// compute budgets (typically a nodes= agent versus the fixed-depth agent
+// calibrated to the same wall clock). Runs two directions: in each, the driver
+// self-plays both colours from a seeded random-opener position and the other
+// agent is polled from the IDENTICAL position at every ply, its move recorded
+// and discarded. This is the only way to compare move choices past the first
+// divergence, since whole-game comparisons (determinism, pairgen) leave the two
+// agents in different positions from that point on. The transposition table is
+// wiped before both searches (they share a searcher context, which keys on the
+// evaluator and not on the budget, so the second search would otherwise read
+// the first one back out) and plies with <= 1 legal move are excluded from the
+// reported rate. Reports agreement with a Wilson 95% interval per direction and
+// pooled, plus mean effective depth, nodes and cold-TT ms per move for each.
+// pooledAgreementOut, when non-null, receives the pooled fraction in [0,1]
+// (-1.0 if the run produced no non-forced polls).
+// Classify an agent id into its champion category: `division` is one of
+// "openless" / "opener8" / "dil20" (or "-" for an untitled opener/dilution
+// combination) and `track` is "node" / "time" (or "-"). See ranking/CHAMPION.md.
+// `cal=` beats `nodes=` when both appear, because a calibrated wall-clock agent
+// carries both labels and only `cal=` says which track it is in.
+void rankCategoryOf(const std::string& id, std::string& division, std::string& track);
+
+int rankMoveAgree(const std::string& idA, const std::string& idB, int games,
+                  const std::string& board, int openPlies, unsigned runSeed,
+                  double* pooledAgreementOut = 0);
+
 // ---- Position-oracle label pipeline (posgen / label / labelfit) ----
 // Measures per-position Elo advantage empirically: posgen builds a pool of
 // distinct positions from stored games, label plays DESIGNED fresh games from

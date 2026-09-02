@@ -155,6 +155,31 @@ TEST_CASE("ranking id - canonical round trips") {
     REQUIRE(a.spec.timeBudgetMs == Approx(250.0));
     REQUIRE(a.spec.depthCap == 2);
 
+    // Declarative calibration target (`cal=`), the wall-clock track's reproducible
+    // form: the fixed `deep=` was CHOSEN to spend about this much wall clock, and
+    // the search never reads a clock, so the same id always plays the same way on
+    // any machine. It must round-trip, must not set the live time budget, and must
+    // leave the agent DETERMINISTIC -- the property a live `time=` head destroys
+    // (Docs/corrections.md, `TIME BUDGET NOT ENFORCED`, and theory 59).
+    a = parseOk("ab(deep=9,tt,ord,cal=250ms)@2.classic(chip=100)@2");
+    REQUIRE(a.spec.depth == 9);
+    REQUIRE(a.spec.calTargetMs == Approx(250.0));
+    REQUIRE(a.spec.timeBudgetMs == Approx(0.0));
+    REQUIRE(a.spec.nodeBudget == 0ULL);
+    REQUIRE(rankAgentIsDeterministic(a.spec));
+    parseErr("ab(deep=9,tt,ord,cal=250ms,cal=250ms)@2.classic(chip=100)@2");  // duplicate
+    parseErr("ab(deep=9,tt,ord,cal=250)@2.classic(chip=100)@2");              // needs the ms unit
+    parseErr("ab(deep=9,tt,ord,cal=0ms)@2.classic(chip=100)@2");              // non-positive
+
+    // cal= and time= are independent fields, so an id may legally carry both. It
+    // is not a configuration anyone should roster (the live budget would reintroduce
+    // the machine dependence cal= exists to remove), but the codec must not silently
+    // merge or drop one of them.
+    a = parseOk("ab(deep=9,tt,ord,time=250ms,cal=250ms)@2.classic(chip=100)@2");
+    REQUIRE(a.spec.timeBudgetMs == Approx(250.0));
+    REQUIRE(a.spec.calTargetMs == Approx(250.0));
+    REQUIRE_FALSE(rankAgentIsDeterministic(a.spec));
+
     // Quiescence flag on the ab head (captures-only leaf extension).
     a = parseOk("ab(deep=6,tt,ord,qs,nodes=200k)@2.classic(turn=1,chip=4)@2");
     REQUIRE(a.spec.useQuiescence);
@@ -2066,6 +2091,71 @@ TEST_CASE("opener-swap - color-swap recovery test runs and is deterministic") {
     // stdout capture would be heavier than needed here; re-running must at least
     // succeed identically without crashing or erroring differently).
     REQUIRE(rankOpenerSwap(a, b, 6, "boards/board1.txt", 6, 11) == 0);
+}
+
+TEST_CASE("rankCategoryOf - cal= wins over nodes= so a calibrated agent stays on the time track") {
+    string div, track;
+    // Plain node-track agent.
+    rankCategoryOf("ab(deep=12,tt,ord,nodes=200k)@2.classic(chip=100)@2", div, track);
+    REQUIRE(track == "node");
+    REQUIRE(div == "openless");
+    // Live wall-clock agent.
+    rankCategoryOf("ab(deep=12,tt,ord,time=150ms)@2.classic(chip=100)@2", div, track);
+    REQUIRE(track == "time");
+    // THE REGRESSION. A calibrated wall-clock agent carries a per-core node budget
+    // AND the cal= tag that says which track it is in. Testing nodes= first would
+    // file it under "node" and merge the two categories that exist to be compared.
+    rankCategoryOf("ab(deep=12,tt,ord,nodes=1531k,cal=250ms)@2.classic(chip=100)@2", div, track);
+    REQUIRE(track == "time");
+    REQUIRE(div == "openless");
+    // Divisions still read off the loadout independently of the track.
+    rankCategoryOf("ab(deep=12,tt,ord,nodes=1531k,cal=250ms)@2.classic(chip=100)@2"
+                   ".opener(rand,moves=8)@1", div, track);
+    REQUIRE(track == "time");
+    REQUIRE(div == "opener8");
+    rankCategoryOf("ab(deep=12,tt,ord,nodes=1531k,cal=250ms)@2.classic(chip=100)@2"
+                   ".dil(prob=20)@1", div, track);
+    REQUIRE(track == "time");
+    REQUIRE(div == "dil20");
+    // No budget label at all: neither track.
+    rankCategoryOf("ab(deep=6,tt,ord)@2.classic(chip=100)@2", div, track);
+    REQUIRE(track == "-");
+}
+
+TEST_CASE("agree - self-agreement is exactly 1.0, and the budget rule can break it") {
+    const string self = "ab(deep=3,tt,ord)@2.classic(chip=100)@2";
+    // INSTRUMENT CHECK, and the reason this test exists. An agent polled against
+    // ITSELF must pick the same move at every ply: the poll runs from a restored
+    // snapshot of the identical position with the TT wiped, so anything less than
+    // 100% means snapshot/restore is leaking state across the rewind (board
+    // counters, an incremental eval or ML accumulator, or a stale TT entry) and
+    // every agreement number the subcommand reports would be measuring that leak
+    // rather than the budget rule.
+    double pooled = -1.0;
+    REQUIRE(rankMoveAgree(self, self, 2, "boards/board1.txt", 6, 11, &pooled) == 0);
+    REQUIRE(pooled == Approx(1.0));
+
+    // Same seed reproduces the same number (both agents are deterministic and the
+    // only randomness is the seeded opener).
+    double again = -1.0;
+    REQUIRE(rankMoveAgree(self, self, 2, "boards/board1.txt", 6, 11, &again) == 0);
+    REQUIRE(again == Approx(pooled));
+
+    // Anti-vacuity: the metric is not pinned at 1.0 by construction. Two agents on
+    // the same core carrying budgets that reach clearly different depths must
+    // disagree somewhere.
+    double mixed = -1.0;
+    REQUIRE(rankMoveAgree("ab(deep=2,tt,ord)@2.classic(chip=100)@2",
+                          "ab(deep=5,tt,ord)@2.classic(chip=100)@2",
+                          2, "boards/board1.txt", 6, 11, &mixed) == 0);
+    REQUIRE(mixed >= 0.0);
+    REQUIRE(mixed < 1.0);
+
+    // Argument validation: deterministic agents need a random opener, so
+    // --open-plies 0 is rejected rather than silently replaying one game.
+    REQUIRE(rankMoveAgree(self, self, 2, "boards/board1.txt", 0, 11) == 1);
+    REQUIRE(rankMoveAgree(self, self, 0, "boards/board1.txt", 6, 11) == 1);
+    REQUIRE(rankMoveAgree("", self, 2, "boards/board1.txt", 6, 11) == 1);
 }
 
 TEST_CASE("decodePositionEnc - roundtrip, counters, and rejection") {

@@ -427,6 +427,381 @@ Part 1 prerequisites for the budget-parity rebuild (P1-P8).
 
 ---
 
+## Fixed-depth calibration, and the move-agreement experiment
+
+This section covers work done after the Part 1 commit, in response to the
+developer's objection that the post-fix `time=` agent uses only ~40% of its
+allowance and that unreproducible stored games are not acceptable. The
+developer proposed a loose compute constraint (a fixed depth close to the
+budget) instead of a hard one. What follows is the measurement that was run to
+evaluate that proposal, plus a third option the measurement surfaced.
+
+### Full 15-core fixed-depth calibration
+
+Every core currently on the roster's time track was run at a ladder of fixed
+depths with `tt,ord` and no budget, on `boards/board1.txt`, and its cpu ms per
+move recorded from the match store's `wcpu`/`wmv` fields. The depth closest to
+250 ms in log space was taken as that core's pick.
+
+| core | pick | cpu ms/move at pick |
+|---|---|---|
+| `classic(chip=100)@2` | `deep=9` | 198.9 |
+| `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` | `deep=8` | 100.3 |
+| `learned(model=99,59815079,pool_games,lin,shape=129-1)@1` | `deep=8` | 155.9 |
+| `learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1` | `deep=8` | 166.0 |
+| `learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1` | `deep=8` | 173.5 |
+| `learned(model=3,68364898,pool_games,lin,shape=129-1)@1` | `deep=8` | 204.2 |
+| `learned(model=98,5801570e,pool_games,lin,shape=129-1)@1` | `deep=8` | 218.7 |
+| `learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` | `deep=6` | 220.1 |
+| `learned(model=4,eb105733,pool_games,lin,shape=129-1)@1` | `deep=8` | 220.7 |
+| `learned(model=95,07792e69,pool_games,lin,shape=129-1)@1` | `deep=8` | 223.7 |
+| `learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` | `deep=8` | 228.5 |
+| `learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` | `deep=6` | 231.6 |
+| `learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1` | `deep=8` | 243.8 |
+| `learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | `deep=8` | 282.2 |
+| `learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1` | `deep=8` | 284.2 |
+
+**Wall-clock spread at the picks: 2.83x** (100.3 to 284.2 ms/move). Measured
+per-ply cost growth runs 3.39x (classic, the low outlier) to 4.39x across the
+learned cores, so the best a closest-integer-depth rule can do is roughly
+`sqrt(4.4) = 2.1x` worst case. The observed 2.83x is near that floor and is not
+fixable by choosing depths more carefully. This is the price of the fixed-depth
+mechanism, not a defect in how the depths were picked.
+
+`model=97` is the core that pulls the range: `deep=8` costs it 100.3 ms, and
+`deep=9` was not measured. Projected from its own d7 -> d8 growth it lands near
+390 ms, which is farther from 250 in log space than 100.3 is, so `deep=8`
+remains the pick. The projection is not a measurement and `deep=9` should be
+run before any fixed-depth roster is frozen.
+
+### Tree size at fixed depth varies 2.86x across identically shaped models
+
+At `deep=8`, over the 12 linear `shape=129-1` cores:
+
+| core | nodes/move at d8 | cpu ms/move at d8 |
+|---|---|---|
+| `model=97` | 453,296 | 100.3 |
+| `model=99` | 698,433 | 155.9 |
+| `model=94` | 738,334 | 166.0 |
+| `model=8` | 796,470 | 173.5 |
+| `model=3` | 852,984 | 204.2 |
+| `model=98` | 943,457 | 218.7 |
+| `model=95` | 954,505 | 223.7 |
+| `model=4` | 978,417 | 220.7 |
+| `model=96` | 1,038,100 | 228.5 |
+| `model=76` | 1,138,558 | 243.8 |
+| `model=10` | 1,213,572 | 284.2 |
+| `model=169` | 1,296,527 | 282.2 |
+
+Same architecture, same parameter count, same search flags, same depth, and a
+2.86x range in the size of the tree searched. The difference is how well each
+trained evaluator's scores order moves for the alpha-beta cutoffs. It is a
+property of the weights, not of the shape, so it cannot be predicted from the
+model definition and has to be measured per trained model.
+
+### us/node is set by architecture class, not by parameter count
+
+Measured at each core's calibration pick:
+
+| class | us/node | n cores |
+|---|---|---|
+| `classic(chip=100)@2` | 0.148 | 1 |
+| linear learned, `shape=129-1` | 0.214 to 0.239 | 12 |
+| MLP learned, `mu_shape=129-512-8-1` | 2.677, 2.682 | 2 |
+
+Twelve independently trained linear models sit inside a 12% band and the two
+MLP models are 0.2% apart, so per-node cost is predictable from the
+architecture before the model is trained. The mechanism is the incremental
+accumulator: a linear model's leaf is `g_mlAcc + skipW*g_chipDiff + stmW`,
+a handful of flops no matter how many inputs it has, because the 129-input dot
+product is maintained in make/unmake. The MLP maintains its 512-wide first
+hidden layer the same way but still pays the `512 -> 8 -> 1` tail at every
+leaf, about 4,100 multiply-adds. Leaf cost therefore tracks the tail after the
+first hidden layer, not the parameter count.
+
+### us/node is NOT stable across depth within one core
+
+| core | d4 | d5 | d6 | d7 | d8 | d9 |
+|---|---|---|---|---|---|---|
+| `classic(chip=100)@2` | | 0.1408 | 0.2207 | 0.1432 | 0.2237 | 0.1481 |
+| `learned(model=169,...,lin,shape=129-1)@1` | 0.2145 | 0.1841 | 0.2037 | 0.1655 | 0.2177 | |
+| `learned(model=96,...,lin,shape=129-1)@1` | 0.1804 | 0.1791 | 0.1929 | 0.1648 | 0.2201 | |
+| `learned(model=113,...,mlp,...)@1` | 2.8987 | 2.8753 | 2.6774 | | | |
+
+Odd depths come in cheaper per node than the even depths on either side of
+them, on every core measured. The pattern is not an opponent-mix artifact:
+splitting `model=10`'s ladder by opponent gives d6 0.2039-0.2457, d7
+0.1642-0.1880, d8 0.2310-0.2475, so the depth term dominates the opponent term.
+**The mechanism is not established here.** The practical consequence is what
+matters: a node budget derived from us/node measured at one depth will miss
+when the agent under that budget settles at a different depth.
+
+That is exactly what happened. Budgets derived from the d8 (even) us/node came
+in at a mean of 202.7 ms/move against a 250 ms target, a 19% undershoot. See
+the next subsection.
+
+### Per-core calibrated node budgets, measured
+
+The determinism problem in P2 was the *time* budget, not the idea of a budget.
+A node budget is already deterministic, which is what the live `nodes=200k`
+track is. So the time track can instead be redefined as a per-core node budget
+calibrated to 250 ms, which keeps determinism and has a continuous knob.
+
+First pass, budgets derived from d8 us/node, 240 games over 16 agents
+(`cal2/r_verify.txt` -> `cal2/m_verify.jsonl`):
+
+| core | budget | realized cpu ms/move | realized eff depth |
+|---|---|---|---|
+| `learned(model=10,...)@1` | `nodes=1067k` | 179.7 | 6.99 |
+| `learned(model=3,...)@1` | `nodes=1044k` | 182.1 | 7.25 |
+| `learned(model=98,...)@1` | `nodes=1079k` | 186.6 | 7.21 |
+| `learned(model=95,...)@1` | `nodes=1067k` | 186.9 | 7.11 |
+| `learned(model=4,...)@1` | `nodes=1108k` | 187.4 | 7.17 |
+| `learned(model=169,...)@1` | `nodes=1148k` | 187.5 | 6.94 |
+| `learned(model=97,...)@1` | `nodes=1130k` | 187.6 | 7.31 |
+| `learned(model=94,...)@1` | `nodes=1112k` | 187.9 | 7.16 |
+| `learned(model=96,...)@1` | `nodes=1136k` | 189.9 | 7.27 |
+| `learned(model=99,...)@1` | `nodes=1120k` | 195.4 | 7.36 |
+| `learned(model=8,...)@1` | `nodes=1148k` | 198.4 | 7.32 |
+| `learned(model=76,...)@1` | `nodes=1168k` | 204.9 | 7.22 |
+| `learned(model=113,...,mlp)@1` | `nodes=93k` | 239.8 | 5.29 |
+| `learned(model=111,...,mlp)@1` | `nodes=93k` | 245.8 | 5.36 |
+| `classic(chip=100)@2` | `nodes=1689k` | 280.3 | 7.80 |
+
+**Realized spread 1.56x** (179.7 to 280.3), mean 202.7 against the 250 ms
+target. Compare the fixed-depth mechanism's 2.83x. Unlike fixed depth, the
+level error and the residual spread are both correctable, because the knob is
+continuous: rescaling each budget by `250 / realized` gives the second-pass
+roster in `cal2/r_verify2.txt`.
+
+Caveat on all of these numbers: cpu ms comes from `GetProcessTimes`, and the
+runs shared the machine with other work in this session. Absolute levels are
+therefore soft. The spread across cores, which is the number the decision turns
+on, is a ratio measured under one set of conditions and is far more robust than
+the levels.
+
+### The rescale round: 1.19x
+
+Second pass, every budget rescaled by `250 / realized` from the first pass, 240
+games over 16 agents (`cal2/r_verify2.txt` -> `cal2/m_verify2.jsonl`):
+
+| core | budget | realized cpu ms/move | realized eff depth |
+|---|---|---|---|
+| `learned(model=113,...,mlp)@1` | `nodes=97k` | 240.0 | 5.36 |
+| `learned(model=111,...,mlp)@1` | `nodes=95k` | 240.0 | 5.39 |
+| `classic(chip=100)@2` | `nodes=1506k` | 245.5 | 7.62 |
+| `learned(model=3,...)@1` | `nodes=1433k` | 250.5 | 7.37 |
+| `learned(model=97,...)@1` | `nodes=1506k` | 252.2 | 7.57 |
+| `learned(model=98,...)@1` | `nodes=1446k` | 252.8 | 7.43 |
+| `learned(model=10,...)@1` | `nodes=1485k` | 254.4 | 7.24 |
+| `learned(model=4,...)@1` | `nodes=1478k` | 257.2 | 7.47 |
+| `learned(model=99,...)@1` | `nodes=1433k` | 257.2 | 7.43 |
+| `learned(model=8,...)@1` | `nodes=1446k` | 258.0 | 7.42 |
+| `learned(model=96,...)@1` | `nodes=1496k` | 261.1 | 7.45 |
+| `learned(model=169,...)@1` | `nodes=1531k` | 261.6 | 7.23 |
+| `learned(model=94,...)@1` | `nodes=1479k` | 263.1 | 7.53 |
+| `learned(model=95,...)@1` | `nodes=1427k` | 264.8 | 7.40 |
+| `learned(model=76,...)@1` | `nodes=1425k` | 284.4 | 7.37 |
+
+**Spread 1.19x** (240.0 to 284.4), mean 256.2 against the 250 ms target, from
+1.56x and mean 202.7 on the first pass. One rescale pass closed both the level
+error and most of the spread. `model=76` is the remaining outlier at 284.4,
+because its us/node rose from 0.2141 to 0.2264 between passes rather than
+holding.
+
+Ranking of the three mechanisms on wall-clock parity, all measured on the same
+15 cores:
+
+| mechanism | deterministic | wall-clock spread |
+|---|---|---|
+| `time=150ms`, budget enforced | no | 1.00x by construction |
+| per-core calibrated `nodes=`, after one rescale | yes | **1.19x** |
+| per-core calibrated `nodes=`, first pass | yes | 1.56x |
+| fixed depth `cal=250ms` | yes | 2.83x, not reducible |
+
+### What a node budget actually normalizes
+
+All 15 cores were run at `nodes=200k`, the live node track's setting, over 240
+games:
+
+| core | cpu ms/move | eff depth | nodes/move |
+|---|---|---|---|
+| `classic(chip=100)@2` | 28.7 | 6.32 | 176,487 |
+| `learned(model=97,...)@1` | 32.0 | 6.23 | 177,187 |
+| `learned(model=10,...)@1` | 33.0 | 5.92 | 177,216 |
+| `learned(model=169,...)@1` | 33.3 | 5.95 | 178,419 |
+| `learned(model=76,...)@1` | 33.5 | 5.95 | 179,379 |
+| `learned(model=96,...)@1` | 33.5 | 6.11 | 179,598 |
+| `learned(model=8,...)@1` | 33.6 | 6.08 | 178,166 |
+| `learned(model=95,...)@1` | 33.7 | 6.17 | 178,309 |
+| `learned(model=3,...)@1` | 33.8 | 6.14 | 178,045 |
+| `learned(model=4,...)@1` | 33.8 | 6.05 | 178,808 |
+| `learned(model=94,...)@1` | 33.8 | 6.07 | 177,659 |
+| `learned(model=98,...)@1` | 34.0 | 6.16 | 178,935 |
+| `learned(model=99,...)@1` | 34.1 | 6.21 | 178,169 |
+| `learned(model=113,...,mlp)@1` | 515.8 | 5.88 | 180,902 |
+| `learned(model=111,...,mlp)@1` | 527.4 | 5.89 | 179,671 |
+
+**Effective depth spans 0.43 plies (5.88 to 6.32) while wall clock spans
+18.4x (28.7 to 527.4 ms/move).** That is the cleanest statement of what the two
+tracks are:
+
+- **A node budget normalizes search DEPTH.** Every core reaches about the same
+  depth, and an expensive evaluator is charged nothing for being expensive. The
+  question it answers is "whose evaluator is better, given the same amount of
+  search".
+- **A time budget normalizes WALL CLOCK.** Every core gets the same second, and
+  an expensive evaluator pays for itself in plies. The question it answers is
+  "who plays best per second".
+
+So `nodes=200k` is not arbitrary in effect even though the number was picked
+that way: it pins the whole roster at about 6.1 plies. The principled
+restatement of the node track's definition is "search depth fixed at ~6.1
+plies", and the node count is just how that is spelled.
+
+### Choosing the node track's setting
+
+There is no single node count "comparable to 250 ms", because at 250 ms the
+cores do not land at a common depth: the 13 linear and classic cores reach 7.23
+to 7.62 plies while the two MLP cores reach 5.36 to 5.39. Equalizing wall clock
+is precisely what makes depth unequal. What the node count controls is the
+depth the node track probes.
+
+Measured node-count to depth mapping, from the three full-roster runs:
+
+| node budget | eff depth, classic + linear | eff depth, MLP | cpu ms/move, linear | cpu ms/move, MLP |
+|---|---|---|---|---|
+| `nodes=200k` | 5.92-6.32 | 5.88-5.89 | 28.7-34.1 | 515.8-527.4 |
+| `nodes=~1100k` | 6.94-7.36 | 5.29-5.36 (at 93k) | 179.7-204.9 | 239.8-245.8 (at 93k) |
+| `nodes=~1450k` | 7.23-7.62 | 5.36-5.39 (at ~96k) | 245.5-284.4 | 240.0 (at ~96k) |
+
+Raising the node track toward `nodes=1450k` would put it at about 7.4 plies,
+the same depth the time track's fast cores reach, and would cost those cores
+about 250 ms/move, the same as the time track. **That would make the two tracks
+nearly redundant for 13 of the 15 cores**, differing only for the MLP class.
+The measured agreement backs this up from the other direction: at `nodes=200k`
+against `deep=8`, `model=169` picks a different move 44% of the time, so the
+two tracks are currently asking genuinely different questions.
+
+Lowering it makes the node track shallower than 6 plies and saves almost
+nothing, since the 13 fast cores already cost only 28.7 to 34.1 ms/move there.
+The only core `nodes=200k` is expensive for is the MLP at ~520 ms/move, and
+that expense is the node track working as intended: it is the subsidy that lets
+an expensive evaluator be judged on evaluator quality rather than on speed.
+
+### Move agreement: `rank.exe agree`
+
+A new subcommand was written because nothing existing could answer the
+developer's question. `determinism` and `pairgen` compare whole games, so after
+the first divergence the two agents stand in different positions and their
+later moves are no longer comparable. `agree` keeps them in lockstep: it
+snapshots the position, runs the driver, records where the driver left the
+board, rewinds to the snapshot, runs the other agent from the identical
+position, compares, then restores the driver's move and continues. Each pair is
+run in both directions (each agent drives a set of games while the other is
+polled), because the driver's own trajectory decides which positions get judged.
+
+Two confounds are handled in the implementation rather than in the write-up.
+
+1. **Transposition-table leakage.** The TT searcher context keys on evaluator,
+   eval params, quiescence and root side, and not on the budget, so two agents
+   differing only in `deep=` versus `nodes=` share one table. Polling the
+   second agent right after the first searched the same root would let it read
+   the first agent's stored result back out, which would measure cache reuse
+   and report it as agreement. The TT is therefore wiped before both searches.
+   The cost is that this is cold-TT play, where a rostered game carries each
+   agent's table across its own moves.
+2. **Forced plies.** A position with `<= 1` legal move agrees trivially. Those
+   are counted separately and excluded from the reported rate. In practice
+   every run reported 0 forced plies, so this changed nothing, but the count is
+   printed so a future run cannot hide behind it.
+
+Instrument validation, run before any number below was read:
+
+- **Self-agreement is exactly 1.0.** An agent polled against itself must repeat
+  its own move at every ply. Anything less would mean the snapshot/rewind leaks
+  state (board counters, the incremental eval accumulator `g_evalPos`, the ML
+  accumulator `g_mlAcc`, or a stale TT entry) and every agreement number would
+  be measuring that leak. This is asserted as a unit test in
+  `tests/test_ranking.cpp`, not just checked once by hand.
+- **Anti-vacuity.** The same test asserts that `deep=2` versus `deep=5` on one
+  core comes back strictly below 1.0. It measured 51.1%, so the metric is not
+  pinned at agreement by construction.
+- **Direction symmetry.** Every pair below agreed to within 2.6 points between
+  its two directions, so the answer does not depend on whose trajectory is
+  being walked.
+
+### Agreement results
+
+Six games per direction, `--open-plies 6`, seed 4242, `boards/board1.txt`.
+Random opening plies are mandatory because both agents are deterministic and
+would otherwise replay one trajectory. Polls are non-forced plies pooled over
+both directions.
+
+**Compute-matched** (fixed depth against the rescaled node budget, both
+targeting ~250 ms/move):
+
+| core | fixed depth | node budget | agreement | 95% CI | polls |
+|---|---|---|---|---|---|
+| `classic(chip=100)@2` | `deep=9` | `nodes=1506k` | 96.9% | 95.2-98.0% | 581 |
+| `learned(model=169,...,lin)@1` | `deep=8` | `nodes=1531k` | 70.9% | 67.7-74.0% | 805 |
+| `learned(model=113,...,mlp)@1` | `deep=6` | `nodes=97k` | 61.7% | 58.1-65.1% | 749 |
+
+**Track-realistic** (the proposed fixed-depth time-track agent against the live
+`nodes=200k` node-track agent, which is what the two champion tracks would
+actually hold):
+
+| core | fixed depth | node budget | agreement | 95% CI | polls |
+|---|---|---|---|---|---|
+| `classic(chip=100)@2` | `deep=9` | `nodes=200k` | 94.1% | 91.7-95.9% | 511 |
+| `learned(model=113,...,mlp)@1` | `deep=6` | `nodes=200k` | 88.1% | 85.6-90.2% | 748 |
+| `learned(model=169,...,lin)@1` | `deep=8` | `nodes=200k` | 55.6% | 52.0-59.1% | 745 |
+
+An earlier compute-matched pass used the first-generation budgets, which
+undershot on the learned cores. It read classic 98.0%, `model=169` 62.0%,
+`model=113` 62.7%. Those numbers are superseded by the table above because the
+`model=169` comparison was mismatched by about 1.5x in wall clock. They are
+recorded here so the correction is visible rather than quietly dropped.
+
+### Why classic is the outlier, and why its 97% does not generalize
+
+`classic(chip=100)@2` resolves to turn weight 1, chip weight 100, wall 0,
+column 0. The turn weight is inert at fixed depth. `evalPosFull` returns 0 when
+wall and column are both 0. So the evaluator's score for any non-terminal
+position is exactly `g_chipDiff * 100`, a pure material count, plus the
+`nearWinCheck` shortcut. Every quiet move in a position with the same material
+scores identically, and the tie is broken by move-generation order, which both
+budgets share.
+
+That is a fact about the evaluator read off the registry (`src/ai_eval.cpp`,
+`g_evaluators[0]`) and the codec's weight-subset rule, not an inference from
+the agreement numbers. The inference, which is a hypothesis and is labelled as
+one, is that this is *why* classic's move choice is nearly depth-insensitive.
+The supporting observation, taken from the compute-matched runs and split by
+what effective depth the polled agent actually reached:
+
+| core | polled reached the SAME eff depth | polled reached a DIFFERENT eff depth |
+|---|---|---|
+| `classic(chip=100)@2` | 0 of 68 disagreed (0.0%) | 18 of 513 disagreed (3.5%) |
+| `learned(model=169,...,lin)@1` | 3 of 62 disagreed (4.8%) | 231 of 743 disagreed (31.1%) |
+| `learned(model=113,...,mlp)@1` | 6 of 51 disagreed (11.8%) | 281 of 698 disagreed (40.3%) |
+
+Two things fall out. First, when both agents reach the same effective depth
+they agree 88% to 100% on every core, so the disagreement is driven by the
+depth actually reached and not by the budget rule as such. Second, the two
+rules produce different depths by construction: fixed depth completes depth `d`
+everywhere, while a node budget spends more of its allowance on hard positions
+and less on easy ones and lands at a fractional effective depth that varies
+position to position. On classic that variation almost never changes the move.
+On the learned cores it changes the move 31% to 40% of the time.
+
+The consequence for the decision is what matters. Classic's 97% must not be
+quoted as "the budget rule barely matters". On the learned cores, which are
+what the ML work is about, the two rules pick different moves 29% to 38% of the
+time at matched compute.
+
+---
+
 ## Future Work
 
 Each entry is tethered to a specific conclusion it could confirm or refute.
@@ -497,6 +872,55 @@ Each entry is tethered to a specific conclusion it could confirm or refute.
    matched wall clock until this is done, so it blocks a subset of the study
    rather than all of it.
 
+9. **`model=97` at `deep=9` was never measured.** It is the core that sets the
+   low end of the fixed-depth mechanism's 2.83x wall-clock spread, at 100.3 ms
+   for `deep=8`. Its `deep=9` cost is projected near 390 ms from its own d7 ->
+   d8 growth, which would keep `deep=8` as the log-space pick but change the
+   spread figure to 390/166 = 2.35x if `deep=9` were forced. If a fixed-depth
+   roster is ever frozen, run the d9 rung first. The projection must not be
+   quoted as a measurement.
+
+10. **The us/node depth-parity effect has no established mechanism.** Odd search
+    depths measured cheaper per node than the even depths on either side, on
+    every one of the 15 cores. This directly caused the 19% level miss in the
+    first node-budget calibration pass, so the effect is load-bearing, not a
+    curiosity. Candidate explanations not yet tested: the ratio of evaluated
+    leaves to interior nodes changing with parity, the `nearWinCheck` shortcut
+    firing at different rates at leaf parity, or a `GetProcessTimes`
+    quantization interaction. The test that would settle it is instrumenting
+    `g_lastLeafs` alongside `g_lastNodes` in the match store and recomputing
+    the cost per LEAF rather than per node across the same ladder. If cost per
+    leaf is flat across depth, the leaf-fraction explanation is confirmed and a
+    leaf budget would calibrate more cleanly than a node budget.
+
+11. **Move agreement was measured on 3 cores, not 15.** `classic` came in at
+    96.9% and both learned cores at 61.7% to 70.9%, so the split is currently
+    "one coarse hand-written evaluator versus two learned ones". Whether the
+    97% is specific to a pure-material evaluator or generalizes to any
+    low-resolution one is untested. The cheapest test that would separate them
+    is running `agree` on `advanced(...)` or on `classic` with `wall` and
+    `column` weights made non-zero: if a hand-written evaluator with a
+    fine-grained positional term drops toward 70%, resolution is the variable
+    and the "pure material" reading is right.
+
+12. **Agreement is measured with a cold transposition table on every search.**
+    The wipe is required to stop the polled agent reading the driver's entries
+    out of the shared searcher context, but it means neither agent gets the
+    cross-move table reuse it has in a rostered game. Warm-TT agreement could
+    be higher (both agents converge on the same cached lines) or lower (the
+    node-budget agent's savings buy it extra depth). Settling it needs two
+    private tables keyed per agent, which the current single global table
+    cannot express.
+
+13. **No Elo consequence of any of this has been measured.** Every number in
+    the calibration and agreement sections is compute accounting and move
+    choice. Whether a fixed-depth or calibrated-node time track reorders the
+    standings, and by how much, needs a full-roster unpinned refit with the two
+    tracks read separately. In particular the observation that `nodes=200k`
+    hands the MLP cores 12.3x the wall clock of the linear cores predicts that
+    the MLP is rated higher on the node track than on any wall-clock-normalized
+    track, and that prediction is untested.
+
 ## Ideas This Inspired
 
 Lower bar than Future Work: these are not tethered to a specific conclusion.
@@ -535,3 +959,23 @@ Lower bar than Future Work: these are not tethered to a specific conclusion.
   one game and report realized-over-nominal budget and effective depth. Both
   defects this session touched (the depth cap silently binding, the time budget
   not binding) would have shown up in one line of output.
+
+- A **leaf budget** instead of a node budget. If the depth-parity effect in
+  us/node turns out to be a leaf-fraction effect, then cost per LEAF is the
+  stable quantity and `leaves=` would calibrate to a wall clock in one pass
+  instead of needing a rescale round.
+- **Per-agent transposition tables.** The single global table keyed on a
+  searcher context that excludes the budget is what forced the TT wipe in
+  `agree`. Keying the table per agent would let two budget variants be polled
+  from one position without either wiping or leaking, and would also remove a
+  cross-agent coupling nobody has ever measured the size of.
+- **Agreement as a cheap roster-pruning tool.** Two agents agreeing on 97% of
+  moves cannot differ by much Elo, so `agree` could screen a candidate cohort
+  before spending games on it. Calibrating the agreement-to-Elo relationship on
+  pairs whose Elo gap is already known would turn a 12-game run into a filter
+  for a 500-game one.
+- **Report effective-depth variance, not just the mean.** The whole difference
+  between the two budget rules showed up as "did the polled agent reach the
+  same effective depth", and a node budget's depth varies position to position
+  by construction. A per-agent standard deviation of `g_lastEffDepth` in the
+  match store would make that visible without a bespoke experiment.

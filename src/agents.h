@@ -38,6 +38,16 @@ struct AgentSpec {
     unsigned long long nodeBudget;      // per-move node cap for this agent's search
     double timeBudgetMs;                // per-move wall-clock cap (ms) for this agent
 
+    // DECLARATIVE ONLY: the wall-clock level, in ms, that this agent's per-core
+    // cap was calibrated to spend. NOTHING in the search ever reads it. The cap
+    // itself is `nodeBudget` (or the fixed `depth`), and that is what bounds the
+    // search. This field exists so an agent whose cap is a plain node count can
+    // still say which compute track it belongs to, since `nodes=1531k` on its own
+    // is indistinguishable from a node-track budget. `rankCategoryOf` reads the
+    // `cal=` id segment for exactly that, and gives it precedence over `nodes=`.
+    // 0 = not a calibrated agent.
+    double calTargetMs;
+
     // Per-feature toggles (defaults reproduce the historical search; see globals.h):
     bool   useAlphaBeta;                // false = full minimax (ablation baseline)
     bool   useTT;                       // transposition table

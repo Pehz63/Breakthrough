@@ -205,6 +205,9 @@ static const char* const LBL_MAXDEEP[] = { "maxdeep=", "maxdeep_", "maxdeep", "c
 static const char* const LBL_MARGIN[]  = { "margin=", "margin_", "margin", "asp" };
 static const char* const LBL_NODES[]   = { "nodes=", "nodes_", "nodes", "nb" };
 static const char* const LBL_TIME[]    = { "time=", "time_", "time", "tb" };
+// Declarative calibration target: recorded in the id, never read by the search
+// (see AgentSpec::calTargetMs). New field, so one spelling only.
+static const char* const LBL_CAL[]     = { "cal=" };
 static const char* const LBL_PROB[]    = { "prob=", "prob_", "prob", "r" };
 static const char* const LBL_PIECES[]  = { "pieces=", "pieces_", "pieces" };
 static const char* const LBL_PLY[]     = { "ply=", "ply_", "ply" };
@@ -218,6 +221,7 @@ static const char* const LBL_ROOTM[]   = { "m=" };        // no legacy spelling:
 static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
 static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
 static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1, LBLN_SIMS = 1;
+static const int LBLN_CAL = 1;
 static const int LBLN_CVISIT = 1, LBLN_CSCALE = 1, LBLN_ROOTM = 1;
 
 // ============================================================
@@ -616,6 +620,7 @@ string rankAgentId(const AgentSpec& a) {
             if (a.aspirationWindow > 0) s += ",margin=" + std::to_string(a.aspirationWindow);
             if (a.nodeBudget)           s += ",nodes=" + fmtBudget(a.nodeBudget);
             if (a.timeBudgetMs > 0.0)   s += ",time=" + std::to_string((long long)a.timeBudgetMs) + "ms";
+            if (a.calTargetMs > 0.0)    s += ",cal=" + std::to_string((long long)a.calTargetMs) + "ms";
             if (a.depthCap > 0)         s += ",maxdeep=" + std::to_string(a.depthCap);
             s += ")";
         } else if (idn == "gaz") {
@@ -871,8 +876,8 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     bool isSearch = false;
     int explorerIdx = -1, chooserIdx = -1, chooserParam = 0, depth = 1;
     bool fNoab = false, fTT = false, fOrd = false, fQs = false, fPart = false;
-    bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false;
-    long long asp = 0, cap = 0, tbMs = 0;
+    bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false, haveCal = false;
+    long long asp = 0, cap = 0, tbMs = 0, calMs = 0;
     unsigned long long nb = 0;
     bool haveCVisit = false, haveCScale = false, haveRootM = false;
     long long gCVisit = 0, gCScale = 0, gRootM = 0;
@@ -958,6 +963,14 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
                     return false;
                 }
                 tbMs = n; haveTb = true;
+            } else if (labelledNum(f, LBL_CAL, LBLN_CAL, fTail)
+                       && fTail.size() > 2 && fTail.compare(fTail.size()-2, 2, "ms") == 0) {
+                if (haveCal) { err = "duplicate ab() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail.substr(0, fTail.size()-2), false, n) || n <= 0) {
+                    err = "bad calibration target '" + f + "' (expected like cal=250ms)";
+                    return false;
+                }
+                calMs = n; haveCal = true;
             } else if (labelledNum(f, LBL_NODES, LBLN_NODES, fTail)) {
                 if (haveNb) { err = "duplicate ab() flag '" + f + "'"; return false; }
                 if (!lenientBudget(fTail, nb)) {
@@ -1345,6 +1358,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         a.aspirationWindow = (int)asp;
         a.nodeBudget = nb;
         a.timeBudgetMs = (double)tbMs;
+        a.calTargetMs = (double)calMs;
         a.depthCap = (int)cap;
         a.gumbelCVisit = haveCVisit ? (int)gCVisit : 50;
         a.gumbelCScaleTenths = haveCScale ? (int)gCScale : 10;
@@ -2218,6 +2232,19 @@ static unsigned coupleSeed(const string& a, const string& b, long long couple, u
 }
 
 bool rankAgentIsDeterministic(const AgentSpec& spec) {
+    // A wall-clock budget makes an agent non-deterministic WITHOUT drawing from
+    // rand(): the search stops wherever the deadline lands between two nodes, and
+    // that point moves with machine load, so two runs of the same position can
+    // return different moves. Measured 2026-09-01 on the fixed binary, `rank.exe
+    // determinism --replicas 3 --only "time=150ms"`: 3 of 34 subject-colours did
+    // not reproduce, and they were exactly the agents whose budget actually BINDS
+    // (theory 59, Docs/theories.md). Without this line pairGameTarget pins two
+    // such agents at 2 games as both floor and ceiling, on the reasoning that
+    // further games would only store replays -- but those 2 games are SAMPLES of a
+    // noisy process, not replays of one game, so the error bar is understated.
+    // A `cal=` head is deliberately NOT covered: its depth is fixed and the search
+    // reads no clock, which is the whole point of the calibrated form.
+    if (spec.timeBudgetMs > 0.0) return false;
     if (spec.randomMoveProb > 0.0) return false;          // dilution draws from rand()
     if (spec.openerKind >= 0 && spec.openerKind < g_openerCount &&
         std::strcmp(g_openers[spec.openerKind].idName, "rand") == 0) return false;
@@ -3203,12 +3230,23 @@ static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
 // about the id only -- does NOT encode the reference-class eligibility
 // exclusion (the d8/nb2m oracle), which is a separate title-holding judgment
 // documented in CHAMPION.md, not a property of the id itself.
-static void rankCategoryOf(const string& id, string& division, string& track) {
+void rankCategoryOf(const string& id, string& division, string& track) {
     division = "-"; track = "-";
     size_t dot = id.find('.');
     string head = (dot == string::npos) ? id : id.substr(0, dot);
-    if (head.find("nodes=") != string::npos) track = "node";
-    else if (head.find("time=") != string::npos) track = "time";
+    // `cal=<N>ms` marks the wall-clock track's CALIBRATED form: the agent carries a
+    // per-core cap (a node budget, or a fixed depth) that was chosen so it spends
+    // about that much wall clock. Nothing in the search reads the clock, so it
+    // reproduces where a live `time=` head does not.
+    //
+    // This is tested BEFORE `nodes=` and the order is load-bearing. A calibrated
+    // wall-clock agent carries BOTH labels: `nodes=` says how it is capped and
+    // `cal=` says which track it belongs to. Only `cal=` separates it from a
+    // node-track agent using the same capping mechanism, so testing `nodes=` first
+    // would file every calibrated time-track agent under "node" and silently merge
+    // the two categories that exist to be compared.
+    if (head.find("cal=") != string::npos || head.find("time=") != string::npos) track = "time";
+    else if (head.find("nodes=") != string::npos) track = "node";
 
     bool hasOpener8 = id.find(".opener(rand,moves=8)@") != string::npos;
     bool hasDil20 = id.find(".dil(prob=20)@") != string::npos;
@@ -5264,6 +5302,202 @@ int rankOpenerSwap(const string& idA, const string& idB, int games,
          << (bothA + bothB) << "/" << classified << " (" << (100.0 * (bothA + bothB) / classified) << "%)\n";
     return 0;
 }
+
+// ============================================================
+// MOVE AGREEMENT BETWEEN TWO BUDGET RULES ON ONE CORE (`agree`)
+// ============================================================
+// The question: if a node-budget agent is replaced by a fixed-depth agent
+// calibrated to the same wall clock, how often does the substitute actually
+// pick a different move? Neither `determinism` nor `pairgen` can answer it.
+// Both compare whole games, so after the FIRST divergence the two agents are
+// standing in different positions and their later moves are no longer
+// comparable. `agree` keeps them in lockstep: snapshot the position, poll
+// both agents from it, then follow only the driver.
+//
+// Two confounds are handled explicitly.
+//  1. TRANSPOSITION-TABLE LEAKAGE. The TT searcher context keys on evaluator,
+//     eval params, quiescence and root side, NOT on the budget, so two agents
+//     differing only in `nodes=` vs `deep=` share one table. Polling the
+//     second agent right after the first searched the same root would let it
+//     read the first agent's stored result back out, measuring cache reuse
+//     rather than agreement. Both searches therefore run against a wiped TT.
+//     The cost is that this is cold-TT play: in a rostered game each agent's
+//     table carries across its own moves, and here it does not.
+//  2. FORCED PLIES. A position with <= 1 legal move agrees trivially. Those
+//     plies are counted separately and excluded from the headline rate.
+struct AgreeStat {
+    long   polls, same, forced;
+    double drvDepth, othDepth, drvMs, othMs, drvNodes, othNodes;
+    long   othDeeper, othShallower, othSameDepth;
+    long   diffDeeper, diffShallower, diffSameDepth;   // disagreements, split by depth relation
+    AgreeStat()
+      : polls(0), same(0), forced(0), drvDepth(0), othDepth(0), drvMs(0), othMs(0),
+        drvNodes(0), othNodes(0), othDeeper(0), othShallower(0), othSameDepth(0),
+        diffDeeper(0), diffShallower(0), diffSameDepth(0) {}
+};
+
+static double agreeNowMs() {
+    return std::chrono::duration<double, std::milli>(
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Wilson score interval for a binomial proportion at 95%.
+static void agreeWilson(long k, long n, double& lo, double& hi) {
+    if (n <= 0) { lo = 0.0; hi = 0.0; return; }
+    const double z = 1.959964;
+    double p = (double)k / (double)n;
+    double d = 1.0 + z*z/(double)n;
+    double c = p + z*z/(2.0*(double)n);
+    double s = z * std::sqrt(p*(1.0-p)/(double)n + z*z/(4.0*(double)n*(double)n));
+    lo = (c - s) / d; hi = (c + s) / d;
+    if (lo < 0.0) lo = 0.0; if (hi > 1.0) hi = 1.0;
+}
+
+// One driver half-move. Runs `drv`, records where it left the board, rewinds,
+// runs `oth` from the identical position, compares, then leaves the board on
+// the DRIVER's move so the game follows the driver. Returns the driver's
+// victor code.
+static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, AgreeStat& st) {
+    Move legal[ML_MAX_MOVES];
+    int nLegal = generateMoves(side, legal);
+
+    BoardSnap before; snapBoard(before);
+
+    ttClear();
+    double t0 = agreeNowMs();
+    int victor = agentChooseMove(drv.spec, side);
+    double drvMs    = agreeNowMs() - t0;
+    double drvDepth = g_lastEffDepth;
+    double drvNodes = (double)g_lastNodes;
+    BoardSnap after; snapBoard(after);
+
+    restoreBoardSnapshot(before);
+    ttClear();
+    t0 = agreeNowMs();
+    agentChooseMove(oth.spec, side);
+    double othMs    = agreeNowMs() - t0;
+    double othDepth = g_lastEffDepth;
+    double othNodes = (double)g_lastNodes;
+    bool agreed = (std::memcmp(after.sq, board, sizeof(after.sq)) == 0);
+
+    restoreBoardSnapshot(after);   // follow the driver
+
+    if (nLegal <= 1) { st.forced++; return victor; }
+    st.polls++;
+    if (agreed) st.same++;
+    st.drvMs    += drvMs;    st.othMs    += othMs;
+    st.drvDepth += drvDepth; st.othDepth += othDepth;
+    st.drvNodes += drvNodes; st.othNodes += othNodes;
+    if (othDepth > drvDepth + 1e-9)      { st.othDeeper++;    if (!agreed) st.diffDeeper++; }
+    else if (othDepth < drvDepth - 1e-9) { st.othShallower++; if (!agreed) st.diffShallower++; }
+    else                                 { st.othSameDepth++; if (!agreed) st.diffSameDepth++; }
+    return victor;
+}
+
+// Play `games` self-play games driven entirely by `drv` (both colours), polling
+// `oth` at every ply. Random opening plies are mandatory: both agents are
+// deterministic, so without them every game would be the same trajectory.
+static void agreeRunDirection(const RankAgent& drv, const RankAgent& oth,
+                              int games, const string& boardFile, int openPlies,
+                              unsigned runSeed, AgreeStat& st, long& gamesUsed) {
+    for (int g = 0; g < games; g++) {
+        if (!reloadBoard(boardFile)) { cout << "ERROR: cannot load board " << boardFile << "\n"; return; }
+        srand(gameSeed(drv.id, oth.id, g, runSeed));
+        bool endedInOpener = false;
+        for (int h = 0; h < openPlies && !endedInOpener; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            int v = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+            if (gameOutcome(v)) endedInOpener = true;
+        }
+        if (endedInOpener) continue;
+        gamesUsed++;
+        for (int h = openPlies; h < 400; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            int v = agreeStep(drv, oth, side, st);
+            if (gameOutcome(v)) break;
+        }
+        double lo, hi; agreeWilson(st.same, st.polls, lo, hi);
+        cout << "  game " << (g + 1) << "/" << games << ": polls=" << st.polls
+             << " agree=" << st.same << " ("
+             << (st.polls ? 100.0 * st.same / st.polls : 0.0) << "%, 95% CI "
+             << 100.0 * lo << "-" << 100.0 * hi << ")\n" << flush;
+    }
+}
+
+static void agreeReport(const string& drvId, const string& othId,
+                        const AgreeStat& st, long gamesUsed) {
+    cout << "\n  driver: " << drvId << "\n";
+    cout << "  polled: " << othId << "\n";
+    if (st.polls == 0) { cout << "  no non-forced polls\n"; return; }
+    double lo, hi; agreeWilson(st.same, st.polls, lo, hi);
+    cout << "  games played           " << gamesUsed << "\n";
+    cout << "  forced plies (skipped) " << st.forced << "\n";
+    cout << "  polls (non-forced)     " << st.polls << "\n";
+    cout << "  same move              " << st.same << "\n";
+    cout << "  AGREEMENT              " << (100.0 * st.same / st.polls)
+         << "%   95% CI " << (100.0 * lo) << "-" << (100.0 * hi) << "%\n";
+    cout << "  mean eff depth         driver " << (st.drvDepth / st.polls)
+         << "   polled " << (st.othDepth / st.polls) << "\n";
+    cout << "  mean nodes/move        driver " << (st.drvNodes / st.polls)
+         << "   polled " << (st.othNodes / st.polls) << "\n";
+    cout << "  mean ms/move (cold TT) driver " << (st.drvMs / st.polls)
+         << "   polled " << (st.othMs / st.polls) << "\n";
+    cout << "  polled searched deeper " << st.othDeeper << " plies ("
+         << st.diffDeeper << " disagreed)\n";
+    cout << "  polled searched equal  " << st.othSameDepth << " plies ("
+         << st.diffSameDepth << " disagreed)\n";
+    cout << "  polled searched shallower " << st.othShallower << " plies ("
+         << st.diffShallower << " disagreed)\n";
+}
+
+int rankMoveAgree(const string& idA, const string& idB, int games,
+                  const string& boardFile, int openPlies, unsigned runSeed,
+                  double* pooledAgreementOut) {
+    if (pooledAgreementOut) *pooledAgreementOut = -1.0;
+    if (games <= 0)     { cout << "ERROR: --games must be positive\n"; return 1; }
+    if (openPlies <= 0) { cout << "ERROR: agree needs --open-plies > 0 (both agents are deterministic)\n"; return 1; }
+    if (idA.empty() || idB.empty()) { cout << "ERROR: agree needs --a <id> and --b <id>\n"; return 1; }
+
+    RankAgent A, B; string err;
+    if (!rankAgentFromId(idA, A, err)) { cout << "ERROR: --a: " << err << "\n"; return 1; }
+    if (!rankAgentFromId(idB, B, err)) { cout << "ERROR: --b: " << err << "\n"; return 1; }
+    std::vector<const RankAgent*> ags; ags.push_back(&A); ags.push_back(&B);
+    if (!loadModelSlots(ags, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    cout << "move agreement, " << games << " games/direction, open-plies=" << openPlies
+         << ", board=" << boardFile << ", seed=" << runSeed << "\n";
+    cout << "Each direction is self-play by the DRIVER on both colours; the other\n"
+         << "agent is polled from the identical position at every ply and its move\n"
+         << "is discarded. The TT is wiped before BOTH searches (they share a\n"
+         << "searcher context, so otherwise the second would read the first's\n"
+         << "entries). Forced plies (<= 1 legal move) are excluded.\n";
+
+    cout << "\n--- direction 1: A drives, B polled ---\n";
+    AgreeStat s1; long used1 = 0;
+    agreeRunDirection(A, B, games, boardFile, openPlies, runSeed, s1, used1);
+
+    cout << "\n--- direction 2: B drives, A polled ---\n";
+    AgreeStat s2; long used2 = 0;
+    agreeRunDirection(B, A, games, boardFile, openPlies, runSeed + 7919u, s2, used2);
+
+    mlClearSlots();
+
+    cout << "\n============ RESULTS ============\n";
+    cout << "\n[direction 1]";
+    agreeReport(idA, idB, s1, used1);
+    cout << "\n[direction 2]";
+    agreeReport(idB, idA, s2, used2);
+
+    long tp = s1.polls + s2.polls, ts = s1.same + s2.same;
+    if (tp > 0 && pooledAgreementOut) *pooledAgreementOut = (double)ts / (double)tp;
+    if (tp > 0) {
+        double lo, hi; agreeWilson(ts, tp, lo, hi);
+        cout << "\n[pooled] " << ts << "/" << tp << " = " << (100.0 * ts / tp)
+             << "% agreement, 95% CI " << (100.0 * lo) << "-" << (100.0 * hi) << "%\n";
+    }
+    return tp > 0 ? 0 : 1;
+}
+
 
 // ============================================================
 // POSITION-ORACLE LABEL PIPELINE (posgen / label / labelfit)

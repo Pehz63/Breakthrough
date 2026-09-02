@@ -79,6 +79,8 @@ static void usage() {
     cout << "  opener-bias  measure whether the symmetric random opener handicaps a deterministic champion\n";
     cout << "  opener-swap  color-swap recovery test: same random-opener snapshot played out twice with\n";
     cout << "               colors swapped, to separate 'position favors a color' from 'agent recovers better'\n";
+    cout << "  agree      move agreement: two budget rules on one core polled from identical positions," << "\n";
+    cout << "             to measure how often swapping the budget rule changes the move played" << "\n";
     cout << "  posgen     build a deduped, stratified position pool (train + eval tiers) from stored games\n";
     cout << "  label      play a designed ladder of fresh games from every pool position (raw outcome rows)\n";
     cout << "  labelfit   fit per-position (mu, sigma) Elo-advantage labels from a raw label store\n";
@@ -146,6 +148,11 @@ static void usage() {
     cout << "          random-opener snapshot to conclusion twice with colors swapped; reports\n";
     cout << "          White-won-both / Black-won-both (color effect) vs a-won-both / b-won-both\n";
     cout << "          (agent effect). No data files written.\n";
+    cout << "agree:    --a <id> --b <id> --games N --open-plies 6. Two directions: the driver" << "\n";
+    cout << "          self-plays both colours from a seeded random-opener position and the" << "\n";
+    cout << "          other agent is polled from the IDENTICAL position at every ply (move" << "\n";
+    cout << "          recorded, then discarded). TT wiped before both searches; forced plies" << "\n";
+    cout << "          excluded. Reports agreement + Wilson 95% CI, mean depth/nodes/ms." << "\n";
     cout << "posgen:   --out-train/--out-eval <pool files> --train N --eval N (targets),\n";
     cout << "          --per-game 4 --min-ply 6 --max-ply 44. Replays a deterministic sample of\n";
     cout << "          the store into DISTINCT positions (enc + hash + side to move), stratified\n";
@@ -376,6 +383,10 @@ int main(int argc, char** argv) {
         rc = rankOpenerSwap(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
                             getInt(argc, argv, "--games", 40), board,
                             getInt(argc, argv, "--open-plies", 6), seed);
+    } else if (cmd == "agree") {
+        rc = rankMoveAgree(getOpt(argc, argv, "--a", ""), getOpt(argc, argv, "--b", ""),
+                           getInt(argc, argv, "--games", 6), board,
+                           getInt(argc, argv, "--open-plies", 6), seed);
     } else if (cmd == "posgen") {
         rc = rankPosGen(store, board,
                         getOpt(argc, argv, "--out-train", "data/labels/pool_train.jsonl"),
