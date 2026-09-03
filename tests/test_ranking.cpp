@@ -2447,41 +2447,77 @@ TEST_CASE("rank posgen - deduped and stratified pools") {
 
 // posgen's determinism guard (`mismatchSkipped`, src/ranking.cpp) drops a
 // replayed game whenever its outcome differs from the stored one. That guard
-// is what makes the tool SAFE, but a `time=` agent's replay outcome depends on
-// machine load (see `POSGEN POOL NOT REPRODUCIBLE`, Docs/corrections.md), so
-// WHICH games get dropped -- and therefore the pool built from the live store
-// -- is not reproducible. Testing determinism against the live store is
-// asserting a property posgen does not have there, so this test instead
-// builds a fixture store filtered to rows where NEITHER agent carries a live
-// wall-clock budget: those replay identically regardless of load (theory 59,
-// Docs/theories.md), so posgen is genuinely deterministic on it.
-TEST_CASE("rank posgen - byte-identical pools on a time=-free fixture store") {
+// is what makes the tool SAFE, but an agent whose behavior is not a pure
+// function of the board (chiefly a wall-clock budget, whose replay outcome
+// depends on machine load -- see `POSGEN POOL NOT REPRODUCIBLE`,
+// Docs/corrections.md) makes WHICH games get dropped -- and therefore the pool
+// built from the live store -- not reproducible. Testing determinism against
+// the live store is asserting a property posgen does not have there, so this
+// test instead builds a fixture store filtered to rows where BOTH agents pass
+// `rankAgentIsDeterministic` (the project's single source of truth for this,
+// covering a live `timeBudgetMs` as well as every `rand()`-drawing source:
+// dilution, the `rand` opener, the random chooser family, GumbelMCTS). Those
+// replay identically regardless of load (theory 59, Docs/theories.md), so
+// posgen is genuinely deterministic on this fixture.
+TEST_CASE("rank posgen - byte-identical pools on a deterministic-agents-only fixture store") {
     const string fixtureStore = "build/pool_fixture_store.jsonl";
 
     std::vector<RankMatchRow> rows;
     int skipped = 0;
     REQUIRE(rankLoadMatches("ranking/matches.jsonl", "boards/board1.txt", rows, skipped));
     {
+        // Memoize per DISTINCT id: rankAgentFromId re-hashes a learned() agent's
+        // whole model file on every call (uncached, unlike rankUpgradeId), and this
+        // loop -- unlike rankPosGen's own sampled replay -- visits every stored row,
+        // so an agent playing thousands of games would otherwise re-hash its model
+        // file thousands of times. Confirmed the hard way: the unmemoized version
+        // ran over an hour of continuous CPU before being killed.
+        std::map<string, bool> detCache;
         std::ofstream out(fixtureStore.c_str(), std::ios::trunc | std::ios::binary);
         REQUIRE(out.is_open());
         int written = 0;
         for (size_t i = 0; i < rows.size(); i++) {
-            if (rows[i].w.find("time=") != string::npos) continue;
-            if (rows[i].b.find("time=") != string::npos) continue;
+            bool wDet, bDet;
+            std::map<string, bool>::iterator wIt = detCache.find(rows[i].w);
+            if (wIt != detCache.end()) {
+                wDet = wIt->second;
+            } else {
+                RankAgent wa; string err;
+                wDet = rankAgentFromId(rows[i].w, wa, err) && rankAgentIsDeterministic(wa.spec);
+                detCache[rows[i].w] = wDet;
+            }
+            if (!wDet) continue;
+            std::map<string, bool>::iterator bIt = detCache.find(rows[i].b);
+            if (bIt != detCache.end()) {
+                bDet = bIt->second;
+            } else {
+                RankAgent ba; string err;
+                bDet = rankAgentFromId(rows[i].b, ba, err) && rankAgentIsDeterministic(ba.spec);
+                detCache[rows[i].b] = bDet;
+            }
+            if (!bDet) continue;
             out << rankFormatMatchRow(rows[i]) << "\n";
             written++;
         }
         REQUIRE(written > 0);   // never hard-code a row count: a fresh clone has fewer rows
     }
 
+    // Small targets deliberately: this test only needs to prove byte-identical
+    // reproduction, not stratified diversity (the other test case already
+    // covers dedup/stratification against the live store). The determinism-
+    // only fixture skews toward deep, expensive-to-replay search agents (the
+    // rand()-drawing families rankAgentIsDeterministic excludes are also the
+    // store's cheap/shallow agents), so filling a 40+6 quota there replayed
+    // 265 real games per rankPosGen call -- measured 24 minutes wall for this
+    // test alone. A handful of positions proves reproducibility just as well.
     std::remove("build/pool_fx_tr1.jsonl"); std::remove("build/pool_fx_ev1.jsonl");
     std::remove("build/pool_fx_tr2.jsonl"); std::remove("build/pool_fx_ev2.jsonl");
     REQUIRE(rankPosGen(fixtureStore, "boards/board1.txt",
                        "build/pool_fx_tr1.jsonl", "build/pool_fx_ev1.jsonl",
-                       40, 6, 4, 6, 44, 123) == 0);
+                       4, 1, 2, 6, 44, 123) == 0);
     REQUIRE(rankPosGen(fixtureStore, "boards/board1.txt",
                        "build/pool_fx_tr2.jsonl", "build/pool_fx_ev2.jsonl",
-                       40, 6, 4, 6, 44, 123) == 0);
+                       4, 1, 2, 6, 44, 123) == 0);
 
     string tr1 = slurpFile("build/pool_fx_tr1.jsonl");
     REQUIRE_FALSE(tr1.empty());

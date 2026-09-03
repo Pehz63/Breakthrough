@@ -169,7 +169,7 @@ against the same seams.
     node track is provably byte-identical across the fix. Full tradeoff, and the
     contrast with the 2026-08-27 TT bump that did fire, in `TIME BUDGET NOT ENFORCED`,
     `Docs/corrections.md` `[Now]` {cpu: none, dev: low}
-  - **`rankAgentIsDeterministic` misclassifies every `time=` agent, and P1 makes it
+  - ~~**`rankAgentIsDeterministic` misclassifies every `time=` agent, and P1 makes it
     worse.** It derives determinism from whether an agent draws `rand()`, and a `time=`
     agent draws none, so `pairGameTarget` pins any two of them at exactly 2 games as
     both floor and ceiling. But a wall-clock search stops where machine load puts it,
@@ -182,8 +182,11 @@ against the same seams.
     budget bind on every core, the `deep=12` time track is genuinely stochastic and its
     pairs need real game targets. Theory 59 in `Docs/theories.md`. Changing the
     classifier raises those pairs' targets and re-opens the 3 time-track
-    certifications, so it is a deliberate scheduling decision, not a slip-in fix
-    `[Now]` {cpu: hours, dev: medium}
+    certifications, so it is a deliberate scheduling decision, not a slip-in fix~~
+    Classifier fixed 2026-09-02: `rankAgentIsDeterministic` now checks `timeBudgetMs > 0`
+    first (`src/ranking.cpp`). The raised game targets and the 3 category
+    re-certifications this unlocks are still open, tracked below (see "Re-certify the
+    3 `time=150ms` categories")
   - **Re-certify the 3 `time=150ms` categories.** Their titles were decided under a
     budget that did not bind (see `TIME BUDGET NOT ENFORCED`, `Docs/corrections.md`).
     Holders are not vacated, but the three time rows in `ranking/CHAMPION.md` are not a
