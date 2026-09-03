@@ -311,14 +311,23 @@ compute-normalized agents that carry no live clock, every newly stored row
 becomes replayable and pools built from the post-migration store are
 reproducible. The defect is bounded by the rows already stored.
 
-**Known consequence not yet addressed.** The test
-`rank posgen - deduped, stratified, deterministic pools`
-(`tests/test_ranking.cpp`) asserts byte-identical reproduction across two runs
-over the live store, so it fails intermittently under CPU load. Reproduced once
-in 8 suite runs against a concurrent `rank.exe play` job, and once earlier in
-normal use. It is asserting a property the tool does not have. Deliberately left
-in place (developer decision, 2026-09-02: document the defect, change no code),
-so a red suite run showing exactly this test is a known issue and not a
-regression. See `todo.md`.
+**Test fixed 2026-09-03, the underlying `posgen` defect above is unchanged and
+still open.** The test `rank posgen - deduped, stratified, deterministic pools`
+(`tests/test_ranking.cpp`) asserted byte-identical reproduction across two runs
+over the live store, which is asserting a property the tool does not have, so
+it failed intermittently under CPU load (reproduced twice in two tries against
+a 12-way concurrent `rank.exe play` load job on the pre-fix test; the fixed
+test then ran 10/10 clean under the same load). Split into two tests: `rank
+posgen - deduped and stratified pools` keeps the original per-row invariant
+checks (dedup, ply/hash-tier stratification, undecided-position check) against
+the live store, and `rank posgen - byte-identical pools on a time=-free
+fixture store` moves the determinism claim onto a fixture store built via
+`rankLoadMatches` + `rankFormatMatchRow`, filtered to rows where neither agent
+id contains `time=` -- exactly the subset this entry already identified as
+replayable, so posgen is genuinely deterministic on it. The fixture is a fresh
+store path with no `.index.txt` and no sibling numbered shards, so
+`rankStoreParts` loads it as the single file it is. `posgen` itself was not
+touched: it is still not reproducible against a store containing `time=`
+agents, which remains a deliberate, pending developer decision (see `todo.md`).
 
 ---

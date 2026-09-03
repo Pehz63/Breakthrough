@@ -2414,13 +2414,12 @@ TEST_CASE("rankFitMuSigma - recovers known (mu, sigma) from synthetic outcomes")
     REQUIRE(exp(fitS[1]) < 2.5  * exp(1.0));
 }
 
-TEST_CASE("rank posgen - deduped, stratified, deterministic pools") {
+TEST_CASE("rank posgen - deduped and stratified pools") {
     std::remove("build/pool_tr.jsonl");
     std::remove("build/pool_ev.jsonl");
     REQUIRE(rankPosGen("ranking/matches.jsonl", "boards/board1.txt",
                        "build/pool_tr.jsonl", "build/pool_ev.jsonl",
                        40, 6, 4, 6, 44, 123) == 0);
-    string tr1 = slurpFile("build/pool_tr.jsonl");
     std::vector<string> tr = fileLines("build/pool_tr.jsonl");
     std::vector<string> ev = fileLines("build/pool_ev.jsonl");
     REQUIRE((int)tr.size() > 0);
@@ -2444,14 +2443,49 @@ TEST_CASE("rank posgen - deduped, stratified, deterministic pools") {
             REQUIRE(nearWinCheck(stm) == 0);               // undecided positions only
         }
     }
+}
 
-    // Determinism: a fresh rerun reproduces the train pool byte-identically.
-    std::remove("build/pool_tr.jsonl");
-    std::remove("build/pool_ev.jsonl");
-    REQUIRE(rankPosGen("ranking/matches.jsonl", "boards/board1.txt",
-                       "build/pool_tr.jsonl", "build/pool_ev.jsonl",
+// posgen's determinism guard (`mismatchSkipped`, src/ranking.cpp) drops a
+// replayed game whenever its outcome differs from the stored one. That guard
+// is what makes the tool SAFE, but a `time=` agent's replay outcome depends on
+// machine load (see `POSGEN POOL NOT REPRODUCIBLE`, Docs/corrections.md), so
+// WHICH games get dropped -- and therefore the pool built from the live store
+// -- is not reproducible. Testing determinism against the live store is
+// asserting a property posgen does not have there, so this test instead
+// builds a fixture store filtered to rows where NEITHER agent carries a live
+// wall-clock budget: those replay identically regardless of load (theory 59,
+// Docs/theories.md), so posgen is genuinely deterministic on it.
+TEST_CASE("rank posgen - byte-identical pools on a time=-free fixture store") {
+    const string fixtureStore = "build/pool_fixture_store.jsonl";
+
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches("ranking/matches.jsonl", "boards/board1.txt", rows, skipped));
+    {
+        std::ofstream out(fixtureStore.c_str(), std::ios::trunc | std::ios::binary);
+        REQUIRE(out.is_open());
+        int written = 0;
+        for (size_t i = 0; i < rows.size(); i++) {
+            if (rows[i].w.find("time=") != string::npos) continue;
+            if (rows[i].b.find("time=") != string::npos) continue;
+            out << rankFormatMatchRow(rows[i]) << "\n";
+            written++;
+        }
+        REQUIRE(written > 0);   // never hard-code a row count: a fresh clone has fewer rows
+    }
+
+    std::remove("build/pool_fx_tr1.jsonl"); std::remove("build/pool_fx_ev1.jsonl");
+    std::remove("build/pool_fx_tr2.jsonl"); std::remove("build/pool_fx_ev2.jsonl");
+    REQUIRE(rankPosGen(fixtureStore, "boards/board1.txt",
+                       "build/pool_fx_tr1.jsonl", "build/pool_fx_ev1.jsonl",
                        40, 6, 4, 6, 44, 123) == 0);
-    REQUIRE(slurpFile("build/pool_tr.jsonl") == tr1);
+    REQUIRE(rankPosGen(fixtureStore, "boards/board1.txt",
+                       "build/pool_fx_tr2.jsonl", "build/pool_fx_ev2.jsonl",
+                       40, 6, 4, 6, 44, 123) == 0);
+
+    string tr1 = slurpFile("build/pool_fx_tr1.jsonl");
+    REQUIRE_FALSE(tr1.empty());
+    REQUIRE(tr1 == slurpFile("build/pool_fx_tr2.jsonl"));
 }
 
 TEST_CASE("rank labelfit - joins ratings, fits labels, deterministic") {

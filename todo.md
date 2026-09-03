@@ -1359,22 +1359,29 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   search itself, not the check) `[Next]` {cpu: seconds, dev: low}
 
 ## Data + Infrastructure
-- **`posgen` pools are not reproducible, and one test asserts that they are** `[Next]` {cpu: none, dev: small}.
+- **`posgen` pools are not reproducible** `[Next]` {cpu: none, dev: small}.
   `rank.exe posgen` replays a seeded sample of stored games and drops any replay whose
   outcome differs from the stored one. The guard is correct and makes the tool SAFE, but
   a `time=` agent's replay depends on machine load, so WHICH games get dropped varies and
   the pool varies with it. Measured over `ranking/matches.jsonl` (623,774 rows, 274,260 of
   them involving a `time=` agent): mismatches ran 2 idle and 1 to 6 under load, and 2 of 3
   loaded pools differed from the idle baseline (see `POSGEN POOL NOT REPRODUCIBLE`,
-  `Docs/corrections.md`). Consequence: the test `rank posgen - deduped, stratified,
-  deterministic pools` asserts byte-identical reproduction over the live store and so fails
-  intermittently under CPU load, roughly 1 run in 8 against a concurrent `rank.exe play`.
-  A red suite showing exactly that test is this known issue, not a regression. Deliberately
-  left unfixed (developer decision 2026-09-02: document, change no code). The fix when it is
-  wanted: skip games whose either agent carries a live wall-clock budget BEFORE replaying,
-  under its own counter, which is what `rank.exe refute --skip-timed` already does. Retiring
-  the `time=150ms` roster lines makes every newly stored row replayable, so the defect is
-  bounded by rows already stored and shrinks on its own.
+  `Docs/corrections.md`). Deliberately left unfixed (developer decision 2026-09-02: document,
+  change no code). The fix when it is wanted: skip games whose either agent carries a live
+  wall-clock budget BEFORE replaying, under its own counter, which is what `rank.exe refute
+  --skip-timed` already does. Retiring the `time=150ms` roster lines makes every newly stored
+  row replayable, so the defect is bounded by rows already stored and shrinks on its own.
+  ~~Consequence: the test `rank posgen - deduped, stratified, deterministic pools` asserted
+  byte-identical reproduction over the live store and so failed intermittently under CPU
+  load, roughly 1 run in 8 against a concurrent `rank.exe play`.~~ Fixed 2026-09-03: split
+  into `rank posgen - deduped and stratified pools` (the invariant checks, kept against the
+  live store) and `rank posgen - byte-identical pools on a time=-free fixture store` (the
+  determinism claim, moved onto a fixture store filtered to rows where neither agent id
+  contains `time=`, which posgen genuinely reproduces). Reproduced the original failure
+  twice in two tries under a 12-way concurrent `rank.exe play` load on the pre-fix test,
+  then ran the fixed test 10/10 clean under the same load. `posgen` itself is untouched by
+  this fix and remains not reproducible; see `POSGEN POOL NOT REPRODUCIBLE`,
+  `Docs/corrections.md`, for its still-open state.
 - **Make the Bradley-Terry SE honest, then schedule to a target SE** `[Now]` {cpu: hours, dev: medium}. The fit
   counts stored rows as independent samples, but a deterministic pair replays one game
   per colour, so store-wide only 0.438 distinct games per row -- every printed `pm` is
