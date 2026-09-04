@@ -157,22 +157,39 @@ against the same seams.
   of **3.8%** of plies, from 0.0% on `classic(chip=100)@2` to 14.8% on
   `learned(model=113,...,mlp)@1`. At `deep=7` it binds on 37% to 79%, so the roster
   head sits just below the knee. `[Now]` {cpu: days, dev: high}
-  - **The `rem=N` gate exists but is unrated.** `ab(...,rem=N,nodes=...)` declines a
-    deepening iteration unless N% of the node budget is unspent, which is what lets a
-    budget be raised without paying for iterations that cannot finish. Measured: the
-    last completed iteration is 64-83% of everything spent to reach it, `rem=70` saves
-    35-39% of nodes for 2-3% of plies losing a ply, and
-    `ab(deep=12,tt,ord,rem=70,nodes=300k)@2` on `learned(model=169,...)@1` beats plain
-    `nodes=200k` on BOTH axes (163,580 nodes/move vs 178,033, deeper on 17.9% of plies
-    vs shallower on 0.9%). **No Elo number exists**, and depth is not strength. Next
-    step is a pinned cohort pass with `rem=70` heads at 200k/300k/550k
-    (`plans/budget-parity-results-2-steady-meridian.md`) `[Next]` {cpu: hours, dev: low}
-  - **Search-technique Elo grid, in flight.** 40-agent cohort (5 cores x 8 heads) via
-    Workflow A into the main store, working roster `ranking/q5/roster.txt`, cohort
-    `ranking/q5/cohort.txt`, 8 games/pair, then `rate --pin ranking/standings.tsv`.
-    Holds the CORE fixed and varies the HEAD, the mirror image of `CHAMPION.md` rule 6.
-    The `rem=` heads are NOT in it (the flag landed after the run started)
-    `[Now]` {cpu: hours, dev: low}
+  - ~~**The `rem=N` gate exists but is unrated.**~~ **Rated 2026-09-04.**
+    `ab(...,rem=N,nodes=...)` declines a deepening iteration unless N% of the node
+    budget is unspent, which is what lets a budget be raised without paying for
+    iterations that cannot finish. Measured: the last completed iteration is 64-83%
+    of everything spent to reach it on all 15 cores, `rem=70` saves 35-39% of nodes
+    for 2-3% of plies losing a ply. **Elo, pinned fit, 1,228 games/cell, delta
+    against `ab(deep=6,tt,ord,nodes=200k)@2` on the same core:** at the same 200k
+    budget the gate is a wash for 29-38% less CPU (-4 m169, -13 m349, -61 classic,
+    +34 m113, -17 m97), and spending the saving gives +35/+42 (m169), +51/+41
+    (m349), +122/+163 (m113 MLP), +0/+10 (m97) at `nodes=300k`/`550k`.
+    `classic(chip=100)@2` is the one core it hurts (-66/-49). Full grid and the
+    untested TT-seeding hypothesis for the classic exception:
+    `plans/budget-parity-results-2-steady-meridian.md`
+  - ~~**Search-technique Elo grid.**~~ **Done 2026-09-04.** 55-agent cohort
+    (5 cores x 11 heads) via Workflow A into the main store, 40,517 games at
+    8 games/pair, working roster `ranking/q5/roster_rem.txt`, cohort
+    `ranking/q5/cohort_all.txt`, then `rate --pin ranking/q5/pin_no_d12.tsv`.
+    Holds the CORE fixed and varies the HEAD, the mirror image of `CHAMPION.md`
+    rule 6. Headline: `part` is **-53 to -513** on every core and should never be
+    used. `tt`+`ord` together are worth 49-173 Elo, but which of the two carries it
+    flips by core. `margin=100` is within noise on all five. Grid in
+    `plans/budget-parity-results-2-steady-meridian.md`
+  - **The node track's definition is now an open decision.** `rem=70,nodes=300k`
+    or `nodes=550k` beats today's `deep=6,nodes=200k` head on 4 of 5 cores while the
+    current head's cap binds on only 3.8% of plies. Redefining the node track means
+    re-rostering and re-certifying every node-track category, so it is a developer
+    call, not an automatic follow-on `[Next]` {cpu: days, dev: medium}
+  - **Why `rem=70` costs `classic` Elo.** The only core the gate hurts, and the one
+    with the most budget left after depth 6 (31% of a 200k cap against 60-62%
+    elsewhere). Hypothesis: its cheap doomed depth-7 iteration seeds the TT for the
+    next move. Test: `ab(deep=12,noTT,ord,nodes=200k)@2` against
+    `ab(deep=12,noTT,ord,rem=70,nodes=200k)@2` on `classic(chip=100)@2`, where the
+    hypothesis predicts the gap closes `[Next]` {cpu: hours, dev: low}
   - ~~Cross-cutting prerequisites, all blocking (plan Part 1): raise `deep=` to a
     non-binding ceiling; fix `time=` enforcement (the one-line pre-iteration check
     in the item below is NOT sufficient once the depth cap lifts, see plan P2);

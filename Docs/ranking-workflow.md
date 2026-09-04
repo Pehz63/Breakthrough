@@ -133,6 +133,16 @@ Use during a study, when you will add and discard many candidates.
    Read `ranking/standings_pinned.tsv`. Pinned rows come back byte-identical to
    their input, which is the check that the instrument behaved.
 
+7. **Check the game count of every pinned row you intend to compare against**
+   (see `PINNED AT LOW GAME COUNT`, `Docs/corrections.md`). A pinned agent's Elo
+   is frozen at whatever the pin file recorded, so new games for it change
+   nothing, and a row pinned on a handful of games hands back that handful's
+   noise looking like a settled rating. Read the `games` column in the PIN FILE,
+   not in the pinned output. When a comparison depends on such an agent, delete
+   its row from a copy of the pin file and refit against the copy: it then
+   absorbs the new games while the rest of the scale stays frozen. Dropping 2 of
+   223 rows this way on 2026-09-04 left the other 221 byte-identical.
+
 Nothing in this workflow can alter `ranking/ratings.tsv`, `standings.tsv`, or
 any champion. It does append real games to `ranking/matches.jsonl`, which is
 correct and permanent: the store is append-only and never regenerated.

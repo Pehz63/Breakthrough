@@ -1,0 +1,10 @@
+# Cohort file for playing in the 5 GAZ agents flipped on->off 2026-09-01, per
+# developer request: understand GAZ's pooled Elo against the whole roster to
+# inform the in-progress ranking-system migration. Not for CHAMPION.md title
+# purposes (gaz() has no node/time-budget concept yet, so it can't hold a
+# category regardless of this fit's outcome).
+gaz(sims=500,cvisit=800,cscale=70,m=20)@1.learned(model=1545,4755d5f8,gumbel_self,joint,value_shape=129-32-1,policy_shape=9-32-1)@1
+gaz(sims=300,cvisit=600,cscale=100,m=12)@1.learned(model=1465,5d6df7c0,gumbel_self,joint,value_shape=129-64-1,policy_shape=9-64-1)@1
+gaz(sims=500,cvisit=800,cscale=70,m=8)@1.learned(model=1449,dc567440,gumbel_self,joint,value_shape=129-64-32-1,policy_shape=9-64-32-1)@1
+gaz(sims=300,cvisit=1000,cscale=40,m=8)@1.learned(model=1533,57845dcd,gumbel_self,joint,value_shape=129-32-1,policy_shape=9-32-1)@1
+gaz(sims=300,cvisit=400,cscale=70)@1.learned(model=1849,a1dea895,gumbel_self,joint,value_shape=129-1,policy_shape=9-32-1)@1

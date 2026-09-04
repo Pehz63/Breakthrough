@@ -367,3 +367,47 @@ touched: it is still not reproducible against a store containing `time=`
 agents, which remains a deliberate, pending developer decision (see `todo.md`).
 
 ---
+
+## `PINNED AT LOW GAME COUNT` - flagged 2026-09-04
+
+**Scope: any number read out of a pinned fit (`rank.exe rate --pin <file>`) for
+an agent whose row in the pin file was itself built from few games.** This is a
+workflow trap rather than a code defect, and it is silent: the pinned report
+prints the frozen Elo with the pin file's own standard error, which looks like a
+normal rating.
+
+`--pin` freezes every agent listed in the pin file at the Elo that file records.
+That is the whole point: it holds the scale still so a new cohort can be screened
+without disturbing anything. The consequence is that new games for a PINNED agent
+change nothing. If the pin file rated that agent on 160 games, the pinned fit
+still reports the 160-game number no matter how many games the new run adds, and
+a delta computed against it inherits that noise while looking precise.
+
+**Measured, 2026-09-04.** Screening a search-technique cohort against
+`ranking/standings.tsv`, the two `ab(deep=12,tt,ord,nodes=200k)@2` rows already
+in the pin file carried 160 games each (+/-37 and +/-28). The cohort run added
+1,228 games to each, and the pinned fit reported the frozen values anyway:
+
+| agent | pinned (160 games) | refit (1,388 games) | apparent delta vs its `deep=6` self | true delta |
+|---|---|---|---|---|
+| `...@2.classic(chip=100)@2` | 1359 +/- 37 | 1103 +/- 11 | **+231** | **-25** |
+| `...@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | 1015 +/- 28 | 1212 +/- 13 | **-236** | **-39** |
+
+The two frozen numbers disagreed with each other by 467 Elo on what should have
+been the same effect, and both were wrong. The refit values agree with the three
+cores whose `deep=12` rows were NEW in the same run and therefore fit on 1,228
+games each (-17, +45, -7). The contradiction between the two frozen cells was the
+tell, and it is the only tell: nothing in the report flags a stale pin.
+
+**What to do instead.** Before quoting any pinned cell, read its `games` column
+in the PIN FILE, not in the pinned output, and treat a low count as a number that
+this run cannot improve. When a comparison depends on such an agent, drop its row
+from the pin file and refit, which lets it absorb the new games while the rest of
+the scale stays frozen. Removing 2 of 223 rows left the other 221 byte-identical
+on Elo, so the scale is not disturbed by a targeted unpinning.
+
+**Cheap guard.** A pinned run's comparison set should have comparable game
+counts. When one cell has an order of magnitude fewer games than its neighbours
+in the same row or column, that is the case to check.
+
+---

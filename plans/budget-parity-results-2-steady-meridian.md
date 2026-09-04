@@ -207,37 +207,84 @@ short-circuit ended the search early are excluded by REASON (the recorded
 
 Share of everything spent to finish depth d that went into the depth-d
 iteration alone, `(n_d - n_{d-1}) / n_d`, median over plies completing the whole
-depth-1..9 ladder:
+depth-1..9 ladder. All 15 cores, 12 games each, `ab(deep=9,tt,ord,nodes=999999k)@2`
+so no budget ever binds:
 
 | core | full-ladder plies | d5 | d6 | d7 | d8 | d9 |
 |---|---|---|---|---|---|---|
 | `classic(chip=100)@2` | 412 | 82.9% | 64.0% | 78.0% | 64.2% | 74.6% |
-| `learned(model=10,...)@1` | 557 | 80.2% | 73.8% | 77.1% | 72.8% | 76.6% |
-| `learned(model=169,...)@1` | 525 | 81.2% | 73.8% | 76.7% | 72.5% | 75.6% |
-| `learned(model=113,...,mlp)@1` | 44 | - | 73.2% | 74.8% | 73.9% | - |
+| `learned(model=3,...)@1` | 608 | 80.0% | 73.0% | 75.5% | 70.7% | 74.4% |
+| `learned(model=4,...)@1` | 566 | 80.1% | 72.5% | 76.7% | 71.6% | 74.5% |
+| `learned(model=8,...)@1` | 525 | 80.7% | 73.4% | 76.5% | 71.7% | 74.8% |
+| `learned(model=10,...)@1` | 599 | 80.2% | 73.6% | 77.1% | 72.7% | 76.2% |
+| `learned(model=76,...)@1` | 552 | 81.1% | 72.7% | 76.6% | 70.7% | 74.9% |
+| `learned(model=94,...)@1` | 572 | 80.1% | 71.6% | 76.0% | 70.2% | 74.3% |
+| `learned(model=95,...)@1` | 590 | 80.8% | 71.3% | 75.9% | 70.2% | 74.2% |
+| `learned(model=96,...)@1` | 580 | 80.9% | 71.9% | 76.9% | 70.8% | 74.4% |
+| `learned(model=97,...)@1` | 466 | 78.9% | 70.4% | 76.0% | 68.3% | 76.4% |
+| `learned(model=98,...)@1` | 648 | 79.9% | 71.4% | 75.8% | 70.3% | 73.8% |
+| `learned(model=99,...)@1` | 576 | 79.4% | 72.3% | 75.1% | 70.4% | 72.9% |
+| `learned(model=111,...,mlp)@1` | 535 | 80.2% | 73.8% | 77.3% | 71.9% | 76.2% |
+| `learned(model=113,...,mlp)@1` | 599 | 80.4% | 73.5% | 77.0% | 71.9% | 75.1% |
+| `learned(model=169,...)@1` | 634 | 81.0% | 73.6% | 76.6% | 72.2% | 75.1% |
 
 **The last completed iteration is 64% to 83% of everything spent to reach it.**
+Excluding `classic`, the across-core spread at a fixed depth is 2.2 pp at d5,
+3.4 pp at d6, 2.2 pp at d7, 4.4 pp at d8 and 3.5 pp at d9. The two MLP cores
+fall inside the linear cores' range at d5, d8 and d9, and are the maximum at d6
+(`model=111`, 73.8% against 73.6% for `model=10`) and at d7 (`model=111`, 77.3%
+against 77.1%), by 0.2 pp in both cases. `classic` is the only core outside the
+group, and only on the even plies, where its share is 64.0% and 64.2% against
+70.2-73.8% for every other core.
+
 The per-ply growth ratios alternate with parity, which is the ordinary alpha-beta
-odd/even effect:
+odd/even effect, and `classic`'s low even-ply shares are the same fact seen from
+the other side (its `n6/n5` is 2.78x against 3.4-3.8x for every other core):
 
 | core | n5/n4 | n6/n5 | n7/n6 | n8/n7 | n9/n8 |
 |---|---|---|---|---|---|
 | `classic(chip=100)@2` | 5.85x | 2.78x | 4.55x | 2.80x | 3.94x |
-| `learned(model=10,...)@1` | 5.04x | 3.78x | 4.37x | 3.71x | 4.28x |
-| `learned(model=169,...)@1` | 5.31x | 3.83x | 4.33x | 3.66x | 4.09x |
+| `learned(model=3,...)@1` | 5.01x | 3.71x | 4.09x | 3.41x | 3.91x |
+| `learned(model=4,...)@1` | 5.03x | 3.64x | 4.28x | 3.52x | 3.93x |
+| `learned(model=8,...)@1` | 5.19x | 3.76x | 4.26x | 3.53x | 3.97x |
+| `learned(model=10,...)@1` | 5.04x | 3.78x | 4.36x | 3.66x | 4.21x |
+| `learned(model=76,...)@1` | 5.30x | 3.67x | 4.27x | 3.42x | 3.98x |
+| `learned(model=94,...)@1` | 5.04x | 3.52x | 4.17x | 3.35x | 3.89x |
+| `learned(model=95,...)@1` | 5.20x | 3.48x | 4.15x | 3.36x | 3.87x |
+| `learned(model=96,...)@1` | 5.25x | 3.56x | 4.32x | 3.42x | 3.90x |
+| `learned(model=97,...)@1` | 4.73x | 3.38x | 4.17x | 3.15x | 4.24x |
+| `learned(model=98,...)@1` | 4.97x | 3.50x | 4.14x | 3.37x | 3.82x |
+| `learned(model=99,...)@1` | 4.85x | 3.60x | 4.01x | 3.38x | 3.69x |
+| `learned(model=111,...,mlp)@1` | 5.05x | 3.82x | 4.40x | 3.56x | 4.20x |
+| `learned(model=113,...,mlp)@1` | 5.10x | 3.78x | 4.35x | 3.55x | 4.02x |
+| `learned(model=169,...)@1` | 5.27x | 3.79x | 4.27x | 3.60x | 4.02x |
 
-Against the 200,000-node cap, in absolute terms:
+Against the 200,000-node cap, in absolute terms, median cumulative nodes:
 
-| core | median n6 | median n7 |
-|---|---|---|
-| `classic(chip=100)@2` | 61,227 | 277,790 |
-| `learned(model=113,...,mlp)@1` | 94,042 | 386,691 |
-| `learned(model=10,...)@1` | 113,031 | 509,197 |
-| `learned(model=169,...)@1` | 124,607 | 536,561 |
+| core | n6 | n6 as % of 200k | n7 | n7 as x of 200k |
+|---|---|---|---|---|
+| `classic(chip=100)@2` | 61,227 | 31% | 277,790 | 1.39x |
+| `learned(model=99,...)@1` | 83,981 | 42% | 338,842 | 1.69x |
+| `learned(model=98,...)@1` | 84,546 | 42% | 348,102 | 1.74x |
+| `learned(model=94,...)@1` | 84,977 | 42% | 352,866 | 1.76x |
+| `learned(model=95,...)@1` | 79,627 | 40% | 345,959 | 1.73x |
+| `learned(model=97,...)@1` | 91,636 | 46% | 395,033 | 1.98x |
+| `learned(model=4,...)@1` | 95,320 | 48% | 414,441 | 2.07x |
+| `learned(model=3,...)@1` | 95,684 | 48% | 410,131 | 2.05x |
+| `learned(model=96,...)@1` | 98,805 | 49% | 439,568 | 2.20x |
+| `learned(model=8,...)@1` | 108,557 | 54% | 457,290 | 2.29x |
+| `learned(model=76,...)@1` | 111,503 | 56% | 470,938 | 2.35x |
+| `learned(model=10,...)@1` | 112,027 | 56% | 505,950 | 2.53x |
+| `learned(model=169,...)@1` | 119,598 | 60% | 511,187 | 2.56x |
+| `learned(model=113,...,mlp)@1` | 121,832 | 61% | 528,885 | 2.64x |
+| `learned(model=111,...,mlp)@1` | 123,644 | 62% | 557,200 | 2.79x |
 
-Depth 7 needs 1.4x to 2.7x the whole 200k budget. It can never finish. Every
-node a `deep=12,nodes=200k` agent spends past `n6` is spent on an iteration that
-is structurally doomed.
+**Depth 7 needs 1.39x to 2.79x the whole 200k budget across all 15 cores. It can
+never finish.** Every node a `deep=12,nodes=200k` agent spends past `n6` is spent
+on an iteration that is structurally doomed. The n6 column says how much room is
+left after depth 6 completes: 38% of the budget for `model=111` at one end, 69%
+for `classic` at the other, and that leftover is exactly what the `rem=N` gate
+below is designed to stop spending.
 
 ## The `rem=N` gate
 
@@ -283,11 +330,21 @@ gate:
 | m169 | 76 | 96.3% | 101,518 | 181,956 | 44.2% | 7.7% |
 | m169 | 82 | 85.0% | 75,402 | 181,769 | 58.5% | 27.0% |
 | m169 | 88 | 69.9% | 43,342 | 179,875 | 75.9% | 57.5% |
-| m113 | 40 | 99.8% | 164,936 | 181,708 | 9.2% | 0.2% |
-| m113 | 50 | 99.5% | 158,305 | 183,152 | 13.6% | 0.8% |
+| m113 (MLP) | 40 | 99.8% | 164,936 | 181,708 | 9.2% | 0.2% |
+| m113 (MLP) | 50 | 99.5% | 158,305 | 183,152 | 13.6% | 0.8% |
+| m113 (MLP) | 60 | 99.0% | 147,822 | 182,953 | 19.2% | 1.3% |
+| m113 (MLP) | 70 | 98.3% | 122,374 | 179,639 | 31.9% | 3.1% |
+| m113 (MLP) | 76 | 95.4% | 106,920 | 181,041 | 40.9% | 6.2% |
+| m113 (MLP) | 82 | 81.5% | 71,824 | 182,979 | 60.7% | 28.9% |
+| m113 (MLP) | 88 | 60.8% | 44,269 | 182,599 | 75.8% | 60.1% |
 
-The gate is **never deeper** than the ungated agent on any ply of any run, which
-is guaranteed by construction and is the check that it only ever declines. The
+The MLP core tracks the two cheap cores closely, so the threshold behaves as a
+property of the deepening ladder rather than of the evaluator, which is what the
+64-83% share table above predicts.
+
+The gate is **never deeper** than the ungated agent on a single ply of any of the
+21 runs above, which is guaranteed by construction and is the check that it only
+ever declines. The
 cost is the "losing a ply" column: cases where the gate refused an iteration that
 would in fact have completed. The knee is around `rem=70`: 35% to 39% of the
 nodes saved for 2% to 3% of plies losing a ply. The predicted `rem=77` is too
@@ -320,42 +377,175 @@ the budget be raised without paying for the failures.
 At `nodes=550k` classic buys +0.63 plies of mean completed depth for 50% more
 nodes, which is a normal compute-for-depth trade rather than a free one.
 
-**Elo is not measured here.** Depth and node counts are not strength. The Elo
-question is the study described in the next section.
+**Depth and node counts are not strength.** The Elo measurement is the next
+section, and it agrees on four of the five cores tested: `rem=70,nodes=300k` and
+`rem=70,nodes=550k` gain +35/+42 (m169), +51/+41 (m349), +122/+163 (m113) and
++0/+10 (m97) over the roster baseline, while `classic` loses 49 to 66 Elo. The
+depth-and-nodes result above measured `classic` and m169 only, and `classic` is
+the core it turned out not to predict.
 
-## Elo of search techniques across evaluators (in flight)
+## Elo of search techniques across evaluators
 
-Workflow A from `Docs/ranking-workflow.md`: a 40-agent cohort playing into the
-main store against the 222-agent active roster, then a pinned fit
-(`rate --pin ranking/standings.tsv`) that reads the result on the frozen scale
-and cannot disturb any champion. Working roster `ranking/q5/roster.txt`, cohort
-list `ranking/q5/cohort.txt`, 8 games per pair.
+Workflow A from `Docs/ranking-workflow.md`: a 55-agent cohort playing into the
+main store against the active roster, 40,517 games at 8 games per pair, then a
+pinned fit that reads the result on the frozen scale and cannot disturb any
+champion. Working roster `ranking/q5/roster_rem.txt`, cohort list
+`ranking/q5/cohort_all.txt`.
 
 The grid holds the CORE fixed and varies the HEAD, which is the mirror image of
 `CHAMPION.md` rule 6: a search-technique claim needs one core per row, exactly as
-an evaluator claim needs one head per row.
+an evaluator claim needs one head per row. Every non-baseline cell has 1,228
+games. `qs` and `part` make the turn weight live, so those two `classic` cells
+carry `classic(turn=1,chip=100)@2`, which is the codec enforcing `turnLive`
+rather than an inconsistency in the grid.
 
-Cores, with their current Elo on `ab(deep=6,tt,ord,nodes=200k)@2` for reference:
+Cores, given by their short names in the tables below:
 
-| core | Elo on the baseline head |
+| short name | canonical core |
 |---|---|
-| `learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | 1292 |
-| `learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` | 1227 |
-| `classic(chip=100)@2` | 1124 |
-| `learned(model=113,e3cc8b4e,position_elo,mlp,...)@1` | 983 |
-| `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` | 742 |
+| m169 | `learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` |
+| m349 | `learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` |
+| classic | `classic(chip=100)@2` |
+| m113 | `learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` |
+| m97 | `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` |
 
-Heads: `ab(deep=6,nodes=200k)@2` (bare), `+ord`, `+tt`, `+tt,ord` (the roster
-baseline), `+tt,ord,margin=100`, `+tt,ord,qs`, `ab(deep=12,tt,ord,nodes=200k)@2`
-(budget actually binding), and `ab(deep=12,tt,ord,part,nodes=200k)@2`.
+### The instrument check that changed the answer
 
-`qs` and `part` make the turn weight live, so those two classic cells carry
-`classic(turn=1,chip=100)@2`, which is the codec enforcing `turnLive` rather than
-an inconsistency in the grid.
+The first pinned fit reported `deep=12,tt,ord` as **+231** for `classic` and
+**-236** for m169: a 467-Elo disagreement about what should be one effect. Both
+were artifacts. Those two rows were already in the pin file at **160 games** each
+(+/-37 and +/-28), and `--pin` freezes a listed agent's Elo, so the 1,228 games
+this run added to each of them changed nothing. Dropping just those two rows from
+a local copy of the pin file (`ranking/q5/pin_no_d12.tsv`, not tracked, since
+`standings.tsv` itself is gitignored, regenerate by deleting those two id rows)
+and refitting left the other 221 pinned rows byte-identical on Elo and gave both agents their 1,388-game
+value: `classic` 1359 -> **1103**, m169 1015 -> **1212**. Registered as
+`PINNED AT LOW GAME COUNT` in `Docs/corrections.md`. Every number below is from
+the corrected fit.
 
-**The `rem=` heads are not in this cohort**, because the flag was implemented
-after the run started. A second cohort pass is the natural follow-up and is the
-only way to turn the depth and node numbers above into an Elo claim.
+### Absolute Elo, pinned fit, one core per column
+
+`+/-0` marks a row pinned from `ranking/standings.tsv` rather than fit here.
+
+| head | m169 | m349 | classic | m113 | m97 |
+|---|---|---|---|---|---|
+| `ab(deep=6,tt,ord,nodes=200k)@2` (baseline) | 1251 +/-0 | 1213 +/-0 | 1128 +/-0 | 974 +/-0 | 733 +/-0 |
+| `ab(deep=6,ord,nodes=200k)@2` | 1222 +/-14 | 1181 +/-14 | 1140 +/-0 | 981 +/-11 | 729 +/-11 |
+| `ab(deep=6,tt,nodes=200k)@2` | 1187 +/-14 | 1225 +/-14 | 1129 +/-0 | 1009 +/-12 | 713 +/-11 |
+| `ab(deep=6,nodes=200k)@2` | 1078 +/-12 | 1122 +/-13 | 1016 +/-0 | 908 +/-11 | 684 +/-12 |
+| `ab(deep=6,tt,ord,margin=100,nodes=200k)@2` | 1251 +/-15 | 1195 +/-14 | 1132 +/-0 | 996 +/-12 | 740 +/-11 |
+| `ab(deep=6,tt,ord,qs,nodes=200k)@2` | 1267 +/-15 | 1174 +/-14 | 1072 +/-12 | 1036 +/-12 | 696 +/-11 |
+| `ab(deep=12,tt,ord,nodes=200k)@2` | 1212 +/-13 | 1196 +/-14 | 1103 +/-11 | 1019 +/-12 | 726 +/-11 |
+| `ab(deep=12,tt,ord,part,nodes=200k)@2` | 863 +/-11 | 894 +/-11 | 1075 +/-12 | 461 +/-14 | 593 +/-12 |
+| `ab(deep=12,tt,ord,rem=70,nodes=200k)@2` | 1247 +/-15 | 1200 +/-14 | 1067 +/-12 | 1008 +/-12 | 716 +/-11 |
+| `ab(deep=12,tt,ord,rem=70,nodes=300k)@2` | 1286 +/-16 | 1264 +/-15 | 1062 +/-12 | 1096 +/-12 | 733 +/-11 |
+| `ab(deep=12,tt,ord,rem=70,nodes=550k)@2` | 1293 +/-16 | 1254 +/-15 | 1079 +/-12 | 1137 +/-13 | 743 +/-11 |
+
+Delta against the `ab(deep=6,tt,ord,nodes=200k)@2` baseline, same core:
+
+| head | m169 | m349 | classic | m113 | m97 |
+|---|---|---|---|---|---|
+| `ab(deep=6,ord,nodes=200k)@2` | -29 | -32 | +12 | +7 | -4 |
+| `ab(deep=6,tt,nodes=200k)@2` | -64 | +12 | +1 | +35 | -20 |
+| `ab(deep=6,nodes=200k)@2` | -173 | -91 | -112 | -66 | -49 |
+| `ab(deep=6,tt,ord,margin=100,nodes=200k)@2` | +0 | -18 | +4 | +22 | +7 |
+| `ab(deep=6,tt,ord,qs,nodes=200k)@2` | +16 | -39 | -56 | +62 | -37 |
+| `ab(deep=12,tt,ord,nodes=200k)@2` | -39 | -17 | -25 | +45 | -7 |
+| `ab(deep=12,tt,ord,part,nodes=200k)@2` | **-388** | **-319** | **-53** | **-513** | **-140** |
+| `ab(deep=12,tt,ord,rem=70,nodes=200k)@2` | -4 | -13 | -61 | +34 | -17 |
+| `ab(deep=12,tt,ord,rem=70,nodes=300k)@2` | +35 | +51 | -66 | +122 | +0 |
+| `ab(deep=12,tt,ord,rem=70,nodes=550k)@2` | +42 | +41 | -49 | +163 | +10 |
+
+Per-move process CPU cost of each cell, in ms/move:
+
+| head | m169 | m349 | classic | m113 | m97 |
+|---|---|---|---|---|---|
+| `ab(deep=6,tt,ord,nodes=200k)@2` (baseline) | 25.4 | 26.5 | 11.3 | 399.0 | 14.6 |
+| `ab(deep=6,ord,nodes=200k)@2` | 19.4 | 19.5 | 11.7 | 515.1 | 12.8 |
+| `ab(deep=6,tt,nodes=200k)@2` | 31.2 | 31.0 | 11.4 | 561.2 | 23.0 |
+| `ab(deep=6,nodes=200k)@2` | 12.3 | 12.3 | 7.9 | 649.4 | 11.3 |
+| `ab(deep=6,tt,ord,margin=100,nodes=200k)@2` | 24.8 | 25.5 | 11.0 | 394.2 | 14.9 |
+| `ab(deep=6,tt,ord,qs,nodes=200k)@2` | 29.2 | 29.8 | 12.9 | 472.1 | 16.2 |
+| `ab(deep=12,tt,ord,nodes=200k)@2` | 48.6 | 48.1 | 41.6 | 764.8 | 45.9 |
+| `ab(deep=12,tt,ord,part,nodes=200k)@2` | 48.4 | 48.3 | 40.1 | 768.3 | 44.9 |
+| `ab(deep=12,tt,ord,rem=70,nodes=200k)@2` | 30.0 | 30.5 | 29.4 | 481.7 | 25.9 |
+| `ab(deep=12,tt,ord,rem=70,nodes=300k)@2` | 44.3 | 44.3 | 37.4 | 684.1 | 39.4 |
+| `ab(deep=12,tt,ord,rem=70,nodes=550k)@2` | 83.5 | 86.3 | 61.2 | 1374.2 | 72.0 |
+
+### What the grid says
+
+**`part` is the largest effect in the table, and it is negative on every core:**
+-388, -319, -53, -513, -140. This settles the question the rest of this document
+was built around. Adopting a budget-cut iteration's provisional best move is not
+a way to recover the 54% of the budget that gets discarded, it is a way to play a
+worse move, and the mechanism is already measured above: 18.6% of budget-limited
+plies adopt a move whose score came from a static `evalLeaf` one ply in with no
+reply searched, which is systematically optimistic for the side to move. The
+cheapest core, `classic`, is hurt least (-53) and the most expensive, the MLP
+m113, is hurt most (-513), which is consistent with cost per node deciding how
+much of the root move list is still unsearched when the cap fires. That ordering
+is a two-point pattern across five cores, not a tested mechanism. Theory 64 is
+confirmed on strength, not only on mechanism.
+
+**Neither `tt` nor `ord` alone reproduces having both, but having neither is
+much worse than either.** Dropping both costs -49 to -173 on all five cores, the
+only effect in the table that is negative everywhere and large everywhere. Which
+of the two carries the loss is core-dependent and the signs cross: m169 wants
+`ord` (`ord` only -29, `tt` only -64), m349 and m113 want `tt` (`tt` only +12 and
++35, `ord` only -32 and +7). The pair is not decomposable, and no single-item
+result transfers between cores.
+
+**`margin=100` (aspiration) is close to free and close to nothing:** +0, -18, +4,
++22, +7, with standard errors of 14-15. Only m349's -18 and m113's +22 are past
+one standard error, and they point in opposite directions. It costs 2% of CPU.
+
+**`qs` remains core-specific with the sign flipping**, which the earlier partial
+fit already showed and the full fit confirms with tighter bars: +16 (m169), -39
+(m349), -56 (classic), +62 (m113), -37 (m97). The MLP gains most and `classic`
+loses most. Quiescence is a loadout item, and its lift does not transfer.
+
+**`deep=12` at `nodes=200k` is a wash**, -39 to +45, once the low-game pinning
+artifact is removed. That is worth stating plainly: raising the depth cap so the
+node budget binds does not by itself change strength much, because the extra
+iteration is discarded. It also nearly quadruples `classic`'s CPU (11.3 -> 41.6
+ms/move) for -25 Elo, which is the cost of that discarded iteration made visible.
+
+**`rem=70` at the same `nodes=200k` is also a wash but for a third less
+compute.** Against `deep=12,tt,ord` on the same core, `rem=70` reads +35 (m169),
++4 (m349), -36 (classic), -11 (m113), -10 (m97) while cutting CPU from 48.6 to
+30.0, 48.1 to 30.5, 41.6 to 29.4, 764.8 to 481.7, and 45.9 to 25.9 ms/move. The
+gate declines only iterations that cannot finish, so declining them is close to
+free in Elo and saves 29-38% of the wall clock. That is theory 65's central
+prediction, now measured on strength rather than only on depth and node counts.
+
+**Spending the saving is where the gain is, on four of five cores.** Raising the
+budget under the gate to `nodes=300k` and `nodes=550k` buys +35/+42 (m169),
++51/+41 (m349), +122/+163 (m113) and +0/+10 (m97) over the roster baseline. m113
+is the largest positive number anywhere in this grid at **+163 Elo**, on the core
+that the node track exists to subsidize. m169 at `rem=70,nodes=550k` reaches
+1293 +/-16 against the roster baseline's 1251, the highest cell in the table.
+
+**`classic` is the exception and goes the other way**: -61, -66, -49 at the three
+gated budgets, against -25 for ungated `deep=12`. It is the only core where the
+gate costs real Elo, and it is also the core with by far the most budget left
+over after depth 6 (median n6 = 61,227, 31% of a 200k cap, against 60% to 62%
+for m169 and the two MLP cores). One hypothesis is that `classic`'s doomed
+depth-7 iteration is cheap enough to seed the transposition table usefully for
+the NEXT move, so declining it throws away a real benefit the expensive cores
+never get. That is a hypothesis, not a measured claim. The test is `rem=70`
+against ungated `deep=12` with `noTT` on `classic`, where the hypothesis predicts
+the gap should close.
+
+### What this does not settle
+
+The gains are measured at a fixed node budget against a roster whose agents are
+almost all `deep=6,nodes=200k`, so `rem=70,nodes=550k` is spending more compute
+than its opponents (83.5 against 25.4 ms/move for m169). Whether the gate helps
+at EQUAL wall clock is a different question and needs the calibrated-`nodes=`
+track from the compute-parity work, not this grid. What this grid does establish
+is that under the node track's own definition, which charges nothing for
+evaluator cost, `rem=70` plus a raised cap beats the current head on four of five
+cores, and that `part` should never be used.
 
 ## Implementation notes
 
@@ -402,12 +592,25 @@ New telemetry, all pure observation with no effect on search:
 
 ## Future Work
 
-- **The `rem=` Elo measurement.** Everything above says the gate reaches equal or
-  greater depth for equal or fewer nodes. Nothing above says it is stronger. A
-  second cohort pass with `rem=70` heads at `nodes=200k`, `300k` and `550k`,
-  pinned against the same frozen scale, is what would settle it. Specifically it
-  would test whether the 2-3% of plies that lose a ply cost more than the deeper
-  search on the other plies buys.
+- **Why the gate costs `classic` Elo.** `classic` is the one core where
+  `rem=70` loses (-49 to -66 against the roster baseline, against -25 for ungated
+  `deep=12`), and it is also the core with the most budget left over after depth
+  6 (31% of a 200k cap against 60-62% elsewhere). The hypothesis in the grid
+  section is that its cheap doomed depth-7 iteration seeds the transposition
+  table for the next move, so the gate throws away a real benefit. The test is a
+  `noTT` pair, `ab(deep=12,noTT,ord,nodes=200k)@2` against
+  `ab(deep=12,noTT,ord,rem=70,nodes=200k)@2` on `classic`: if the TT is the
+  mechanism, the gap should close.
+- **`rem=` at equal wall clock, not equal node budget.** The +122/+163 on m113
+  and +35/+42 on m169 are measured against a roster running at 25-27 ms/move
+  while the `nodes=550k` gated agents run at 83-86. The node track charges
+  nothing for evaluator cost by design, so this is a valid claim within that
+  track, but it is not a claim that the gate is free. The calibrated-`nodes=`
+  wall-clock track from the compute-parity work is where that question belongs.
+- **A `rem=` sweep at the winning budget.** Only `rem=70` was rated, and only at
+  200k, 300k and 550k. The 21-row agreement sweep says the knee is between
+  `rem=60` and `rem=76`, so `rem=60` and `rem=76` at `nodes=550k` would say
+  whether 70 is the peak or just the first value tried.
 - **`part` combined with `rem=`.** The gate removes most cut iterations, so it
   removes most of `part`'s opportunities to adopt an unsearched score. The two
   interact and neither has been measured with the other on.
@@ -421,9 +624,11 @@ New telemetry, all pure observation with no effect on search:
   classic) means one static `rem=` threshold is wrong for one of the two
   parities. A parity-aware threshold, or the predictive form that
   `nextIterationFits` already uses for wall clock, would fit both. Not tested.
-- **Only 4 of 15 cores have a complete depth-1..9 ladder** at the time of
-  writing, and the MLP core has only 44 full-ladder plies. The share and growth
-  tables should be re-read when the remaining runs land.
+- **The ladder measures cost, not the cost under a real budget.** All 15 cores
+  now have a complete depth-1..9 ladder (412 to 648 full-ladder plies each), but
+  it was run at `nodes=999999k` so no budget ever binds. Whether the same
+  per-iteration shares hold when a cap is actually cutting searches short, and
+  the TT is being filled by aborted iterations, is not tested.
 - **The depth cap, not the node cap, is what the roster is normalising on.**
   Whether `deep=6` is the right cap has never been measured as such, because it
   was always discussed as a node-budget question. `deep=7,nodes=200k` is a
