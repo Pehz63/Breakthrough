@@ -203,6 +203,9 @@ static bool labelledNum(const string& tok, const char* const* labels, int nLabel
 static const char* const LBL_DEEP[]    = { "deep=", "deep_", "deep", "d" };
 static const char* const LBL_MAXDEEP[] = { "maxdeep=", "maxdeep_", "maxdeep", "cap" };
 static const char* const LBL_MARGIN[]  = { "margin=", "margin_", "margin", "asp" };
+// Minimum unspent share of the node budget needed to start another deepening
+// iteration. New field, so one spelling only (see AgentSpec::iterMinRemain).
+static const char* const LBL_REM[]     = { "rem=" };
 static const char* const LBL_NODES[]   = { "nodes=", "nodes_", "nodes", "nb" };
 static const char* const LBL_TIME[]    = { "time=", "time_", "time", "tb" };
 // Declarative calibration target: recorded in the id, never read by the search
@@ -221,7 +224,7 @@ static const char* const LBL_ROOTM[]   = { "m=" };        // no legacy spelling:
 static const int LBLN_DEEP = 4, LBLN_MAXDEEP = 4, LBLN_MARGIN = 4, LBLN_NODES = 4;
 static const int LBLN_TIME = 4, LBLN_PROB = 4, LBLN_PIECES = 3, LBLN_PLY = 3;
 static const int LBLN_MODEL = 4, LBLN_CONN = 4, LBLN_RISK = 1, LBLN_SIMS = 1;
-static const int LBLN_CAL = 1;
+static const int LBLN_CAL = 1, LBLN_REM = 1;
 static const int LBLN_CVISIT = 1, LBLN_CSCALE = 1, LBLN_ROOTM = 1;
 
 // ============================================================
@@ -618,6 +621,7 @@ string rankAgentId(const AgentSpec& a) {
             if (a.useQuiescence)        s += ",qs";
             if (a.keepPartial)          s += ",part";
             if (a.aspirationWindow > 0) s += ",margin=" + std::to_string(a.aspirationWindow);
+            if (a.iterMinRemain > 0)    s += ",rem=" + std::to_string(a.iterMinRemain);
             if (a.nodeBudget)           s += ",nodes=" + fmtBudget(a.nodeBudget);
             if (a.timeBudgetMs > 0.0)   s += ",time=" + std::to_string((long long)a.timeBudgetMs) + "ms";
             if (a.calTargetMs > 0.0)    s += ",cal=" + std::to_string((long long)a.calTargetMs) + "ms";
@@ -877,7 +881,8 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     int explorerIdx = -1, chooserIdx = -1, chooserParam = 0, depth = 1;
     bool fNoab = false, fTT = false, fOrd = false, fQs = false, fPart = false;
     bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false, haveCal = false;
-    long long asp = 0, cap = 0, tbMs = 0, calMs = 0;
+    bool haveRem = false;
+    long long asp = 0, cap = 0, tbMs = 0, calMs = 0, remPct = 0;
     unsigned long long nb = 0;
     bool haveCVisit = false, haveCScale = false, haveRootM = false;
     long long gCVisit = 0, gCScale = 0, gRootM = 0;
@@ -955,6 +960,13 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
                     return false;
                 }
                 asp = n; haveAsp = true;
+            } else if (labelledNum(f, LBL_REM, LBLN_REM, fTail)) {
+                if (haveRem) { err = "duplicate ab() flag '" + f + "'"; return false; }
+                if (!lenientInt(fTail, false, n) || n <= 0 || n > 99) {
+                    err = "bad remaining-budget gate '" + f + "' (expected like rem=76, 1-99)";
+                    return false;
+                }
+                remPct = n; haveRem = true;
             } else if (labelledNum(f, LBL_TIME, LBLN_TIME, fTail)
                        && fTail.size() > 2 && fTail.compare(fTail.size()-2, 2, "ms") == 0) {
                 if (haveTb) { err = "duplicate ab() flag '" + f + "'"; return false; }
@@ -1356,6 +1368,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         a.useQuiescence = fQs;
         a.keepPartial = fPart;
         a.aspirationWindow = (int)asp;
+        a.iterMinRemain = (int)remPct;
         a.nodeBudget = nb;
         a.timeBudgetMs = (double)tbMs;
         a.calTargetMs = (double)calMs;
@@ -5523,6 +5536,94 @@ int rankMoveAgree(const string& idA, const string& idB, int games,
     return tp > 0 ? 0 : 1;
 }
 
+
+static const int NP_MAX = 16;
+
+// ============================================================
+// NODE PROFILE (nodeprofile)
+// ============================================================
+// How many nodes has iterative deepening spent by the time it FINISHES each
+// depth? g_lastEffDepth cannot answer that: it reports one number for the whole
+// search. The per-iteration profile is what says how much of a budget the last
+// (usually discarded) iteration is consuming, which is the quantity a
+// "do not start an iteration that will not fit" rule has to predict.
+//
+// One agent self-plays both colours from a seeded random opener and every
+// non-forced ply emits its whole ladder. Positions where the search stopped for
+// a reason other than the budget (a mate score found, or a nearWinCheck
+// short-circuit) are still emitted, tagged by `kind`, so the caller can exclude
+// the collapsed-tree endgames rather than guessing a node threshold.
+static void nodeProfileGame(const RankAgent& ag, int games, const string& boardFile,
+                            int openPlies, unsigned runSeed, std::ofstream& tsv,
+                            long& plies, long& used) {
+    for (int g = 0; g < games; g++) {
+        if (!reloadBoard(boardFile)) { cout << "ERROR: cannot load board " << boardFile << "\n"; return; }
+        srand(gameSeed(ag.id, ag.id, g, runSeed));
+        bool endedInOpener = false;
+        for (int h = 0; h < openPlies && !endedInOpener; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            int v = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+            if (gameOutcome(v)) endedInOpener = true;
+        }
+        if (endedInOpener) continue;
+        used++;
+        for (int h = openPlies; h < 400; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            Move legal[ML_MAX_MOVES];
+            int nLegal = generateMoves(side, legal);
+            ttClear();
+            int victor = agentChooseMove(ag.spec, side);
+            if (nLegal > 1) {
+                plies++;
+                tsv << g << "\t" << h << "\t" << (side == White ? "W" : "B")
+                    << "\t" << nLegal << "\t" << g_lastEffDepth
+                    << "\t" << (int)g_lastEffDepth << "\t" << g_lastBudgetKind
+                    << "\t" << g_lastNodes << "\t" << g_lastPartAdopt;
+                for (int d = 1; d <= NP_MAX; d++) tsv << "\t" << g_nodesAtDepth[d];
+                tsv << "\n";
+            }
+            if (gameOutcome(victor)) break;
+        }
+        cout << "  game " << (g + 1) << "/" << games << ": plies=" << plies << "\n" << flush;
+    }
+}
+
+int rankNodeProfile(const string& id, int games, const string& boardFile,
+                    int openPlies, unsigned runSeed, const string& outTsv) {
+    if (games <= 0)     { cout << "ERROR: --games must be positive\n"; return 1; }
+    if (openPlies <= 0) { cout << "ERROR: nodeprofile needs --open-plies > 0 (the agent is deterministic)\n"; return 1; }
+    if (id.empty())     { cout << "ERROR: nodeprofile needs --id <id>\n"; return 1; }
+    if (outTsv.empty()) { cout << "ERROR: nodeprofile needs --out <tsv>\n"; return 1; }
+
+    RankAgent A; string err;
+    if (!rankAgentFromId(id, A, err)) { cout << "ERROR: --id: " << err << "\n"; return 1; }
+    std::vector<const RankAgent*> ags; ags.push_back(&A);
+    if (!loadModelSlots(ags, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    cout << "node profile, " << games << " games, open-plies=" << openPlies
+         << ", board=" << boardFile << ", seed=" << runSeed << "\n";
+    cout << "  agent: " << id << "\n";
+    cout << "n<d> is the CUMULATIVE node count when depth d finished, 0 if it never\n"
+         << "finished. kind is the BudgetKind that ended the search: 1=depth (includes\n"
+         << "a mate score found early), 2=nodes, 3=time. Forced plies are excluded.\n";
+
+    size_t sl = outTsv.find_last_of("/\\");
+    if (sl != string::npos) ensureDir(outTsv.substr(0, sl));
+    std::ofstream tsv(outTsv.c_str());
+    if (!tsv) { cout << "ERROR: cannot write " << outTsv << "\n"; return 1; }
+    tsv << "game" << "\t" << "ply" << "\t" << "side" << "\t" << "legal" << "\t" << "eff"
+        << "\t" << "cd" << "\t" << "kind" << "\t" << "nodes" << "\t" << "adopt";
+    for (int d = 1; d <= NP_MAX; d++) tsv << "\t" << "n" << d;
+    tsv << "\n";
+
+    long plies = 0, used = 0;
+    nodeProfileGame(A, games, boardFile, openPlies, runSeed, tsv, plies, used);
+    tsv.close();
+    mlClearSlots();
+    cout << "\ngames played " << used << ", non-forced plies " << plies
+         << " -> " << outTsv << "\n";
+    return 0;
+}
 
 // ============================================================
 // POSITION-ORACLE LABEL PIPELINE (posgen / label / labelfit)

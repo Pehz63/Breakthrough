@@ -614,6 +614,12 @@ int rankOpenerSwap(const std::string& idA, const std::string& idB, int games,
 // carries both labels and only `cal=` says which track it is in.
 void rankCategoryOf(const std::string& id, std::string& division, std::string& track);
 
+// Per-iteration node profile: one agent self-plays and every non-forced ply emits
+// the cumulative node count at each depth iterative deepening completed. Answers
+// "how much of the budget went into the last iteration", which g_lastEffDepth cannot.
+int rankNodeProfile(const std::string& id, int games, const std::string& boardFile,
+                    int openPlies, unsigned runSeed, const std::string& outTsv);
+
 int rankMoveAgree(const std::string& idA, const std::string& idB, int games,
                   const std::string& board, int openPlies, unsigned runSeed,
 //

@@ -8,6 +8,7 @@
 #include "explorers.h"
 #include "datastore.h"
 #include "ml_cluster.h"
+#include "transposition.h"
 #include <algorithm>
 #include <sstream>
 #include <set>
@@ -2156,6 +2157,122 @@ TEST_CASE("agree - self-agreement is exactly 1.0, and the budget rule can break 
     REQUIRE(rankMoveAgree(self, self, 2, "boards/board1.txt", 0, 11) == 1);
     REQUIRE(rankMoveAgree(self, self, 0, "boards/board1.txt", 6, 11) == 1);
     REQUIRE(rankMoveAgree("", self, 2, "boards/board1.txt", 6, 11) == 1);
+}
+
+TEST_CASE("rem= gate - id round trip, range, and inertness when unset") {
+    // Canonical spelling and position: after margin=, before nodes=.
+    RankAgent a = parseOk("ab(deep=12,tt,ord,rem=76,nodes=200k)@2.classic(chip=100)@2");
+    REQUIRE(a.spec.iterMinRemain == 76);
+    parseOk("ab(deep=12,tt,ord,margin=100,rem=50,nodes=200k)@2.classic(chip=100)@2");
+
+    // Absent means 0, and 0 is never emitted, so every id written before the gate
+    // existed still round-trips to itself.
+    RankAgent b = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2");
+    REQUIRE(b.spec.iterMinRemain == 0);
+
+    // The gate is a percentage: 0 would be a no-op spelled as if it were a setting,
+    // and 100 could never be satisfied (no budget remains after the first iteration).
+    RankAgent tmp; string err;
+    REQUIRE_FALSE(rankAgentFromId("ab(deep=12,rem=0,nodes=200k)@2.classic(chip=100)@2", tmp, err));
+    REQUIRE_FALSE(rankAgentFromId("ab(deep=12,rem=100,nodes=200k)@2.classic(chip=100)@2", tmp, err));
+    REQUIRE_FALSE(rankAgentFromId("ab(deep=12,rem=76,rem=50,nodes=200k)@2.classic(chip=100)@2", tmp, err));
+}
+
+TEST_CASE("rem= gate - spends fewer nodes without changing the completed depth") {
+    // The gate declines a deepening iteration that cannot finish inside the node
+    // budget. Without `part` such an iteration is discarded whole, so declining it
+    // must leave the completed depth and the chosen move untouched while cutting the
+    // node bill. Both halves are asserted: fewer nodes ALONE would also be produced
+    // by a gate that simply searched less, which is the bug this guards against.
+    AgentSpec plain = parseOk("ab(deep=12,tt,ord,nodes=200k)@2.classic(chip=100)@2").spec;
+    AgentSpec gated = parseOk("ab(deep=12,tt,ord,rem=82,nodes=200k)@2.classic(chip=100)@2").spec;
+
+    // Replay the identical seeded opener before each search so the two agents are
+    // answering the same position, then compare their telemetry.
+    struct Probe { unsigned long long nodes; int depth; char sq[SIZE][SIZE]; };
+    auto probe = [](const AgentSpec& a, unsigned seed, int side) {
+        REQUIRE(reloadBoard("boards/board1.txt"));
+        srand(seed);
+        for (int h = 0; h < 6; h++)
+            (h % 2 == 0) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+        ttClear();
+        agentChooseMove(const_cast<AgentSpec&>(a), side);
+        Probe p;
+        p.nodes = g_lastNodes;
+        p.depth = (int)g_lastEffDepth;      // cutFraction < 1, so this is completedDepth
+        memcpy(p.sq, board, sizeof(p.sq));
+        return p;
+    };
+
+    long long plainTotal = 0, gatedTotal = 0;
+    int probes = 0, sameDepth = 0, sameMoveAtSameDepth = 0;
+    for (unsigned seed = 1; seed <= 6; seed++) {
+        Probe p = probe(plain, seed, White);
+        Probe g = probe(gated, seed, White);
+        plainTotal += (long long)p.nodes;
+        gatedTotal += (long long)g.nodes;
+        // The gate can only DECLINE an iteration, so it can never come out deeper.
+        REQUIRE(g.depth <= p.depth);
+        if (g.depth == p.depth) {
+            sameDepth++;
+            // The real correctness claim: at equal completed depth, skipping an
+            // iteration that would have been discarded anyway cannot change the move.
+            if (memcmp(p.sq, g.sq, sizeof(p.sq)) == 0) sameMoveAtSameDepth++;
+        }
+        probes++;
+    }
+    REQUIRE(probes == 6);
+    // Strictly cheaper: the declined iterations were real spend.
+    REQUIRE(gatedTotal < plainTotal);
+    // Non-vacuous, then exact, on the plies where the gate cost no depth. A gate set
+    // this aggressively does sometimes decline an iteration that WOULD have finished
+    // (measured: ~13% of plies for this core at rem=82), and those plies legitimately
+    // come out a ply shallower. That is the tradeoff the threshold buys, not a bug,
+    // so it is not asserted away here.
+    REQUIRE(sameDepth > 0);
+    REQUIRE(sameMoveAtSameDepth == sameDepth);
+
+    // Inertness check: with no node budget there is nothing to take a percentage of,
+    // so the gate must not fire and a gated agent must match an ungated one exactly.
+    AgentSpec fixedPlain = parseOk("ab(deep=5,tt,ord)@2.classic(chip=100)@2").spec;
+    AgentSpec fixedGated = parseOk("ab(deep=5,tt,ord,rem=95)@2.classic(chip=100)@2").spec;
+    for (unsigned seed = 1; seed <= 3; seed++) {
+        Probe p = probe(fixedPlain, seed, White);
+        Probe g = probe(fixedGated, seed, White);
+        REQUIRE(g.nodes == p.nodes);
+        REQUIRE(memcmp(p.sq, g.sq, sizeof(p.sq)) == 0);
+    }
+}
+
+TEST_CASE("g_nodesAtDepth - the per-iteration profile is monotone and bounded") {
+    // The profile is what says how much of a budget the last iteration consumed, so
+    // a stale or double-counted entry would silently corrupt every waste figure read
+    // off it. Cumulative counts must strictly increase up to the completed depth,
+    // stop there, and never exceed the search's own total.
+    AgentSpec a = parseOk("ab(deep=8,tt,ord,nodes=200k)@2.classic(chip=100)@2").spec;
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    srand(31);
+    for (int h = 0; h < 6; h++)
+        (h % 2 == 0) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+    ttClear();
+    agentChooseMove(a, White);
+
+    int cd = (int)g_lastEffDepth;
+    REQUIRE(cd >= 1);
+    REQUIRE(g_nodesAtDepth[cd] > 0);
+    REQUIRE(g_nodesAtDepth[cd] <= g_lastNodes);
+    for (int d = 2; d <= cd; d++) REQUIRE(g_nodesAtDepth[d] > g_nodesAtDepth[d-1]);
+    // Depths past the one that completed never ran, so they must read 0 rather than
+    // carrying a value left over from the previous search.
+    for (int d = cd + 1; d <= MAX_PROFILE_DEPTH; d++) REQUIRE(g_nodesAtDepth[d] == 0);
+
+    // A shallower search after a deeper one must not inherit the deeper profile.
+    AgentSpec shallow = parseOk("ab(deep=3,tt,ord,nodes=200k)@2.classic(chip=100)@2").spec;
+    ttClear();
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    agentChooseMove(shallow, White);
+    for (int d = (int)g_lastEffDepth + 1; d <= MAX_PROFILE_DEPTH; d++)
+        REQUIRE(g_nodesAtDepth[d] == 0);
 }
 
 TEST_CASE("decodePositionEnc - roundtrip, counters, and rejection") {

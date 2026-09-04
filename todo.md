@@ -152,7 +152,27 @@ against the same seams.
   because `deep=6` caps iterative deepening before either budget binds
   (`src/ai_minimax.cpp`). The same core costs 41,841 nodes/move on the node head
   and 41,819 on the time head, so the two tracks are today the same instrument
-  measured twice. `[Now]` {cpu: days, dev: high}
+  measured twice. Quantified per core 2026-09-03 (`rank.exe nodeprofile`, 12 games
+  each, 15 cores): on `ab(deep=6,tt,ord,nodes=200k)@2` the node cap binds on a mean
+  of **3.8%** of plies, from 0.0% on `classic(chip=100)@2` to 14.8% on
+  `learned(model=113,...,mlp)@1`. At `deep=7` it binds on 37% to 79%, so the roster
+  head sits just below the knee. `[Now]` {cpu: days, dev: high}
+  - **The `rem=N` gate exists but is unrated.** `ab(...,rem=N,nodes=...)` declines a
+    deepening iteration unless N% of the node budget is unspent, which is what lets a
+    budget be raised without paying for iterations that cannot finish. Measured: the
+    last completed iteration is 64-83% of everything spent to reach it, `rem=70` saves
+    35-39% of nodes for 2-3% of plies losing a ply, and
+    `ab(deep=12,tt,ord,rem=70,nodes=300k)@2` on `learned(model=169,...)@1` beats plain
+    `nodes=200k` on BOTH axes (163,580 nodes/move vs 178,033, deeper on 17.9% of plies
+    vs shallower on 0.9%). **No Elo number exists**, and depth is not strength. Next
+    step is a pinned cohort pass with `rem=70` heads at 200k/300k/550k
+    (`plans/budget-parity-results-2-steady-meridian.md`) `[Next]` {cpu: hours, dev: low}
+  - **Search-technique Elo grid, in flight.** 40-agent cohort (5 cores x 8 heads) via
+    Workflow A into the main store, working roster `ranking/q5/roster.txt`, cohort
+    `ranking/q5/cohort.txt`, 8 games/pair, then `rate --pin ranking/standings.tsv`.
+    Holds the CORE fixed and varies the HEAD, the mirror image of `CHAMPION.md` rule 6.
+    The `rem=` heads are NOT in it (the flag landed after the run started)
+    `[Now]` {cpu: hours, dev: low}
   - ~~Cross-cutting prerequisites, all blocking (plan Part 1): raise `deep=` to a
     non-binding ceiling; fix `time=` enforcement (the one-line pre-iteration check
     in the item below is NOT sufficient once the depth cap lifts, see plan P2);

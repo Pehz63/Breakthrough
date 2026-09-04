@@ -62,6 +62,11 @@ static const unsigned long long TIME_CHECK_MASK = 255ULL;
 // merely prunes one node in 256. That is how a `time=150ms` agent could run an
 // entire extra iteration past its budget. With the flag, the first sampled
 // expiry converts every later node into an immediate leaf return.
+// 1-based index, in root-scan order, of the root move that last raised alpha (or
+// lowered beta). Compared against rootDeep it says whether the iteration's best
+// move was genuinely searched or only statically scored after the budget tripped.
+static int s_rootBestIdx = 0;
+
 static inline bool budgetTripped(unsigned long long nodes) {
     if (g_nodeDeadline && nodes >= g_nodeDeadline) { s_budgetCause = BUDGET_NODE; return true; }
     if (s_timeOn) {
@@ -134,6 +139,20 @@ static inline bool nextIterationFits(double prevIterMs, double lastIterMs) {
 // Killer moves (2 quiet refutations per ply) + a side/from/to history table, used by
 // the ordered search path. Reset once per top-level search. Only touched when
 // g_useMoveOrder / g_useTT are set, so default play is unaffected.
+// Node-budget counterpart to nextIterationFits, and deliberately a static threshold
+// rather than a prediction: g_iterMinRemain is the percentage of the node budget that
+// must still be unspent before another deepening iteration is worth beginning. An
+// iteration that cannot finish contributes nothing, because a budget-cut iteration is
+// discarded (or, under g_keepPartial, adopted from a root scan whose tail was scored
+// by a static evalLeaf rather than searched). Inert at 0 and inert without a node
+// budget, so every existing agent behaves exactly as before.
+static inline bool nodeIterationWorthStarting(unsigned long long nodes) {
+    if (g_iterMinRemain <= 0 || !g_nodeDeadline) return true;
+    if (nodes >= g_nodeDeadline) return false;
+    double remainPct = 100.0 * (double)(g_nodeDeadline - nodes) / (double)g_nodeDeadline;
+    return remainPct >= (double)g_iterMinRemain;
+}
+
 static const int MAXPLY = 128;
 static int g_killerFrom[MAXPLY][2], g_killerTo[MAXPLY][2];
 static int g_hist[2][64][64];
@@ -436,6 +455,7 @@ static int searchRootWhite(int d, int alpha0, int beta0, int evaluator, const in
                            unsigned long long int& nodes, unsigned long long int& leafs,
                            int& rootDeep, int& rootTotal) {
     int alpha = alpha0, beta = beta0, eval; bool isCapture; mx = -1;
+    s_rootBestIdx = 0;
     for (int y = SIZE-2; y >= 0; y--)
         for (int x = 0; x < SIZE; x++) {
             if (board[x][y] != WHITE) continue;
@@ -451,7 +471,7 @@ static int searchRootWhite(int d, int alpha0, int beta0, int evaluator, const in
                                     g_useAlphaBeta ? beta  : INT_MAX,
                                     1, d, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveWhite(x, y, z, isCapture);
-                if (eval > alpha) { alpha = eval; mx = x; my = y; mz = z; }
+                if (eval > alpha) { alpha = eval; mx = x; my = y; mz = z; s_rootBestIdx = rootTotal; }
                 return g_useAlphaBeta && alpha >= beta;
             };
             if (x > 0       && board[x-1][ny] == BLACK && tryMove(x-1)) return alpha;
@@ -478,6 +498,8 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
     int completedDepth = 0;
     double cutFraction = 0.0;
     int budgetKind = BUDGET_DEPTH;
+    for (int i = 0; i <= MAX_PROFILE_DEPTH; i++) g_nodesAtDepth[i] = 0;
+    g_lastPartAdopt = 0;
 
     if (!budgeted) {
         // Unbudgeted: a single full-depth search (identical to the original behavior).
@@ -486,6 +508,7 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
                                 moveX1, moveY, moveX2, nodes, leafs, rd, rt);
         completedDepth = depth;
         budgetKind = BUDGET_DEPTH;
+        if (depth >= 0 && depth <= MAX_PROFILE_DEPTH) g_nodesAtDepth[depth] = nodes;
     } else {
         // Budgeted: iterative deepening sharing one node/time pool. Keep the best move
         // from the deepest iteration that finished within budget; a cut iteration is
@@ -496,6 +519,10 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
             // per-ply growth says cannot fit (see nextIterationFits).
             if (d > 1 && !nextIterationFits(prevIterMs, lastIterMs)) {
                 budgetKind = BUDGET_TIME;
+                break;
+            }
+            if (d > 1 && !nodeIterationWorthStarting(nodes)) {
+                budgetKind = BUDGET_NODE;
                 break;
             }
             double iterStartMs = elapsedMs();
@@ -526,12 +553,16 @@ int miniMaxWhite(int depth, int evaluator, const int* evalParams, unsigned long 
                 budgetKind = (s_budgetCause == BUDGET_TIME) ? BUDGET_TIME : BUDGET_NODE;
                 cutFraction = rootTotal > 0 ? (double)rootDeep / rootTotal : 0.0;
                 bool adopt = (moveX1 == -1) || (g_keepPartial && mx != -1 && a > alphaPrev);
-                if (adopt && mx != -1) { moveX1 = mx; moveY = my; moveX2 = mz; alpha = a; }
+                if (adopt && mx != -1) {
+                    moveX1 = mx; moveY = my; moveX2 = mz; alpha = a;
+                    g_lastPartAdopt = (s_rootBestIdx > rootDeep) ? 2 : 1;
+                }
                 break;                                             // budget gone
             }
 
             moveX1 = mx; moveY = my; moveX2 = mz; alpha = a;       // full iteration completed
             completedDepth = d;
+            if (d <= MAX_PROFILE_DEPTH) g_nodesAtDepth[d] = nodes;
             prevIterMs = lastIterMs;
             lastIterMs = elapsedMs() - iterStartMs;
             if (g_nodeDeadline && nodes >= g_nodeDeadline) { budgetKind = BUDGET_NODE; break; }
@@ -607,6 +638,7 @@ static int searchRootBlack(int d, int alpha0, int beta0, int evaluator, const in
                            unsigned long long int& nodes, unsigned long long int& leafs,
                            int& rootDeep, int& rootTotal) {
     int alpha = alpha0, beta = beta0, eval; bool isCapture; mx = -1;
+    s_rootBestIdx = 0;
     for (int y = 1; y <= SIZE-1; y++)
         for (int x = 0; x < SIZE; x++) {
             if (board[x][y] != BLACK) continue;
@@ -620,7 +652,7 @@ static int searchRootBlack(int d, int alpha0, int beta0, int evaluator, const in
                                     g_useAlphaBeta ? beta  : INT_MAX,
                                     1, d, evaluator, evalParams, nodes, leafs);
                 unsimulateMoveBlack(x, y, z, isCapture);
-                if (eval < beta) { beta = eval; mx = x; my = y; mz = z; }
+                if (eval < beta) { beta = eval; mx = x; my = y; mz = z; s_rootBestIdx = rootTotal; }
                 return g_useAlphaBeta && beta <= alpha;
             };
             if (x > 0       && board[x-1][ny] == WHITE && tryMove(x-1)) return beta;
@@ -647,6 +679,8 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
     int completedDepth = 0;
     double cutFraction = 0.0;
     int budgetKind = BUDGET_DEPTH;
+    for (int i = 0; i <= MAX_PROFILE_DEPTH; i++) g_nodesAtDepth[i] = 0;
+    g_lastPartAdopt = 0;
 
     if (!budgeted) {
         int rd = 0, rt = 0;
@@ -654,12 +688,17 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
                                moveX1, moveY, moveX2, nodes, leafs, rd, rt);
         completedDepth = depth;
         budgetKind = BUDGET_DEPTH;
+        if (depth >= 0 && depth <= MAX_PROFILE_DEPTH) g_nodesAtDepth[depth] = nodes;
     } else {
         double prevIterMs = 0.0, lastIterMs = 0.0;
         for (int d = 1; d <= depth; d++) {
             // Mirrors searchRootWhite's driver: see nextIterationFits.
             if (d > 1 && !nextIterationFits(prevIterMs, lastIterMs)) {
                 budgetKind = BUDGET_TIME;
+                break;
+            }
+            if (d > 1 && !nodeIterationWorthStarting(nodes)) {
+                budgetKind = BUDGET_NODE;
                 break;
             }
             double iterStartMs = elapsedMs();
@@ -690,12 +729,16 @@ int miniMaxBlack(int depth, int evaluator, const int* evalParams, unsigned long 
                 budgetKind = (s_budgetCause == BUDGET_TIME) ? BUDGET_TIME : BUDGET_NODE;
                 cutFraction = rootTotal > 0 ? (double)rootDeep / rootTotal : 0.0;
                 bool adopt = (moveX1 == -1) || (g_keepPartial && mx != -1 && b < betaPrev);
-                if (adopt && mx != -1) { moveX1 = mx; moveY = my; moveX2 = mz; beta = b; }
+                if (adopt && mx != -1) {
+                    moveX1 = mx; moveY = my; moveX2 = mz; beta = b;
+                    g_lastPartAdopt = (s_rootBestIdx > rootDeep) ? 2 : 1;
+                }
                 break;
             }
 
             moveX1 = mx; moveY = my; moveX2 = mz; beta = b;
             completedDepth = d;
+            if (d <= MAX_PROFILE_DEPTH) g_nodesAtDepth[d] = nodes;
             prevIterMs = lastIterMs;
             lastIterMs = elapsedMs() - iterStartMs;
             if (g_nodeDeadline && nodes >= g_nodeDeadline) { budgetKind = BUDGET_NODE; break; }

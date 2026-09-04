@@ -81,6 +81,7 @@ static void usage() {
     cout << "               colors swapped, to separate 'position favors a color' from 'agent recovers better'\n";
     cout << "  agree      move agreement: two budget rules on one core polled from identical positions," << "\n";
     cout << "             to measure how often swapping the budget rule changes the move played" << "\n";
+    cout << "  nodeprofile per-iteration node cost of iterative deepening, one agent self-playing\n";
     cout << "  posgen     build a deduped, stratified position pool (train + eval tiers) from stored games\n";
     cout << "  label      play a designed ladder of fresh games from every pool position (raw outcome rows)\n";
     cout << "  labelfit   fit per-position (mu, sigma) Elo-advantage labels from a raw label store\n";
@@ -153,6 +154,11 @@ static void usage() {
     cout << "          other agent is polled from the IDENTICAL position at every ply (move" << "\n";
     cout << "          recorded, then discarded). TT wiped before both searches; forced plies" << "\n";
     cout << "          excluded. Reports agreement + Wilson 95% CI, mean depth/nodes/ms." << "\n";
+    cout << "nodeprofile: --id <id> --games N --open-plies 6 --out <tsv>. One agent self-plays\n";
+    cout << "          both colours; every non-forced ply emits the CUMULATIVE node count at\n";
+    cout << "          each depth iterative deepening finished (n1..n16, 0 = never finished),\n";
+    cout << "          plus the BudgetKind that ended the search, so a mate-collapsed endgame\n";
+    cout << "          can be excluded by reason rather than by a node threshold.\n";
     cout << "posgen:   --out-train/--out-eval <pool files> --train N --eval N (targets),\n";
     cout << "          --per-game 4 --min-ply 6 --max-ply 44. Replays a deterministic sample of\n";
     cout << "          the store into DISTINCT positions (enc + hash + side to move), stratified\n";
@@ -388,6 +394,11 @@ int main(int argc, char** argv) {
                            getInt(argc, argv, "--games", 6), board,
                            getInt(argc, argv, "--open-plies", 6), seed, 0,
                            getOpt(argc, argv, "--out", ""));
+    } else if (cmd == "nodeprofile") {
+        rc = rankNodeProfile(getOpt(argc, argv, "--id", ""),
+                             getInt(argc, argv, "--games", 6), board,
+                             getInt(argc, argv, "--open-plies", 6), seed,
+                             getOpt(argc, argv, "--out", ""));
     } else if (cmd == "posgen") {
         rc = rankPosGen(store, board,
                         getOpt(argc, argv, "--out-train", "data/labels/pool_train.jsonl"),

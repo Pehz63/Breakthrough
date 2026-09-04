@@ -155,6 +155,15 @@ extern bool g_useMoveOrder;     // TT/killer/history move ordering (capture-firs
 extern bool g_useQuiescence;    // captures-only stand-pat extension at depth leaves
 extern bool g_keepPartial;      // keep a budget-cut iteration's best move instead of discarding
 extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width at the root
+// Percentage of the NODE budget that must still be unspent for iterative deepening
+// to begin another iteration. 0 disables the check, which is the historical
+// behaviour: start every iteration and let the budget cut it mid-flight.
+// Per-ply node cost grows about 4x here, so an iteration started with less than
+// roughly 76% of the budget left cannot finish, and every node it spends is thrown
+// away (or, under g_keepPartial, adopted on a score that is partly unsearched).
+// Only consulted when a node budget is set; a wall-clock budget has its own
+// predictive check in nextIterationFits.
+extern int  g_iterMinRemain;
 
 // Root-move whitelist, the "filter mode" of the cluster-book opener (`cbook`,
 // src/ai_random.cpp). When g_useRootFilter is set, searchRootWhite/searchRootBlack
@@ -198,6 +207,28 @@ extern double g_lastEffDepth;
 extern int    g_lastBudgetKind;   // BudgetKind: which cap ended the last search
 extern unsigned long long g_lastNodes;
 extern unsigned long long g_lastLeafs;
+
+// Per-iteration node profile of the last search. g_nodesAtDepth[d] is the CUMULATIVE
+// node count at the instant iterative deepening finished depth d, so the cost of the
+// depth-d iteration alone is g_nodesAtDepth[d] - g_nodesAtDepth[d-1]. A depth that
+// never completed reads 0, which is why the array is cleared at the top of every
+// search. A non-iterative (fixed-depth, unbudgeted) search fills only its own depth.
+// This is the only place the shape of the deepening ladder is observable from
+// outside the searcher: g_lastEffDepth collapses it to one number.
+// What `part` (g_keepPartial) actually adopted on the last search:
+//   0 = nothing adopted (the deepest iteration finished, or the cut one lost a > alphaPrev)
+//   1 = adopted a root move that WAS searched to the cut iteration's full depth
+//   2 = adopted a root move examined AFTER the budget tripped, whose score is a
+//       static evalLeaf taken one ply in with no reply searched, not a depth-d value
+// searchRootWhite/Black do not stop at the budget: they keep walking the remaining
+// root moves, and budgetTripped short-circuits each one to a leaf eval. Those scores
+// are biased high for the side to move (the refutation is never searched), so they
+// can win the `a > alphaPrev` adoption test on merit they do not have. Value 2 counts
+// exactly that case.
+extern int g_lastPartAdopt;
+
+#define MAX_PROFILE_DEPTH 64
+extern unsigned long long g_nodesAtDepth[MAX_PROFILE_DEPTH + 1];
 
 // Process-lifetime sum of g_lastNodes over every agentChooseMove search. The
 // per-move telemetry above is overwritten by the next move, so a trainer that

@@ -259,6 +259,42 @@ a node budget is exact and needs no forecast.
 time rows), `plans/budget-parity-plan-1-steady-meridian.md` (source), `todo.md`
 (citation sites).
 
+## `BUDGET HEAD NOT ROSTERED` - flagged 2026-09-03
+
+**Scope: any budget-rule measurement taken on `ab(deep=12,...)` and read as
+describing the node track.** A writing defect, not a code defect: the numbers are
+correct for the head they were measured on, and wrong about the roster.
+
+114 of the 222 active roster agents sit on `ab(deep=6,tt,ord,nodes=200k)@2`. That
+head caps the deepening loop at depth 6 as well as at 200,000 nodes, and measured
+across all 15 calibration cores (12 games each, `rank.exe nodeprofile`) **the node
+cap binds on a mean of 3.8% of plies, range 0.0% (`classic(chip=100)@2`) to 14.8%
+(`learned(model=113,...,mlp)@1`)**. On the head the roster actually plays, the node
+budget is a safety net that almost never fires, and the track is in practice a
+fixed-depth-6 track. At `deep=7` the cap binds on 37% to 79% of plies, so the
+roster head sits just below the knee.
+
+Measurements taken at `deep=12,nodes=200k` describe a head with no rostered
+agents on it. They are not wrong, they answer a different question.
+
+**What this does and does not invalidate.** It does NOT invalidate any number
+measured at `deep=12`, nor the mechanism claims built on them (a cut iteration is
+discarded, `part` adopts partly unsearched scores, one iteration costs 64-83% of
+cumulative). Those are properties of budgeted iterative deepening and hold
+wherever the budget binds. What it invalidates is the SCOPE: a sentence of the
+form "the node track wastes 54% of its budget" or "raising 200k to 250k would
+help the roster" is false, because on the roster head there is usually no cut
+iteration to waste anything or to rescue.
+
+**What to do instead.** State the head in any budget claim, and check whether the
+budget binds on that head before saying the budget does anything. `rank.exe
+nodeprofile` reports the ending `BudgetKind` per ply, which answers it directly.
+
+**Known affected text.** `plans/budget-parity-results-1-steady-meridian.md`
+(banner applied) and theory 63 in `Docs/theories.md` (note applied).
+
+---
+
 ## `POSGEN POOL NOT REPRODUCIBLE` - flagged 2026-09-02
 
 **Scope: every position pool built by `rank.exe posgen` from a store containing

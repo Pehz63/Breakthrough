@@ -55,6 +55,8 @@ struct AgentSpec {
     bool   useQuiescence;               // captures-only stand-pat extension at depth leaves
     bool   keepPartial;                 // keep a budget-cut iteration's best move
     int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
+    int    iterMinRemain;               // 0 = off; else % of the node budget that must
+                                        // remain to start another deepening iteration
 
     // Gumbel MCTS search-shape knobs (src/ai_gumbel.cpp), inert for every other
     // explorer. Defaults reproduce the paper's own defaults (see seedAgentDefaults).

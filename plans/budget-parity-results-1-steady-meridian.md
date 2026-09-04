@@ -1,3 +1,17 @@
+> **[BUDGET HEAD NOT ROSTERED - flagged 2026-09-03]** The census, the
+> completed-depth distributions, and the "54% of the node budget is discarded"
+> figure in this document were all measured on `ab(deep=12,tt,ord,nodes=200k)@2`.
+> No roster agent uses that head. 114 of the 222 active agents sit on
+> `ab(deep=6,tt,ord,nodes=200k)@2`, where the node cap binds on a mean of 3.8% of
+> plies (range 0.0% to 14.8% across 15 cores), so the node track is in practice a
+> fixed-depth-6 track and the discarded-iteration waste it pays is small. The
+> numbers below are correct for the head they were measured on and say nothing
+> about the roster. The mechanism claims (a cut iteration is discarded, one
+> iteration costs most of the cumulative budget) survive unchanged wherever the
+> budget does bind. Re-scoped measurements:
+> `plans/budget-parity-results-2-steady-meridian.md`. See
+> `BUDGET HEAD NOT ROSTERED`, `Docs/corrections.md`.
+
 # Budget-parity rebuild, Part 1 prerequisites: results
 
 Companion to `plans/budget-parity-plan-1-steady-meridian.md`. Covers Part 1
