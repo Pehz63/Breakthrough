@@ -2244,6 +2244,120 @@ TEST_CASE("rem= gate - spends fewer nodes without changing the completed depth")
     }
 }
 
+TEST_CASE("retain - id round trip, default off, and inertness without a node budget") {
+    // Canonical spelling and position: after rem=, before nodes=.
+    RankAgent a = parseOk("ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2");
+    REQUIRE(a.spec.retainBudget);
+    REQUIRE(a.spec.iterMinRemain == 70);
+    parseOk("ab(deep=12,tt,ord,retain,nodes=200k)@2.classic(chip=100)@2");
+
+    // Absent means off, and off is never emitted, so every id written before the
+    // flag existed still round-trips to itself.
+    RankAgent b = parseOk("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2");
+    REQUIRE_FALSE(b.spec.retainBudget);
+
+    RankAgent tmp; string err;
+    REQUIRE_FALSE(rankAgentFromId("ab(deep=12,retain,retain,nodes=200k)@2.classic(chip=100)@2", tmp, err));
+
+    // With no node budget there is no cap to leave a remainder of, so the flag must
+    // change nothing. A fixed-depth agent is the cleanest case: identical node counts
+    // move after move, with no carry accumulating between them.
+    AgentSpec plain  = parseOk("ab(deep=5,tt,ord)@2.classic(chip=100)@2").spec;
+    AgentSpec keeper = parseOk("ab(deep=5,tt,ord,retain)@2.classic(chip=100)@2").spec;
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    retainResetCarry();
+    ttClear();
+    agentChooseMove(plain, White);
+    unsigned long long plainNodes = g_lastNodes;
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    retainResetCarry();
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(reloadBoard("boards/board1.txt"));
+        ttClear();
+        agentChooseMove(keeper, White);
+        REQUIRE(g_lastNodes == plainNodes);
+    }
+    REQUIRE(g_nodeCarry[0] == 0);
+    REQUIRE(g_nodeCarry[1] == 0);
+}
+
+TEST_CASE("retain - unspent budget carries to the same side's next move") {
+    // The gate leaves part of the cap unspent on every move. With `retain` that
+    // remainder is added to the next move's cap for the SAME side, so repeated
+    // searches from one position must spend strictly more each time until the
+    // enlarged budget lets another iteration through, while the ungated-carry
+    // control spends exactly the same amount every time.
+    AgentSpec noKeep = parseOk("ab(deep=12,tt,ord,rem=70,nodes=200k)@2.classic(chip=100)@2").spec;
+    AgentSpec keeper = parseOk("ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2").spec;
+
+    // Same position every time (reloaded, TT cleared), so the ONLY thing that can
+    // differ between iterations of the loop is the carried budget.
+    auto oneSearch = [](const AgentSpec& a, int side) {
+        REQUIRE(reloadBoard("boards/board1.txt"));
+        ttClear();
+        agentChooseMove(const_cast<AgentSpec&>(a), side);
+        return g_lastNodes;
+    };
+
+    retainResetCarry();
+    unsigned long long flat0 = oneSearch(noKeep, White);
+    for (int i = 0; i < 4; i++) REQUIRE(oneSearch(noKeep, White) == flat0);
+    REQUIRE(g_nodeCarry[0] == 0);          // the flag is off, so nothing was banked
+
+    retainResetCarry();
+    const unsigned long long cap = 200000ULL;
+    const int moves = 8;
+    unsigned long long total = 0, prevCarry = 0;
+    int bankingMoves = 0, spendingMoves = 0;
+    for (int i = 0; i < moves; i++) {
+        unsigned long long spent = oneSearch(keeper, White);
+        total += spent;
+        if (i == 0) REQUIRE(spent == flat0);   // move 1 has an empty purse
+        if (spent == flat0) {
+            // Still declining the next iteration, so this move banked a whole cap's
+            // worth more than the last one did. The purse has to be strictly growing
+            // or nothing is being carried at all.
+            REQUIRE(g_nodeCarry[0] > prevCarry);
+            bankingMoves++;
+        } else {
+            // The purse finally cleared the gate's threshold and bought the
+            // iteration the flat agent can never afford.
+            REQUIRE(spent > flat0);
+            spendingMoves++;
+        }
+        prevCarry = g_nodeCarry[0];
+    }
+    // Both halves of the mechanism have to show up, or the test is passing on a
+    // no-op: some moves save, and the savings are eventually spent.
+    REQUIRE(bankingMoves > 0);
+    REQUIRE(spendingMoves > 0);
+    // Conserved, not created: nothing can spend more than one cap per move plus
+    // whatever is still unspent in the purse at the end.
+    REQUIRE(total + g_nodeCarry[0] <= (unsigned long long)moves * cap + cap);
+    REQUIRE(total > (unsigned long long)moves * flat0);   // and it does use the slack
+}
+
+TEST_CASE("retain - the purse is per side and is cleared per game") {
+    AgentSpec keeper = parseOk("ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2").spec;
+
+    // White banking nodes must not fund Black. Both agents in a game carry their own
+    // purse, so a one-sided sequence leaves the other slot at zero.
+    retainResetCarry();
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(reloadBoard("boards/board1.txt"));
+        ttClear();
+        agentChooseMove(keeper, White);
+    }
+    REQUIRE(g_nodeCarry[0] > 0);
+    REQUIRE(g_nodeCarry[1] == 0);
+
+    // And the reset is what keeps a game from inheriting the previous game's savings,
+    // the same contract the per-game ttClear enforces for the transposition table.
+    retainResetCarry();
+    REQUIRE(g_nodeCarry[0] == 0);
+    REQUIRE(g_nodeCarry[1] == 0);
+}
+
 TEST_CASE("g_nodesAtDepth - the per-iteration profile is monotone and bounded") {
     // The profile is what says how much of a budget the last iteration consumed, so
     // a stale or double-counted entry would silently corrupt every waste figure read

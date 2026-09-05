@@ -57,6 +57,9 @@ struct AgentSpec {
     int    aspirationWindow;            // 0 = full window; >0 = aspiration half-width
     int    iterMinRemain;               // 0 = off; else % of the node budget that must
                                         // remain to start another deepening iteration
+    bool   retainBudget;                // carry this move's unspent node budget into the
+                                        // same side's next move (see g_nodeCarry).
+                                        // Inert without nodeBudget.
 
     // Gumbel MCTS search-shape knobs (src/ai_gumbel.cpp), inert for every other
     // explorer. Defaults reproduce the paper's own defaults (see seedAgentDefaults).

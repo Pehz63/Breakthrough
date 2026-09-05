@@ -165,6 +165,22 @@ extern int  g_aspirationWindow; // 0 = full window; >0 = aspiration half-width a
 // predictive check in nextIterationFits.
 extern int  g_iterMinRemain;
 
+// Per-side unspent-node carry, the state behind the `retain` ab() flag. A budgeted
+// search that stops early (the g_iterMinRemain gate declined an iteration, the
+// deep= ceiling was reached, or nearWinCheck short-circuited) leaves part of its
+// per-move node cap unused. With retain on, that remainder is added to the SAME
+// side's cap on its next move instead of being forfeited, so the budget is
+// conserved per GAME rather than per move: total nodes over a game stay bounded by
+// (per-move cap) x (plies), while individual moves may spend several caps' worth.
+// Indexed by rankRetainSlot(side): 0 = White, 1 = Black, so the two agents in one
+// game keep separate purses. agentChooseMove owns both the read and the write;
+// nothing in the search itself touches these. Reset with retainResetCarry() at the
+// start of every game -- a carry that survives into the next game would make an
+// agent's play depend on which games the worker happened to run first, the same
+// defect the per-game ttClear() exists to prevent.
+extern unsigned long long g_nodeCarry[2];
+void retainResetCarry();
+
 // Root-move whitelist, the "filter mode" of the cluster-book opener (`cbook`,
 // src/ai_random.cpp). When g_useRootFilter is set, searchRootWhite/searchRootBlack
 // skip any root candidate not listed in g_rootMoveWhitelist, so the agent's normal

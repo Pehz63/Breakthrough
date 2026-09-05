@@ -404,7 +404,9 @@ stand-pat extension at depth leaves), `aspN` (aspiration window), `noab` (full
 minimax), `part` (adopt the best move of the iteration the budget cut, instead of
 discarding it), `rem=N` (with a node budget: refuse to START another deepening
 iteration unless at least `N`% of the budget is unspent, since an iteration that
-cannot finish is spend for nothing), plus `nb`/`tb` budgets. Dilution weakens an agent to spread the Elo ladder:
+cannot finish is spend for nothing), `retain` (carry whatever a move leaves
+unspent into the same side's next move, so the node budget is conserved per game
+rather than per move), plus `nb`/`tb` budgets. Dilution weakens an agent to spread the Elo ladder:
 `dil(rP)` plays a fully random move `P`% of the time, while `dil(rP,dN)` instead
 plays a shallower depth-`N` search `P`% of the time (a plausible-but-weaker move
 rather than a blunder, `0 < N <` the agent depth). Every module segment carries its own `@N` **code

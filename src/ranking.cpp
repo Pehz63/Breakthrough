@@ -622,6 +622,7 @@ string rankAgentId(const AgentSpec& a) {
             if (a.keepPartial)          s += ",part";
             if (a.aspirationWindow > 0) s += ",margin=" + std::to_string(a.aspirationWindow);
             if (a.iterMinRemain > 0)    s += ",rem=" + std::to_string(a.iterMinRemain);
+            if (a.retainBudget)         s += ",retain";
             if (a.nodeBudget)           s += ",nodes=" + fmtBudget(a.nodeBudget);
             if (a.timeBudgetMs > 0.0)   s += ",time=" + std::to_string((long long)a.timeBudgetMs) + "ms";
             if (a.calTargetMs > 0.0)    s += ",cal=" + std::to_string((long long)a.calTargetMs) + "ms";
@@ -880,6 +881,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
     bool isSearch = false;
     int explorerIdx = -1, chooserIdx = -1, chooserParam = 0, depth = 1;
     bool fNoab = false, fTT = false, fOrd = false, fQs = false, fPart = false;
+    bool fRetain = false;
     bool haveAsp = false, haveCap = false, haveTb = false, haveNb = false, haveCal = false;
     bool haveRem = false;
     long long asp = 0, cap = 0, tbMs = 0, calMs = 0, remPct = 0;
@@ -946,6 +948,9 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
             } else if (f == "part") {
                 if (fPart) { err = "duplicate ab() flag 'part'"; return false; }
                 fPart = true;
+            } else if (f == "retain") {
+                if (fRetain) { err = "duplicate ab() flag 'retain'"; return false; }
+                fRetain = true;
             } else if (labelledNum(f, LBL_MAXDEEP, LBLN_MAXDEEP, fTail)) {
                 if (haveCap) { err = "duplicate ab() flag '" + f + "'"; return false; }
                 if (!lenientInt(fTail, false, n) || n <= 0) {
@@ -1369,6 +1374,7 @@ static bool parseAgentId(const string& id, RankAgent& out, string& err, bool len
         a.keepPartial = fPart;
         a.aspirationWindow = (int)asp;
         a.iterMinRemain = (int)remPct;
+        a.retainBudget = fRetain;
         a.nodeBudget = nb;
         a.timeBudgetMs = (double)tbMs;
         a.calTargetMs = (double)calMs;
@@ -2726,8 +2732,9 @@ static bool playOneGame(const RankAgent& wa, const RankAgent& ba, const string& 
     // makes "deterministic" mean what it says: measured 2026-08-03, the boost run
     // returned 0.706 distinct trajectories per stored row for pairs that draw no
     // randomness at all, and that residual variation was cross-game TT state, not
-    // game diversity.
+    // game diversity. The retain purse is per game for the same reason.
     ttClear();
+    retainResetCarry();
     typedef std::chrono::steady_clock clk;
     m.w = wa.id; m.b = ba.id;
     m.plies = 0;
@@ -4961,6 +4968,7 @@ int rankPairGen(const string& idA, const string& idB, int games, const string& o
         // earlier game in the process, so a deterministic pair does not replay
         // and `--games N` yields N different games rather than N copies of one.
         ttClear();
+        retainResetCarry();
         srand(gameSeed(wa.id, ba.id, g, runSeed));
         std::vector<int> capSide;
         std::vector<std::vector<float> > capFeat;
@@ -5366,6 +5374,10 @@ static void agreeWilson(long k, long n, double& lo, double& hi) {
     if (lo < 0.0) lo = 0.0; if (hi > 1.0) hi = 1.0;
 }
 
+// The polled agent's `retain` purse, parked between plies so it does not share the
+// driver's. Reset per game in agreeRunDirection, alongside retainResetCarry().
+static unsigned long long s_agreeOthCarry[2] = { 0, 0 };
+
 // One driver half-move. Runs `drv`, records where it left the board, rewinds,
 // runs `oth` from the identical position, compares, then leaves the board on
 // the DRIVER's move so the game follows the driver. Returns the driver's
@@ -5385,10 +5397,20 @@ static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, Agree
     double drvNodes = (double)g_lastNodes;
     BoardSnap after; snapBoard(after);
 
+    // The driver and the polled agent each need their own `retain` purse: they run
+    // on the same side at the same ply, so one global purse would let the probe
+    // spend the driver's saved nodes and vice versa. The driver's purse is the live
+    // g_nodeCarry (the game follows the driver), and the polled agent's is parked
+    // in s_agreeOthCarry between plies. Inert for agents without `retain`.
+    unsigned long long drvCarry[2] = { g_nodeCarry[0], g_nodeCarry[1] };
+    g_nodeCarry[0] = s_agreeOthCarry[0]; g_nodeCarry[1] = s_agreeOthCarry[1];
+
     restoreBoardSnapshot(before);
     ttClear();
     t0 = agreeNowMs();
     agentChooseMove(oth.spec, side);
+    s_agreeOthCarry[0] = g_nodeCarry[0]; s_agreeOthCarry[1] = g_nodeCarry[1];
+    g_nodeCarry[0] = drvCarry[0]; g_nodeCarry[1] = drvCarry[1];
     double othMs    = agreeNowMs() - t0;
     double othDepth = g_lastEffDepth;
     double othNodes = (double)g_lastNodes;
@@ -5438,6 +5460,8 @@ static void agreeRunDirection(const RankAgent& drv, const RankAgent& oth,
         }
         if (endedInOpener) continue;
         gamesUsed++;
+        retainResetCarry();
+        s_agreeOthCarry[0] = s_agreeOthCarry[1] = 0;
         for (int h = openPlies; h < 400; h++) {
             int side = (h % 2 == 0) ? White : Black;
             int v = agreeStep(drv, oth, side, st, tsv, dir, g, h);
@@ -5567,6 +5591,7 @@ static void nodeProfileGame(const RankAgent& ag, int games, const string& boardF
         }
         if (endedInOpener) continue;
         used++;
+        retainResetCarry();   // per game, unlike the per-ply ttClear below
         for (int h = openPlies; h < 400; h++) {
             int side = (h % 2 == 0) ? White : Black;
             Move legal[ML_MAX_MOVES];
@@ -5706,6 +5731,7 @@ int rankPosGen(const string& storeFile, const string& board,
         // other game this process has run (cross-game TT pollution is the known
         // source of order-dependent determinism mismatches).
         ttClear();
+        retainResetCarry();
         srand(row.seed);
         std::vector<int> capSide;
         std::vector<std::vector<float> > capFeat;
@@ -5976,6 +6002,7 @@ int rankLabel(const string& poolFile, const string& ladderFile,
                 // would depend on every game played earlier in the process,
                 // breaking shard-split and resume reproducibility.
                 ttClear();
+                retainResetCarry();
                 unsigned seed = gameSeed(wa.id, ba.id, (long long)pi * 1000 + g,
                                          runSeed ^ (unsigned)(pp.hash & 0xffffffffULL));
                 srand(seed);
@@ -6616,6 +6643,7 @@ static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
                         const std::vector<RefMove>* minedMoves = 0) {
     if (!reloadBoard(boardFile)) return false;
     ttClear();
+    retainResetCarry();
     g.outcome = 0; g.plies = 0;
     g.ourKeys.clear(); g.ourMoves.clear();
     g.probeExhausted = false; g.probeIgnored = false;

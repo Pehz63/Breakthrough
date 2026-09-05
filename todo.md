@@ -184,6 +184,21 @@ against the same seams.
     current head's cap binds on only 3.8% of plies. Redefining the node track means
     re-rostering and re-certifying every node-track category, so it is a developer
     call, not an automatic follow-on `[Next]` {cpu: days, dev: medium}
+  - **`retain` is built but unrated.** `ab(...,rem=70,retain,nodes=...)` banks a
+    move's unspent node budget and adds it to the same side's next move, so the cap
+    is conserved per GAME rather than per move. Verified at `rem=70,nodes=200k`: the
+    chip counter goes 108,032 -> 165,058 mean nodes/move (429,035 peak) with plies
+    reaching depth >= 7 rising 19.7% -> 36.8%, and the tdleaf_self linear `model=169`
+    goes 116,712 -> 174,098 (501,604 peak), 16.2% -> 23.7%. Elo cohort in flight:
+    50 cells, 5 cores x 5 budgets (100k/200k/300k/550k/1m) x {`rem=70`,
+    `rem=70,retain`}, roster `ranking/q6/roster_retain.txt`, cohort
+    `ranking/q6/cohort_retain.txt`, 46,240 games. Read it as the slope of Elo on
+    log2(budget): the hypothesis is that `retain` flattens it `[Now]` {cpu: hours, dev: low}
+  - **3 torn rows in `ranking/matches.jsonl`** (lines 631710, 641823, 655232), one
+    logical game split across two lines by interleaved appends during the 2026-09-04
+    40k-game run, out of 906,983 rows. The reader skips them with a WARNING and no
+    result depends on them. Worth deciding whether the shard merge should be made
+    atomic before the next large parallel run `[Later]` {cpu: none, dev: low}
   - **Why `rem=70` costs `classic` Elo.** The only core the gate hurts, and the one
     with the most budget left after depth 6 (31% of a 200k cap against 60-62%
     elsewhere). Hypothesis: its cheap doomed depth-7 iteration seeds the TT for the

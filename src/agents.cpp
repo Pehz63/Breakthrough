@@ -37,6 +37,7 @@ static void seedAgentDefaults(AgentSpec& a) {
     a.keepPartial = false;
     a.aspirationWindow = 0;
     a.iterMinRemain = 0;
+    a.retainBudget = false;
     a.gumbelCVisit = 50;
     a.gumbelCScaleTenths = 10;
     a.gumbelRootM = 16;
@@ -127,7 +128,15 @@ int agentChooseMove(const AgentSpec& a, int side) {
     int savedIMR = g_iterMinRemain;
     double savedCVisit = g_gumbelCVisit, savedCScale = g_gumbelCScale;
     int savedRootM = g_gumbelRootM;
-    if (a.nodeBudget)        g_nodeBudget = a.nodeBudget;
+    // `retain`: this side's unspent nodes from earlier moves are added to the cap
+    // for this one. The purse is per side so both agents in a game keep their own,
+    // and it is read here and written back below, once the search reports what it
+    // actually spent. Inert unless the agent has a node budget of its own.
+    const int carrySlot = (side == White) ? 0 : 1;
+    const bool retaining = a.retainBudget && a.nodeBudget != 0;
+    unsigned long long effBudget = a.nodeBudget;
+    if (retaining) effBudget = a.nodeBudget + g_nodeCarry[carrySlot];
+    if (a.nodeBudget)        g_nodeBudget = effBudget;
     if (a.timeBudgetMs > 0.0) g_timeBudgetMs = a.timeBudgetMs;
     g_useAlphaBeta = a.useAlphaBeta;
     g_useTT = a.useTT;
@@ -142,6 +151,12 @@ int agentChooseMove(const AgentSpec& a, int side) {
 
     int victor = g_explorers[e].fn(side, a.evaluator, params, depth);
     g_trainNodesTotal += g_lastNodes;
+    if (retaining) {
+        // g_lastNodes is what this move actually searched. A budget can be
+        // overshot slightly (the deadline is only tested every TIME_CHECK_MASK
+        // nodes), so clamp rather than wrapping the unsigned subtraction.
+        g_nodeCarry[carrySlot] = (g_lastNodes < effBudget) ? (effBudget - g_lastNodes) : 0ULL;
+    }
 
     g_nodeBudget = savedNode; g_timeBudgetMs = savedTime;
     g_useAlphaBeta = savedAB; g_useTT = savedTT; g_useMoveOrder = savedMO;
@@ -183,6 +198,7 @@ string agentDescribe(const AgentSpec& a) {
     if (a.depthCap > 0)         s += " cap=" + std::to_string(a.depthCap);
     if (a.brain == BRAIN_SEARCH) {
         if (a.nodeBudget)         s += " nb=" + std::to_string(a.nodeBudget);
+        if (a.retainBudget)       s += " retain";
         if (a.timeBudgetMs > 0.0) s += " tb=" + std::to_string((long)a.timeBudgetMs) + "ms";
         // Feature flags: list only the non-default (i.e. enabled extras / disabled AB).
         string flags;

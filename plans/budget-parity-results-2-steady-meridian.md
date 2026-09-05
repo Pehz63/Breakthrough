@@ -286,6 +286,121 @@ left after depth 6 completes: 38% of the budget for `model=111` at one end, 69%
 for `classic` at the other, and that leftover is exactly what the `rem=N` gate
 below is designed to stop spending.
 
+## Why the chip counter's even-ply iterations are cheap
+
+Two cores stand out in the share table above: `classic(chip=100)@2` (a chip
+counter) and `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` (a
+pool-games linear model) have both the fewest full-ladder plies and the lowest
+even-depth shares. They turn out to be two unrelated effects that the pooled
+median makes look like one.
+
+### The ply count is game length, not the filter
+
+The exclusion is uniform. Every core lost exactly 108 plies of the 12 games
+(9 per game, the endgame mate short-circuits), except the pool-games linear
+`model=3` at 117. What differs is how long the games run:
+
+| core | regime | median game plies | full-ladder plies |
+|---|---|---|---|
+| `classic(chip=100)@2` | chip counter | 48 | 412 |
+| `learned(model=97,...)@1` | pool_games lin | 51 | 466 |
+| the other 13 | various | 58 to 68 | 525 to 648 |
+
+Nothing about the measurement is different for those two. They simply produce
+fewer plies to measure.
+
+### The even-depth deficit is uniform for one core and late-game for the other
+
+Median depth-6 share split by game phase, full-ladder plies only:
+
+| core | regime | ply 1-20 | ply 21-40 | ply 41-60 |
+|---|---|---|---|---|
+| `classic(chip=100)@2` | chip counter | **63.2%** | 65.0% | 65.1% |
+| `learned(model=97,...)@1` | pool_games lin | 73.6% | 69.9% | 66.3% |
+| the other 13 | various | 72.8-75.9% | 71.0-74.3% | 69.8-72.1% |
+
+The chip counter is low from the first move and stays flat. It is not a phase
+effect and not a crowding effect either: bucketed by root legal-move count it
+reads 64.1% in the 23-30 bucket where every other core reads 71.3-74.0%. The
+pool-games `model=97` is normal in the opening and drifts down, which is an
+ordinary endgame effect of a different kind and much smaller.
+
+### The mechanism is evaluator granularity, and it can be isolated
+
+The alternation index below is the median growth ratio into an ODD depth divided
+by the median ratio into an EVEN depth, averaged over the two of each in the
+depth-5..9 ladder. 1.0 means no odd/even asymmetry.
+
+At an odd depth the leaf is the position after OUR move, with no reply searched.
+At an even depth the opponent has replied. That parity is the same for every
+core, so it cannot on its own explain why one core differs. What differs is that
+a chip counter's value changes only when material changes. Odd-depth leaves
+spread out by whatever capture was just made. Even-depth leaves have mostly seen
+the recapture and return to the same material total, so a large share of them
+carry the IDENTICAL score. Equal scores still satisfy the `>= beta` cutoff test,
+so a coarse evaluator produces cutoffs where a fine-grained one produces a search.
+
+The test that isolates this: add a positional term to the SAME evaluator function
+with a weight that cannot reorder any position differing in material. `classic`'s
+positional term is `evalPosFull(p, 4)` -> `structOwner`, which scans a 7x7 grid of
+cells contributing at most two pairs each at +/-`wallW` or +/-`colW`
+(`src/ai_eval.cpp`). With either weight at 1 the term is bounded by 49, with both
+at 1 by 98, and the turn term adds 1. All are strictly below the chip weight of
+100, so a one-piece material difference always wins. These variants are the same
+player on every position where material differs, and differ only in how ties are
+broken.
+
+All rows `ab(deep=9,tt,ord,nodes=999999k)@2` unless the variant says otherwise,
+12 games each, so no budget ever binds:
+
+| variant | full-ladder plies | median game plies | even ratio | odd ratio | alternation | d6 share |
+|---|---|---|---|---|---|---|
+| `classic(chip=100)@2` | 412 | 48 | 2.79x | 4.24x | **1.52** | 64.0% |
+| `classic(chip=100,column=1)@2` | 511 | 55 | 3.25x | 4.21x | 1.30 | 70.0% |
+| `classic(chip=100,wall=1)@2` | 524 | 59 | 3.16x | 4.19x | 1.32 | 68.9% |
+| `classic(chip=100,wall=1,column=1)@2` | 502 | 55 | 3.30x | 3.95x | **1.20** | 70.7% |
+| `classic(turn=1,chip=100)@2` under `qs` | 458 | 52 | 3.07x | 3.87x | 1.26 | 68.0% |
+| `classic(chip=100)@2` with no `ord` | 392 | 45 | 2.81x | 4.78x | **1.70** | 62.3% |
+| `learned(model=169,...)@1` (tdleaf_self lin) | 634 | 67 | 3.70x | 4.14x | 1.12 | 73.6% |
+| same, under `qs` | 638 | 67 | 3.67x | 4.02x | 1.10 | 73.8% |
+| same, with no `ord` | 624 | 66 | 4.18x | 4.49x | 1.07 | 76.1% |
+
+Three readings, in decreasing order of how strongly the data supports them.
+
+**1. A tie-only positional term removes most of the asymmetry.** Alternation
+falls 1.52 -> 1.30 / 1.32 / 1.20 and the depth-6 share rises 64.0% -> 70.0% /
+68.9% / 70.7%, which lands the chip counter inside the pack's 70.4-73.8% range.
+The evaluator is otherwise unchanged and cannot have reordered a single
+material-differing position, so the only thing the term did was give tied leaves
+distinct values. This is the isolated test and it is what the mechanism predicts.
+
+**2. Quiescence removes about half of it, on the chip counter only.** Under `qs`
+alternation goes 1.52 -> 1.26 for the chip counter and 1.12 -> 1.10 for the
+tdleaf_self linear core. Quiescence resolves the capture at the leaf, so the
+odd/even material asymmetry is exactly what it removes, and it helps exactly the
+core whose value is nothing but material. Caveat: quiescence nodes count against
+the same node totals, so this row's ratios are not measuring quite the same tree
+as the others.
+
+**3. Move ordering is NOT the cause.** This refutes the ordering half of the
+hypothesis that prompted the measurement. Turning `ord` off makes the chip
+counter's asymmetry LARGER, 1.52 -> 1.70, and it does so entirely on the odd side
+(odd 4.24x -> 4.78x, even 2.79x -> 2.81x, unchanged). If capture-first ordering
+were what made even iterations cheap, removing it would have raised the even
+ratio, and it did not move at all. On the tdleaf_self linear core removing `ord`
+moves alternation the other way (1.12 -> 1.07) by making even depths much more
+expensive (3.70x -> 4.18x). So ordering matters to both cores and in opposite
+directions, and neither direction is the chip counter's even-depth cheapness.
+
+**Game length moves with granularity too.** Adding the tie-breaking term
+lengthens the chip counter's games from a median of 48 plies to 55-59, most of
+the way to the pack's 58-68. Across the 15 cores alternation and median game
+length correlate at r = -0.797 (t = -4.76, df = 13, and r = -0.673 excluding the
+chip counter), so coarseness, short games and high alternation all travel
+together. The `column=1` run is what separates cause from correlation: it changed
+the evaluator's granularity and moved alternation two thirds of the way to the
+pack while game length moved only 7 plies.
+
 ## The `rem=N` gate
 
 New `ab()` head flag: **start another deepening iteration only if at least N% of
@@ -546,6 +661,76 @@ track from the compute-parity work, not this grid. What this grid does establish
 is that under the node track's own definition, which charges nothing for
 evaluator cost, `rem=70` plus a raised cap beats the current head on four of five
 cores, and that `part` should never be used.
+
+## The `retain` carry-over flag
+
+The `rem=N` gate leaves part of the cap unspent on most moves, and that remainder
+is forfeited. `retain` banks it instead and adds it to the SAME side's cap on its
+next move. The budget then becomes a per-GAME allowance rather than a per-move
+one: total spend over a game stays bounded by (cap x plies), while an individual
+move may spend several caps' worth.
+
+New binary `ab()` head flag, canonical position after `rem=` and before `nodes=`:
+
+```
+ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.<core>
+```
+
+`src/agents.cpp`, in `agentChooseMove`:
+
+```cpp
+const int carrySlot = (side == White) ? 0 : 1;
+const bool retaining = a.retainBudget && a.nodeBudget != 0;
+unsigned long long effBudget = a.nodeBudget;
+if (retaining) effBudget = a.nodeBudget + g_nodeCarry[carrySlot];
+if (a.nodeBudget)        g_nodeBudget = effBudget;
+...
+if (retaining)
+    g_nodeCarry[carrySlot] = (g_lastNodes < effBudget) ? (effBudget - g_lastNodes) : 0ULL;
+```
+
+**It converges rather than exploding.** Banking raises the next cap, which raises
+the gate's ABSOLUTE threshold (`rem=70` means "spend nothing past 30% of the
+cap", and 30% of a bigger cap is more nodes), which eventually lets a full
+iteration through, which drains the purse. Traced by hand on the chip counter at
+`nodes=200k` from the opening position, where depth 6 costs 119,217 nodes: the
+gate declines depth 7 on moves 1 through 3 while the purse grows 80,783 ->
+161,566 -> 242,349, then move 4 has a 442,349-node cap whose 30% threshold
+(132,705) clears the depth-6 cost, starts depth 7, and spends everything. The
+cycle then repeats. The test `retain - unspent budget carries to the same side's
+next move` asserts both halves of that cycle occur, since a test that only saw
+one would pass on a no-op.
+
+**Instrument check**, `rank.exe nodeprofile`, `rem=70,nodes=200k`, 4 games each:
+
+| agent | plies | mean nodes/move | max nodes/move | mean completed depth | plies at depth >= 7 |
+|---|---|---|---|---|---|
+| chip counter | 152 | 108,032 | 200,164 | 5.56 | 19.7% |
+| chip counter, `retain` | 163 | 165,058 | **429,035** | 5.75 | **36.8%** |
+| tdleaf_self lin `model=169` | 234 | 116,712 | 200,097 | 5.59 | 16.2% |
+| same, `retain` | 236 | 174,098 | **501,604** | 5.81 | **23.7%** |
+
+Individual moves exceed the nominal cap by 2.1x to 2.5x, which is the point, and
+the mean stays under it, which is the conservation property holding.
+
+**Correctness contracts, and why each one is there.**
+
+- *Per side.* The purse is `g_nodeCarry[2]`, indexed 0 = White, 1 = Black. One
+  shared purse would let one agent in a game spend the other's savings.
+- *Per game.* `retainResetCarry()` is called beside every per-game `ttClear()` in
+  `src/ranking.cpp` (play, pairgen capture, posgen replay, label playouts,
+  refPlayGame) and once per game in `nodeProfileGame`, where the existing
+  `ttClear` is per PLY and would have wiped the purse on every move. A carry that
+  survived into the next game would make play depend on which games a worker
+  happened to run first, the same defect the per-game `ttClear` exists to prevent.
+- *The `agree` probe cannot spend the driver's savings.* `agreeStep` runs two
+  agents on the same side at the same ply, so the polled agent's purse is parked
+  in `s_agreeOthCarry` between plies and swapped in around its search.
+- *Inert without a node budget.* There is no cap to leave a remainder of, so a
+  fixed-depth agent with `retain` spends the identical node count every move.
+- *Inert for every existing agent.* Old and new `rank.exe` produce byte-identical
+  node profiles over 181 plies on `ab(deep=12,tt,ord,rem=70,nodes=200k)@2` with
+  the tdleaf_self linear core.
 
 ## Implementation notes
 

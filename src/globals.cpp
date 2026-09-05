@@ -47,6 +47,8 @@ bool g_useQuiescence = false;
 bool g_keepPartial = false;
 int  g_aspirationWindow = 0;
 int  g_iterMinRemain = 0;
+unsigned long long g_nodeCarry[2] = { 0, 0 };
+void retainResetCarry() { g_nodeCarry[0] = g_nodeCarry[1] = 0; }
 
 bool g_useRootFilter = false;
 int  g_rootMoveWhitelist[ROOT_FILTER_MAX][3] = {{0}};
