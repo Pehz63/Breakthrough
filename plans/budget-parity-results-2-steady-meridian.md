@@ -732,6 +732,114 @@ the mean stays under it, which is the conservation property holding.
   node profiles over 181 plies on `ab(deep=12,tt,ord,rem=70,nodes=200k)@2` with
   the tdleaf_self linear core.
 
+### Elo: does `retain` make the node budget matter less?
+
+**Yes on the two cores where the node budget mattered, and by raising the low end
+rather than by lowering the high end.** On the three cores whose Elo barely moved
+with budget in the first place there was nothing to flatten.
+
+40 cells, one pinned fit (`rank.exe rate --roster ranking/q6/roster_retain.txt
+--pin ranking/q5/pin_no_d12.tsv`), 1,328 to 1,358 games per cell, all 40 cells
+within 30 games of each other. The head is
+`ab(deep=12,tt,ord,rem=70[,retain],nodes=<B>)@2` throughout, so every comparison
+below is within one search head and one core, differing only in `nodes=` and the
+presence of `retain`. Absolute Elo is from this fit only and must not be compared
+to any other fit. Distinct-trajectory check: 0.95 distinct games per stored row on
+a sampled cell, so the printed `pm` is close to honest here (these cells face a
+mostly deterministic roster at 2 games per pair, which is the floor, not padding).
+
+**Elo per cell, +-SE:**
+
+| core | 100k plain | 100k `retain` | 200k plain | 200k `retain` | 300k plain | 300k `retain` | 400k plain | 400k `retain` |
+|---|---|---|---|---|---|---|---|---|
+| `classic(chip=100)@2` (chip counter) | 1066+-11 | 1080+-11 | 1072+-11 | 1059+-11 | 1075+-11 | 1094+-12 | 1071+-11 | 1075+-11 |
+| `learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1` | 1078+-11 | 1220+-13 | 1222+-13 | 1233+-13 | 1261+-14 | 1272+-14 | 1273+-14 | 1295+-15 |
+| `learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1` | 1081+-11 | 1201+-13 | 1199+-13 | 1239+-14 | 1242+-13 | 1216+-13 | 1227+-13 | 1265+-14 |
+| `learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` | 995+-11 | 1026+-11 | 1004+-11 | 1048+-11 | 1089+-11 | 1102+-12 | 1054+-11 | 1071+-11 |
+| `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` | 713+-11 | 714+-11 | 714+-11 | 716+-11 | 731+-11 | 730+-11 | 744+-11 | 756+-11 |
+
+**The hypothesis stated as a number.** Weighted least squares of Elo on
+log2(node budget) across the four rungs, in Elo per doubling. The flattening
+claim is the `difference` column, which is a contrast inside one fit:
+
+| core | plain | `retain` | difference | z |
+|---|---|---|---|---|
+| chip counter | +3.3+-7.3 | +1.7+-7.4 | -1.6+-10.4 | -0.15 |
+| tdleaf_self lin `model=169` | +103.3+-8.1 | +36.7+-9.1 | **-66.6+-12.2** | **-5.45** |
+| tdleaf_self lin `model=349` | +81.3+-7.9 | +24.0+-8.9 | **-57.3+-11.9** | **-4.83** |
+| position_elo mlp `model=113` | +40.0+-7.3 | +29.5+-7.4 | -10.5+-10.4 | -1.01 |
+| pool_games lin `model=97` | +15.2+-7.3 | +18.9+-7.3 | +3.7+-10.4 | +0.36 |
+
+Same thing as a spread, the plain range across the four rungs versus the `retain`
+range, in Elo:
+
+| core | plain spread | `retain` spread |
+|---|---|---|
+| chip counter | 9 | 35 |
+| tdleaf_self lin `model=169` | 195 | 75 |
+| tdleaf_self lin `model=349` | 161 | 64 |
+| position_elo mlp `model=113` | 94 | 76 |
+| pool_games lin `model=97` | 31 | 42 |
+
+**`retain` is not flattening by capping the top.** Cell by cell, `retain` minus
+plain at matched core and budget:
+
+| core | 100k | 200k | 300k | 400k |
+|---|---|---|---|---|
+| chip counter | +14+-16 | -13+-16 | +19+-16 | +4+-16 |
+| tdleaf_self lin `model=169` | **+142+-17** | +11+-18 | +11+-20 | +22+-21 |
+| tdleaf_self lin `model=349` | **+120+-17** | +40+-19 | -26+-18 | +38+-19 |
+| position_elo mlp `model=113` | +31+-16 | +44+-16 | +13+-16 | +17+-16 |
+| pool_games lin `model=97` | +1+-16 | +2+-16 | -1+-16 | +12+-16 |
+
+Only two entries in the grid are negative by more than their SE, and 18 of 20 are
+zero or positive. The flattening comes from a +142 and a +120 at the bottom rung,
+not from a loss at the top.
+
+**How much budget `retain` buys back.** On both tdleaf_self linear cores,
+`retain` at 100k nodes is statistically indistinguishable from plain at 200k:
+
+| core | `retain`@100k minus plain@200k | `retain`@100k minus plain@400k |
+|---|---|---|
+| chip counter | +8+-16 | +9+-16 |
+| tdleaf_self lin `model=169` | -2+-18 | -53+-19 |
+| tdleaf_self lin `model=349` | +2+-18 | -26+-18 |
+| position_elo mlp `model=113` | +22+-16 | -28+-16 |
+| pool_games lin `model=97` | +0+-16 | -30+-16 |
+
+So on those two cores `retain` is worth exactly one doubling of the node budget at
+the low end, and less than two.
+
+**Why the effect is core-dependent.** `rem=70` declines an iteration unless 30% of
+the cap is unspent, and how often that fires depends on the ratio of one
+iteration's cost to the cap. The 15-core table earlier in this document put the
+chip counter's depth-6 cost at 31% of a 200k budget and the position_elo mlp
+`model=113`'s at 62%. A core that finishes its last affordable iteration with
+little left over has little to bank, and a core whose Elo does not improve with
+depth has nothing to spend it on even when it does bank. The chip counter is the
+second case: its plain slope is +3.3+-7.3 Elo per doubling, indistinguishable from
+zero across a 4x budget range, so `retain` measurably changes its search (mean
+nodes/move 108,032 -> 165,058, plies at depth >= 7 rising 19.7% -> 36.8%) and does
+not change its strength. That is a consistent pair of facts, not a contradiction,
+and it is the cleanest evidence in this document that the chip counter is
+depth-saturated at these budgets.
+
+**A `PINNED AT LOW GAME COUNT` check that paid off.** A mid-run preview fit taken
+at about half the games had the four 400k `retain` cells at 106 to 1,183 games,
+and those cells were flagged as unquotable rather than reported. They moved by up
+to 59 Elo on the way to their final values:
+
+| cell | preliminary (games) | final (1,328 games) | moved |
+|---|---|---|---|
+| tdleaf_self lin `model=169` @400k `retain` | 1261 (207) | 1295 | +34 |
+| tdleaf_self lin `model=349` @400k `retain` | 1270 (106) | 1265 | -5 |
+| position_elo mlp `model=113` @400k `retain` | 1077 (1,183) | 1071 | -6 |
+| pool_games lin `model=97` @400k `retain` | 815 (106) | 756 | -59 |
+
+The 106-game `pool_games` cell would have been read as a +71 `retain` gain. The
+value is +12+-16. The 1,183-game cell moved 6 Elo, which is the same defect at a
+sample size where it no longer bites.
+
 ## Implementation notes
 
 Six layers had to be threaded for `rem=`, mirroring how `margin=` flows:

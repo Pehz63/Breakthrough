@@ -184,7 +184,7 @@ against the same seams.
     current head's cap binds on only 3.8% of plies. Redefining the node track means
     re-rostering and re-certifying every node-track category, so it is a developer
     call, not an automatic follow-on `[Next]` {cpu: days, dev: medium}
-  - **`retain` is built but unrated.** `ab(...,rem=70,retain,nodes=...)` banks a
+  - ~~**`retain` is built but unrated.** `ab(...,rem=70,retain,nodes=...)` banks a
     move's unspent node budget and adds it to the same side's next move, so the cap
     is conserved per GAME rather than per move. Verified at `rem=70,nodes=200k`: the
     chip counter goes 108,032 -> 165,058 mean nodes/move (429,035 peak) with plies
@@ -196,7 +196,13 @@ against the same seams.
     the hypothesis is that `retain` flattens it. The 550k and 1m rungs were dropped
     on developer instruction (2026-09-05) as too expensive for the value, and their
     partial cells are benched `off` in the working roster so a low-game-count row
-    cannot reach a fit `[Now]` {cpu: hours, dev: low}
+    cannot reach a fit~~ **Done 2026-09-05.** Slope of Elo on log2(budget) drops
+    from +103.3 to +36.7 Elo/doubling on tdleaf_self lin `model=169` (z=-5.45) and
+    +81.3 to +24.0 on `model=349` (z=-4.83), not measurably on the other three
+    cores, whose plain slopes were +3.3, +15.2 and +40.0. `retain` at 100k equals
+    plain at 200k on both tdleaf_self cores. Grid, contrasts and the
+    depth-saturation reading:
+    `plans/budget-parity-results-2-steady-meridian.md`
   - **Ladder cohort runs instead of guessing `--games`.** `--games N` is a target,
     not an increment, so `2 -> 4 -> 8 -> 16` with a fit between rungs plays the same
     games as one `--games 16` launch and gives a preliminary answer early. Plan,
