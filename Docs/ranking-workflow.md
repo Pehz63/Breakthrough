@@ -182,6 +182,20 @@ Not implemented, and the tradeoff to check first is anchor connectivity: the fit
 needs the cohort connected to `rand@1`, so a window would have to keep some
 spread rather than only near-equal opponents.
 
+### Scheduling a study: ladder, do not guess `--games`
+
+`--games N` is a target, not an increment: the scheduler counts stored games per
+pair and plays only the deficit. So running `--games 2`, then `4`, then `8`, then
+`16`, fitting between each, plays exactly the same games as one `--games 16`
+launch, and costs only the extra process startups plus one `rate` per rung. That
+buys a preliminary answer early and lets the data choose the final `N`.
+
+The stopping rule must be stated on a within-fit contrast (treatment minus control
+at matched core and budget), never on absolute Elo, which is not comparable across
+fits. Full procedure, the three stopping conditions, and the proposed `--ladder`
+and `--stop-when` flags:
+`plans/ranking-run-scheduling-plan-1-tidal-lantern.md`.
+
 ## Workflow A: add agents and screen them (does not disturb anything)
 
 Use during a study, when you will add and discard many candidates.

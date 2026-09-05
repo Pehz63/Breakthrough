@@ -197,6 +197,15 @@ against the same seams.
     on developer instruction (2026-09-05) as too expensive for the value, and their
     partial cells are benched `off` in the working roster so a low-game-count row
     cannot reach a fit `[Now]` {cpu: hours, dev: low}
+  - **Ladder cohort runs instead of guessing `--games`.** `--games N` is a target,
+    not an increment, so `2 -> 4 -> 8 -> 16` with a fit between rungs plays the same
+    games as one `--games 16` launch and gives a preliminary answer early. Plan,
+    stopping rule, and the proposed `rank.exe play --ladder` / `--stop-when` flags:
+    `plans/ranking-run-scheduling-plan-1-tidal-lantern.md`. Cross-linked from
+    `Docs/ranking-workflow.md`. First code item is `--ladder`, and the zero-cost
+    validation is to replay the finished `retain` store at 2/4/8/16 games per pair
+    and check at which rung each slope contrast reached its final sign and
+    magnitude `[Next]` {cpu: low, dev: medium}
   - **3 torn rows in `ranking/matches.jsonl`** (lines 631710, 641823, 655232), one
     logical game split across two lines by interleaved appends during the 2026-09-04
     40k-game run, out of 906,983 rows. The reader skips them with a WARNING and no
