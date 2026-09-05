@@ -190,10 +190,13 @@ against the same seams.
     chip counter goes 108,032 -> 165,058 mean nodes/move (429,035 peak) with plies
     reaching depth >= 7 rising 19.7% -> 36.8%, and the tdleaf_self linear `model=169`
     goes 116,712 -> 174,098 (501,604 peak), 16.2% -> 23.7%. Elo cohort in flight:
-    50 cells, 5 cores x 5 budgets (100k/200k/300k/550k/1m) x {`rem=70`,
+    40 cells, 5 cores x 4 budgets (100k/200k/300k/400k) x {`rem=70`,
     `rem=70,retain`}, roster `ranking/q6/roster_retain.txt`, cohort
-    `ranking/q6/cohort_retain.txt`, 46,240 games. Read it as the slope of Elo on
-    log2(budget): the hypothesis is that `retain` flattens it `[Now]` {cpu: hours, dev: low}
+    `ranking/q6/cohort_retain.txt`. Read it as the slope of Elo on log2(budget):
+    the hypothesis is that `retain` flattens it. The 550k and 1m rungs were dropped
+    on developer instruction (2026-09-05) as too expensive for the value, and their
+    partial cells are benched `off` in the working roster so a low-game-count row
+    cannot reach a fit `[Now]` {cpu: hours, dev: low}
   - **3 torn rows in `ranking/matches.jsonl`** (lines 631710, 641823, 655232), one
     logical game split across two lines by interleaved appends during the 2026-09-04
     40k-game run, out of 906,983 rows. The reader skips them with a WARNING and no

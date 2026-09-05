@@ -87,6 +87,101 @@ inputs to it. If a cohort agent rates above a pinned champion in a pinned fit,
 that is a *screening signal to go certify*, not a result. Certification is the
 unpinned refit (`ranking/CHAMPION.md` rule 1).
 
+## Cost model: what a cohort run actually plays
+
+Neither workflow below tells you what a run will cost, and the number surprises
+people, so it is written out here. **A cohort agent plays EVERY active agent on
+the working roster.** `--cohort` restricts which agents get SCHEDULED, not which
+opponents they are given. There is no opponent-pool flag for a `play` run, so the
+pool is the roster, and the only lever on cost is how many agents are `on`.
+
+```
+games ~= (cohort size) x (active roster size) x (games per pair)
+         + C(cohort size, 2) x (games per pair)     # cohort-vs-cohort
+```
+
+**Games per pair is not the `--games` number for most pairs.**
+`pairGameTarget` (`src/ranking.cpp`) returns **2** when BOTH agents are
+deterministic, and `--games N` otherwise:
+
+```cpp
+static int pairGameTarget(const RankAgent& a, const RankAgent& b, int gamesPerPair) {
+    if (rankAgentIsDeterministic(a.spec) && rankAgentIsDeterministic(b.spec)) return 2;
+    return gamesPerPair;
+}
+```
+
+Two is both floor and ceiling there: fewer leaves a colour unmeasured, more just
+stores copies of one trajectory and understates the error bar (`Docs/benchmarking.md`,
+defect 3). Since most of the roster is deterministic, this roughly halves a run
+against a naive reading of `--games 8`.
+
+**A worked example, the 2026-09-05 `retain` study**, one completed cell
+(`ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.classic(chip=100)@2`) measured
+against the store:
+
+| quantity | value |
+|---|---|
+| rows for this one agent | 1,338 |
+| distinct opponents | 306 |
+| opponents at 2 games (deterministic pair) | 185 |
+| opponents at 8 games (`--games 8`) | 121 |
+| distinct trajectories per row | 0.95 |
+| rows against other study cells | 58 (4%) |
+
+40 cells at that size is about 52,000 games. The 4% cohort-vs-cohort share is
+small but is the part a gauntlet cannot produce, and it is what resolves the
+cells' order among themselves.
+
+### How much of that carries rating information
+
+For a Bradley-Terry fit one game contributes `p(1-p)` of Fisher information,
+where `p` is the expected score, so a pairing decided 8-0 contributes almost
+nothing. Measured on three cells of the same study, using each opponent's
+Jeffreys-smoothed score rate:
+
+| cell | games | share against opponents at >90% or <10% | effective 50/50 games |
+|---|---|---|---|
+| `retain,nodes=100k` chip counter | 1,338 | 37.7% | 721 |
+| same, tdleaf_self lin `model=169` | 1,338 | 47.8% | 628 |
+| same, pool_games lin `model=97` | 1,338 | 25.7% | 866 |
+
+**So roughly a quarter to a half of a cohort run confirms what the pool already
+knew.** That is the price of putting every cell on one scale with no prior about
+where it will land, and it is not free to avoid: the low end of the roster exists
+to spread the ladder, and a new agent has to touch enough of it to connect to the
+`rand@1` anchor.
+
+### Sizing a run, in practice
+
+- **Count the cells before launching, and multiply.** The roster size is printed
+  by `rank.exe check`. Decide whether the answer is worth that many games and say
+  the number to the developer if it is large.
+- **Cut rungs, not games per pair.** Dropping a budget rung removes whole cells,
+  which is a linear saving. Dropping `--games` below 8 mostly does nothing, since
+  the deterministic pairs are already at 2, and it weakens the pairs that carry
+  the most information.
+- **A stopped run keeps its work.** Shards write to `<store>.<n>` and are appended
+  at the end, so killing a run mid-flight loses only the unmerged tail. Merge the
+  shard files by hand, validating each line, then rerun: the scheduler counts
+  stored games and only tops up what is missing. Do NOT blind-append a shard file
+  that a process was writing when it died. On 2026-09-05 a hand merge of 10 shards
+  recovered 23,397 games with zero torn lines, and the same store already carried
+  3 torn rows from an ordinary end-of-run merge that did not validate.
+- **Bench, do not delete, the cells you abandon.** Their partial games stay in the
+  store. Setting them `off` keeps a low-game-count row from reaching a fit and
+  being quoted (`PINNED AT LOW GAME COUNT`, `Docs/corrections.md`).
+
+### Known gap
+
+There is no way to give a cohort a narrower opponent pool. An `--opp-roster`
+option, or an Elo-window filter around the cohort's expected rating, would cut a
+screening run by roughly a third at no cost to the error bars that matter, since
+the games it would drop are the ones already contributing near-zero information.
+Not implemented, and the tradeoff to check first is anchor connectivity: the fit
+needs the cohort connected to `rand@1`, so a window would have to keep some
+spread rather than only near-equal opponents.
+
 ## Workflow A: add agents and screen them (does not disturb anything)
 
 Use during a study, when you will add and discard many candidates.

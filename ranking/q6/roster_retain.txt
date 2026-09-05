@@ -581,41 +581,56 @@ on  ab(deep=12,tt,ord,rem=70,nodes=200k)@2.learned(model=97,87a5093d,pool_games,
 on  ab(deep=12,tt,ord,rem=70,nodes=300k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,nodes=550k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
 
-# --- retain study: rem=70 with and without carry-over, 5 budgets ---------
+# --- retain study: rem=70 with and without carry-over --------------------
 # Added 2026-09-05. Tests whether carrying a move's unspent node budget into
 # the same side's next move flattens the Elo-vs-node-count curve.
+# Budgets 100k/200k/300k/400k.
 on  ab(deep=12,tt,ord,rem=70,nodes=100k)@2.classic(chip=100)@2
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.classic(chip=100)@2
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=300k)@2.classic(chip=100)@2
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.classic(chip=100)@2
-on  ab(deep=12,tt,ord,rem=70,nodes=1m)@2.classic(chip=100)@2
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.classic(chip=100)@2
+on  ab(deep=12,tt,ord,rem=70,nodes=400k)@2.classic(chip=100)@2
+on  ab(deep=12,tt,ord,rem=70,retain,nodes=400k)@2.classic(chip=100)@2
 on  ab(deep=12,tt,ord,rem=70,nodes=100k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=300k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,nodes=400k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,retain,nodes=400k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,nodes=100k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=300k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,nodes=400k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,retain,nodes=400k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,nodes=100k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=300k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on  ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on  ab(deep=12,tt,ord,rem=70,nodes=400k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on  ab(deep=12,tt,ord,rem=70,retain,nodes=400k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 on  ab(deep=12,tt,ord,rem=70,nodes=100k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
 on  ab(deep=12,tt,ord,rem=70,retain,nodes=300k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
-on  ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,nodes=400k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on  ab(deep=12,tt,ord,rem=70,retain,nodes=400k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+
+# Benched 2026-09-05: the 550k and 1m rungs were dropped from the study, so
+# these carry only the partial games from the run that was stopped. Off, so a
+# low-game-count row cannot reach a fit (PINNED AT LOW GAME COUNT).
+off ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.classic(chip=100)@2
+off ab(deep=12,tt,ord,rem=70,nodes=1m)@2.classic(chip=100)@2
+off ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.classic(chip=100)@2
+off ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=550k)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,nodes=1m)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+off ab(deep=12,tt,ord,rem=70,retain,nodes=1m)@2.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
