@@ -24,6 +24,23 @@
 # by this driver, so `run_rank.ps1 play ...` still rates. Use:
 #   tools/run_rank.ps1 -Workers 12 -NoRate play --roster <r> --cohort <c> --games 8
 #   rank.exe rate --roster <r> --pin ranking/standings.tsv
+#
+# LADDER (default). `--games N` is a target, not an increment: the scheduler
+# counts stored games per pair and issues only the deficit. So the driver plays
+# rungs 2, 4, 8, ... N, merging the shards between each, which costs the same
+# total games as one pass at N but gives a readable store minutes in. Rung 1
+# touches every pair, so a broken agent or a mis-specified roster shows up
+# there instead of at the end. -NoLadder for a single pass.
+#
+# The ladder never stops early on its own. Reading a rung and deciding to stop
+# is a human call made against an SE target written down BEFORE the run, because
+# fitting after every rung and stopping when the answer looks good is optional
+# stopping and inflates false positives invisibly. See
+# plans/ranking-run-scheduling-plan-1-tidal-lantern.md.
+#
+# -PinEachRung <ratings.tsv> runs `rate --pin <file>` after each rung's merge, so
+# standings appear as the run proceeds. It writes only ranking/*_pinned.tsv and
+# cannot disturb the canonical fit.
 
 # PositionalBinding=$false so pass-through tokens like "--games" land in $Args
 # instead of being bound to $Store positionally.
@@ -32,6 +49,8 @@ param(
     [switch]$Build,
     [int]$Workers = 1,
     [switch]$NoRate,
+    [switch]$NoLadder,
+    [string]$PinEachRung = "",
     [string]$Store = "ranking/matches.jsonl",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Args
@@ -74,40 +93,110 @@ if ($null -ne $Args -and $Args.Count -gt 0) {
 
 if (-not (Test-Path "ranking")) { New-Item -ItemType Directory "ranking" | Out-Null }
 
-Write-Host "Launching $Workers rank shards (store=$Store)..."
-$procs = @()
-$shardFiles = @()
-for ($s = 0; $s -lt $Workers; $s++) {
-    $sf = "$Store.$s"
-    if (Test-Path $sf) { Remove-Item $sf -Force }
-    $shardFiles += $sf
-    $playArgs = @("play", "--shard", $s, "--of", $Workers, "--in", $Store, "--out", $sf) + $extra
-    # Start-Process -ArgumentList (Windows PowerShell 5.1) does NOT auto-quote array
-    # elements containing spaces -- it joins them with plain spaces into one command
-    # line, so an unquoted path like a project root under "...\Board Games\..." gets
-    # split into multiple argv tokens on the receiving end. Quote any element that
-    # needs it before handing the array to Start-Process. (Caught 2026-07-30: this
-    # cohort's --roster is an absolute path built from $Root, which does contain a
-    # space; an earlier manual invocation with a relative, space-free path happened
-    # not to trigger it.)
-    $quotedArgs = $playArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
-    $procs += Start-Process -FilePath $Exe -ArgumentList $quotedArgs -NoNewWindow -PassThru
+# Read the target off the pass-through options so the driver can build the rung
+# list. rank.exe's own default is 8, so match it when --games is absent.
+$target = 8
+for ($i = 0; $i -lt $extra.Count - 1; $i++) {
+    if ($extra[$i] -eq "--games") { $target = [int]$extra[$i + 1] }
 }
 
-Write-Host "Waiting for $($procs.Count) shards..."
-$procs | Wait-Process
+# Rungs 2, 4, 8, ... target. The shards themselves run with --no-ladder: a shard
+# writes its own file and cannot see its siblings' games, so if it laddered
+# in-process its later rungs would re-issue games another shard already played.
+# Laddering has to happen HERE, where the merge between rungs makes every
+# worker's next schedule see the whole store.
+$rungs = @()
+if (-not $NoLadder -and $target -gt 2) {
+    $g = 2
+    while ($g -lt $target) { $rungs += $g; $g = $g * 2 }
+}
+$rungs += $target
 
-$bad = @($procs | Where-Object { $null -ne $_.ExitCode -and $_.ExitCode -ne 0 })
-if ($bad.Count -gt 0) {
-    Write-Error "A shard failed; shard files were NOT merged (inspect $Store.<shard>)."
-    exit 1
+if ($rungs.Count -gt 1) {
+    Write-Host "Ladder: rungs $($rungs -join ', ') games/pair, merging between each."
+    Write-Host "  Same total games as one pass at $target. Rung 1 touches every pair."
 }
 
-# Append each shard's rows to the permanent store, then clean up.
-foreach ($sf in $shardFiles) {
-    if (Test-Path $sf) {
-        Get-Content $sf | Add-Content -Path $Store -Encoding Ascii
+$runStart = Get-Date
+for ($r = 0; $r -lt $rungs.Count; $r++) {
+    $rg = $rungs[$r]
+    # Strip any caller-supplied --games and substitute this rung's target.
+    $rungExtra = @()
+    for ($i = 0; $i -lt $extra.Count; $i++) {
+        if ($extra[$i] -eq "--games") { $i++; continue }
+        $rungExtra += $extra[$i]
+    }
+    $rungExtra += @("--games", $rg, "--no-ladder")
+
+    if ($rungs.Count -gt 1) {
+        Write-Host ""
+        Write-Host "=== rung $($r + 1)/$($rungs.Count): --games $rg ==="
+    }
+    Write-Host "Launching $Workers rank shards (store=$Store)..."
+    $procs = @()
+    $shardFiles = @()
+    for ($s = 0; $s -lt $Workers; $s++) {
+        $sf = "$Store.$s"
+        if (Test-Path $sf) { Remove-Item $sf -Force }
+        $shardFiles += $sf
+        $playArgs = @("play", "--shard", $s, "--of", $Workers, "--in", $Store, "--out", $sf) + $rungExtra
+        # Start-Process -ArgumentList (Windows PowerShell 5.1) does NOT auto-quote array
+        # elements containing spaces -- it joins them with plain spaces into one command
+        # line, so an unquoted path like a project root under "...\Board Games\..." gets
+        # split into multiple argv tokens on the receiving end. Quote any element that
+        # needs it before handing the array to Start-Process. (Caught 2026-07-30: this
+        # cohort's --roster is an absolute path built from $Root, which does contain a
+        # space; an earlier manual invocation with a relative, space-free path happened
+        # not to trigger it.)
+        $quotedArgs = $playArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
+        $procs += Start-Process -FilePath $Exe -ArgumentList $quotedArgs -NoNewWindow -PassThru
+    }
+
+    Write-Host "Waiting for $($procs.Count) shards..."
+    $procs | Wait-Process
+
+    $bad = @($procs | Where-Object { $null -ne $_.ExitCode -and $_.ExitCode -ne 0 })
+    if ($bad.Count -gt 0) {
+        Write-Error "A shard failed; shard files were NOT merged (inspect $Store.<shard>)."
+        exit 1
+    }
+
+    # Append each shard's rows to the permanent store, then clean up. Every line
+    # is checked for structural completeness first: on 2026-09-04 a blind merge
+    # put 3 torn rows (one game split across two lines) into the store, and a
+    # ladder merges once per rung rather than once per run, so an unguarded
+    # append would multiply that.
+    $merged = 0; $torn = 0
+    foreach ($sf in $shardFiles) {
+        if (-not (Test-Path $sf)) { continue }
+        $good = New-Object System.Collections.Generic.List[string]
+        foreach ($line in [System.IO.File]::ReadLines((Resolve-Path $sf))) {
+            $t = $line.Trim()
+            if ($t.Length -eq 0) { continue }
+            if ($t.StartsWith("{") -and $t.EndsWith("}")) { $good.Add($t); $merged++ }
+            else { $torn++ }
+        }
+        if ($good.Count -gt 0) { Add-Content -Path $Store -Value $good -Encoding Ascii }
         Remove-Item $sf -Force
+    }
+    if ($torn -gt 0) {
+        Write-Warning "$torn torn line(s) in the shard files were DROPPED, not merged."
+    }
+
+    $mins = ((Get-Date) - $runStart).TotalMinutes
+    Write-Host ("rung $($r + 1)/$($rungs.Count) merged: {0} row(s), {1:N1} min elapsed for the run so far." -f $merged, $mins)
+
+    if ($PinEachRung -ne "") {
+        # `rate` takes --roster and --board; --games/--cohort/--no-ladder are
+        # play-only and would be ignored or rejected, so pass only what it uses.
+        $rateArgs = @()
+        for ($i = 0; $i -lt $extra.Count; $i++) {
+            if ($extra[$i] -eq "--roster" -or $extra[$i] -eq "--board") {
+                $rateArgs += @($extra[$i], $extra[$i + 1]); $i++
+            }
+        }
+        Write-Host "Pinned fit after rung $($r + 1) (writes ranking/*_pinned.tsv only)..."
+        & $Exe rate --in $Store --pin $PinEachRung @rateArgs
     }
 }
 

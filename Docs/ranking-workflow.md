@@ -182,18 +182,47 @@ Not implemented, and the tradeoff to check first is anchor connectivity: the fit
 needs the cohort connected to `rand@1`, so a window would have to keep some
 spread rather than only near-equal opponents.
 
-### Scheduling a study: ladder, do not guess `--games`
+### Scheduling a study: the ladder is the default
 
 `--games N` is a target, not an increment: the scheduler counts stored games per
-pair and plays only the deficit. So running `--games 2`, then `4`, then `8`, then
-`16`, fitting between each, plays exactly the same games as one `--games 16`
-launch, and costs only the extra process startups plus one `rate` per rung. That
-buys a preliminary answer early and lets the data choose the final `N`.
+pair and issues only the deficit. So playing rungs 2, 4, 8, ... N in sequence
+plays exactly the same set of games as one pass at N. Not merely the same count:
+the same multiset of (white, black, seed), asserted by the test "a 2,4,8 ladder
+plays exactly the games of one pass at 8" in `tests/test_ranking.cpp` and
+confirmed end to end on both the serial and the 3-shard paths.
 
-The stopping rule must be stated on a within-fit contrast (treatment minus control
-at matched core and budget), never on absolute Elo, which is not comparable across
-fits. Full procedure, the three stopping conditions, and the proposed `--ladder`
-and `--stop-when` flags:
+Both entry points ladder by default:
+
+```
+rank.exe play --roster <r> --cohort <c> --games 16          # rungs 2, 4, 8, 16
+tools/run_rank.ps1 -Workers 12 -NoRate play ... --games 16  # same, sharded
+```
+
+`rank.exe play` ladders in process when unsharded, and prints per rung the games
+played, the rate, the exact number remaining, and a projection at the rate so far.
+Under `--of k > 1` it does not: a shard writes its own file and cannot see its
+siblings' games, so its later rungs would re-issue games another shard already
+played. `run_rank.ps1` drives the rungs there instead, merging between each so
+every worker starts a rung seeing the whole store. Pass `--no-ladder` or
+`-NoLadder` for a single pass.
+
+`-PinEachRung <ratings.tsv>` on the wrapper runs `rate --pin` after each rung's
+merge, so standings appear as the run proceeds. It writes only
+`ranking/*_pinned.tsv` and cannot disturb the canonical fit.
+
+**Rung 1 is the expensive one, so do not multiply its time by the rung count.**
+It touches every pair, including the deterministic ones that saturate at 2 and
+never appear again. On the current 228-agent roster a full round robin at
+`--games 16` is 6.5x the rung-1 games, and one cohort cell against the roster is
+4.7x, not 8x. The tool prints the exact remaining count, so no multiplier is
+needed.
+
+**Two rules on reading an early rung.** A mid-ladder fit is a rung, not a result:
+quote it only with the rung number and per-cell game counts inline. And the
+ladder never stops early on its own, by design. Stopping when the answer looks
+good is optional stopping and inflates false positives invisibly, so the contrast
+and its target SE go into the plan before the run starts. Full procedure, the
+three stopping conditions, and the cases where laddering does not apply:
 `plans/ranking-run-scheduling-plan-1-tidal-lantern.md`.
 
 ## Workflow A: add agents and screen them (does not disturb anything)

@@ -203,15 +203,29 @@ against the same seams.
     plain at 200k on both tdleaf_self cores. Grid, contrasts and the
     depth-saturation reading:
     `plans/budget-parity-results-2-steady-meridian.md`
-  - **Ladder cohort runs instead of guessing `--games`.** `--games N` is a target,
-    not an increment, so `2 -> 4 -> 8 -> 16` with a fit between rungs plays the same
-    games as one `--games 16` launch and gives a preliminary answer early. Plan,
-    stopping rule, and the proposed `rank.exe play --ladder` / `--stop-when` flags:
-    `plans/ranking-run-scheduling-plan-1-tidal-lantern.md`. Cross-linked from
-    `Docs/ranking-workflow.md`. First code item is `--ladder`, and the zero-cost
-    validation is to replay the finished `retain` store at 2/4/8/16 games per pair
-    and check at which rung each slope contrast reached its final sign and
-    magnitude `[Next]` {cpu: low, dev: medium}
+  - ~~**Ladder cohort runs instead of guessing `--games`.**~~ **Done 2026-09-05.**
+    `rank.exe play` and `tools/run_rank.ps1` ladder rungs 2, 4, 8, ... N by default
+    (`--no-ladder` / `-NoLadder` to opt out, `-PinEachRung` to fit after each rung).
+    Verified to play the identical multiset of (white, black, seed) as one pass, on
+    the serial path, the 3-shard path, and in a unit test. Rung 1 is the widest, so
+    the true multiplier to `--games 16` is 6.5x for a full round robin and 4.7x for
+    a cohort cell, not 8x, and the tool prints the exact remaining count instead.
+    Results: `plans/ranking-run-scheduling-results-1-tidal-lantern.md`
+  - **Validate the ladder's stopping rule offline against the finished `retain`
+    store.** Costs no new games. Subset its rows to 2/4/8/16 games per pair and find
+    the rung at which each of the five slope contrasts first reached its final sign
+    and magnitude. If a contrast that later moved would have passed the rule early,
+    the SE multiplier is too loose. This is the one part of the ladder design the
+    equivalence proof says nothing about `[Next]` {cpu: low, dev: medium}
+  - **Ladder the position-oracle labeling too.** `posgen`/`label` spend a fixed
+    playout budget per position. The same `p(1-p)` argument applies and is stronger
+    there: rather than skipping settled pairs, the later rungs would REDIRECT
+    playouts onto positions whose label sits near 0.5 `[Next]` {cpu: low, dev: medium}
+  - **Successive halving for `hill_climb.ps1` and the training playbook's Pass 3.**
+    Uniform doubling spends equally on a candidate that is already clearly last.
+    Racing (drop the worst half per rung, double the survivors) is the right shape
+    when the question is "which of these" rather than "how big is this effect"
+    `[Later]` {cpu: low, dev: medium}
   - **3 torn rows in `ranking/matches.jsonl`** (lines 631710, 641823, 655232), one
     logical game split across two lines by interleaved appends during the 2026-09-04
     40k-game run, out of 906,983 rows. The reader skips them with a WARNING and no

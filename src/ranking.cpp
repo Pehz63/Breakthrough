@@ -2880,7 +2880,7 @@ static bool loadPinnedRatings(const string& path, std::map<std::string,double>& 
 
 int rankPlay(const string& rosterFile, const string& storeFile, const string& outFile,
              int gamesPerPair, int shard, int ofK, unsigned runSeed, const string& board,
-             bool pairedOpenings, const string& cohortFile) {
+             bool pairedOpenings, const string& cohortFile, bool ladder) {
     std::vector<RankAgent> roster;
     string err;
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
@@ -2898,20 +2898,58 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     rankLoadMatches(storeFile, board, store, skipped);
     if (skipped) cout << "WARNING: skipped " << skipped << " malformed line(s) in " << storeFile << "\n";
 
-    std::vector<RankPendingGame> pending = rankSchedule(roster, store, gamesPerPair, runSeed, pairedOpenings,
-                                                        cohort.empty() ? nullptr : &cohort);
+    const std::set<std::string>* cohortPtr = cohort.empty() ? nullptr : &cohort;
+
+    // --- The rung ladder ----------------------------------------------------
+    // `--games N` is a TARGET, not an increment: rankSchedule counts the games
+    // already in the store for each pair and returns only the deficit. So
+    // playing rungs 2, 4, 8, ... N in sequence plays exactly the same set of
+    // games as one pass at N, for the price of a few extra scheduling passes.
+    // What it buys is an early read. Rung 1 touches EVERY pair, so a broken
+    // agent, a mis-specified roster or an unexpected cost shows up minutes in
+    // rather than at the end, and the rung's measured rate projects the rest.
+    //
+    // Sharding disables the ladder. Each shard writes its own output file and
+    // cannot see its siblings' rung-1 games, so its rung-2 schedule would
+    // re-issue games another shard already played. tools/run_rank.ps1 drives
+    // the rungs for sharded runs instead, merging between them so that every
+    // worker starts each rung seeing the whole store.
+    std::vector<int> rungs;
+    if (ladder && ofK == 1 && gamesPerPair > 2) {
+        for (int g = 2; g < gamesPerPair; g *= 2) rungs.push_back(g);
+    }
+    rungs.push_back(gamesPerPair);
+
+    // Cumulative pending counts, measured against the store as it stands now.
+    // Scheduling is deficit-based, so cum[r] is the total this run will have
+    // played once rung r finishes, and cum[r] - cum[r-1] is that rung's own
+    // cost. Both are exact, which is the point: no multiplier is involved.
+    std::vector<size_t> cum(rungs.size(), 0);
+    for (size_t r = 0; r < rungs.size(); r++)
+        cum[r] = rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr).size();
+
     int nActive = 0;
     for (size_t i = 0; i < roster.size(); i++) if (roster[i].active) nActive++;
 
     string pre = (ofK > 1) ? ("[s" + std::to_string(shard) + "] ") : string("");
-    cout << pre << "rank: " << nActive << " active agents, " << pending.size()
+    cout << pre << "rank: " << nActive << " active agents, " << cum.back()
          << " pending games (target " << gamesPerPair << "/pair)";
     if (pairedOpenings) cout << ", paired openings";
     if (ofK > 1) cout << ", shard " << shard << "/" << ofK;
     cout << "\n" << flush;
-    if (pending.empty()) {
+    if (cum.back() == 0) {
         cout << pre << "nothing to play: every active pair is at target\n";
         return 0;
+    }
+    if (rungs.size() > 1) {
+        cout << pre << "ladder: ";
+        for (size_t r = 0; r < rungs.size(); r++)
+            cout << (r ? ", " : "") << rungs[r] << "/pair -> " << cum[r] << " cumulative";
+        cout << "\n" << pre
+             << "  rung 1 is a full pass over every pair, so it is the most expensive"
+                " single rung and its rate projects the rest.\n" << flush;
+    } else if (ladder && ofK > 1) {
+        cout << pre << "ladder off: sharded run, the rungs are the wrapper's job\n" << flush;
     }
 
     std::map<string, const RankAgent*> byId;
@@ -2926,37 +2964,77 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     struct Tally { long long w, l, d; };
     std::map<std::pair<string,string>, Tally> tally;
     long long played = 0;
+    std::chrono::steady_clock::time_point tRun = std::chrono::steady_clock::now();
 
-    for (size_t p = 0; p < pending.size(); p++) {
-        if ((long long)(p % (size_t)ofK) != (long long)shard) continue;
-        const RankPendingGame& gm = pending[p];
-        srand(gm.seed);
-        RankMatchRow m;
-        if (!playOneGame(*byId[gm.w], *byId[gm.b], board, m)) {
-            cout << "ERROR: cannot load board " << board << "\n";
-            return 1;
+    for (size_t r = 0; r < rungs.size(); r++) {
+        // Re-schedule against the store INCLUDING this run's earlier rungs, so
+        // each rung issues only its own increment.
+        std::vector<RankPendingGame> pending =
+            rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr);
+        std::chrono::steady_clock::time_point tRung = std::chrono::steady_clock::now();
+        long long rungPlayed = 0;
+
+        if (rungs.size() > 1)
+            cout << pre << "== rung " << (r + 1) << "/" << rungs.size() << ", --games "
+                 << rungs[r] << ": " << pending.size() << " game(s)\n" << flush;
+
+        for (size_t p = 0; p < pending.size(); p++) {
+            if ((long long)(p % (size_t)ofK) != (long long)shard) continue;
+            const RankPendingGame& gm = pending[p];
+            srand(gm.seed);
+            RankMatchRow m;
+            if (!playOneGame(*byId[gm.w], *byId[gm.b], board, m)) {
+                cout << "ERROR: cannot load board " << board << "\n";
+                return 1;
+            }
+            m.seed = gm.seed; m.board = board; m.par = ofK;
+            m.ts = nowUtc(); m.run = stamp;
+            dsAppendLine(outFile, rankFormatMatchRow(m));
+            store.push_back(m);          // the next rung must see it
+            played++; rungPlayed++;
+
+            // Session tally from the lexicographically smaller id's perspective.
+            bool wSmall = (gm.w < gm.b);
+            std::pair<string,string> key = wSmall ? std::make_pair(gm.w, gm.b)
+                                                  : std::make_pair(gm.b, gm.w);
+            Tally& t = tally[key];
+            if (m.r == 'D') t.d++;
+            else if ((m.r == 'W') == wSmall) t.w++;
+            else t.l++;
+
+            std::ostringstream ln;
+            ln << pre << "[" << std::setw(4) << (p + 1) << "/" << pending.size() << "] "
+               << rankDisplayId(gm.w) << " (W) vs " << rankDisplayId(gm.b)
+               << " : " << m.r << " in " << m.plies
+               << " plies, " << fmtN((m.wms + m.bms) / 1000.0, 1) << "s | pair "
+               << t.w << "-" << t.l;
+            cout << ln.str() << "\n" << flush;
         }
-        m.seed = gm.seed; m.board = board; m.par = ofK;
-        m.ts = nowUtc(); m.run = stamp;
-        dsAppendLine(outFile, rankFormatMatchRow(m));
-        played++;
 
-        // Session tally from the lexicographically smaller id's perspective.
-        bool wSmall = (gm.w < gm.b);
-        std::pair<string,string> key = wSmall ? std::make_pair(gm.w, gm.b)
-                                              : std::make_pair(gm.b, gm.w);
-        Tally& t = tally[key];
-        if (m.r == 'D') t.d++;
-        else if ((m.r == 'W') == wSmall) t.w++;
-        else t.l++;
-
-        std::ostringstream ln;
-        ln << pre << "[" << std::setw(4) << (p + 1) << "/" << pending.size() << "] "
-           << rankDisplayId(gm.w) << " (W) vs " << rankDisplayId(gm.b)
-           << " : " << m.r << " in " << m.plies
-           << " plies, " << fmtN((m.wms + m.bms) / 1000.0, 1) << "s | pair "
-           << t.w << "-" << t.l;
-        cout << ln.str() << "\n" << flush;
+        if (rungs.size() > 1) {
+            double rs = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - tRung).count();
+            double rate = (rs > 0.0) ? (double)rungPlayed / rs : 0.0;
+            cout << pre << "== rung " << (r + 1) << "/" << rungs.size() << " done: "
+                 << rungPlayed << " game(s) in " << fmtN(rs, 1) << "s ("
+                 << fmtN(rate, 2) << " games/s), " << played << " cumulative\n";
+            // Exact remaining count, then a projection at the rate measured so
+            // far. The rate is the part to doubt: later rungs skew toward the
+            // stochastic pairs, whose games need not be the same length as the
+            // deterministic ones that dominate rung 1.
+            if (r + 1 < rungs.size()) {
+                size_t remain = cum.back() - cum[r];
+                cout << pre << "   " << remain << " game(s) left in rungs";
+                for (size_t q = r + 1; q < rungs.size(); q++) cout << " " << rungs[q];
+                double all = std::chrono::duration<double>(
+                                 std::chrono::steady_clock::now() - tRun).count();
+                double overall = (all > 0.0) ? (double)played / all : 0.0;
+                if (overall > 0.0)
+                    cout << ", about " << fmtN((double)remain / overall / 60.0, 1)
+                         << " min at " << fmtN(overall, 2) << " games/s so far";
+                cout << "\n" << flush;
+            }
+        }
     }
     cout << pre << "played " << played << " game(s) -> " << outFile << "\n";
     return 0;

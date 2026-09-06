@@ -413,10 +413,16 @@ int rankCheck(const std::string& rosterFile, const std::string& storeFile,
               int gamesPerPair, const std::string& board);
 // cohortFile (optional): path to a plain list of agent ids. When given, only
 // pairs touching one of those agents are scheduled (see rankSchedule's `cohort`).
+// ladder (default true): play the target in rungs 2, 4, 8, ... gamesPerPair
+// instead of one pass, fitting nothing but printing each rung's rate and the
+// exact remaining count. Costs no extra games, since rankSchedule returns only
+// the deficit against the store. Ignored when ofK > 1: a shard cannot see its
+// siblings' games, so its later rungs would re-issue theirs (tools/run_rank.ps1
+// drives the rungs for sharded runs).
 int rankPlay(const std::string& rosterFile, const std::string& storeFile,
              const std::string& outFile, int gamesPerPair, int shard, int ofK,
              unsigned runSeed, const std::string& board, bool pairedOpenings = false,
-             const std::string& cohortFile = "");
+             const std::string& cohortFile = "", bool ladder = true);
 // pinFile (optional): a ratings.tsv / standings.tsv whose agents are held at
 // their listed Elo (rankFitBTPinned) instead of being re-solved. Screening only.
 // regimeBalanced: run the fit with every regime bloc weighted equally (see

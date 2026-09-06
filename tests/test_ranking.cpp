@@ -1663,6 +1663,65 @@ TEST_CASE("ranking determinism - derived from the spec, not stored") {
     REQUIRE(!rankAgentIsDeterministic(mkActive("gaz(sims=50)@1.classic(chip=100)@2").spec));
 }
 
+// The claim `rank.exe play` relies on when it ladders by default: `--games N` is
+// a TARGET, not an increment, so walking 2 -> 4 -> 8 plays exactly the games one
+// pass at 8 would have played. If this ever stopped holding, the ladder would be
+// silently changing what a study measures rather than only when it reports.
+TEST_CASE("ranking scheduler - a 2,4,8 ladder plays exactly the games of one pass at 8") {
+    std::vector<RankAgent> roster;
+    roster.push_back(mkActive("ab(deep=4)@2.classic(chip=100)@2"));
+    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2"));
+    // Two diluted agents, so some pairs are stochastic and actually grow with the
+    // rungs. An all-deterministic roster would pass this trivially at 2 games.
+    roster.push_back(mkActive("ab(deep=4)@2.classic(chip=100)@2.dil(prob=30)@1"));
+    roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30)@1"));
+
+    std::vector<RankMatchRow> flatStore;
+    std::vector<RankPendingGame> flat = rankSchedule(roster, flatStore, 8, 1, false, NULL);
+
+    std::vector<RankMatchRow> ladStore;
+    std::vector<RankPendingGame> lad;
+    const int rungs[3] = { 2, 4, 8 };
+    std::vector<size_t> rungSize;
+    for (int r = 0; r < 3; r++) {
+        std::vector<RankPendingGame> step =
+            rankSchedule(roster, ladStore, rungs[r], 1, false, NULL);
+        rungSize.push_back(step.size());
+        for (size_t i = 0; i < step.size(); i++) {
+            lad.push_back(step[i]);
+            ladStore.push_back(asRow(step[i]));
+        }
+    }
+
+    REQUIRE(lad.size() == flat.size());
+
+    // Same COUNT is not enough: assert the same multiset of (white, black, seed),
+    // so the ladder cannot quietly substitute different games for the same total.
+    std::vector<string> a, b;
+    for (size_t i = 0; i < lad.size(); i++)
+        a.push_back(lad[i].w + "|" + lad[i].b + "|" + std::to_string(lad[i].seed));
+    for (size_t i = 0; i < flat.size(); i++)
+        b.push_back(flat[i].w + "|" + flat[i].b + "|" + std::to_string(flat[i].seed));
+    std::sort(a.begin(), a.end());
+    std::sort(b.begin(), b.end());
+    REQUIRE(a == b);
+
+    // The ladder must be a real split, not one rung doing all the work.
+    REQUIRE(rungSize[0] > 0);
+    REQUIRE(rungSize[1] > 0);
+    REQUIRE(rungSize[2] > 0);
+
+    // Rung 1 is the widest: it touches every pair, including the deterministic
+    // ones that saturate at 2 and never appear in a later rung. That asymmetry is
+    // why an early rung's rate cannot simply be multiplied by the rung count.
+    size_t pairs = roster.size() * (roster.size() - 1) / 2;
+    REQUIRE(rungSize[0] == pairs * 2);
+    REQUIRE(rungSize[1] < rungSize[0]);
+
+    // Nothing is left over: a fourth pass at the same target schedules nothing.
+    REQUIRE(rankSchedule(roster, ladStore, 8, 1, false, NULL).empty());
+}
+
 TEST_CASE("ranking scheduler - a deterministic pair is REQUIRED to play exactly 2") {
     std::vector<RankAgent> roster;
     roster.push_back(mkActive("ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2"));

@@ -95,6 +95,12 @@ static void usage() {
     cout << "                                or games per opponent (gauntlet)\n";
     cout << "  --seed 1                      run seed (per-game seeds derive from it)\n";
     cout << "\nplay:     --out <file> (default = --in), --shard i --of k (process sharding)\n";
+    cout << "          Plays --games N as a LADDER of rungs 2, 4, 8, ... N by default,\n";
+    cout << "          printing each rung's rate and the exact games left. Same total\n";
+    cout << "          games as one pass (the scheduler only plays a pair's deficit), but the\n";
+    cout << "          first rung touches every pair, so problems surface early. --no-ladder\n";
+    cout << "          for a single pass. Ignored under --of k > 1: use tools/run_rank.ps1,\n";
+    cout << "          which drives the rungs and merges the shards between them.\n";
     cout << "history:  --agent <id or unique prefix>, --last 20\n";
     cout << "gauntlet: --id <candidate id>, --keep (append to the store instead of scratch)\n";
     cout << "determinism: --probe <fixed deterministic opponent id>"
@@ -207,14 +213,16 @@ int main(int argc, char** argv) {
         rc = rankPlay(roster, store, getOpt(argc, argv, "--out", store.c_str()),
                       games, getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
                       seed, board, hasFlag(argc, argv, "--paired-openings"),
-                      getOpt(argc, argv, "--cohort", ""));
+                      getOpt(argc, argv, "--cohort", ""),
+                      !hasFlag(argc, argv, "--no-ladder"));
     } else if (cmd == "rate") {
         rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""),
                       hasFlag(argc, argv, "--regime-balanced"));
     } else if (cmd == "run") {
         rc = rankPlay(roster, store, store, games, 0, 1, seed, board,
                       hasFlag(argc, argv, "--paired-openings"),
-                      getOpt(argc, argv, "--cohort", ""));
+                      getOpt(argc, argv, "--cohort", ""),
+                      !hasFlag(argc, argv, "--no-ladder"));
         if (rc == 0) rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
     } else if (cmd == "seal") {
         string err;
