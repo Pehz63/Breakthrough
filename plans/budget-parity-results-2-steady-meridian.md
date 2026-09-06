@@ -734,9 +734,12 @@ the mean stays under it, which is the conservation property holding.
 
 ### Elo: does `retain` make the node budget matter less?
 
-**Yes on the two cores where the node budget mattered, and by raising the low end
-rather than by lowering the high end.** On the three cores whose Elo barely moved
-with budget in the first place there was nothing to flatten.
+**No, not in general. It removes a specific starvation at the 100k rung, on the
+two cores that were starved there.** Above 200k, `retain` does not change how a
+core responds to more nodes. The fitted slope over the whole 100k-400k range does
+drop sharply on those two cores, but that is one straight line summarising a
+strongly concave curve, and the entire difference lives in the first step. See
+"The slope is one step, not a trend" below before quoting the slope table.
 
 40 cells, one pinned fit (`rank.exe rate --roster ranking/q6/roster_retain.txt
 --pin ranking/q5/pin_no_d12.tsv`), 1,328 to 1,358 games per cell, all 40 cells
@@ -759,8 +762,10 @@ mostly deterministic roster at 2 games per pair, which is the floor, not padding
 | `learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1` | 713+-11 | 714+-11 | 714+-11 | 716+-11 | 731+-11 | 730+-11 | 744+-11 | 756+-11 |
 
 **The hypothesis stated as a number.** Weighted least squares of Elo on
-log2(node budget) across the four rungs, in Elo per doubling. The flattening
-claim is the `difference` column, which is a contrast inside one fit:
+log2(node budget) across the four rungs, in Elo per doubling. The `difference`
+column is a contrast inside one fit. Read it together with "The slope is one
+step, not a trend" below: these slopes are driven entirely by the 100k rung, and
+quoting them alone overstates what `retain` does:
 
 | core | plain | `retain` | difference | z |
 |---|---|---|---|---|
@@ -809,6 +814,49 @@ not from a loss at the top.
 
 So on those two cores `retain` is worth exactly one doubling of the node budget at
 the low end, and less than two.
+
+#### The slope is one step, not a trend
+
+The plain curve is concave, so a single fitted slope is a summary and not a law.
+Rung to rung:
+
+| core | condition | 100k -> 200k | 200k -> 300k | 300k -> 400k |
+|---|---|---|---|---|
+| chip counter | plain | +6 | +3 | -4 |
+| chip counter | `retain` | -21 | +35 | -19 |
+| tdleaf_self lin `model=169` | plain | **+144** | +39 | +12 |
+| tdleaf_self lin `model=169` | `retain` | **+13** | +39 | +23 |
+| tdleaf_self lin `model=349` | plain | **+118** | +43 | -15 |
+| tdleaf_self lin `model=349` | `retain` | **+38** | -23 | +49 |
+| position_elo mlp `model=113` | plain | +9 | +85 | -35 |
+| position_elo mlp `model=113` | `retain` | +22 | +54 | -31 |
+| pool_games lin `model=97` | plain | +1 | +17 | +13 |
+| pool_games lin `model=97` | `retain` | +2 | +14 | +26 |
+
+On the two tdleaf_self cores the plain and `retain` steps are indistinguishable
+after the first one. Refitting the slope on 200k/300k/400k only, with the 100k
+rung dropped, the effect vanishes entirely:
+
+| core | plain | `retain` | difference | z |
+|---|---|---|---|---|
+| chip counter | -0.6+-15.5 | +18.6+-15.5 | +19.2+-21.9 | +0.87 |
+| tdleaf_self lin `model=169` | +52.4+-18.9 | +62.6+-19.5 | +10.2+-27.2 | +0.37 |
+| tdleaf_self lin `model=349` | +31.0+-18.3 | +21.3+-19.7 | -9.7+-26.9 | -0.36 |
+| position_elo mlp `model=113` | +56.3+-15.5 | +27.0+-15.5 | -29.2+-21.9 | -1.33 |
+| pool_games lin `model=97` | +29.9+-15.5 | +38.9+-15.5 | +9.0+-21.9 | +0.41 |
+
+Every z is under 1.4. So the honest statement of the result is not "`retain`
+flattens the Elo-vs-budget curve", which describes a fitted line and implies a
+mechanism that acts at every budget. It is: **at 100k these two cores were
+leaving most of the budget unspent, and `retain` recovers it. At 200k and above
+there is nothing left to recover.** That is consistent with the `rem=70` gate,
+which declines a deepening iteration unless 30% of the cap is unspent: the
+smaller the cap relative to one iteration's cost, the more often it declines and
+the more there is to bank.
+
+The practical reading is unchanged and is the one to quote: `retain` is worth
++142+-17 and +120+-17 at 100k on these cores, equivalent to one doubling of the
+node budget, and roughly nothing from 200k up.
 
 **Why the effect is core-dependent.** `rem=70` declines an iteration unless 30% of
 the cap is unspent, and how often that fires depends on the ratio of one

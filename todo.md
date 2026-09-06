@@ -198,10 +198,11 @@ against the same seams.
     partial cells are benched `off` in the working roster so a low-game-count row
     cannot reach a fit~~ **Done 2026-09-05.** Slope of Elo on log2(budget) drops
     from +103.3 to +36.7 Elo/doubling on tdleaf_self lin `model=169` (z=-5.45) and
-    +81.3 to +24.0 on `model=349` (z=-4.83), not measurably on the other three
-    cores, whose plain slopes were +3.3, +15.2 and +40.0. `retain` at 100k equals
-    plain at 200k on both tdleaf_self cores. Grid, contrasts and the
-    depth-saturation reading:
+    +81.3 to +24.0 on `model=349` (z=-4.83), but that slope difference is ENTIRELY
+    the 100k rung: refit on 200k/300k/400k only and every core is under z=1.4. The
+    surviving claim is narrow. `retain` is worth +142+-17 and +120+-17 at 100k on
+    those two cores, equal to one doubling of budget, and roughly nothing from 200k
+    up. Grid, rung-to-rung steps and the depth-saturation reading:
     `plans/budget-parity-results-2-steady-meridian.md`
   - ~~**Ladder cohort runs instead of guessing `--games`.**~~ **Done 2026-09-05.**
     `rank.exe play` and `tools/run_rank.ps1` ladder rungs 2, 4, 8, ... N by default
