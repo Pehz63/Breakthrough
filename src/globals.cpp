@@ -48,7 +48,11 @@ bool g_keepPartial = false;
 int  g_aspirationWindow = 0;
 int  g_iterMinRemain = 0;
 unsigned long long g_nodeCarry[2] = { 0, 0 };
-void retainResetCarry() { g_nodeCarry[0] = g_nodeCarry[1] = 0; }
+double g_timeCarry[2] = { 0.0, 0.0 };
+void retainResetCarry() {
+    g_nodeCarry[0] = g_nodeCarry[1] = 0;
+    g_timeCarry[0] = g_timeCarry[1] = 0.0;
+}
 
 bool g_useRootFilter = false;
 int  g_rootMoveWhitelist[ROOT_FILTER_MAX][3] = {{0}};
@@ -69,6 +73,7 @@ int    g_gumbelRootM  = 16;
 double g_lastEffDepth = 0.0;
 int    g_lastBudgetKind = BUDGET_NONE;
 unsigned long long g_lastNodes = 0;
+double g_lastSearchMs = 0.0;
 int g_lastPartAdopt = 0;
 unsigned long long g_nodesAtDepth[MAX_PROFILE_DEPTH + 1] = {0};
 unsigned long long g_lastLeafs = 0;

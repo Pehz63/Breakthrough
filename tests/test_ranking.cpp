@@ -2396,6 +2396,72 @@ TEST_CASE("retain - unspent budget carries to the same side's next move") {
     REQUIRE(total > (unsigned long long)moves * flat0);   // and it does use the slack
 }
 
+// The wall-clock counterpart. Timing is machine-dependent, so this asserts the
+// CONTRACT (a purse exists, it holds only what was left over, it never goes
+// negative, it is cleared per game, and it is inert without a time budget)
+// rather than any particular millisecond count.
+TEST_CASE("retain - the wall-clock purse banks unspent milliseconds") {
+    AgentSpec plain  = parseOk("ab(deep=12,tt,ord,time=40ms)@2.classic(chip=100)@2").spec;
+    AgentSpec keeper = parseOk("ab(deep=12,tt,ord,retain,time=40ms)@2.classic(chip=100)@2").spec;
+
+    auto oneSearch = [](const AgentSpec& a, int side) {
+        REQUIRE(reloadBoard("boards/board1.txt"));
+        ttClear();
+        agentChooseMove(const_cast<AgentSpec&>(a), side);
+    };
+
+    // Without the flag nothing is ever banked, however much time is left over.
+    retainResetCarry();
+    for (int i = 0; i < 3; i++) {
+        oneSearch(plain, White);
+        REQUIRE(g_timeCarry[0] == 0.0);
+    }
+    // The search must be reporting its own spend, or the purse below is measuring
+    // nothing. elapsedMs only runs the clock when a wall budget is set.
+    REQUIRE(g_lastSearchMs > 0.0);
+
+    // With the flag the purse holds exactly what the effective budget did not
+    // spend, so it is never negative and never exceeds the budget it came from.
+    retainResetCarry();
+    double carrySeen = 0.0;
+    for (int i = 0; i < 6; i++) {
+        double before = g_timeCarry[0];
+        oneSearch(keeper, White);
+        REQUIRE(g_timeCarry[0] >= 0.0);                       // clamped, never wrapped
+        REQUIRE(g_timeCarry[0] <= 40.0 + before + 1e-9);      // only the unspent part
+        // Whatever was banked, the move that follows is allowed to spend it, so the
+        // effective budget is the flag plus the purse and the spend must fit inside.
+        REQUIRE(g_lastSearchMs <= 40.0 + before + 250.0);     // slack for the sample interval
+        if (g_timeCarry[0] > carrySeen) carrySeen = g_timeCarry[0];
+    }
+    // The gate declines iterations it predicts will not fit, so at 40 ms on a cheap
+    // core at least one move must have finished with time to spare. If this fails,
+    // the purse is never being filled and `retain` is a no-op on the time track.
+    REQUIRE(carrySeen > 0.0);
+
+    // Per side, and cleared per game.
+    retainResetCarry();
+    oneSearch(keeper, White);
+    REQUIRE(g_timeCarry[1] == 0.0);      // Black's purse untouched by White's move
+    retainResetCarry();
+    REQUIRE(g_timeCarry[0] == 0.0);
+    REQUIRE(g_timeCarry[1] == 0.0);
+}
+
+// `retain` is one flag governing two independent purses. A node-only agent must
+// not touch the wall-clock purse, which is what keeps the 40-cell node study's
+// results unaffected by this feature existing.
+TEST_CASE("retain - the node and wall-clock purses are independent") {
+    AgentSpec nodeOnly = parseOk("ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2").spec;
+    retainResetCarry();
+    REQUIRE(reloadBoard("boards/board1.txt"));
+    ttClear();
+    agentChooseMove(nodeOnly, White);
+    REQUIRE(g_nodeCarry[0] > 0);         // the node purse filled
+    REQUIRE(g_timeCarry[0] == 0.0);      // the wall-clock purse did not
+    REQUIRE(g_lastSearchMs == 0.0);      // and no wall clock ran at all
+}
+
 TEST_CASE("retain - the purse is per side and is cleared per game") {
     AgentSpec keeper = parseOk("ab(deep=12,tt,ord,rem=70,retain,nodes=200k)@2.classic(chip=100)@2").spec;
 

@@ -137,7 +137,13 @@ int agentChooseMove(const AgentSpec& a, int side) {
     unsigned long long effBudget = a.nodeBudget;
     if (retaining) effBudget = a.nodeBudget + g_nodeCarry[carrySlot];
     if (a.nodeBudget)        g_nodeBudget = effBudget;
-    if (a.timeBudgetMs > 0.0) g_timeBudgetMs = a.timeBudgetMs;
+    // Wall-clock purse, same contract as the node one and independent of it: an
+    // agent may carry a node budget, a time budget, or both, and each banks only
+    // its own remainder.
+    const bool retainingTime = a.retainBudget && a.timeBudgetMs > 0.0;
+    double effTimeMs = a.timeBudgetMs;
+    if (retainingTime) effTimeMs = a.timeBudgetMs + g_timeCarry[carrySlot];
+    if (a.timeBudgetMs > 0.0) g_timeBudgetMs = effTimeMs;
     g_useAlphaBeta = a.useAlphaBeta;
     g_useTT = a.useTT;
     g_useMoveOrder = a.useMoveOrder;
@@ -156,6 +162,13 @@ int agentChooseMove(const AgentSpec& a, int side) {
         // overshot slightly (the deadline is only tested every TIME_CHECK_MASK
         // nodes), so clamp rather than wrapping the unsigned subtraction.
         g_nodeCarry[carrySlot] = (g_lastNodes < effBudget) ? (effBudget - g_lastNodes) : 0ULL;
+    }
+    if (retainingTime) {
+        // Same clamp, same reason: the wall clock is sampled every
+        // TIME_CHECK_MASK nodes, so a search can finish a little past its
+        // deadline and must bank nothing rather than a negative remainder.
+        double left = effTimeMs - g_lastSearchMs;
+        g_timeCarry[carrySlot] = (left > 0.0) ? left : 0.0;
     }
 
     g_nodeBudget = savedNode; g_timeBudgetMs = savedTime;

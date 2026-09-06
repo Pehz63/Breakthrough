@@ -143,6 +143,15 @@ covered for the book once it fell out.
 which gives each player a disjoint region of the one table. `tests/test_ai_integration.cpp`
 carries a regression test, validated to fail with the fix reverted.
 
+**If the `@2 -> @3` bump is ever taken, migrate rather than orphan** (developer
+decision, 2026-09-05). Games where neither side carries a `time=` head are
+provably byte-identical across the fix, so the store rewrite renumbers their
+`ab(...)@2` ids to `@3` in place and discards only the `time=` rows. Orphaning
+the whole store to correct 33.6% of it would throw away roughly 540,000 valid
+games. The bump is not scheduled: it is a large lift for a small correction, and
+the `time=150ms` re-certification will refill the affected rows on the fixed
+binary regardless.
+
 **What this does and does not license.** It does NOT mean past Elo numbers are
 wrong by a known amount. What it does mean: a stored `tt`-vs-`tt` game is not
 reproducible by the current binary, so anything derived by REPLAYING those games

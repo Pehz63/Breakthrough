@@ -179,6 +179,13 @@ extern int  g_iterMinRemain;
 // agent's play depend on which games the worker happened to run first, the same
 // defect the per-game ttClear() exists to prevent.
 extern unsigned long long g_nodeCarry[2];
+// Wall-clock counterpart to g_nodeCarry, in milliseconds. `retain` on a time-
+// budgeted head banks whatever the search did not spend and adds it to the same
+// side's next move, exactly as the node purse does. It exists because the time
+// side has its own pre-iteration gate (nextIterationFits, src/ai_minimax.cpp),
+// which DECLINES an iteration it predicts will not fit and therefore leaves the
+// tail of the budget unspent -- the same condition rem= creates on the node side.
+extern double g_timeCarry[2];
 void retainResetCarry();
 
 // Root-move whitelist, the "filter mode" of the cluster-book opener (`cbook`,
@@ -222,6 +229,11 @@ enum BudgetKind { BUDGET_NONE = 0, BUDGET_DEPTH = 1, BUDGET_NODE = 2, BUDGET_TIM
 extern double g_lastEffDepth;
 extern int    g_lastBudgetKind;   // BudgetKind: which cap ended the last search
 extern unsigned long long g_lastNodes;
+// Wall-clock milliseconds the last top-level search actually consumed, the time
+// analogue of g_lastNodes. Zero when the search had no wall budget (elapsedMs
+// only runs the clock when one is set), which is also what makes time `retain`
+// inert without a time budget.
+extern double g_lastSearchMs;
 extern unsigned long long g_lastLeafs;
 
 // Per-iteration node profile of the last search. g_nodesAtDepth[d] is the CUMULATIVE

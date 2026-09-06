@@ -5452,9 +5452,11 @@ static void agreeWilson(long k, long n, double& lo, double& hi) {
     if (lo < 0.0) lo = 0.0; if (hi > 1.0) hi = 1.0;
 }
 
-// The polled agent's `retain` purse, parked between plies so it does not share the
-// driver's. Reset per game in agreeRunDirection, alongside retainResetCarry().
+// The polled agent's `retain` purses (nodes and milliseconds), parked between plies
+// so they do not share the driver's. Reset per game in agreeRunDirection, alongside
+// retainResetCarry().
 static unsigned long long s_agreeOthCarry[2] = { 0, 0 };
+static double s_agreeOthTimeCarry[2] = { 0.0, 0.0 };
 
 // One driver half-move. Runs `drv`, records where it left the board, rewinds,
 // runs `oth` from the identical position, compares, then leaves the board on
@@ -5479,16 +5481,21 @@ static int agreeStep(const RankAgent& drv, const RankAgent& oth, int side, Agree
     // on the same side at the same ply, so one global purse would let the probe
     // spend the driver's saved nodes and vice versa. The driver's purse is the live
     // g_nodeCarry (the game follows the driver), and the polled agent's is parked
-    // in s_agreeOthCarry between plies. Inert for agents without `retain`.
+    // in s_agreeOthCarry between plies. The wall-clock purse is parked the same
+    // way in s_agreeOthTimeCarry. Inert for agents without `retain`.
     unsigned long long drvCarry[2] = { g_nodeCarry[0], g_nodeCarry[1] };
+    double drvTimeCarry[2] = { g_timeCarry[0], g_timeCarry[1] };
     g_nodeCarry[0] = s_agreeOthCarry[0]; g_nodeCarry[1] = s_agreeOthCarry[1];
+    g_timeCarry[0] = s_agreeOthTimeCarry[0]; g_timeCarry[1] = s_agreeOthTimeCarry[1];
 
     restoreBoardSnapshot(before);
     ttClear();
     t0 = agreeNowMs();
     agentChooseMove(oth.spec, side);
     s_agreeOthCarry[0] = g_nodeCarry[0]; s_agreeOthCarry[1] = g_nodeCarry[1];
+    s_agreeOthTimeCarry[0] = g_timeCarry[0]; s_agreeOthTimeCarry[1] = g_timeCarry[1];
     g_nodeCarry[0] = drvCarry[0]; g_nodeCarry[1] = drvCarry[1];
+    g_timeCarry[0] = drvTimeCarry[0]; g_timeCarry[1] = drvTimeCarry[1];
     double othMs    = agreeNowMs() - t0;
     double othDepth = g_lastEffDepth;
     double othNodes = (double)g_lastNodes;
@@ -5540,6 +5547,7 @@ static void agreeRunDirection(const RankAgent& drv, const RankAgent& oth,
         gamesUsed++;
         retainResetCarry();
         s_agreeOthCarry[0] = s_agreeOthCarry[1] = 0;
+        s_agreeOthTimeCarry[0] = s_agreeOthTimeCarry[1] = 0.0;
         for (int h = openPlies; h < 400; h++) {
             int side = (h % 2 == 0) ? White : Black;
             int v = agreeStep(drv, oth, side, st, tsv, dir, g, h);
