@@ -888,6 +888,144 @@ The 106-game `pool_games` cell would have been read as a +71 `retain` gain. The
 value is +12+-16. The 1,183-game cell moved 6 Elo, which is the same defect at a
 sample size where it no longer bites.
 
+### The `rem=0` baseline: what any of this is worth against the engine default
+
+The 40-cell grid above compares `rem=70,retain` to `rem=70`. Neither is the
+default. `g_iterMinRemain` is 0 unless set, so the setting the engine actually
+ships was never played, and "worth one doubling of the node budget" was measured
+against the gate rather than against the thing a user gets. A second 40-cell
+cohort fixes that: the same 5 cores and 4 budgets at `rem=0`, plus `rem=0,retain`
+as an instrument check. 1,398-1,548 games per cell, one pinned fit.
+
+Three regimes, differing in what happens to the tail of the budget:
+
+| regime | the tail |
+|---|---|
+| `rem=0` (default) | starts another iteration, gets cut, discards the partial result. Spent and wasted |
+| `rem=70` | declines the iteration. Unspent and wasted |
+| `rem=70,retain` | declines, banks the remainder, spends it on a later move |
+
+**Elo, +-SE, all four regimes:**
+
+| core | regime | 100k | 200k | 300k | 400k |
+|---|---|---|---|---|---|
+| chip counter | `rem=0` | 1058+-11 | 1094+-10 | 1066+-11 | 1073+-11 |
+| chip counter | `rem=0,retain` | 1051+-11 | 1068+-11 | 1064+-11 | 1061+-11 |
+| chip counter | `rem=70` | 1062+-11 | 1068+-11 | 1072+-11 | 1069+-11 |
+| chip counter | `rem=70,retain` | 1076+-11 | 1056+-11 | 1090+-11 | 1073+-11 |
+| tdleaf_self lin `model=169` | `rem=0` | 1082+-11 | 1213+-12 | 1278+-14 | 1268+-14 |
+| tdleaf_self lin `model=169` | `rem=0,retain` | 1077+-11 | 1233+-13 | 1272+-14 | 1282+-14 |
+| tdleaf_self lin `model=169` | `rem=70` | 1075+-11 | 1227+-13 | 1261+-13 | 1273+-14 |
+| tdleaf_self lin `model=169` | `rem=70,retain` | **1219+-13** | 1229+-13 | 1279+-14 | 1294+-14 |
+| tdleaf_self lin `model=349` | `rem=0` | 1103+-11 | 1195+-12 | 1251+-13 | 1230+-13 |
+| tdleaf_self lin `model=349` | `rem=0,retain` | 1107+-11 | 1195+-12 | 1252+-13 | 1223+-13 |
+| tdleaf_self lin `model=349` | `rem=70` | 1081+-11 | 1206+-12 | 1247+-13 | 1228+-13 |
+| tdleaf_self lin `model=349` | `rem=70,retain` | **1207+-12** | 1240+-13 | 1214+-13 | 1264+-14 |
+| position_elo mlp `model=113` | `rem=0` | 1001+-11 | 1012+-11 | 1085+-11 | 1073+-11 |
+| position_elo mlp `model=113` | `rem=0,retain` | 1004+-11 | 1020+-11 | 1090+-11 | 1071+-11 |
+| position_elo mlp `model=113` | `rem=70` | 997+-10 | 1003+-10 | 1094+-11 | 1055+-11 |
+| position_elo mlp `model=113` | `rem=70,retain` | 1026+-11 | 1053+-11 | 1102+-11 | 1069+-11 |
+| pool_games lin `model=97` | `rem=0` | 727+-11 | 728+-11 | 731+-11 | 738+-11 |
+| pool_games lin `model=97` | `rem=0,retain` | 727+-11 | 723+-11 | 729+-11 | 716+-11 |
+| pool_games lin `model=97` | `rem=70` | 712+-11 | 716+-11 | 734+-11 | 745+-11 |
+| pool_games lin `model=97` | `rem=70,retain` | 715+-11 | 723+-11 | 732+-11 | 760+-11 |
+
+**CPU ms per move, same layout:**
+
+| core | regime | 100k | 200k | 300k | 400k |
+|---|---|---|---|---|---|
+| chip counter | `rem=0` | 22 | 41 | 58 | 82 |
+| chip counter | `rem=70` | 13 | 29 | 38 | 43 |
+| chip counter | `rem=70,retain` | 20 | 36 | 58 | 83 |
+| tdleaf_self lin `model=169` | `rem=0` | 23 | 49 | 68 | 89 |
+| tdleaf_self lin `model=169` | `rem=70` | 14 | 30 | 44 | 60 |
+| tdleaf_self lin `model=169` | `rem=70,retain` | 23 | 44 | 64 | 81 |
+| tdleaf_self lin `model=349` | `rem=0` | 23 | 48 | 68 | 89 |
+| tdleaf_self lin `model=349` | `rem=70` | 14 | 31 | 44 | 60 |
+| tdleaf_self lin `model=349` | `rem=70,retain` | 23 | 44 | 64 | 78 |
+| position_elo mlp `model=113` | `rem=0` | 378 | 766 | 1117 | 1472 |
+| position_elo mlp `model=113` | `rem=70` | 251 | 485 | 686 | 998 |
+| position_elo mlp `model=113` | `rem=70,retain` | 375 | 742 | 1098 | 1432 |
+| pool_games lin `model=97` | `rem=0` | 23 | 46 | 65 | 88 |
+| pool_games lin `model=97` | `rem=70` | 16 | 26 | 39 | 54 |
+| pool_games lin `model=97` | `rem=70,retain` | 21 | 42 | 64 | 75 |
+
+#### 1. The instrument check passes
+
+`rem=0,retain` minus `rem=0`, over all 20 cells, has a maximum |z| of **1.75**,
+and the CPU columns are within a few percent. With no gate there is essentially
+no remainder to bank, so `retain` does nothing, which is what the mechanism
+predicts. Had those cells moved, `retain` would have been doing something other
+than recycling declined iterations and the whole account here would be wrong.
+
+#### 2. The gate on its own is free CPU
+
+`rem=70` minus `rem=0` is within noise in all 20 cells (range -26 to +14, every
+one inside about 1.7 SE), while saving:
+
+| core | 100k | 200k | 300k | 400k |
+|---|---|---|---|---|
+| chip counter | 38% | 29% | 35% | 48% |
+| tdleaf_self lin `model=169` | 36% | 38% | 35% | 33% |
+| tdleaf_self lin `model=349` | 37% | 36% | 35% | 33% |
+| position_elo mlp `model=113` | 34% | 37% | 39% | 32% |
+| pool_games lin `model=97` | 30% | 43% | 40% | 38% |
+
+**29% to 48% less wall clock for no measurable Elo.** The iteration `rem=70`
+declines really does contribute nothing, which is the assumption the flag was
+built on, now tested against the default rather than assumed.
+
+#### 3. `retain` is CPU-neutral against the default, not expensive
+
+This corrects a caveat raised earlier in this session from the wrong baseline.
+Measured against `rem=70`, `retain` looks like it costs 1.2x to 1.9x more CPU.
+Measured against the default it costs nothing:
+
+| core | 100k | 200k | 300k | 400k |
+|---|---|---|---|---|
+| chip counter | 0.91x | 0.86x | 1.01x | 1.01x |
+| tdleaf_self lin `model=169` | 1.00x | 0.91x | 0.94x | 0.92x |
+| tdleaf_self lin `model=349` | 1.00x | 0.92x | 0.94x | 0.87x |
+| position_elo mlp `model=113` | 0.99x | 0.97x | 0.98x | 0.97x |
+| pool_games lin `model=97` | 0.94x | 0.93x | 0.98x | 0.85x |
+
+`rem=70,retain` spends 0.85x to 1.01x the default's wall clock. It is not buying
+strength with extra compute. It spends the same budget, distributed differently
+across the moves of a game.
+
+So the headline, stated against the setting a user actually has:
+
+| core | `rem=70,retain` minus `rem=0` at 100k | CPU |
+|---|---|---|
+| tdleaf_self lin `model=169` | **+137+-17** | 1.00x |
+| tdleaf_self lin `model=349` | **+104+-16** | 1.00x |
+| position_elo mlp `model=113` | +25+-16 | 0.99x |
+| chip counter | +18+-16 | 0.91x |
+| pool_games lin `model=97` | -12+-16 | 0.94x |
+
+#### 4. The mechanism, stated cleanly
+
+The gate identifies budget that is being wasted, and `retain` recycles it.
+Neither half works alone. `rem=70` alone finds the waste and throws it away, for
+the same Elo and less CPU. `retain` alone (the `rem=0,retain` control) has
+nothing to find, because without a gate the search always starts another
+iteration and spends the tail on work it then discards. Only together do they
+convert a wasted tail into depth on a later move.
+
+#### 5. Slopes, now anchored to the default
+
+| core | `rem=0` | `rem=70` | `rem=70,retain` | retain minus `rem=0` |
+|---|---|---|---|---|
+| chip counter | +4.6+-7.3 | +4.2+-7.3 | +2.9+-7.3 | -1.7+-10.4 (z=-0.17) |
+| tdleaf_self lin `model=169` | +102.8+-8.1 | +105.2+-8.1 | +38.9+-8.9 | -63.9+-12.1 (z=-5.30) |
+| tdleaf_self lin `model=349` | +72.4+-7.9 | +82.4+-7.9 | +20.0+-8.5 | -52.4+-11.6 (z=-4.54) |
+| position_elo mlp `model=113` | +42.9+-7.3 | +40.1+-6.9 | +29.3+-7.3 | -13.6+-10.4 (z=-1.31) |
+| pool_games lin `model=97` | +4.9+-7.3 | +16.5+-7.3 | +19.8+-7.3 | +14.9+-10.4 (z=1.44) |
+
+Same shape as against `rem=70`, and subject to the same caveat in "The slope is
+one step, not a trend": the difference is the 100k rung, not a trend across the
+range. The gate itself does not change the slope on any core.
+
 ## Implementation notes
 
 Six layers had to be threaded for `rem=`, mirroring how `margin=` flows:

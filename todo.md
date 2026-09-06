@@ -218,6 +218,14 @@ against the same seams.
     and magnitude. If a contrast that later moved would have passed the rule early,
     the SE multiplier is too loose. This is the one part of the ladder design the
     equivalence proof says nothing about `[Next]` {cpu: low, dev: medium}
+  - ~~**`rem=0` baseline for the retain study.**~~ **Done 2026-09-06.** 40 cells,
+    1,398-1,548 games each. The control passes (`rem=0,retain` vs `rem=0`, max |z| =
+    1.75 over 20 cells, so `retain` is inert with no gate). The gate alone is free:
+    Elo-neutral in all 20 cells while saving 29-48% of the wall clock. And `retain` is
+    CPU-neutral against the DEFAULT at 0.85x-1.01x ms/move, not the 1.2x-1.9x it looks
+    like against `rem=70`, so its +137+-17 and +104+-16 at 100k on the tdleaf_self
+    cores come at 1.00x the default's compute. Grid:
+    `plans/budget-parity-results-2-steady-meridian.md`
   - **Ladder the position-oracle labeling too.** `posgen`/`label` spend a fixed
     playout budget per position. The same `p(1-p)` argument applies and is stronger
     there: rather than skipping settled pairs, the later rungs would REDIRECT
