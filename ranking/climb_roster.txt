@@ -24,12 +24,12 @@
 
 anchor  rand@1
 on      smart(pieces=6)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=75)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=52)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=35)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=22)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=10)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=60,deep=3)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=30,deep=4)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.classic(chip=100)@2.dil(prob=15,deep=4)@1
-on      ab(deep=6,tt,ord,nodes=200k)@2.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=75)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=52)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=35)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=22)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=10)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=60,deep=3)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=30,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=15,deep=4)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1

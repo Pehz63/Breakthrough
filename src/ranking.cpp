@@ -250,7 +250,11 @@ static const RankNameCodec g_rkChoosers[] = {
 static const int g_rkChooserCount = sizeof(g_rkChoosers) / sizeof(g_rkChoosers[0]);
 static const RankNameCodec g_rkExplorers[] = {
     { "Greedy",     "greedy", 1 },
-    { "AlphaBeta",  "ab",     2 },   // @2: TT cross-agent contamination fix (searcher-context key), see Docs/corrections.md
+    { "AlphaBeta",  "ab",     3 },   // @2: TT cross-agent contamination fix (searcher-context key).
+                                     // @3: time= budget enforcement (sticky expiry + 256-node sampling +
+                                     // nextIterationFits). Migrated by tools/migrate_ab_v3.py, which kept the
+                                     // 685,210 rows no time= head played and dropped the 324,570 it did.
+                                     // Both bumps: see Docs/corrections.md
     { "GumbelMCTS", "gaz",    1 },
 };
 static const int g_rkExplorerCount = sizeof(g_rkExplorers) / sizeof(g_rkExplorers[0]);
