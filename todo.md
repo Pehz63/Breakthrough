@@ -302,6 +302,27 @@ against the same seams.
     counter's realized ms is flat across 400 / 800 / 1600ms, depth 12 is binding
     and its purse is unbounded. Decide then whether to cap the purse at a small
     multiple of the flag `[Next]` {cpu: none, dev: low}
+  - **Round 4: both compute tracks migrated, and the roster is now core-major.**
+    LAUNCHED 2026-09-07. New heads `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`
+    and `ab(deep=12,tt,ord,retain,time=25ms)@3`, chosen because 25ms/100k =
+    0.25 us/node and the three cheap cores measure 0.23-0.26, so both tracks are
+    one operating point for most of the roster. 37 cores x 3 divisions x 2 tracks
+    = 222 category agents, all six cells equal for the first time. `ranking/cores.txt`
+    names each evaluator once, `ranking/tracks.txt` holds the cross, and
+    `rankCategoryOf` now requires an EXACT head match, which drops the 19
+    ablation-head rows that had drifted into title races. Stopping rule is
+    pre-registered in `plans/track-migration-plan-1-slate-kestrel.md` and applied
+    by `analysis/rung_convergence.py`: floor of 32 games/pair, then stop when
+    order is stable (Spearman >= 0.99, no core moving > 3 places), all 6
+    champions are unchanged and moved < 1 combined SE, and median pm fell by
+    1.30-1.55x. Measured rate 21,300 games/hour on 10 workers, so 8/pair lands at
+    27.5h and 32/pair at about 110h `[Now]` {cpu: days, dev: low}
+  - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
+    Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the
+    Round 4 entry why it no longer applies rather than letting it vanish. Move
+    the 2026-08-30 summary and the six old-head detail sections to "Superseded
+    summaries". Collapse the six detail sections to one `ranking/cores.tsv`-shaped
+    table `[Next]` {cpu: none, dev: medium}
   - **Reword `ranking/CHAMPION.md`'s track descriptions.** The node track is not a
     compute-normalization track. It measures strength per node, which isolates
     evaluator quality from evaluator speed. The wall-clock track is the compute one.
