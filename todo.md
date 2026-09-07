@@ -293,6 +293,15 @@ against the same seams.
     The studies above establish that `retain` is the better head. They do not
     establish that the cost of migrating the ladder is worth paying. Developer call
     `[Now]` {cpu: days if taken, dev: medium}
+  - **Neither `retain` purse is capped.** `src/agents.cpp` banks the whole unspent
+    remainder every move with no ceiling, so on a head where the DEPTH cap binds
+    instead of the budget the purse grows by nearly a full flag per move and is
+    never drawn down. Inert while the depth cap keeps binding, which is why it has
+    not surfaced, but one position that searches deeper could spend the whole
+    accumulation at once. Check it on the 800/1600ms rungs now running: if the chip
+    counter's realized ms is flat across 400 / 800 / 1600ms, depth 12 is binding
+    and its purse is unbounded. Decide then whether to cap the purse at a small
+    multiple of the flag `[Next]` {cpu: none, dev: low}
   - **Reword `ranking/CHAMPION.md`'s track descriptions.** The node track is not a
     compute-normalization track. It measures strength per node, which isolates
     evaluator quality from evaluator speed. The wall-clock track is the compute one.

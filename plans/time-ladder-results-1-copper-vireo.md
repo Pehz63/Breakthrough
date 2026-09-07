@@ -261,6 +261,18 @@ What this changes concretely:
   `position_elo mlp model=113` and `pool_games lin model=97` and no bound can be
   defended. The existing `retain` cells stay and the scheduler plays only the
   deficit, so the added cost is the 8 new cells plus the pairs that reach them.
+- **Neither purse is capped, and on a depth-capped head that matters.**
+  `src/agents.cpp` banks `effBudget - g_lastNodes` and `effTimeMs -
+  g_lastSearchMs` with no ceiling, so on a head where the DEPTH cap binds rather
+  than the budget, the purse grows by nearly a full flag every move and is never
+  drawn down. It is inert while the depth cap keeps binding, which is why nothing
+  has surfaced yet, but a single position that suddenly searches deeper could
+  spend an arbitrarily large accumulated purse in one move. The concrete check is
+  in this study's own extension: if the chip counter's realized ms at
+  `retain,time=1600ms` comes back far below 0.85 of the flag, depth 12 is binding
+  at that rung and its purse is growing unbounded through the whole game. Compare
+  its realized ms across the 400 / 800 / 1600ms rungs: a flat line is the
+  signature.
 - **Re-run the CPU-matched contrast at more rungs.** The r@X vs p@2X comparison is
   16 cells and eleven are within noise, which is consistent with "no effect" but
   also with an effect smaller than 13 Elo. More rungs would tighten it, and it
