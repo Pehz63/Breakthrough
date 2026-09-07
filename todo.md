@@ -262,7 +262,27 @@ against the same seams.
     it at zero. Theory 68. Elo unmeasured until the ladder study below runs. NOTE:
     `rank.exe` could not be relinked while the `rem=0` job held it, so rebuild every
     binary (`breakthrough.exe`, `tests.exe`, `rank.exe`, `train.exe`) before the study
-  - **Wall-clock ladder study: what ms is a reasonable bound?** Queued behind the
+  - ~~**Wall-clock ladder study: what ms is a reasonable bound?**~~ **Ran
+    2026-09-06, ANSWER INCOMPLETE BY DESIGN.** 40 cells, 2,136 games each.
+    Headline: the wall-clock track normalizes compute (1.1x-1.6x cross-core spread
+    in realized ms) and the node track does not (18.0x-36.4x), so `CHAMPION.md`
+    needs rewording. The knee is NOT in range for half the cores: `position_elo mlp
+    model=113` still gains +77 (plain) and +41 (`retain`) in the last doubling, as
+    predicted before the run. Best candidate in range is `time=200ms` with
+    `retain`, where realized spend is 165-177ms across all four cores and two of
+    four have plateaued, but it is a candidate, not a conclusion.
+    `plans/time-ladder-results-1-copper-vireo.md`
+  - **Extend the time ladder to 800 and 1600ms.** Direct continuation of the above,
+    and required before any ms bound can be defended, because the study's own
+    criterion is unmet for `position_elo mlp model=113` and `pool_games lin
+    model=97`. Cheap: existing cells stay, the scheduler plays only the deficit.
+    Regenerate with a widened RUNGS list in `tools/make_time_ladder_roster.py`
+    `[Now]` {cpu: hours, dev: low}
+  - **Reword `ranking/CHAMPION.md`'s track descriptions.** The node track is not a
+    compute-normalization track. It measures strength per node, which isolates
+    evaluator quality from evaluator speed. The wall-clock track is the compute one.
+    Theory 69 `[Now]` {cpu: none, dev: low}
+  - **Superseded plan text for the study above:** Queued behind the
     `rem=0` run and the `@2 -> @3` bump, in that order. Criterion (developer choice
     2026-09-06): the KNEE of Elo against REALIZED ms, not against the flag, since a
     time-budgeted search finishes at roughly 40% of its allowance. 40 cells, 4 cores x
