@@ -272,16 +272,42 @@ against the same seams.
     `retain`, where realized spend is 165-177ms across all four cores and two of
     four have plateaued, but it is a candidate, not a conclusion.
     `plans/time-ladder-results-1-copper-vireo.md`
-  - **Extend the time ladder to 800 and 1600ms.** Direct continuation of the above,
-    and required before any ms bound can be defended, because the study's own
-    criterion is unmet for `position_elo mlp model=113` and `pool_games lin
-    model=97`. Cheap: existing cells stay, the scheduler plays only the deficit.
-    Regenerate with a widened RUNGS list in `tools/make_time_ladder_roster.py`
+  - **Extend the time ladder to 800 and 1600ms, RETAIN ONLY.** LAUNCHED 2026-09-06.
+    Required before any ms bound can be defended, because the study's own criterion
+    is unmet for `position_elo mlp model=113` and `pool_games lin model=97`. 28
+    cells, existing `retain` cells stay and the scheduler plays only the deficit.
     `[Now]` {cpu: hours, dev: low}
+  - ~~**Retire the plain condition from every budgeted study.**~~ **Done
+    2026-09-06, developer instruction.** `retain` is carried and plain is not, on
+    both tracks. Backing: plain realizes 0.432 of its `time=` flag (sd 0.053)
+    against `retain`'s 0.854 (sd 0.028) over 20 cells, and the Elo effect pools to
+    +52.5+-7.2 at nodes=100k (z=7.25, free at 0.85x-1.01x CPU) and +67.3+-6.5 at
+    time=25ms. Theory 70. `tools/make_time_ladder_roster.py` is retain-only, the 20
+    first-pass plain cells are benched `off` in
+    `ranking/q7/roster_timeladder.txt` rather than deleted, and the pooled analysis
+    lives in `analysis/pool_retain_effect.py`
+  - **Decide whether the STANDING roster moves to `retain` heads.** Not done, and
+    not doable unilaterally: adding `retain` to the 228-agent roster mints an
+    entirely new identity per agent, so the whole pool needs games from scratch and
+    every `ranking/CHAMPION.md` category has to be re-certified on the new heads.
+    The studies above establish that `retain` is the better head. They do not
+    establish that the cost of migrating the ladder is worth paying. Developer call
+    `[Now]` {cpu: days if taken, dev: medium}
   - **Reword `ranking/CHAMPION.md`'s track descriptions.** The node track is not a
     compute-normalization track. It measures strength per node, which isolates
     evaluator quality from evaluator speed. The wall-clock track is the compute one.
     Theory 69 `[Now]` {cpu: none, dev: low}
+  - **Re-specify the wall-clock track's head on `retain`, then re-certify.** Follows
+    from the entry above and from theory 70. Measured on the current pinned fit
+    (`ranking/standings_pinned.tsv`, 45 rostered `time=150ms` rows at 320 games
+    each): the 43 `deep=6` rows realize a MEAN OF 20.5 ms/move (range 7.5 to 75.9)
+    and the 2 `deep=12` rows 61.5 ms (57.2, 65.7). So on the deep=6 heads the depth
+    cap binds long before the clock does and `time=150ms` is close to decorative,
+    while on deep=12 the clock binds and plain leaves about 60% of it unspent.
+    Fixing this is two changes, `retain` and a depth cap that does not pre-empt the
+    budget, and both mint new identities for every agent in the track, so it is a
+    re-certification and not an edit. Blocked on the 800/1600ms rungs landing, since
+    the bound and the head should be set in one act `[Next]` {cpu: hours, dev: low}
   - **Superseded plan text for the study above:** Queued behind the
     `rem=0` run and the `@2 -> @3` bump, in that order. Criterion (developer choice
     2026-09-06): the KNEE of Elo against REALIZED ms, not against the flag, since a

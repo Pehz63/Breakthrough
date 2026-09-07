@@ -4,8 +4,23 @@ The question: what is a reasonable ms bound for the time-normalized track?
 The criterion the developer chose is the KNEE of Elo against realized ms, the
 cheapest bound past which more time stops buying strength.
 
-Design (settled 2026-09-06):
-  4 cores x {25, 50, 100, 200, 400ms} x {plain, retain} = 40 cells.
+Design (settled 2026-09-06, revised the same day):
+  4 cores x {25, 50, 100, 200, 400, 800, 1600ms}, RETAIN ONLY = 28 cells.
+
+RETAIN ONLY, on developer instruction after the first pass measured it. `retain`
+raises a `time=` head's realized spend from 0.432 of its flag (sd 0.053) to 0.854
+(sd 0.028), so a plain head under-delivers its own budget by more than half and
+does so less predictably. A track whose flag does not describe the spend is not a
+wall-clock instrument, so the plain condition is no longer carried. Theory 70.
+
+The first pass's plain cells are NOT deleted from the store. They are benched
+`off` in the roster, so their games remain on record and can be re-rated, but no
+fit places them beside the retain cells as if the comparison were still open.
+
+The ladder is extended to 1600ms because the first pass did not reach the knee:
+`position_elo mlp model=113` still gained +41 Elo in the 200 -> 400ms doubling
+under `retain`, and `pool_games lin model=97` had not settled either. Without
+those rungs the study's own criterion is unmet and no bound is defensible.
 
 Four cores, not the node grid's five: `tdleaf_self lin model=349` is dropped as
 a near-duplicate of `model=169` (same regime, same architecture, and the two
@@ -31,7 +46,11 @@ CORES = [
                              "mu_shape=129-512-8-1,sigma_shape=129-64-1)@1"),
     ("pool_games lin 97",    "learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1"),
 ]
-RUNGS = [25, 50, 100, 200, 400]
+RUNGS = [25, 50, 100, 200, 400, 800, 1600]
+# Rungs the superseded plain condition actually played, first pass 2026-09-06.
+# Only these get an `off` bench line: a plain twin at a rung that never ran has
+# no games to retire and listing it would imply otherwise.
+PLAYED_PLAIN = [25, 50, 100, 200, 400]
 
 
 def main():
@@ -42,13 +61,15 @@ def main():
     ap.add_argument("--outdir", default="ranking/q7")
     a = ap.parse_args()
 
-    want = []
+    want, bench = [], []
     for ms in RUNGS:
         for _, core in CORES:
-            for retain in (False, True):
-                head = "ab(deep=12,tt,ord%s,time=%dms)@%d" % (
-                    ",retain" if retain else "", ms, a.abver)
-                want.append(head + "." + core)
+            want.append("ab(deep=12,tt,ord,retain,time=%dms)@%d.%s" % (ms, a.abver, core))
+            # The superseded plain twin, benched rather than dropped so its games
+            # stay on record without entering a fit alongside the retain cells.
+            if ms in PLAYED_PLAIN:
+                bench.append("ab(deep=12,tt,ord,time=%dms)@%d.%s" % (ms, a.abver, core))
+    benchset = set(bench)
 
     base = open(a.base, encoding="utf-8").read().rstrip("\n").split("\n")
     present = set()
@@ -63,6 +84,8 @@ def main():
         if rid in want:
             present.add(rid)
             out.append("on      " + rid if st == "off" else ln)
+        elif rid in benchset:
+            out.append("off     " + rid)          # superseded plain twin
         else:
             out.append(ln)
 
@@ -74,11 +97,11 @@ def main():
         "# finishes at roughly 40%% of its allowance because nextIterationFits declines",
         "# the iteration it predicts will not fit, so the flag is not the spend.",
         "#",
-        "# 4 cores x {%s} x {plain, retain}." % ", ".join("%dms" % m for m in RUNGS),
+        "# 4 cores x {%s}, RETAIN ONLY." % ", ".join("%dms" % m for m in RUNGS),
         "# tdleaf_self lin model=349 is dropped as a near-duplicate of model=169.",
-        "# retain on a time head banks unspent MILLISECONDS (g_timeCarry, theory 68),",
-        "# which changes realized ms per move and so changes the answer to the ms",
-        "# question rather than being a separate one.",
+        "# The plain twins are benched off, not deleted: retain raises realized spend",
+        "# from 0.432 of the flag (sd 0.053) to 0.854 (sd 0.028), so a plain time= head",
+        "# under-delivers its own budget by more than half. Theory 70.",
         "#",
         "# These pairs are NOT capped at 2 games: rankAgentIsDeterministic treats any",
         "# time= head as stochastic, because a wall-clock search stops wherever machine",
@@ -88,13 +111,23 @@ def main():
     for i in fresh:
         hdr.append("on      %s" % i)
 
+    # Superseded plain twins that the base roster does not already carry. Listed
+    # explicitly as `off` rather than omitted, so the roster records that they
+    # were played and then retired from the comparison, not that they never ran.
+    hdr.append("#")
+    hdr.append("# Superseded plain twins, retired from the comparison (theory 70).")
+    for i in bench:
+        if i not in present:
+            hdr.append("off     %s" % i)
+
     if not os.path.isdir(a.outdir):
         os.makedirs(a.outdir)
     rp = os.path.join(a.outdir, "roster_timeladder.txt")
     cp = os.path.join(a.outdir, "cohort_timeladder.txt")
     open(rp, "w", encoding="utf-8").write("\n".join(out + hdr) + "\n")
     open(cp, "w", encoding="utf-8").write("\n".join(want) + "\n")
-    print("%d cells (%d already rostered, %d new) -> %s" % (len(want), len(present), len(fresh), rp))
+    print("%d retain cells (%d already rostered, %d new), %d plain twins benched -> %s"
+          % (len(want), len(present), len(fresh), len(bench), rp))
     print("cohort -> %s" % cp)
 
 

@@ -30,6 +30,14 @@ settling properly:
 | ladder | **25, 50, 100, 200, 400ms** | Developer's choice over a wider 25-1600ms option. Accepted limitation, stated before the run: `position_elo mlp model=113` costs 252-1431 ms/move in the node grid, so it may still be climbing at the top rung. If it shows no knee, report no knee rather than fitting one. |
 | `retain` | **included, plain and retain at every rung** | Doubles the cells. Worth it because `retain` changes realized ms per move, so it changes the answer to the ms question rather than being a separate question. |
 
+**Revised after the first pass, 2026-09-06.** The `retain` row above describes the
+first pass only. On the developer's instruction the plain condition is retired and
+the ladder extends to 800 and 1600ms, `retain` only: plain realizes 0.432 of its
+flag (sd 0.053) against `retain`'s 0.854 (sd 0.028), so a plain `time=` head is
+not a wall-clock instrument. Theory 70, and the reasoning is recorded under
+"Decision: the plain condition is retired" in the companion results document. The
+first pass's plain cells are benched `off`, not deleted.
+
 40 cells. Head `ab(deep=12,tt,ord[,retain],time=Xms)@3` throughout, so every
 comparison is within one search head and one core.
 

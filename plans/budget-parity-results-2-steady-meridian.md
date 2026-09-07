@@ -1026,6 +1026,55 @@ Same shape as against `rem=70`, and subject to the same caveat in "The slope is
 one step, not a trend": the difference is the 100k rung, not a trend across the
 range. The gate itself does not change the slope on any core.
 
+#### 6. Pooled across cores, with the heterogeneity reported
+
+The five per-core columns above are five separate answers, and reading a trend
+off five noisy rows by eye is what the earlier draft of this section did. Pooled
+by inverse variance (weight `1/SE^2`, each cell's SE the quadrature sum of the two
+agents' Fisher standard errors, all contrasts taken inside the one pinned fit):
+
+| budget | pooled `rem=70,retain` - `rem=0` | SE | z | Q (df=4) | I^2 |
+|---|---|---|---|---|---|
+| 100k | **+52.5** | 7.2 | 7.25 | 58.9 | 93% |
+| 200k | +8.7 | 7.4 | 1.18 | 18.7 | 79% |
+| 300k | +3.0 | 7.6 | 0.40 | 7.5 | 46% |
+| 400k | +13.5 | 7.7 | 1.76 | 3.7 | 0% |
+
+Collapsing the three moderate budgets into one estimate, and differencing:
+
+| contrast | pooled | SE | z | I^2 |
+|---|---|---|---|---|
+| low budget (100k) | **+52.5** | 7.2 | 7.25 | 93% |
+| moderate budgets (200-400k) | **+8.4** | 4.4 | 1.92 | 55% |
+| **low minus moderate** | **+44.1** | 8.4 | **5.22** | - |
+
+This is the quantitative form of the claim: **much higher at low budgets, slightly
+higher at moderate ones.** The low-budget effect is large and unambiguous. The
+moderate-budget effect is positive but does not individually clear its own SE, so
+"slightly higher" is the honest reading and "no worse" is the conservative one.
+The difference BETWEEN the two regimes is the well-determined part, at z=5.22.
+
+Three caveats that the pooled means do not carry on their own:
+
+1. **The pooled SE is a lower bound**, so z is an upper bound on |z|. Cells of one
+   fit share a pinned pool and are not fully independent. Nothing in the
+   arithmetic can check this, so it is stated rather than assumed away.
+2. **I^2 = 93% at 100k.** The cores are not measuring one effect. The per-core
+   range at that rung is +137 (`tdleaf_self lin model=169`) down to -12
+   (`pool_games lin model=97`). `retain` cannot help a core with no depth slope,
+   and the chip counter is the proof: its `rem=0` slope is +4.6+-7.3 Elo per
+   doubling, indistinguishable from zero, and recycling budget into more depth
+   therefore buys it nothing. Expect the effect on a NEW core to track that core's
+   own depth slope, not this pooled mean.
+3. **Four budgets is not a curve.** The shape is read off two regimes, low and
+   moderate, not fitted. A rung below 100k would say whether the effect keeps
+   growing or has already peaked, and none was played.
+
+Script: `analysis/pool_retain_effect.py`. The node-track contrasts are
+transcribed into it as constants rather than read from a tsv, because that fit's
+output has since been overwritten by the wall-clock ladder's fit and absolute Elo
+is never comparable across fits. The per-cell differences are what carries.
+
 ## Implementation notes
 
 Six layers had to be threaded for `rem=`, mirroring how `margin=` flows:

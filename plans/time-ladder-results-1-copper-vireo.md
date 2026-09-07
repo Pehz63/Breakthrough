@@ -6,6 +6,26 @@ post-bump binary. 40 cells, head `ab(deep=12,tt,ord[,retain],time=Xms)@3`,
 `ranking/standings.tsv`. 79,200 games over three ladder rungs (19,800 / 19,800 /
 39,600), merged with zero torn lines.
 
+## How every contrast below was computed
+
+Stated once so no table has to restate it, and because the earlier draft of this
+document leaned on eyeballed per-cell differences.
+
+- **Every contrast is a difference of two Elo estimates inside ONE fit.** It is
+  comparable across cells of that fit and never across fits, so no number here is
+  put beside a number from the node study's fit except as a difference.
+- **Cells are combined by inverse-variance weighting**, weight `1/SE^2`, which is
+  the minimum-variance unbiased combination under independence. Each cell's SE is
+  the quadrature sum of the two agents' Fisher standard errors.
+- **The pooled SE is a lower bound and the pooled z an upper bound on |z|.** Cells
+  of one fit share a pinned pool, so they are not fully independent. Stated rather
+  than ignored, because it is the one assumption the arithmetic cannot check.
+- **Q and I^2 are reported with every pooled mean.** A large I^2 says the cores
+  disagree and the pooled mean is averaging genuinely different per-core effects,
+  which makes it a summary and not a prediction for any one core.
+- The script is `analysis/pool_retain_effect.py`, run against
+  `ranking/standings_pinned.tsv`.
+
 ## The headline
 
 **The wall-clock track normalizes compute and the node track does not.** That was
@@ -52,11 +72,40 @@ Realized ms as a fraction of the flag:
 | position_elo mlp `model=113` | 0.34 - 0.47 | 0.86 - 0.90 |
 | pool_games lin `model=97` | 0.41 - 0.56 | 0.86 - 0.89 |
 
+Pooled over all 20 cells, the fraction of the flag actually spent is **0.432
+(sd 0.053) plain** and **0.854 (sd 0.028) with `retain`**. It nearly doubles the
+realization and halves its spread, so the budget becomes both larger and more
+predictable. Both halves matter: a track whose agents spend a consistent 0.43 of
+the flag would at least be rescalable, and this one is not, because the fraction
+also varies by core.
+
 A plain `time=200ms` agent spends about 80 ms. That is not a rounding error, it
 is more than half the budget, and it is `nextIterationFits` declining the last
 iteration and then leaving the remainder on the floor. With `retain` the same
 agent spends 165 ms. The flag becomes an honest description of the spend, and the
 cross-core spread tightens to 1.1x at every rung.
+
+## Pooled Elo effect of `retain`, at the same flag
+
+Per-core differences are in the levels table above. Pooled across the four cores
+at each rung:
+
+| flag | pooled `retain` - plain | SE | z | Q (df=3) | I^2 |
+|---|---|---|---|---|---|
+| 25ms | **+67.3** | 6.5 | 10.29 | 30.1 | 90% |
+| 50ms | **+44.6** | 6.6 | 6.71 | 30.7 | 90% |
+| 100ms | **+33.2** | 6.6 | 5.00 | 28.3 | 89% |
+| 200ms | **+41.4** | 6.9 | 6.03 | 12.8 | 77% |
+| 400ms | **+17.6** | 6.8 | 2.58 | 8.6 | 65% |
+
+Every rung is positive and every rung clears its own SE, the effect is largest at
+the short rungs, and it declines as the budget grows. That is the same shape the
+node track showed and it is the shape theory 70 states.
+
+**The I^2 column is not decoration.** At 90% the cores are not measuring one
+effect: at 25ms the per-core spread runs from +125 (`position_elo mlp model=113`)
+to +32 (`chip counter`). The pooled +67.3 is a summary of four different numbers,
+not a prediction for a fifth core.
 
 ## The honest caveat: CPU-matched, time-`retain` is a wash
 
@@ -73,10 +122,27 @@ other:
 | position_elo mlp `model=113` | +32+-13 | -10+-13 | +8+-13 | +1+-13 |
 | pool_games lin `model=97` | -3+-13 | -16+-13 | -12+-13 | -11+-13 |
 
-Eleven of sixteen cells are within 1.5 SE of zero and the signs alternate. **At
-matched wall clock, time-`retain` neither helps nor hurts.** Its raw per-rung
+Eleven of sixteen cells are within 1.5 SE of zero and the signs alternate.
+Pooled:
+
+| pair | pooled | SE | z | Q (df=3) | I^2 |
+|---|---|---|---|---|---|
+| `retain`@25 vs plain@50 | +6.8 | 6.5 | 1.04 | 6.9 | 57% |
+| `retain`@50 vs plain@100 | +7.2 | 6.6 | 1.09 | 23.0 | 87% |
+| `retain`@100 vs plain@200 | -3.4 | 6.8 | -0.50 | 3.6 | 16% |
+| `retain`@200 vs plain@400 | +0.0 | 6.9 | 0.00 | 6.3 | 53% |
+| **all 16 cells** | **+2.8** | **3.3** | **0.84** | 41.6 | 64% |
+
+**At matched wall clock, time-`retain` neither helps nor hurts.** Its raw per-rung
 gains (+32 to +125 at the short rungs) are bought by spending the roughly 2x CPU
-that plain leaves unspent.
+that plain leaves unspent. The overall +2.8 +-3.3 does not exclude a real effect
+of up to about 9 Elo in either direction, so this is "no effect detected at this
+sample size", not "effect proven absent".
+
+**The practical consequence, which is easy to get backwards:** replacing a plain
+flag with a `retain` flag at equal compute means roughly HALVING the flag. Plain
+`time=400ms` realizes 147-199 ms across the four cores and `retain` `time=200ms`
+realizes 165-177 ms, and the two rate the same (+0.0 +-6.9).
 
 That is still a reason to want it in a track definition, but a different reason
 than on the node side. It is not free strength. It makes `time=X` mean X, which
@@ -138,13 +204,63 @@ rank.exe rate --roster ranking/q7/roster_timeladder.txt --pin ranking/standings.
 ```
 Expect three ladder rungs, a pinned fit after each, and 2,136 games per cell.
 
+## The track this was meant to inform is not currently a wall-clock track either
+
+Measured while writing up the decision below, on the same pinned fit
+(`ranking/standings_pinned.tsv`), over the 45 rostered `time=150ms` agents at 320
+games each:
+
+| head | rows | mean realized ms/move | range |
+|---|---|---|---|
+| `ab(deep=6,tt,ord,time=150ms)@3` | 43 | **20.5** | 7.5 - 75.9 |
+| `ab(deep=12,tt,ord,time=150ms)@3` | 2 | **61.5** | 57.2 - 65.7 |
+
+`ranking/CHAMPION.md`'s wall-clock track is defined at `time=150ms`, and almost
+all of its agents sit on a `deep=6` head. At depth 6 the DEPTH CAP binds long
+before the clock does, so those agents spend 20 ms of a 150 ms allowance and the
+budget is close to decorative. The two `deep=12` rows are the ones where the clock
+actually binds, and there plain leaves about 60% of it unspent, consistent with
+the 0.432 realization measured across this whole study.
+
+This is a second, independent reason the track needs re-specifying, and it is not
+the same problem as `retain` solves. `retain` recycles budget the clock gate
+declined to spend. Nothing recycles budget a depth cap never asked for. Both have
+to change together, and both mint new agent identities, so it is a
+re-certification of the track rather than an edit to it. Not done here.
+
+## Decision: the plain condition is retired
+
+Developer instruction, 2026-09-06, after reading the results above: the study
+carries `retain` only from here. The reasoning, stated so a later reader can
+disagree with it on the record:
+
+- On the **node** track `retain` is free strength. `rem=70,retain` costs 0.85x to
+  1.01x the `rem=0` default's ms/move and pools to +52.5 +-7.2 at 100k.
+- On the **time** track it is not free strength, but it is what makes the flag
+  describe the spend. An instrument whose setting predicts 0.43 of its own reading,
+  with the fraction varying by subject, is not measuring what its axis is labelled.
+- Carrying plain doubles every cell of every future ladder to keep re-measuring a
+  condition already characterised at 2,136 games per cell.
+
+What this changes concretely:
+
+- `tools/make_time_ladder_roster.py` generates `retain` cells only, and its rungs
+  extend to 800 and 1600ms.
+- The 20 plain cells of the first pass are listed `off` in
+  `ranking/q7/roster_timeladder.txt`, not deleted. Their 42,720 games stay on
+  record and can be re-rated, but no fit places them beside the `retain` cells as
+  if the comparison were still open.
+- `ranking/CHAMPION.md`'s wall-clock track needs its head re-specified on a
+  `retain` head, which re-certifies every category in that track. That is a
+  separate deliberate act and is NOT done by this document.
+
 ## Future Work
 
-- **Extend the ladder to 800 and 1600ms**, at minimum for `position_elo mlp
-  model=113` and `pool_games lin model=97`. Without it the study's own criterion
-  is unmet for half the cores and no bound can be defended. This is the direct
-  continuation and it is cheap: the existing cells stay, only new rungs are added,
-  and the scheduler plays only the deficit.
+- **Extend the ladder to 800 and 1600ms.** LAUNCHED 2026-09-06 as a retain-only
+  pass, 28 cells. Without those rungs the study's own criterion is unmet for
+  `position_elo mlp model=113` and `pool_games lin model=97` and no bound can be
+  defended. The existing `retain` cells stay and the scheduler plays only the
+  deficit, so the added cost is the 8 new cells plus the pairs that reach them.
 - **Re-run the CPU-matched contrast at more rungs.** The r@X vs p@2X comparison is
   16 cells and eleven are within noise, which is consistent with "no effect" but
   also with an effect smaller than 13 Elo. More rungs would tighten it, and it
