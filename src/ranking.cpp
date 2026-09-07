@@ -1642,10 +1642,164 @@ string rankReportId(const string& id) {
 // ============================================================
 // ROSTER
 // ============================================================
-bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, string& err) {
+// Strip a comment, trim, and split "<word> <rest>". Returns false only when a
+// line has a first field and no second, which every directive here requires.
+static bool splitDirective(string line, string& word, string& rest) {
+    size_t h = line.find('#');
+    if (h != string::npos) line = line.substr(0, h);
+    line = trimWs(line);
+    word.clear(); rest.clear();
+    if (line.empty()) return true;
+    size_t sp = line.find_first_of(" \t");
+    if (sp == string::npos) { word = line; return false; }
+    word = line.substr(0, sp);
+    rest = trimWs(line.substr(sp));
+    return true;
+}
+
+bool rankLoadTracks(std::istream& in, RankCategoryConfig& out, string& err) {
+    out.tracks.clear();
+    out.divisions.clear();
+    int lineNo = 0;
+    string line;
+    while (std::getline(in, line)) {
+        lineNo++;
+        if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+        string kind, rest;
+        if (!splitDirective(line, kind, rest)) {
+            err = "line " + std::to_string(lineNo) + ": expected '<track|division> <name> <value>'";
+            return false;
+        }
+        if (kind.empty()) continue;
+        string name, value;
+        if (!splitDirective(rest, name, value) || name.empty() || value.empty()) {
+            err = "line " + std::to_string(lineNo) + ": expected '" + kind + " <name> <value>'";
+            return false;
+        }
+        if (kind == "track") {
+            // A head does not parse on its own, only as part of an id, so probe
+            // it with the bare chip counter attached. A typo in a track head
+            // would otherwise surface as hundreds of unparseable agents rather
+            // than one error naming the line that caused them.
+            RankAgent probe;
+            string perr;
+            if (!rankAgentFromId(value + ".classic(chip=100)@2", probe, perr)) {
+                err = "line " + std::to_string(lineNo) + ": track head '" + value
+                    + "' is not a canonical search head (" + perr + ")";
+                return false;
+            }
+            for (size_t i = 0; i < out.tracks.size(); i++)
+                if (out.tracks[i].name == name || out.tracks[i].head == value) {
+                    err = "line " + std::to_string(lineNo) + ": duplicate track " + name;
+                    return false;
+                }
+            RankTrackDef t; t.name = name; t.head = value;
+            out.tracks.push_back(t);
+        } else if (kind == "division") {
+            for (size_t i = 0; i < out.divisions.size(); i++)
+                if (out.divisions[i].name == name) {
+                    err = "line " + std::to_string(lineNo) + ": duplicate division " + name;
+                    return false;
+                }
+            RankDivisionDef d;
+            d.name = name;
+            d.suffix = (value == "-") ? string("") : value;   // `-` spells the empty suffix
+            out.divisions.push_back(d);
+        } else {
+            err = "line " + std::to_string(lineNo) + ": unknown directive '" + kind
+                + "' (use track or division)";
+            return false;
+        }
+    }
+    if (out.tracks.empty() || out.divisions.empty()) {
+        err = "needs at least one track and one division";
+        return false;
+    }
+    int bare = 0;
+    for (size_t i = 0; i < out.divisions.size(); i++)
+        if (out.divisions[i].suffix.empty()) bare++;
+    if (bare > 1) { err = "at most one division may use the empty ('-') suffix"; return false; }
+    return true;
+}
+
+bool rankLoadTracksFile(const string& path, RankCategoryConfig& out, string& err) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) { err = "cannot open tracks file " + path; return false; }
+    if (!rankLoadTracks(f, out, err)) { err = path + ": " + err; return false; }
+    return true;
+}
+
+bool rankExpandCores(std::istream& in, const RankCategoryConfig& cfg,
+                     std::vector<RankAgent>& out, string& err) {
+    if (!cfg.configured()) { err = "no track/division config to expand cores into"; return false; }
+    int lineNo = 0;
+    string line;
+    std::set<string> seenCores;
+    while (std::getline(in, line)) {
+        lineNo++;
+        if (!line.empty() && line[line.size()-1] == '\r') line.erase(line.size() - 1);
+        string state, core;
+        if (!splitDirective(line, state, core)) {
+            err = "line " + std::to_string(lineNo) + ": expected '<on|off> <core-id>'";
+            return false;
+        }
+        if (state.empty()) continue;
+        if (state != "on" && state != "off") {
+            err = "line " + std::to_string(lineNo) + ": unknown state '" + state
+                + "' (a cores file takes on or off; the anchor lives in the roster)";
+            return false;
+        }
+        if (core.find_first_of(" \t") != string::npos) {
+            err = "line " + std::to_string(lineNo) + ": unexpected text after core '" + core + "'";
+            return false;
+        }
+        if (core.find('.') != string::npos) {
+            err = "line " + std::to_string(lineNo) + ": '" + core + "' looks like a full agent id."
+                  " A cores file lists the EVALUATOR only, and the head and division segment"
+                  " come from the tracks file";
+            return false;
+        }
+        if (!seenCores.insert(core).second) {
+            err = "line " + std::to_string(lineNo) + ": duplicate core " + core;
+            return false;
+        }
+        if (state == "off") continue;
+        for (size_t t = 0; t < cfg.tracks.size(); t++) {
+            for (size_t d = 0; d < cfg.divisions.size(); d++) {
+                string id = cfg.tracks[t].head + "." + core + cfg.divisions[d].suffix;
+                RankAgent ag;
+                string perr;
+                if (!rankAgentFromId(id, ag, perr)) {
+                    err = "line " + std::to_string(lineNo) + ": core '" + core + "' on track "
+                        + cfg.tracks[t].name + " / division " + cfg.divisions[d].name
+                        + " gives '" + id + "', which does not parse (" + perr + ")";
+                    return false;
+                }
+                ag.anchor = false;
+                ag.active = true;
+                out.push_back(ag);
+            }
+        }
+    }
+    return true;
+}
+
+bool rankExpandCoresFile(const string& path, const RankCategoryConfig& cfg,
+                         std::vector<RankAgent>& out, string& err) {
+    std::ifstream f(path.c_str());
+    if (!f.is_open()) { err = "cannot open cores file " + path; return false; }
+    if (!rankExpandCores(f, cfg, out, err)) { err = path + ": " + err; return false; }
+    return true;
+}
+
+bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, string& err,
+                    RankCategoryConfig* cfgOut) {
     out.clear();
+    if (cfgOut) *cfgOut = RankCategoryConfig();
     std::set<string> seen;
     int anchors = 0, lineNo = 0;
+    string tracksPath, coresPath;
+    int tracksLine = 0, coresLine = 0;
     string line;
     while (std::getline(in, line)) {
         lineNo++;
@@ -1665,9 +1819,22 @@ bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, string& err) 
             err = "line " + std::to_string(lineNo) + ": unexpected text after id '" + id + "'";
             return false;
         }
+        // Path directives are resolved after the whole file is read, so `cores`
+        // may precede `tracks`.
+        if (state == "tracks" || state == "cores") {
+            string& slot = (state == "tracks") ? tracksPath : coresPath;
+            int& at = (state == "tracks") ? tracksLine : coresLine;
+            if (!slot.empty()) {
+                err = "line " + std::to_string(lineNo) + ": a second '" + state
+                    + "' directive (the first was line " + std::to_string(at) + ")";
+                return false;
+            }
+            slot = id; at = lineNo;
+            continue;
+        }
         if (state != "anchor" && state != "on" && state != "off") {
             err = "line " + std::to_string(lineNo) + ": unknown state '" + state
-                + "' (use anchor, on, or off)";
+                + "' (use anchor, on, off, tracks, or cores)";
             return false;
         }
         RankAgent ag;
@@ -1689,13 +1856,43 @@ bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, string& err) 
         err = "roster needs exactly one 'anchor' line (found " + std::to_string(anchors) + ")";
         return false;
     }
+    RankCategoryConfig cfg;
+    if (!tracksPath.empty()) {
+        if (!rankLoadTracksFile(tracksPath, cfg, err)) return false;
+    }
+    if (!coresPath.empty()) {
+        if (tracksPath.empty()) {
+            err = "line " + std::to_string(coresLine)
+                + ": 'cores' needs a 'tracks' directive naming what to expand into";
+            return false;
+        }
+        std::vector<RankAgent> expanded;
+        if (!rankExpandCoresFile(coresPath, cfg, expanded, err)) return false;
+        for (size_t i = 0; i < expanded.size(); i++) {
+            if (!seen.insert(expanded[i].id).second) {
+                err = coresPath + ": expansion produced " + expanded[i].id
+                    + ", which the roster already lists explicitly. Delete the roster line,"
+                      " since a category agent belongs to its core rather than to a"
+                      " hand-written row";
+                return false;
+            }
+            out.push_back(expanded[i]);
+        }
+    }
+    if (cfgOut) *cfgOut = cfg;
+    // Publish to the global that rankCategoryOf() reads, rather than making all
+    // eight subcommand call sites remember to. A roster with no `tracks`
+    // directive publishes an empty config, which CLEARS any previous one, so
+    // loading a study roster cannot inherit the main roster's categories.
+    rankSetCategoryConfig(cfg);
     return true;
 }
 
-bool rankLoadRosterFile(const string& path, std::vector<RankAgent>& out, string& err) {
+bool rankLoadRosterFile(const string& path, std::vector<RankAgent>& out, string& err,
+                        RankCategoryConfig* cfgOut) {
     std::ifstream f(path.c_str());
     if (!f.is_open()) { err = "cannot open roster file " + path; return false; }
-    if (!rankLoadRoster(f, out, err)) { err = path + ": " + err; return false; }
+    if (!rankLoadRoster(f, out, err, cfgOut)) { err = path + ": " + err; return false; }
     return true;
 }
 
@@ -3305,6 +3502,100 @@ static void writeStandingsTsv(const RankFit& fit, const std::vector<int>& order,
     }
 }
 
+// Core-major view: one row per evaluator core, one Elo column per category cell.
+// This is the table a reader actually wants when the question is "is this
+// evaluator any good", because a core's six identities differ only in which
+// track head carries them and which division segment they wear. standings.tsv
+// stays head-major, which answers the different question of how one search
+// configuration orders its evaluators.
+//
+// Written only when the roster names a tracks file, since without one there are
+// no cells to lay out.
+static void writeCoresTsv(const RankFit& fit, const std::map<string, AgentAgg>& agg,
+                          const std::map<string, string>& state,
+                          const RankCategoryConfig& cfg) {
+    if (!cfg.configured()) return;
+    std::ofstream f(outPath("cores", ".tsv").c_str());
+    if (!f.is_open()) return;
+
+    // Cell order is tracks-major so a division's two tracks sit side by side.
+    std::vector<string> cellName;
+    for (size_t d = 0; d < cfg.divisions.size(); d++)
+        for (size_t t = 0; t < cfg.tracks.size(); t++)
+            cellName.push_back(cfg.divisions[d].name + "_x_" + cfg.tracks[t].name);
+
+    // core -> cell -> (elo, se, games); plus a mean for ordering.
+    std::map<string, std::vector<double> > elo, se;
+    std::map<string, std::vector<long long> > games;
+    std::vector<string> coreOrder;
+    for (size_t i = 0; i < fit.ids.size(); i++) {
+        const string& id = fit.ids[i];
+        string st = stateFor(state, id);
+        if (st != "on" && st != "anchor") continue;
+        string div, trk;
+        rankCategoryOf(id, div, trk);
+        if (div == "-" || trk == "-") continue;
+        size_t dot = id.find('.');
+        if (dot == string::npos) continue;
+        string core = id.substr(dot + 1);
+        for (size_t d = 0; d < cfg.divisions.size(); d++) {
+            const string& sfx = cfg.divisions[d].suffix;
+            if (!sfx.empty() && core.size() > sfx.size()
+                && core.compare(core.size() - sfx.size(), sfx.size(), sfx) == 0) {
+                core = core.substr(0, core.size() - sfx.size());
+                break;
+            }
+        }
+        int cell = -1;
+        for (size_t k = 0; k < cellName.size(); k++)
+            if (cellName[k] == div + "_x_" + trk) { cell = (int)k; break; }
+        if (cell < 0) continue;
+        if (!elo.count(core)) {
+            elo[core].assign(cellName.size(), -1e9);
+            se[core].assign(cellName.size(), -1.0);
+            games[core].assign(cellName.size(), 0);
+            coreOrder.push_back(core);
+        }
+        elo[core][cell] = fit.elo[i];
+        se[core][cell] = fit.se[i];
+        games[core][cell] = aggFor(agg, id).games;
+    }
+
+    // Order by mean Elo over the cells a core actually occupies.
+    std::map<string, double> mean;
+    for (size_t c = 0; c < coreOrder.size(); c++) {
+        double sum = 0.0; int n = 0;
+        for (size_t k = 0; k < cellName.size(); k++)
+            if (elo[coreOrder[c]][k] > -1e8) { sum += elo[coreOrder[c]][k]; n++; }
+        mean[coreOrder[c]] = n ? sum / n : -1e9;
+    }
+    for (size_t a = 0; a + 1 < coreOrder.size(); a++)
+        for (size_t b = 0; b + 1 < coreOrder.size() - a; b++)
+            if (mean[coreOrder[b]] < mean[coreOrder[b+1]]) std::swap(coreOrder[b], coreOrder[b+1]);
+
+    f << "# Core-major standings: one row per evaluator core, one column group per\n"
+      << "# category cell (division x track). Compare Elo only WITHIN this file, which\n"
+      << "# is one fit; never against a number from another fit.\n"
+      << "# A core's cells are separate identities with separate games, so a blank cell\n"
+      << "# means unplayed, not zero.\n";
+    f << "mean_elo\tcore";
+    for (size_t k = 0; k < cellName.size(); k++)
+        f << "\t" << cellName[k] << "_elo\t" << cellName[k] << "_pm\t" << cellName[k] << "_games";
+    f << "\n";
+    for (size_t c = 0; c < coreOrder.size(); c++) {
+        const string& core = coreOrder[c];
+        f << roundElo(mean[core]) << "\t" << core;
+        for (size_t k = 0; k < cellName.size(); k++) {
+            if (elo[core][k] > -1e8)
+                f << "\t" << roundElo(elo[core][k]) << "\t" << roundElo(se[core][k])
+                  << "\t" << games[core][k];
+            else
+                f << "\t\t\t";
+        }
+        f << "\n";
+    }
+}
+
 // Machine-readable per-game export (one row per stored game, empty = unrecorded).
 static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
     std::ofstream f(outPath("games", ".tsv").c_str());
@@ -3332,10 +3623,51 @@ static void writeGamesTsv(const std::vector<RankMatchRow>& rows) {
 // about the id only -- does NOT encode the reference-class eligibility
 // exclusion (the d8/nb2m oracle), which is a separate title-holding judgment
 // documented in CHAMPION.md, not a property of the id itself.
+// Set by rankLoadRoster() when the roster names a tracks file. See the header
+// for why this is global rather than a parameter.
+static RankCategoryConfig g_catCfg;
+
+void rankSetCategoryConfig(const RankCategoryConfig& cfg) { g_catCfg = cfg; }
+void rankClearCategoryConfig() { g_catCfg = RankCategoryConfig(); }
+
 void rankCategoryOf(const string& id, string& division, string& track) {
     division = "-"; track = "-";
     size_t dot = id.find('.');
     string head = (dot == string::npos) ? id : id.substr(0, dot);
+
+    // AUTHORITATIVE MODE. With a tracks file loaded, a category cell exists only
+    // at a head the file names, so membership is exact-match rather than "the id
+    // mentions nodes= somewhere". The looser rule below let ablation heads that
+    // happen to carry the same budget flag into a title race they were never
+    // meant to enter: on 2026-09-07 the openless x node bucket held 54 agents,
+    // of which 17 were qs / noOrd / margin= / deep=4 study rows.
+    if (g_catCfg.configured()) {
+        for (size_t i = 0; i < g_catCfg.tracks.size(); i++)
+            if (head == g_catCfg.tracks[i].head) { track = g_catCfg.tracks[i].name; break; }
+        if (track == "-") return;
+        // Longest suffix first, so a division whose suffix is a tail of another
+        // cannot shadow it.
+        size_t bestLen = 0;
+        for (size_t i = 0; i < g_catCfg.divisions.size(); i++) {
+            const string& sfx = g_catCfg.divisions[i].suffix;
+            if (sfx.empty() || sfx.size() <= bestLen || id.size() <= sfx.size()) continue;
+            if (id.compare(id.size() - sfx.size(), sfx.size(), sfx) == 0) {
+                division = g_catCfg.divisions[i].name;
+                bestLen = sfx.size();
+            }
+        }
+        if (division == "-" && id.find(".opener(") == string::npos
+                            && id.find(".dil(") == string::npos) {
+            for (size_t i = 0; i < g_catCfg.divisions.size(); i++)
+                if (g_catCfg.divisions[i].suffix.empty()) {
+                    division = g_catCfg.divisions[i].name;
+                    break;
+                }
+        }
+        if (division == "-") track = "-";   // a cell needs BOTH axes
+        return;
+    }
+
     // `cal=<N>ms` marks the wall-clock track's CALIBRATED form: the agent carries a
     // per-core cap (a node budget, or a fixed depth) that was chosen so it spends
     // about that much wall clock. Nothing in the search reads the clock, so it
@@ -3882,8 +4214,9 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
              const string& pinFile, bool regimeBalanced) {
     setOutSuffixFromStore(storeFile);
     std::vector<RankAgent> roster;
+    RankCategoryConfig catCfg;
     string err;
-    if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+    if (!rankLoadRosterFile(rosterFile, roster, err, &catCfg)) { cout << "ERROR: " << err << "\n"; return 1; }
     string anchorId;
     for (size_t i = 0; i < roster.size(); i++) if (roster[i].anchor) anchorId = roster[i].id;
 
@@ -3955,6 +4288,7 @@ int rankRate(const string& rosterFile, const string& storeFile, const string& bo
     ensureDir("ranking");
     writeRatingsTsv(fit, order, agg, state);
     writeStandingsTsv(fit, order, agg, state);
+    writeCoresTsv(fit, agg, state, catCfg);
     writeGamesTsv(rows);
     writeReportMd(fit, order, agg, state, roster, pairs, board, storeFile, rows.size(), anchorId);
     printConsoleTable(fit, order, agg, state);
@@ -7326,7 +7660,20 @@ int rankCheck(const string& rosterFile, const string& storeFile, int gamesPerPai
     }
 
     std::vector<RankAgent> roster;
-    if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
+    RankCategoryConfig cfg;
+    if (!rankLoadRosterFile(rosterFile, roster, err, &cfg)) { cout << "ERROR: " << err << "\n"; return 1; }
+
+    if (cfg.configured()) {
+        cout << "categories: " << cfg.divisions.size() << " division(s) x " << cfg.tracks.size()
+             << " track(s) = " << (cfg.divisions.size() * cfg.tracks.size())
+             << " agents per core\n";
+        for (size_t i = 0; i < cfg.tracks.size(); i++)
+            cout << "  track    " << std::left << std::setw(10) << cfg.tracks[i].name
+                 << cfg.tracks[i].head << "\n";
+        for (size_t i = 0; i < cfg.divisions.size(); i++)
+            cout << "  division " << std::left << std::setw(10) << cfg.divisions[i].name
+                 << (cfg.divisions[i].suffix.empty() ? string("-") : cfg.divisions[i].suffix) << "\n";
+    }
 
     int nAct = 0;
     cout << "roster " << rosterFile << ": " << roster.size() << " agents\n";
@@ -7347,6 +7694,49 @@ int rankCheck(const string& rosterFile, const string& storeFile, int gamesPerPai
     cout << nAct << " active agents, " << pairs << " pairs, " << store.size()
          << " stored games (board " << board << "), " << pending.size()
          << " pending at --games " << gamesPerPair << "\n";
+
+    // Category coverage. Expansion guarantees every core fills every cell, so a
+    // gap here means an EXPLICIT roster line is sitting in a category, which is
+    // exactly what the core file exists to prevent.
+    if (cfg.configured()) {
+        std::map<string, int> cellCount;
+        int inCategory = 0, explicitInCategory = 0;
+        std::set<string> cores;
+        for (size_t i = 0; i < roster.size(); i++) {
+            if (!roster[i].active) continue;
+            string div, trk;
+            rankCategoryOf(roster[i].id, div, trk);
+            if (div == "-" || trk == "-") continue;
+            inCategory++;
+            cellCount[div + " x " + trk]++;
+            size_t dot = roster[i].id.find('.');
+            string rest = (dot == string::npos) ? string("") : roster[i].id.substr(dot + 1);
+            for (size_t d = 0; d < cfg.divisions.size(); d++) {
+                const string& sfx = cfg.divisions[d].suffix;
+                if (!sfx.empty() && rest.size() > sfx.size()
+                    && rest.compare(rest.size() - sfx.size(), sfx.size(), sfx) == 0) {
+                    rest = rest.substr(0, rest.size() - sfx.size());
+                    break;
+                }
+            }
+            cores.insert(rest);
+        }
+        cout << "categories: " << cores.size() << " core(s), " << inCategory
+             << " category agents\n";
+        size_t expect = cores.size();
+        for (std::map<string,int>::const_iterator it = cellCount.begin(); it != cellCount.end(); ++it) {
+            cout << "  " << std::left << std::setw(20) << it->first << it->second;
+            if ((size_t)it->second != expect) cout << "   <-- expected " << expect;
+            cout << "\n";
+            if ((size_t)it->second != expect) explicitInCategory++;
+        }
+        if (cellCount.size() != cfg.divisions.size() * cfg.tracks.size())
+            cout << "  WARNING: " << cellCount.size() << " of "
+                 << (cfg.divisions.size() * cfg.tracks.size()) << " cells are populated\n";
+        if (explicitInCategory)
+            cout << "  WARNING: uneven cells mean a hand-written roster line holds a category."
+                    " Move it to the cores file, or change its head so it is study data.\n";
+    }
     cout << "OK\n";
     return 0;
 }

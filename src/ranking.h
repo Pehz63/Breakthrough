@@ -191,9 +191,58 @@ std::string rankFileHash8(const std::string& path);
 // Verify every g_evaluators entry has a codec row with unique weight letters.
 bool rankEvalCodecComplete(std::string& err);
 
+// ---- Category configuration: 2 tracks x 3 divisions, and core expansion ----
+// A category agent is `<track head>.<core>[<division suffix>]`, so the only
+// thing that varies between an evaluator's six category identities is which
+// track head it sits on and which division segment it wears. Writing all six
+// out by hand is what let the six buckets drift out of sync (37/15/14/14/14/14
+// on 2026-09-07), so the roster names the CORE once and the expansion is
+// derived here.
+//
+// tracks.txt format, one directive per line, `-` meaning an empty suffix:
+//   track    node       ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3
+//   division openless   -
+//   division opener8    .opener(rand,moves=8)@1
+struct RankTrackDef    { std::string name, head; };
+struct RankDivisionDef { std::string name, suffix; };
+struct RankCategoryConfig {
+    std::vector<RankTrackDef>    tracks;
+    std::vector<RankDivisionDef> divisions;
+    bool configured() const { return !tracks.empty() && !divisions.empty(); }
+};
+bool rankLoadTracks(std::istream& in, RankCategoryConfig& out, std::string& err);
+bool rankLoadTracksFile(const std::string& path, RankCategoryConfig& out, std::string& err);
+// Expand a cores file (`on|off <core-id>` lines) into tracks x divisions agents.
+// An `off` core is skipped entirely rather than emitted inactive: benching a
+// core means removing all six of its identities from the fit, and six dead rows
+// per retired core would bury the live ones.
+bool rankExpandCores(std::istream& in, const RankCategoryConfig& cfg,
+                     std::vector<RankAgent>& out, std::string& err);
+bool rankExpandCoresFile(const std::string& path, const RankCategoryConfig& cfg,
+                         std::vector<RankAgent>& out, std::string& err);
+// Makes rankCategoryOf() authoritative rather than heuristic: once a config is
+// set, an agent holds a category only if its head EQUALS a configured track
+// head. Without this an ablation head carrying the same budget flag
+// (`ab(deep=6,tt,ord,qs,nodes=200k)@3`) files itself into a title race it was
+// never meant to enter. Global because report writing has no config parameter;
+// see the global-state table in src/CLAUDE.md.
+void rankSetCategoryConfig(const RankCategoryConfig& cfg);
+void rankClearCategoryConfig();
+
 // ---- Roster ----
-bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, std::string& err);
-bool rankLoadRosterFile(const std::string& path, std::vector<RankAgent>& out, std::string& err);
+// Besides `anchor|on|off <id>`, a roster may carry two path directives:
+//   tracks   ranking/tracks.txt
+//   cores    ranking/cores.txt
+// naming the category config and the core list to expand into it. They may
+// appear in either order and are resolved after the whole file is read, so a
+// study roster copied from ranking/roster.txt inherits the same pool with no
+// CLI flag. Paths are relative to the working directory, as everywhere else
+// here. `cores` without `tracks` is an error rather than a silent no-op.
+// cfgOut, when non-null, receives the loaded config (empty if none was named).
+bool rankLoadRoster(std::istream& in, std::vector<RankAgent>& out, std::string& err,
+                    RankCategoryConfig* cfgOut = 0);
+bool rankLoadRosterFile(const std::string& path, std::vector<RankAgent>& out, std::string& err,
+                        RankCategoryConfig* cfgOut = 0);
 
 // ---- Match store ----
 std::string rankFormatMatchRow(const RankMatchRow& m);

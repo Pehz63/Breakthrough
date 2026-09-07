@@ -14,6 +14,17 @@
 
 anchor  rand@1  # UniformRandom, pinned at Elo 0
 
+# --- Category agents are GENERATED, not listed here -------------------------
+# ranking/cores.txt names each evaluator once and ranking/tracks.txt crosses it
+# with 2 tracks x 3 divisions, so every title contender is 1 line rather than 6.
+# Add a newly trained evaluator to cores.txt, not here. What stays here is what
+# is NOT a contender: ablation heads, the reference oracle, the random and
+# scripted controls, the off gaz checkpoints, and the historical agents on the
+# superseded deep=6 / nodes=200k / time=150ms heads, which keep their games and
+# their ratings but no longer hold a category.
+tracks  ranking/tracks.txt
+cores   ranking/cores.txt
+
 # Random family: tier ladder around the furthest-N knob.
 on      tiered@1  # win/capture/normal tiers
 on      smart(pieces=2)@1  # tiered, furthest-2 pieces

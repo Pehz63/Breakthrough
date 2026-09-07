@@ -3027,3 +3027,198 @@ TEST_CASE("pinned BT fit - empty pin set leaves everything provisional") {
     REQUIRE_FALSE(fit.anchored);
     REQUIRE(fit.provisional[fitIndexOf(fit, "A")]);
 }
+
+
+// ============================================================================
+// Category configuration: tracks x divisions, and core expansion
+//
+// The six category identities of one evaluator differ only in which track head
+// carries it and which division segment it wears, so the roster names the CORE
+// once and the rest is derived. These cases pin the three properties that make
+// that safe to rely on: the expansion is exactly tracks x divisions, an
+// explicit roster line can never silently duplicate a generated one, and
+// category membership is decided by an EXACT head match rather than by "the id
+// mentions nodes= somewhere".
+// ============================================================================
+
+static const char* kTracksTxt =
+    "# comment line\n"
+    "track    node       ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3\n"
+    "track    time       ab(deep=12,tt,ord,retain,time=25ms)@3\n"
+    "division openless   -\n"
+    "division opener8    .opener(rand,moves=8)@1\n"
+    "division dil20      .dil(prob=20)@1\n";
+
+TEST_CASE("category config - a tracks file parses into tracks and divisions") {
+    RankCategoryConfig cfg;
+    std::string err;
+    std::istringstream in(kTracksTxt);
+    REQUIRE(rankLoadTracks(in, cfg, err));
+    REQUIRE(cfg.configured());
+    REQUIRE(cfg.tracks.size() == 2);
+    REQUIRE(cfg.divisions.size() == 3);
+    REQUIRE(cfg.tracks[0].name == "node");
+    REQUIRE(cfg.tracks[1].head == "ab(deep=12,tt,ord,retain,time=25ms)@3");
+    // `-` is how the openless division spells "no suffix". Writing an empty
+    // field instead would be indistinguishable from a truncated line.
+    REQUIRE(cfg.divisions[0].suffix == "");
+    REQUIRE(cfg.divisions[2].suffix == ".dil(prob=20)@1");
+}
+
+TEST_CASE("category config - a tracks file rejects what would silently misbuild a pool") {
+    RankCategoryConfig cfg;
+    std::string err;
+    {   // A typo in a head must fail HERE, not as hundreds of unparseable agents.
+        std::istringstream in("track node ab(deep=12,tt,ord,nodes=100kk)@3\ndivision openless -\n");
+        REQUIRE_FALSE(rankLoadTracks(in, cfg, err));
+    }
+    {   // Two divisions with no suffix would both claim every bare agent.
+        std::istringstream in("track node ab(deep=12,tt,ord,nodes=100k)@3\n"
+                              "division openless -\ndivision bare -\n");
+        REQUIRE_FALSE(rankLoadTracks(in, cfg, err));
+    }
+    {   // A config with no division has no cells to place anything in.
+        std::istringstream in("track node ab(deep=12,tt,ord,nodes=100k)@3\n");
+        REQUIRE_FALSE(rankLoadTracks(in, cfg, err));
+    }
+    {
+        std::istringstream in("track node ab(deep=12,tt,ord,nodes=100k)@3\n"
+                              "track node ab(deep=12,tt,ord,time=25ms)@3\n"
+                              "division openless -\n");
+        REQUIRE_FALSE(rankLoadTracks(in, cfg, err));
+    }
+}
+
+TEST_CASE("category config - one core expands to exactly tracks x divisions agents") {
+    RankCategoryConfig cfg;
+    std::string err;
+    std::istringstream tin(kTracksTxt);
+    REQUIRE(rankLoadTracks(tin, cfg, err));
+
+    std::vector<RankAgent> out;
+    std::istringstream cin_(
+        "on   classic(chip=100)@2\n"
+        "off  classic(chip=10,wall=3,column=2)@2   # benched\n");
+    REQUIRE(rankExpandCores(cin_, cfg, out, err));
+    // 1 live core x 2 tracks x 3 divisions. The benched core contributes
+    // nothing at all: removing all six identities from the fit IS what
+    // benching a core means.
+    REQUIRE(out.size() == 6);
+
+    std::set<std::string> ids;
+    for (size_t i = 0; i < out.size(); i++) {
+        ids.insert(out[i].id);
+        REQUIRE(out[i].active);
+        REQUIRE_FALSE(out[i].anchor);
+    }
+    REQUIRE(ids.size() == 6);
+    REQUIRE(ids.count("ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2") == 1);
+    REQUIRE(ids.count("ab(deep=12,tt,ord,retain,time=25ms)@3.classic(chip=100)@2"
+                      ".opener(rand,moves=8)@1") == 1);
+    REQUIRE(ids.count("ab(deep=12,tt,ord,retain,time=25ms)@3.classic(chip=100)@2"
+                      ".dil(prob=20)@1") == 1);
+}
+
+TEST_CASE("category config - a cores file refuses a full agent id") {
+    RankCategoryConfig cfg;
+    std::string err;
+    std::istringstream tin(kTracksTxt);
+    REQUIRE(rankLoadTracks(tin, cfg, err));
+    std::vector<RankAgent> out;
+    // Pasting a whole id here is the obvious mistake, and silently accepting it
+    // would produce `<head>.<head>.<core>` rather than an error.
+    std::istringstream cin_("on ab(deep=12,tt,ord,nodes=100k)@3.classic(chip=100)@2\n");
+    REQUIRE_FALSE(rankExpandCores(cin_, cfg, out, err));
+}
+
+TEST_CASE("category config - a roster expands its cores file and rejects a duplicate") {
+    const char* tp = "build\\test_tracks.tmp";
+    const char* cp = "build\\test_cores.tmp";
+    {
+        std::ofstream f(tp, std::ios::trunc); f << kTracksTxt;
+    }
+    {
+        std::ofstream f(cp, std::ios::trunc); f << "on classic(chip=100)@2\n";
+    }
+    std::string err;
+    {   // The anchor and any non-category agent stay explicit; the core expands.
+        std::ostringstream r;
+        r << "anchor rand@1\n" << "tracks " << tp << "\n" << "cores " << cp << "\n";
+        std::istringstream in(r.str());
+        std::vector<RankAgent> roster;
+        RankCategoryConfig cfg;
+        REQUIRE(rankLoadRoster(in, roster, err, &cfg));
+        REQUIRE(roster.size() == 1 + 6);
+        REQUIRE(cfg.configured());
+    }
+    {   // Directive order must not matter: both are resolved after the read.
+        std::ostringstream r;
+        r << "cores " << cp << "\n" << "anchor rand@1\n" << "tracks " << tp << "\n";
+        std::istringstream in(r.str());
+        std::vector<RankAgent> roster;
+        REQUIRE(rankLoadRoster(in, roster, err));
+        REQUIRE(roster.size() == 7);
+    }
+    {   // A hand-written line that duplicates a generated one is the drift this
+        // whole mechanism exists to stop, so it is an error naming the id.
+        std::ostringstream r;
+        r << "anchor rand@1\n"
+          << "on ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2\n"
+          << "tracks " << tp << "\n" << "cores " << cp << "\n";
+        std::istringstream in(r.str());
+        std::vector<RankAgent> roster;
+        REQUIRE_FALSE(rankLoadRoster(in, roster, err));
+    }
+    {   // `cores` with nothing to expand into is a mistake, not a no-op.
+        std::ostringstream r;
+        r << "anchor rand@1\n" << "cores " << cp << "\n";
+        std::istringstream in(r.str());
+        std::vector<RankAgent> roster;
+        REQUIRE_FALSE(rankLoadRoster(in, roster, err));
+    }
+    std::remove(tp);
+    std::remove(cp);
+    rankClearCategoryConfig();
+}
+
+TEST_CASE("category config - membership needs an exact head match, not a budget flag") {
+    RankCategoryConfig cfg;
+    std::string err;
+    std::istringstream tin(kTracksTxt);
+    REQUIRE(rankLoadTracks(tin, cfg, err));
+    rankSetCategoryConfig(cfg);
+
+    std::string div, trk;
+    rankCategoryOf("ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2", div, trk);
+    REQUIRE(trk == "node");
+    REQUIRE(div == "openless");
+
+    rankCategoryOf("ab(deep=12,tt,ord,retain,time=25ms)@3.classic(chip=100)@2.dil(prob=20)@1",
+                   div, trk);
+    REQUIRE(trk == "time");
+    REQUIRE(div == "dil20");
+
+    // The case this mode exists for. An ablation head carries the same budget
+    // flag, and under the old substring rule it filed itself into the openless
+    // node title race. On 2026-09-07 seventeen such rows were sitting in that
+    // bucket (qs, noOrd, margin=, deep=4).
+    rankCategoryOf("ab(deep=6,tt,ord,qs,nodes=200k)@3.classic(chip=100)@2", div, trk);
+    REQUIRE(trk == "-");
+    REQUIRE(div == "-");
+    // Same for the previous track definition, which is now study data.
+    rankCategoryOf("ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2", div, trk);
+    REQUIRE(trk == "-");
+
+    // A division this config does not define leaves the agent uncategorized
+    // even on a configured head, rather than being folded into openless.
+    rankCategoryOf("ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2"
+                   ".opener(rand,moves=4)@1", div, trk);
+    REQUIRE(div == "-");
+    REQUIRE(trk == "-");
+
+    // Clearing restores the heuristic, which the pre-cores rosters still need.
+    rankClearCategoryConfig();
+    rankCategoryOf("ab(deep=6,tt,ord,qs,nodes=200k)@3.classic(chip=100)@2", div, trk);
+    REQUIRE(trk == "node");
+    REQUIRE(div == "openless");
+}

@@ -1,0 +1,43 @@
+# Category configuration: 2 compute tracks x 3 opener divisions.
+#
+# Read by ranking/roster.txt's `tracks` directive. Every agent that can hold a
+# ranking/CHAMPION.md title is generated from this file crossed with
+# ranking/cores.txt, so a title race can never quietly acquire a member with a
+# different search head. Changing a line here re-defines a track and mints a new
+# identity for every core in it, which means a full re-certification. It is not
+# an edit to make casually.
+#
+# ONE HEAD PER SEARCH FAMILY. Every AB agent in a track shares the head below.
+# A different family (gaz, and anything after it) gets its own `track` line when
+# it can honour a budget. gaz cannot today: it has no nodes=/time= grammar at
+# all, only sims=, so it holds no title in either track and its roster lines
+# stay off. The instrumentation is designed but unbuilt (see the appendix of
+# plans/champion-category-restructure-plan-1-golden-painting-anchor.md).
+#
+# Why these two budgets, 2026-09-07. They are the same operating point for most
+# of the roster by construction: 25ms / 100k nodes = 0.25 us/node, and the three
+# cheap cores measure 0.23 (chip counter), 0.25 (pool_games lin model=97) and
+# 0.26 (tdleaf_self lin model=169). At those budgets they complete a mean
+# effective depth of 5.4 to 5.9. An expensive evaluator still separates the two
+# tracks widely, which is the point of having both: position_elo mlp model=113
+# runs 4.15 us/node, so it spends 374 ms/move on the node track and 23 ms/move
+# on the time track. Measured in plans/time-ladder-results-1-copper-vireo.md.
+#
+# Why deep=12 rather than the old deep=6. At depth 6 the DEPTH CAP bound before
+# the budget did, so the budget was close to decorative: the chip counter used
+# 42k of a 200k allowance and the live time=150ms heads realized a mean 20.5
+# ms/move. A budget that never binds does not normalize anything.
+#
+# Why retain on both. A plain time= head realizes 0.432 of its flag (sd 0.053)
+# against retain's 0.854 (sd 0.028), so the number in the id did not describe
+# the spend. On the node track retain needs a gate to have anything to bank,
+# hence rem=70 there and not on the time side, where nextIterationFits is
+# already the gate. Theory 70.
+
+track    node       ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3
+track    time       ab(deep=12,tt,ord,retain,time=25ms)@3
+
+# `-` is the empty suffix: openless wears no opener and no dilution segment.
+division openless   -
+division opener8    .opener(rand,moves=8)@1
+division dil20      .dil(prob=20)@1

@@ -1,0 +1,70 @@
+# Evaluator cores eligible for a ranking/CHAMPION.md title.
+#
+# ONE LINE PER EVALUATOR. Each `on` core is expanded against every track and
+# division in ranking/tracks.txt, so a line here is 6 agents. This is the file
+# to edit after training something: add one line, run play, run rate, and all
+# six category identities exist and are certified together.
+#
+# `off` benches a core, removing all six of its identities from the fit. Its
+# games stay in the store and can be re-rated by turning it back on.
+#
+# A core is the EVALUATOR only. The head and the division segment come from
+# tracks.txt, and a line containing a `.` is rejected as a pasted full id.
+#
+# Anything that is not a title contender does NOT belong here. Ablation heads
+# (qs, noOrd, margin=, deep=4), the deep=8/nodes=2m reference oracle, rand@1,
+# the greedy and smart controls and the off gaz checkpoints stay as explicit
+# lines in ranking/roster.txt, where they are study data rather than entrants.
+# Before 2026-09-07 they were entrants by accident: category membership was
+# decided by "the id mentions nodes= somewhere", which put 17 ablation rows in
+# the openless x node title race.
+
+
+# the bare chip counter, the non-learning control every study is read against
+on   classic(chip=100)@2
+
+# pool_games: supervised value models trained on pooled ladder games
+on   learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+on   learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+on   learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+on   learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+on   learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+on   learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+on   learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+on   learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+on   learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+
+# weight_merge
+on   learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+
+# position_elo: the position-oracle campaign's distributional value heads
+on   learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+on   learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on   learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+on   learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+on   learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on   learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on   learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on   learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on   learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+on   learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+
+# tdleaf_self, linear: the online bootstrapped regime, currently the strongest
+on   learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+on   learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+on   learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+
+# tdleaf_self, mlp
+on   learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+on   learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+on   learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+on   learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+on   learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1
