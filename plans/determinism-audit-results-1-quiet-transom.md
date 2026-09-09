@@ -96,8 +96,11 @@ Two properties, both load-bearing:
 
 1. `setTTContext` (`src/ai_minimax.cpp:196`) salts the key with root side,
    evaluator and eval params. `ttProbe` requires `e.key == key` exactly, so a
-   foreign entry is a MISS, not a false hit. Always-replace eviction therefore
-   costs time, not correctness.
+   FOREIGN entry is a MISS, not a false hit. This closes the cross-agent channel
+   and nothing more: it says nothing about a searcher evicting its OWN earlier
+   entries, which `ttProbe` will happily read because it does not check `e.gen`.
+   That second channel is real, and it is ruled out by measurement rather than
+   by this argument, in "Four explanations tested and dead" below.
 2. **The root move loop is unordered.** `orderMoves` runs only at interior
    nodes. So table-driven ordering cannot reorder the root candidates that a tie
    is broken among, and with the chip counter's large tie sets that is exactly
@@ -109,12 +112,146 @@ this whole result**, which is why the test exists rather than a note.
 
 ### What the original observation most likely was
 
-The `Phase 0` reproducibility gate already on record found that only
+**This section was wrong when first written, and the paragraph it replaces is
+kept below so a reader who meets it quoted elsewhere recognises it.** The claim
+was: "The `Phase 0` reproducibility gate already on record found that only
 `model=111` and `model=113` on the `time=150ms` head ever varied, and both
 miner-versus-`openerBook` disagreements in the book21 run were those same two
-cores. A `time=` opponent explains the residual with no new defect. The one
-loose end: the 5 slot-23 lines with `ovr_ply = -1` were never checked for
-whether their opponent was time-budgeted.
+cores. A `time=` opponent explains the residual with no new defect." That
+inference was published without running the one grep this document's own Future
+Work section said would settle it.
+
+The grep was then run. It falsifies the claim. In `ranking/refute_book23.tsv`
+all 210 rows carry `timed = 0`, and the 5 suspect lines' opponents are all
+node-budgeted on the same head:
+
+| colour | mined | audit | verify | plies | v_plies | oob_first | opponent |
+|---|---|---|---|---|---|---|---|
+| W | 1 | 0 | L | 56 | 67 | 16 | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` |
+| B | 1 | 1 | W | 65 | 71 | 9 | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` |
+| B | 1 | 1 | W | 59 | 35 | 11 | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1` |
+| B | 1 | 1 | W | 77 | 49 | 12 | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1` |
+| W | 1 | 1 | W | 54 | 54 | 8 | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1` |
+
+Three further facts from the same file and from `ranking/refute_book23.log`:
+
+- `blocked_shared = 0` on all 210 rows, and stage 3 reported 0 collisions, so
+  the written book is consistent with every won line it stores.
+- The oracle and the wearer share one brain,
+  `ab(deep=8,tt,ord,nodes=2m)@2.classic(chip=100)@2` plus
+  `.opener(book,book=23)@1` on the wearer. The wearer's fallback is therefore
+  the same player that mined the line.
+- All 5 `oob_key` values (`f8c848c4112ac741`, `ef5323c57304dc77`,
+  `f1cdad46a82df389`, `343f5585cfb47bc5`, `41f5301bd33f47a7`) are absent from
+  `models/book23.txt`. The audit game reached a position no won line ever
+  visited, rather than one the book held and declined to serve.
+
+The exact refute configuration was then added to the probe and rerun at the
+current code version (`ab(deep=8,tt,ord,nodes=2m)@3.classic(chip=100)@2` as our
+side, against `model=112` and `model=387` on their own head, plus oracle
+self-play): **0 divergences on 5 boards under all four perturbations.**
+
+So four candidate explanations are now dead: a `time=` opponent, a book
+overwrite, a blocked shared prefix, and a divergence reproducible at 15 games.
+
+### The phenomenon is deterministic, so nondeterminism was never the explanation
+
+`rank.exe refute --slot 23 --verify-only` re-runs only the audit: it loads the
+existing `models/book23.txt` and replays all 210 lines. Run on 2026-09-09 with
+the current `@3` binary against the book the `@2` binary mined on 2026-08-29, it
+reproduces the original run's progress trace exactly.
+
+| audited | 2026-08-29, `@2` binary | 2026-09-09, `@3` binary |
+|---|---|---|
+| 40 / 210 | 40 won, 0 left the book | 40 won, 0 left the book |
+| 80 / 210 | 77 won, 3 left the book | 77 won, 3 left the book |
+| 120 / 210 | 117 won, 3 left the book | 117 won, 3 left the book |
+| 160 / 210 | 154 won, 7 left the book | 154 won, 7 left the book |
+| 200 / 210 | 192 won, 11 left the book | 192 won, 11 left the book |
+| 210 / 210 | **202 won, 12 left the book** | **202 won, 12 left the book** |
+
+Both runs then verify 202-8-0 over 210 games on 3505 book entries.
+
+**A reproducible result is not evidence of nondeterminism.** The 12 lines that
+leave the book leave it at the same lines, in the same order, on two different
+binaries eleven days and six engine commits apart. Whatever they are, they are a
+systematic difference between the mining condition and the audit condition, not a
+failure of any agent to reproduce a reply. The entry that started this
+investigation read them as the latter.
+
+### Four explanations tested and dead
+
+| explanation | test | result |
+|---|---|---|
+| the opponent was `time=`-budgeted | grep `timed` in `refute_book23.tsv` | dead: all 210 rows are `timed = 0` |
+| a later winning line overwrote the entry | `ovr_ply`, `blocked_shared`, stage-3 collision count | dead: `ovr_ply = -1`, `blocked_shared = 0`, 0 collisions |
+| the current binary is nondeterministic under a silent side | 1,836 targeted replay-games, below | dead: 0 divergences |
+| the audit ran on a different code version than the mine | `--verify-only` rerun, table above | dead: byte-identical trace |
+
+The third row is the powered version of the probe this document originally
+quoted. Our side plays a reference game, then replays it while going silent, and
+every ply is compared by `positionKey` hash. Both silent shapes were run, because
+the first version of the probe had the window inverted: it went silent from ply N
+ONWARD, which is the opposite of the book shape (silent for the opening, brain
+resumes at N). Both give the same answer.
+
+| our side, the one that goes silent | opponents | replay-games | diverged |
+|---|---|---|---|
+| `ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2` | 4 non-`tt` roster agents | 72 | 0 |
+| `ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2` | 37 `tt` roster agents | 666 | 0 |
+| `ab(deep=8,tt,ord,nodes=200k)@3.classic(chip=100)@2` | the 5 slot-23 opponents | 90 | 0 |
+| `ab(deep=8,tt,ord,nodes=800k)@3.classic(chip=100)@2` | the 5 slot-23 opponents | 90 | 0 |
+| `ab(deep=8,tt,ord,nodes=2m)@3.classic(chip=100)@2` | the 5 slot-23 opponents | 90 | 0 |
+| `ab(deep=8,tt,ord,nodes=8m)@3.classic(chip=100)@2` | the 5 slot-23 opponents | 90 | 0 |
+| the same six rows again, with the silent window corrected to the book shape | | 738 | 0 |
+| **total** | | **1,836** | **0** |
+
+The budget sweep is there because of a specific hypothesis: `ttProbe`
+(`src/transposition.cpp:31-42`) returns on `e.key == key` alone and **does not
+check `e.gen`**, so a search can read entries its own earlier searches stored in
+the same game, both for cutoffs and, unconditionally, for the `fromSq`/`toSq`
+that `orderMoves` uses. Whether those entries survive depends on what else stored
+into their slots. Our side searching at `nodes=2m` wraps the 2^20-slot table
+twice per move and wipes it; going silent leaves it whole. That is a real
+asymmetry that `setTTContext` salting does NOT close, since salting stops a
+foreign entry being read as ours and says nothing about our search evicting the
+opponent's own entries. It is measured here across a 40x span of budgets and it
+does not move a single reply.
+
+**The instrument was validated in every arm.** A `.dil(prob=20)@1` opponent must
+diverge, and did: at ply 1, 7, 3 and 5 in the four sweep arms and at ply 1 in
+both cheap arms. Without that, "0 diverged" would be indistinguishable from a
+comparison that cannot see a divergence.
+
+### The correction this forces on the mechanism paragraph
+
+The paragraph below headed "Why the shared table does not leak", and its copies
+in `todo.md`, in `Docs/theories.md` theory 71 and in the comment above
+`searchRootWhite`, argue that `setTTContext` salting makes a foreign entry a miss
+rather than a false hit, and then conclude that the table cannot move a reply.
+**The premise is right and the conclusion does not follow from it.** Salting says
+nothing about eviction of a searcher's own entries, which is a second channel,
+and interior-node ordering is table-driven whether or not the root is. The
+unordered root is what bounds the effect at the root, and the 1,836 games above
+are what make the claim measured rather than argued. Those texts have been
+narrowed to say that.
+
+### What is still open
+
+Whose move actually differs. `ovr_ply = -1` was read as "our moves reproduced the
+mined line, so the opponent must have changed", and that inference is not sound:
+`ovr_ply` compares the written book against the mined path, so -1 is equally
+consistent with "our move matched" and with "the comparison never ran at this
+ply". No column reported where the audit game left the mined PATH, as distinct
+from where the book fell silent.
+
+Two columns were added to `rank.exe refute` for this, `off_ply` and `off_by`
+(`src/ranking.cpp`): the first of our plies whose position differs from the mined
+one at the same index, and whether our own move differed there (1) or ours
+matched so the opponent replied differently (2). The console prints the split.
+They need a full mine to fill, since `--verify-only` has no mined path to compare
+against, and that mine is running to `models/book25.txt` and
+`ranking/refute_book25.tsv`.
 
 ### Blast radius, now measured rather than feared
 
@@ -217,7 +354,12 @@ without `retain`. There is no untested bare path to fix.
 | `Docs/theories.md` | Theory 71 added, confirmed with its scope and its fragility stated |
 | `src/ai_minimax.cpp` | Comments only. A block above `searchRootWhite` (and a pointer above `searchRootBlack`) recording that the unordered root scan is load-bearing for BOTH the partial-iteration slice and the determinism property, with the instruction to rerun the test if the root is ever ordered |
 | `src/CLAUDE.md` | The `ai_minimax.cpp` row's "the root is not ordered" note extended with the same second consequence |
-| `todo.md` | Both entries struck through with their measurements; the `retain` purse promoted to its own `[Now]` entry carrying the 3.8x number |
+| `todo.md` | Both entries struck through with their measurements, the `retain` purse promoted to its own `[Now]` entry carrying the 3.8x number, and the determinism entry rewritten after the follow-up: the `time=` guess removed, the reproduction recorded, two new entries added |
+| `src/ranking.cpp` | `off_ply` and `off_by` added to `rank.exe refute`: the first of our plies whose position differs from the mined one at the same index, and whether our move or the opponent's caused it. Report columns, header documentation, and a console split. Also corrects the `ovr_ply` header note, which said the column is blank under `--verify-only` when it prints -1 |
+| `tools/CLAUDE.md` | Documents the new columns, corrects the same `ovr_ply` claim, and adds the "re-run the audit before calling it a determinism problem" note |
+| `tools/migrate_ab_v3.py` | Skips `refute_*` alongside `det_*` and `recert_snapshots`, so a future bump does not renumber finished reports |
+| `Docs/corrections.md` | New class `MIGRATED REPORT PROVENANCE`, for the 2026-09-06 migration rewriting seven finished refute reports |
+| `ranking/refute_book2{1,2,3,4}*.tsv` | Point-of-citation header notes for that class, seven files |
 
 ## How to test
 
@@ -225,20 +367,44 @@ without `retain`. There is no untested bare path to fix.
 .\tools\run_tests.ps1 -Build            # the suite, including the new file
 .\tests.exe "determinism*" -s           # just this test, with the per-section detail
 .\rank.exe determinism --replicas 4 --only "deep=12"
+.\rank.exe refute --slot 23 --verify-only --roster ranking/roster_refute_snapshot.txt --out scratch.tsv
 ```
 
 Expected: the suite passes, `determinism*` reports its four reproduction
 sections passing and the dilution control diverging, and `rank.exe determinism`
-reports 70/70 subject-colours reproducible.
+reports 70/70 subject-colours reproducible. The `--verify-only` re-audit must
+print 202 won and 12 left the book, matching 2026-08-29 exactly, and it does not
+overwrite `models/book23.txt`. Its `off_ply` / `off_by` columns stay at -1,
+because `--verify-only` has no mined path to compare against. To see them
+filled, mine a fresh slot:
+
+```powershell
+.\rank.exe refute --slot 25 --skip-timed --roster ranking/roster_refute_snapshot.txt --out ranking/refute_book25.tsv
+```
+
+Its stage 1 should reproduce the slot-23 trace (20 / 33 / 46 / 54 / 73 won at 20
+/ 40 / 60 / 80 / 100 mined), and the console should end with a line naming how
+many lines left the mined path because our move differed and how many because
+the opponent replied differently.
 
 ## Future Work
 
-- **The 5 slot-23 lines were never traced.** The conclusion above says a
-  `time=` opponent explains the book residual, and that is inference from the
-  `Phase 0` gate and the book21 disagreements, not from those 5 lines. What
-  would settle it: pull the 5 target ids out of the slot-23 run and check
-  whether each carries `time=` in its head. One grep, and it either closes the
-  entry or reopens it with a real case.
+- **Whose move differs on the 12 book-leaving lines.** Closed as far as it can
+  be without a mine: four explanations are dead and the phenomenon is
+  reproducible rather than flaky. What is not known is whether our own move or
+  the opponent's reply is the one that leaves the mined path. `off_ply` and
+  `off_by` now report it, and the slot-25 mine that fills them is the run that
+  answers it.
+- **The `off_by` split does not say WHY.** Even with the column filled, "the
+  opponent replied differently" and "our move differed" are each still one step
+  short of a mechanism. The follow-up that would close it is a per-ply dump of
+  the losing line, mining game against audit game side by side, for one target,
+  which is a debug tool nothing currently prints.
+- **`--verify-only` cannot fill the new columns**, because it has no mined path
+  to compare against, so every cheap re-audit of an existing book leaves them at
+  -1. That is the same shape as the `ovr_ply` trap this session tripped over: a
+  column that prints -1 both when the comparison ran and found nothing and when
+  it never ran. The header now says so. A distinct sentinel would say it better.
 - **Nothing guards the unordered root.** Theory 71 holds because
   `orderMoves` runs only at interior nodes. Root ordering is an obvious future
   search improvement, and whoever makes it will not know it invalidates the

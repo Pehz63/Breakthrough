@@ -1,3 +1,8 @@
+# [MIGRATED REPORT PROVENANCE - flagged 2026-09-09] Commit d5cb15b renumbered
+#   every ab(...)@2 id in this file to @3 and, in five of the seven refute
+#   reports, deleted the time=-opponent rows. This run was performed by the @2
+#   binary. Read @3 here as @2, and check the row count against
+#   git show d5cb15b^:<this path> before quoting a rate. See Docs/corrections.md.
 # rank.exe refute -- one row per (target, colour)
 # oracle=ab(deep=8,tt,ord,nodes=2m)@3.classic(chip=100)@2	wearer=ab(deep=8,tt,ord,nodes=2m)@3.classic(chip=100)@2.opener(book,book=24)@1	board=boards/board1.txt
 # mined: 1 = the miner found a win, 0 = conceded

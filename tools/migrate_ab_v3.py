@@ -134,7 +134,11 @@ def main():
     # Derived fit outputs are DELETED and regenerated, never migrated: rewriting a
     # ratings table by hand would publish numbers no fit ever produced. Determinism
     # and re-certification snapshots keep their @2 ids for the same reason a results
-    # doc does, they are records of what @2 measured.
+    # doc does, they are records of what @2 measured. So do the refute reports,
+    # which this guard missed on the 2026-09-06 run: it renumbered all seven and
+    # dropped 28 time= rows from five, leaving reports that name a binary they were
+    # not produced by and whose own headline no longer recomputes from them. See
+    # MIGRATED REPORT PROVENANCE in Docs/corrections.md.
     DERIVED = ("ratings.tsv", "ratings_pinned.tsv", "standings.tsv",
                "standings_pinned.tsv", "games.tsv", "games_pinned.tsv",
                "report.md", "report_pinned.md")
@@ -149,7 +153,8 @@ def main():
     print("\n-- pin files (renumber, and drop time= rows: their games are gone)")
     for p in sorted(set(glob.glob("ranking/**/*.tsv", recursive=True))):
         b = os.path.basename(p)
-        if b in DERIVED or b.startswith("det_") or "recert_snapshots" in p.replace("\\", "/"):
+        if (b in DERIVED or b.startswith("det_") or b.startswith("refute_")
+                or "recert_snapshots" in p.replace("\\", "/")):
             continue
         k, d, ch = migrate_text(p, a.apply, drop_time_rows=True)
         if ch or d:

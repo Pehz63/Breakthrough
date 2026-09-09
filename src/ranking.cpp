@@ -7049,6 +7049,17 @@ struct RefGame {
                                                   // move DIFFERENT from the one the mine recorded
                                                   // at the same position (-1 = never)
     unsigned long long overwriteKey;              // position hash there (0 if none)
+    int  offPly;                                  // first of OUR plies whose POSITION differs from
+                                                  // the one the mine recorded at the same index
+                                                  // (-1 = the whole line reproduced). Distinct from
+                                                  // oobFirst, which says where the book fell silent:
+                                                  // a line can leave the mined path while the book
+                                                  // is still serving, and without oobFirst and this
+                                                  // together there is no way to tell those apart.
+    int  offBy;                                   // 0 = n/a, 1 = OUR move at offPly-1 differed,
+                                                  // 2 = ours matched, so the OPPONENT replied
+                                                  // differently. This is the column that decides
+                                                  // whose search moved, instead of it being inferred.
 };
 
 // One full game, our side driven by the book with the oracle as fallback.
@@ -7073,6 +7084,7 @@ static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
     g.probeExhausted = false; g.probeIgnored = false;
     g.oobFirst = -1; g.oobCount = 0; g.oobKey = 0;
     g.overwritePly = -1; g.overwriteKey = 0;
+    g.offPly = -1; g.offBy = 0;
 
     const int ourSide = (ourColour == 0) ? White : Black;
     int victor = None;
@@ -7082,6 +7094,18 @@ static bool refPlayGame(const std::map<unsigned long long, RefMove>& book,
         g_lastNodes = 0;
         if (side == ourSide) {
             unsigned long long key = positionKey(side, false).hash;
+            // Where did this game leave the MINED LINE, and whose move did it?
+            // Checked before the book is consulted, because it is a fact about
+            // the position we are standing on, not about what the book says.
+            // Everything up to our previous move matched, so exactly two moves
+            // separate the last matching position from this one: ours and the
+            // opponent's. If ours matched the mine, the opponent is what moved.
+            if (minedKeys && minedMoves && g.offPly < 0
+                && ourPly < (int)minedKeys->size() && (*minedKeys)[ourPly] != key) {
+                g.offPly = ourPly;
+                g.offBy = (ourPly > 0 && !refSameMove(g.ourMoves[ourPly - 1], (*minedMoves)[ourPly - 1]))
+                        ? 1 : 2;
+            }
             RefMove chosen; chosen.sx = chosen.sy = chosen.dx = -1;
             bool haveBook = false;
             if (ourPly != probeOurPly) {
@@ -7171,6 +7195,10 @@ struct RefTarget {
     int  overwritePly;    // stage-3 audit: first of OUR plies where the written book served a
                           // move different from the one the mine recorded at that same position
     unsigned long long overwriteKey;  // position hash there (0 if none)
+    int  offPly;          // stage-3 audit: first of OUR plies whose position differs from the
+                          // mined one at the same index (-1 = the line reproduced)
+    int  offBy;           // stage-3 audit: 0 = n/a, 1 = our move differed, 2 = the opponent replied
+                          // differently. Answers whose search moved, rather than leaving it inferred
     std::vector<unsigned long long> keys;
     std::vector<RefMove> moves;
 };
@@ -7253,6 +7281,7 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
             t.blockedShared = false; t.auditWon = false; t.oobFirst = -1; t.oobCount = 0;
             t.oobKey = 0; t.rejected = 0;
             t.overwritePly = -1; t.overwriteKey = 0;
+            t.offPly = -1; t.offBy = 0;
             targets.push_back(t);
         }
     }
@@ -7490,6 +7519,7 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         }
         t.oobFirst = g.oobFirst; t.oobCount = g.oobCount; t.oobKey = g.oobKey;
         t.overwritePly = g.overwritePly; t.overwriteKey = g.overwriteKey;
+        t.offPly = g.offPly; t.offBy = g.offBy;
         t.auditWon = (g.outcome == 1);
         if (verifyOnly) {
             t.status = t.auditWon ? 1 : 2;
@@ -7555,14 +7585,25 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         out << "#   move different from the one the mine recorded at that same position, and\n";
         out << "#   the position hash there (-1 / 0 = never). A nonzero ovr_key is a measured\n";
         out << "#   overwrite of this line by a later winner, not an inference from oob_first.\n";
-        out << "#   Blank under --verify-only, which has no mined path to compare against,\n";
-        out << "#   and on a conceded line, whose stored path is a failed attempt the book\n";
-        out << "#   never received.\n";
+        out << "#   NOT COMPUTED under --verify-only, which has no mined path to compare\n";
+        out << "#   against, nor on a conceded line, whose stored path is a failed attempt\n";
+        out << "#   the book never received. In both cases the column still prints -1, the\n";
+        out << "#   same value it prints for a line that WAS compared and found clean, so\n";
+        out << "#   -1 alone does not mean the comparison ran.\n";
+        out << "# off_ply / off_by: the first of OUR plies whose POSITION differs from the\n";
+        out << "#   one the mine recorded at that same index (-1 = the line reproduced), and\n";
+        out << "#   who moved: 1 = our own move differed, 2 = ours matched so the OPPONENT\n";
+        out << "#   replied differently, 0 = n/a. Read this WITH oob_first, not instead of\n";
+        out << "#   it. oob_first says where the book fell silent, off_ply says where the\n";
+        out << "#   game left the mined path, and they are not the same event: a line can\n";
+        out << "#   leave the path while the book is still serving. Without off_by, whose\n";
+        out << "#   search moved has to be guessed, and guessing it produced four wrong\n";
+        out << "#   explanations for the slot-23 lines before this column existed.\n";
         out << "# rejected: stage-2 wins refused because committing the line would have\n";
         out << "#   overwritten a position an already-won line depends on.\n";
         out << "# v_plies: half-moves in the openerBook verification game. A line that matches\n";
         out << "#   `plies` played the same length game the miner recorded.\n";
-        out << "colour\tmined\taudit\tverify\ttimed\tplies\tv_plies\tour_moves\toob_first\toob_count\toob_key\tovr_ply\tovr_key"
+        out << "colour\tmined\taudit\tverify\ttimed\tplies\tv_plies\tour_moves\toob_first\toob_count\toob_key\tovr_ply\tovr_key\toff_ply\toff_by"
                "\ttried_nodes\ttried_moves\trejected\tblocked_shared\topponent\n";
         for (size_t i = 0; i < targets.size(); i++) {
             const RefTarget& t = targets[i];
@@ -7573,6 +7614,7 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
                 << "\t" << t.oobFirst << "\t" << t.oobCount
                 << "\t" << refHexKey(t.oobKey)
                 << "\t" << t.overwritePly << "\t" << refHexKey(t.overwriteKey)
+                << "\t" << t.offPly << "\t" << t.offBy
                 << "\t" << t.triedNodes << "\t" << t.triedMoves
                 << "\t" << t.rejected
                 << "\t" << (t.blockedShared ? 1 : 0) << "\t" << t.opp->id << "\n";
@@ -7611,6 +7653,20 @@ int rankRefute(const string& rosterFile, const string& oracleId, const string& w
         else if (aLeft > 0)
             cout << "  None of them was overwritten, so leaving the book has a cause other than\n"
                  << "  one winning line clobbering another's entry.\n";
+
+        // Whose search moved. Without this the answer has to be inferred from
+        // ovr_ply being -1, and that inference is not sound: ovr_ply only
+        // compares the book against the mine, so -1 is equally consistent with
+        // "our move matched" and with "the comparison never ran here".
+        int offUs = 0, offOpp = 0;
+        for (size_t i = 0; i < targets.size(); i++) {
+            if (targets[i].offPly < 0) continue;
+            if (targets[i].offBy == 1) offUs++; else offOpp++;
+        }
+        if (offUs + offOpp > 0)
+            cout << "  " << (offUs + offOpp) << " line(s) left the mined path: " << offUs
+                 << " because OUR move differed, " << offOpp << " because the OPPONENT replied\n"
+                 << "  differently at a position where our move matched. See off_ply/off_by.\n";
     }
     cout << "verify: " << vWon << "-" << vLost << "-" << vDrew << " (W-L-D for the book's side) over "
          << targets.size() << " games, " << pruned.size() << " book entries\n";

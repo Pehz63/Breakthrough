@@ -1423,22 +1423,44 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       identically must match (it does), and a `.dil(prob=20)@1` opponent must
       diverge (it does, at ply 1). Without the second, every "no divergence"
       above would be unfalsifiable.
-    - **Why the shared table does not leak.** `setTTContext`
-      (`src/ai_minimax.cpp:196`) salts the key with root side, evaluator and
-      eval params, so a foreign entry is a miss, not a false hit, and
-      `ttStore`'s always-replace eviction costs time rather than correctness.
-      The root move loop is unordered, `orderMoves` runs only at interior nodes,
-      so table-driven ordering cannot reorder the root candidates that a tie is
-      broken among. This is why the eviction mechanism guessed below does not
-      bite, and it is worth keeping: the property depends on the root staying
-      unordered, so a future root-ordering change would need this test rerun.
-    - **What the original observation most likely was.** The `Phase 0`
-      reproducibility gate already recorded that only `model=111` and
-      `model=113` on the `time=150ms` head ever varied, and both
-      miner-versus-`openerBook` disagreements in the book21 run were those same
-      two cores. A `time=` opponent explains the residual without a new defect.
-      The 5 slot-23 lines with `ovr_ply = -1` were never checked for whether
-      their opponent was time-budgeted, and that is the one loose end.
+    - **Why the shared table does not move a reply, narrowed 2026-09-09.**
+      `setTTContext` (`src/ai_minimax.cpp:196`) salts the key with root side,
+      evaluator and eval params, so a FOREIGN entry is a miss rather than a
+      false hit. That closes the cross-agent channel and nothing else:
+      `ttProbe` (`src/transposition.cpp:31-42`) does not check `e.gen`, so a
+      search reads entries its OWN earlier searches stored, and whether those
+      survived depends on whether the other side's intervening search evicted
+      them. The unordered root BOUNDS the effect at the root, it does not remove
+      it at interior nodes. The eviction channel is ruled out by measurement,
+      not by that argument: **1,836 replay-games with one side going silent, 0
+      divergences**, over 37 `tt` and 4 non-`tt` opponents at
+      `ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2`, and over the 5
+      slot-23 opponents at `ab(deep=8,tt,ord,<budget>)@3.classic(chip=100)@2`
+      with the budget swept 200k / 800k / 2m / 8m, in both silent-window shapes.
+      A `.dil(prob=20)@1` control diverged in every arm. Root ordering would
+      remove the bound, so rerun `tests/test_determinism.cpp` if it is added.
+    - **What the original observation was: NOT a determinism failure.** The
+      earlier guess here, that a `time=` opponent explained it, is wrong and is
+      kept below only so a reader meeting it quoted somewhere recognises it. All
+      210 rows of `ranking/refute_book23.tsv` are `timed = 0`, and the 5 suspect
+      lines' opponents are all node-budgeted `ab(deep=6,tt,ord,nodes=200k)@3`
+      heads. `blocked_shared = 0` everywhere, stage 3 reported 0 collisions, and
+      all 5 `oob_key` values are absent from `models/book23.txt`, so no overwrite
+      and no blocked prefix either. What settles it:
+      `rank.exe refute --slot 23 --verify-only` on the current `@3` binary
+      **reproduces the 2026-08-29 `@2` run exactly** -- 3, 7, 11, 12 lines
+      leaving the book at 120 / 160 / 200 / 210 audited, 202 won, verify 202-8-0
+      over 3505 entries. A trace that repeats byte for byte across eleven days
+      and six engine commits is not a reproducibility failure. The 12 lines are
+      a systematic difference between the mining condition (our side searches at
+      unbooked plies) and the audit condition (the book serves instantly).
+    - **What is still open, and the column that answers it.** Whether our own
+      move or the opponent's reply leaves the mined path. `ovr_ply = -1` does
+      not establish it: that column compares the written book against the mined
+      path, so -1 is equally consistent with "our move matched" and with "the
+      comparison never ran here". `rank.exe refute` now writes `off_ply` and
+      `off_by` (`src/ranking.cpp`) and prints the split on the console. They
+      need a full mine to fill, since `--verify-only` has no mined path.
     - The superseded mechanism guess and the original deduction are kept below,
       because a later reader meeting them quoted somewhere needs to recognise
       them.
@@ -1467,6 +1489,22 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       no stored game is invalidated. No code version bump is needed.
     ~~`[Now]` {cpu: minutes, dev: medium}~~ CLOSED 2026-09-09, regression test in
     `tests/test_determinism.cpp` {cpu: none, dev: none}
+  - **Read `off_by` off the slot-25 mine and close the book-leaving question.**
+    The 12 lines that leave the book in the slot-23 audit reproduce exactly, so
+    they are a condition difference and not nondeterminism, but whose move
+    leaves the mined path was never observed. `rank.exe refute` now reports it
+    (`off_ply` / `off_by`, plus a console split). A mine to slot 25 fills them:
+    `.ank.exe refute --slot 25 --skip-timed --roster ranking/roster_refute_snapshot.txt --out ranking/refute_book25.tsv`.
+    Stage 1 of that run reproduces the 2026-08-29 trace (20 / 33 / 46 / 54 won
+    at 20 / 40 / 60 / 80 mined), so slot 25 is a like-for-like rerun of slot 23
+    with the new columns. `[Now]` {cpu: hours, dev: low}
+  - **A `-1` that means "not compared" reads the same as one that means
+    "compared and clean".** `ovr_ply` prints -1 both when the comparison ran and
+    found nothing and when it never ran at all (`--verify-only`, or a conceded
+    line). That ambiguity is what let four wrong explanations for the slot-23
+    lines survive. `off_ply` inherits the same shape. The header now warns, but a
+    distinct sentinel (`-2` for "not compared") would make it unmissable.
+    `[Next]` {cpu: none, dev: low}
   - **The ownership check has never fired, so it is untested.** Correct by
     construction and behaviour-neutral on every workload run so far. A targeted
     test would construct two winning lines that genuinely want different moves at

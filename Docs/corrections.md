@@ -420,3 +420,56 @@ counts. When one cell has an order of magnitude fewer games than its neighbours
 in the same row or column, that is the case to check.
 
 ---
+
+## `MIGRATED REPORT PROVENANCE` - flagged 2026-09-09
+
+**Scope: the seven `ranking/refute_book*.tsv` reports, as they stand in the repo
+after commit `d5cb15b` (2026-09-06).** Like `TT CROSS-AGENT CONTAMINATION`, this
+is a tooling defect rather than a writing defect: a script edited finished
+experiment records in place.
+
+`tools/migrate_ab_v3.py` renumbers `ab(...)@2` ids to `@3` across
+`ranking/**/*.tsv` and drops rows naming a `time=` head, because a `time=` head's
+stored games were played by a search that its id no longer describes. That is
+right for a **roster, cohort or pin file**, which names agents that are live now.
+It is wrong for a **report**, which records what one past run measured. The
+script's own comment states the principle correctly and applies it to two cases
+(`det_*` and `recert_snapshots`), and the refute reports were simply not in the
+guard.
+
+Two consequences, both measured on 2026-09-09 by diffing against `d5cb15b^`:
+
+**1. The reports now name a code version that did not produce them.**
+`ranking/refute_book23.tsv` says
+`oracle=ab(deep=8,tt,ord,nodes=2m)@3.classic(chip=100)@2`. The run was performed
+on 2026-08-29 by the `@2` binary, eight days before the bump. Its untracked
+companion `ranking/refute_book23.log` and the book it wrote,
+`models/book23.txt`, both still say `@2`, so the three artifacts of one run
+disagree with each other. All 208 `ab(...)` ids in each of the seven reports are
+now `@3` and none is `@2`.
+
+**2. Five of the seven lost rows, so their own headline is no longer
+recomputable from them.** `refute_book21.tsv` and its three variants, and
+`refute_book22.tsv`, went from 238 data rows to 210: the 28 `time=`-opponent rows
+were deleted. Recounting `oob_first >= 0` off the current file gives 5 lines that
+left the book, against 7 in the pre-migration file. `refute_book23.tsv` and
+`refute_book24.tsv` kept all 210 rows, because those runs were launched with
+`--skip-timed` and had no `time=` row to lose.
+
+**What this does and does not license.** No number in any of these reports was
+recomputed, so every surviving row is the value the run produced. What is wrong
+is the run's attribution and, for five files, its denominator. Quote a rate out
+of one of these files only after checking the row count against
+`git show d5cb15b^:<path>`, and read any `@3` in them as `@2`.
+
+**What to do instead.** Never renumber or filter a completed report. A report is
+the same kind of artifact as a results document in `plans/`: it is a record of
+what a past binary measured, and a migration should leave it alone and let the
+version in the header say which binary that was. `tools/migrate_ab_v3.py` now
+skips `refute_*` alongside `det_*` and `recert_snapshots`, so the next bump does
+not repeat this. The pre-migration content of all seven files is recoverable with
+`git show d5cb15b^:ranking/refute_book21.tsv` and so on, and is not being
+restored in place, because a second in-place rewrite of the same files would make
+the provenance worse rather than better.
+
+---

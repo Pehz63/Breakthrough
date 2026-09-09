@@ -455,14 +455,19 @@ static int minAlphaBetaOrdered(int alpha, int beta, int level, int depth, int ev
 // orderMoves runs at interior nodes only, so root candidates are always visited
 // in the same board-geometry order and a tie is always broken by whichever
 // equal-scoring move that order reaches first.
-//  (1) That is what makes a deterministic agent's reply a function of the
-//      POSITION rather than of the transposition table it happens to be
-//      carrying, which is what lets rankSchedule's pairGameTarget cap a
-//      deterministic pair at 2 games instead of replaying it. Confirmed
-//      2026-09-09 (theory 71), regression test tests/test_determinism.cpp.
-//      Ordering the root is an obvious search improvement and WOULD BREAK that
-//      property: rerun that test if you do it, and expect the 2-game cap to
-//      need revisiting.
+//  (1) It is what bounds the effect of the transposition table on a
+//      deterministic agent's reply, which is what lets rankSchedule's
+//      pairGameTarget cap a deterministic pair at 2 games instead of replaying
+//      it. It does NOT make the reply independent of the table on its own:
+//      interior-node ordering is table-driven, and ttProbe does not check
+//      e.gen, so a search reads entries its own earlier searches left and
+//      whether those survived depends on what else stored into their slots.
+//      The reply's independence from that is MEASURED, not argued: 1,836
+//      replay-games with one side going silent, across four node budgets from
+//      200k to 8m, 0 divergences (2026-09-09, theory 71). Regression test:
+//      tests/test_determinism.cpp. Ordering the root is an obvious search
+//      improvement and would remove the bound: rerun that test if you do it,
+//      and expect the 2-game cap to need revisiting.
 //  (2) It is also why a budget-cut iteration covers an arbitrary geometric
 //      slice of the root moves rather than a promising one. See g_keepPartial
 //      and theory 64.
