@@ -236,22 +236,93 @@ unordered root is what bounds the effect at the root, and the 1,836 games above
 are what make the claim measured rather than argued. Those texts have been
 narrowed to say that.
 
-### What is still open
+### Measured: the opponent's reply is what differs
 
-Whose move actually differs. `ovr_ply = -1` was read as "our moves reproduced the
-mined line, so the opponent must have changed", and that inference is not sound:
-`ovr_ply` compares the written book against the mined path, so -1 is equally
-consistent with "our move matched" and with "the comparison never ran at this
-ply". No column reported where the audit game left the mined PATH, as distinct
-from where the book fell silent.
+`ovr_ply = -1` was read as "our moves reproduced the mined line, so the opponent
+must have changed". That inference was not sound, because `ovr_ply` compares the
+written book against the mined path and never reports where the GAME left it.
+Two columns were added to `rank.exe refute` to report it directly: `off_ply`, the
+first of our plies whose POSITION differs from the mined one at the same index,
+and `off_by`, which is 1 if our own move at the previous ply differed and 2 if
+ours matched, so the opponent is what moved.
 
-Two columns were added to `rank.exe refute` for this, `off_ply` and `off_by`
-(`src/ranking.cpp`): the first of our plies whose position differs from the mined
-one at the same index, and whether our own move differed there (1) or ours
-matched so the opponent replied differently (2). The console prints the split.
-They need a full mine to fill, since `--verify-only` has no mined path to compare
-against, and that mine is running to `models/book25.txt` and
-`ranking/refute_book25.tsv`.
+A fresh mine to slot 26 fills them. The conclusion the old inference reached was
+right, and it is now a measurement:
+
+| colour | mined | audit | verify | plies | `oob_first` | `off_ply` | `off_by` | opponent |
+|---|---|---|---|---|---|---|---|---|
+| W | 1 | 0 | L | 56 | 16 | **16** | **2** | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1` |
+| B | 1 | 1 | W | 65 | 9 | **9** | **2** | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1` |
+| B | 1 | 1 | W | 59 | 11 | **11** | **2** | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1` |
+| B | 1 | 1 | W | 77 | 12 | **12** | **2** | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1` |
+| W | 1 | 1 | W | 54 | 8 | **8** | **2** | `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1` |
+
+Console: `5 line(s) left the mined path: 0 because OUR move differed, 5 because
+the OPPONENT replied differently at a position where our move matched.`
+
+**`off_ply` equals `oob_first` on every row.** The game leaves the mined path at
+exactly the ply the book falls silent, which is the two facts being one event:
+the opponent's differing reply puts our side on a position no mined line ever
+visited, and a book keyed by position has nothing to say there. There is no
+window in which the line has quietly drifted and the book is still covering.
+
+The other 7 of the 12 are conceded lines (`mined = 0`) and correctly report
+`off_ply = -1`: a conceded target's stored path is its last FAILED attempt,
+never written to the book, so there is nothing to compare against. That gate is
+the same one added on 2026-08-29 after `ovr` reported four phantom overwrites on
+conceded lines.
+
+### A rebuild mistake worth recording
+
+The first mine went to slot 25 on a stale `rank.exe`. The binary was rebuilt
+after the `ovr_ply` comment fix and before the `off_ply` / `off_by` columns were
+written, and the mine was launched without rebuilding again, so a 1,736-game run
+produced the old 18-column report. This is the exact failure `CLAUDE.md` warns
+about under "A `src/` header change is not built until every binary that links
+it is rebuilt", and the fact that `tests.exe` had been rebuilt in between is what
+made it easy to miss.
+
+It paid for itself as a replication. Slots 23, 25 and 26 agree on every
+checkpoint, and both later books are byte-identical to `models/book23.txt` on all
+3505 entries:
+
+| checkpoint | slot 23, `@2`, 2026-08-29 | slot 25, `@3`, 2026-09-09 | slot 26, `@3`, 2026-09-09 |
+|---|---|---|---|
+| stage 1 | 130/210 by the oracle line alone | 130/210 | 130/210 |
+| stage 3 | 3505 kept of 3899, 0 collisions | 3505 of 3899, 0 | 3505 of 3899, 0 |
+| mined | 203/210 (130 oracle, 73 repair) | 203/210 | 203/210 |
+| audit | 202 won, 12 left the book | 202, 12 | 202, 12 |
+| verify | 202-8-0 over 3505 entries | 202-8-0 | 202-8-0 |
+
+Three independent 1,736-game mines across a code-version boundary produced the
+same book. The slot-25 artifacts were deleted afterwards, since they duplicate
+slot 23 and carry no column slot 26 does not, which also frees the slot: `refute`
+refuses to overwrite an existing `models/book<N>.txt` without `--force`.
+
+### The finding that is left, stated as a tension rather than resolved
+
+Two measurements point in opposite directions and both are solid.
+
+| measurement | says |
+|---|---|
+| slot-26 mine, `off_by = 2` on 5 of 5 | in the real harness, the opponent's reply DOES change between the mining game and the audit game |
+| 1,836 controlled replay-games, 0 divergences | in a probe that removes our side's search the same way, the opponent's reply does NOT change, including against these exact 5 opponents at `nodes=2m` and `nodes=8m` |
+
+They are not contradictory, they mean the probe does not reproduce the harness's
+condition. Everything the probe holds constant that the harness does not is a
+candidate. The one known difference: in the probe, the reference game has our
+side searching at EVERY ply and the replay at NONE, while in the harness the
+mining game has our side searching at whichever plies the partial book did not
+yet cover, a mix that depends on how many targets were mined before this one.
+Both extremes give 0, so a mix giving nonzero requires the effect to be
+non-monotone in that count, which is a real possibility and not a comfortable one.
+
+**What would settle it, and it is small:** a per-ply dump for ONE target, mining
+game beside audit game, printing the opponent's chosen move, its node count and
+its `g_lastEffDepth` at each ply. The two runs are both deterministic and both
+reproduce, so the first ply where the opponent's move differs can be read off
+directly, together with whether its search reached a different depth there.
+Nothing currently prints that.
 
 ### Blast radius, now measured rather than feared
 

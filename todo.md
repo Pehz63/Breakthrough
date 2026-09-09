@@ -1454,13 +1454,32 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       and six engine commits is not a reproducibility failure. The 12 lines are
       a systematic difference between the mining condition (our side searches at
       unbooked plies) and the audit condition (the book serves instantly).
-    - **What is still open, and the column that answers it.** Whether our own
-      move or the opponent's reply leaves the mined path. `ovr_ply = -1` does
-      not establish it: that column compares the written book against the mined
-      path, so -1 is equally consistent with "our move matched" and with "the
-      comparison never ran here". `rank.exe refute` now writes `off_ply` and
-      `off_by` (`src/ranking.cpp`) and prints the split on the console. They
-      need a full mine to fill, since `--verify-only` has no mined path.
+    - **Measured 2026-09-09: the OPPONENT's reply is what differs.** `ovr_ply`
+      compares the written book against the mined path and never reports where
+      the GAME left it, so `ovr_ply = -1` never established this. `off_ply` and
+      `off_by` (`src/ranking.cpp`) do, and a fresh mine to slot 26 fills them:
+      **5 of 5 won book-leavers report `off_by = 2`**, our move matched the mine
+      at every prior ply and the opponent replied differently. `off_ply` equals
+      `oob_first` on all five (16, 9, 11, 12, 8), so the two are one event: the
+      opponent's reply puts us on a position no mined line visited, and a
+      position-keyed book has nothing there. The 7 conceded lines correctly
+      report -1, since their stored path is a failed attempt never written.
+      Console: `5 line(s) left the mined path: 0 because OUR move differed, 5
+      because the OPPONENT replied differently`.
+    - **The open finding is a tension between two solid measurements.** The
+      harness says the opponent's reply changes between mining and audit. The
+      1,836-game probe says it does not, including against these exact 5
+      opponents at `nodes=2m` and `nodes=8m`. So the probe does not reproduce
+      the harness's condition. The known difference: the probe's reference has
+      our side searching at EVERY ply and its replay at NONE, while the mining
+      game searches at whichever plies the partial book did not yet cover, a mix
+      depending on how many targets preceded this one. Both extremes give 0, so
+      a nonzero mix needs the effect to be non-monotone in that count.
+      **What settles it, and it is small:** a per-ply dump for ONE target,
+      mining game beside audit game, printing the opponent's chosen move, node
+      count and `g_lastEffDepth` at each ply. Both runs are deterministic and
+      both reproduce, so the first differing ply reads off directly. Nothing
+      prints that today. `[Now]` {cpu: minutes, dev: medium}
     - The superseded mechanism guess and the original deduction are kept below,
       because a later reader meeting them quoted somewhere needs to recognise
       them.
@@ -1473,13 +1492,13 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       ply the book fell silent, and the book was not overwritten. The line still
       reached a position the book had never seen, which leaves the opponent's
       reply as the only thing that can have changed.
-    - **Why it is only INDICATED.** Every step above is inference from a negative
-      result. The opponent replying differently has never been watched directly.
-    - **Direct confirmation, one run.** Play the same deterministic opponent from
-      the same position twice, once with our side searching and once with our
-      side replaying book moves, and diff its chosen move per ply. That either
-      exhibits the defect or kills the deduction. Do this BEFORE any mechanism
-      work.
+    - **Why it was only INDICATED, and how it stopped being.** Every step above
+      is inference from a negative result, and the inference does not hold:
+      `ovr_ply` compares the book against the mined path and never reports where
+      the GAME left it, so -1 there is equally consistent with "our move matched"
+      and with "the comparison never ran". The conclusion turned out right
+      anyway, and `off_by = 2` on 5 of 5 is now the measurement rather than the
+      deduction. See the entry above.
     - **Blast radius, now measured rather than feared.** The worry was that if
       stored games between an opener-wearing agent and a searcher were affected,
       the consequence would be the same class as theory 54, which invalidated
@@ -1489,15 +1508,18 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       no stored game is invalidated. No code version bump is needed.
     ~~`[Now]` {cpu: minutes, dev: medium}~~ CLOSED 2026-09-09, regression test in
     `tests/test_determinism.cpp` {cpu: none, dev: none}
-  - **Read `off_by` off the slot-25 mine and close the book-leaving question.**
-    The 12 lines that leave the book in the slot-23 audit reproduce exactly, so
-    they are a condition difference and not nondeterminism, but whose move
-    leaves the mined path was never observed. `rank.exe refute` now reports it
-    (`off_ply` / `off_by`, plus a console split). A mine to slot 25 fills them:
-    `.ank.exe refute --slot 25 --skip-timed --roster ranking/roster_refute_snapshot.txt --out ranking/refute_book25.tsv`.
-    Stage 1 of that run reproduces the 2026-08-29 trace (20 / 33 / 46 / 54 won
-    at 20 / 40 / 60 / 80 mined), so slot 25 is a like-for-like rerun of slot 23
-    with the new columns. `[Now]` {cpu: hours, dev: low}
+  - ~~**Read `off_by` off a fresh mine and close the book-leaving question.**~~
+    Done 2026-09-09, slot 26: 5 of 5 report `off_by = 2`. Slot 25 was mined
+    first and wasted, because `rank.exe` was not rebuilt after the columns were
+    added, so that run produced the old 18-column report. It still paid for
+    itself: slots 23, 25 and 26 agree on every checkpoint (stage 1 130/210,
+    stage 3 3505 of 3899 with 0 collisions, audit 202 won and 12 out, verify
+    202-8-0, mined 203/210), and both later books were byte-identical to
+    `models/book23.txt` on all 3505 entries. Three independent 1,736-game mines
+    across a code-version boundary produced the same book. The slot-25 artifacts
+    were then deleted, since they duplicate slot 23 with no new column, which
+    frees slot 25 again (`refute` refuses to overwrite an existing
+    `models/book<N>.txt` without `--force`).
   - **A `-1` that means "not compared" reads the same as one that means
     "compared and clean".** `ovr_ply` prints -1 both when the comparison ran and
     found nothing and when it never ran at all (`--verify-only`, or a conceded
