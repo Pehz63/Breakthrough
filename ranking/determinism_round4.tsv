@@ -1,0 +1,79 @@
+# rank.exe determinism -- one row per (subject, colour)
+# probe=ab(deep=2)@3.classic(chip=100)@2	replicas=4	board=boards/board1.txt
+# distinct = distinct move sequences over the replicas (1 = reproducible)
+# first_div_ply = first half-move where two replicas differ (-1 = none)
+# det = rankAgentIsDeterministic (0 = draws from rand(), expected to fail)
+# traceset = hash over the SORTED DISTINCT per-ply position traces. Two runs of
+#   this command agree on a row's trajectories exactly when its traceset matches,
+#   so diffing two TSVs is an exact cross-process test, not a plies/nodes proxy.
+colour	det	timed	replicas	distinct	first_div_ply	traceset	plies	result	nodes_self	id
+W	1	0	4	1	-1	a45169688b43bb0e	25	W	2001900	ab(deep=12,tt,ord,nodes=200k)@3.classic(chip=100)@2
+B	1	0	4	1	-1	3063a9870880bdb6	24	B	1724901	ab(deep=12,tt,ord,nodes=200k)@3.classic(chip=100)@2
+W	1	0	4	1	-1	5b3a85ec9bca8d9f	57	B	5193077	ab(deep=12,tt,ord,nodes=200k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	ec138055d8daa927	50	B	4225336	ab(deep=12,tt,ord,nodes=200k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	a45169688b43bb0e	25	W	932671	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2
+B	1	0	4	1	-1	3063a9870880bdb6	24	B	881918	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.classic(chip=100)@2
+W	1	0	4	1	-1	d490fcb7367f1b0b	53	B	2340443	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	7a519d9c668b5861	44	B	1755196	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	96b0bc8a85e522a9	37	W	1407735	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	687000de3d6c9a41	62	B	2607683	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=95,07792e69,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	5017a1f1e4648d9a	43	W	1765341	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	2fd96cb40148e76c	50	B	2113554	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	665379910bc619dd	63	B	2361091	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	ca0673124c2b152e	40	B	1516047	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	7dbb469a330bf51a	47	W	1998520	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	1ecde68313e50639	52	B	2198256	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=98,5801570e,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	5095fc6f8729e6af	37	B	1643060	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	4a4fa80d52d67ebe	66	W	2118958	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=99,59815079,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	8fe0d03569aa8e47	73	B	2600096	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	29355818396af982	38	B	1535561	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=3,68364898,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	b5f98be5ce6ed117	47	W	1993100	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	a8b5fd74454d993e	50	B	2117118	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=4,eb105733,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	2fa3a9fa765e32a7	51	W	2168374	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+B	1	0	4	1	-1	91dcaafd22ae3242	56	W	2383068	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1
+W	1	0	4	1	-1	c3b55324274b059	41	W	1636559	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+B	1	0	4	1	-1	d3d160023ac0f858	60	W	2436779	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1
+W	1	0	4	1	-1	48a241cd8270fe9c	61	W	2650427	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+B	1	0	4	1	-1	da5fbe3a88818cbd	58	B	2515354	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1
+W	1	0	4	1	-1	30357f34c8ac8fc5	45	B	1983213	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	0	4	1	-1	2d7cba963e53a27a	56	B	2497671	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	0	4	1	-1	ebaa99983f072ac4	73	W	3231355	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+B	1	0	4	1	-1	fb0dc9da4f4e6063	56	B	2333628	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
+W	1	0	4	1	-1	74ee0864b7200f78	61	B	2906290	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+B	1	0	4	1	-1	26664fc5f75eda1c	48	W	2116660	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+W	1	0	4	1	-1	e796e7c72f1f4dad	67	W	3013231	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	0	4	1	-1	2c459eedf954d8da	70	W	3185631	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	0	4	1	-1	64e73e447f802180	35	W	1339884	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+B	1	0	4	1	-1	60ddf29120983ffa	70	W	3352634	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+W	1	0	4	1	-1	48b4591f0b92f592	73	B	3227621	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	6fe7334b6fe4a1d4	34	B	1293739	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	ae2ce3217199a2cc	49	W	2061762	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	301ae9e315ffb8e7	42	B	1676037	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	9a05a778d1c90a06	53	W	2346414	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	6acfa74d3b7a3a30	28	B	921617	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	9fcb9fab955b57f2	61	W	2710666	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	a903e9187473ce0	70	B	3130351	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	7f549b7713ff2c6f	43	W	1855987	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	652bc215448f0fc5	74	B	3293072	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	dd67b9f6c25120eb	61	W	2719262	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	e48793b4a6a5e6ca	52	B	2211492	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	7366eec0270d7524	29	W	1022301	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	b4feaa817f0e86df	40	B	1602765	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	7cc1bb607cc5395	49	B	2248261	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	5bd2ef3b93fa1fd7	58	W	2747652	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	f53794130649c0ca	63	B	2772007	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	8d276ff237e38ce	56	W	2502483	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	154fb1ea953e8bc	51	W	2177713	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+B	1	0	4	1	-1	3f5974e01910feac	56	B	2492876	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1
+W	1	0	4	1	-1	3c82728070a585e5	53	B	2498816	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+B	1	0	4	1	-1	153a4a5bc0673db3	78	W	2764373	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1
+W	1	0	4	1	-1	3ae2d568889a5ea9	41	W	1731903	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+B	1	0	4	1	-1	818a1b4a9ccb57cf	58	W	2756642	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1
+W	1	0	4	1	-1	f1be72f77c74e64c	65	B	2892064	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+B	1	0	4	1	-1	1be903e583d046d0	56	W	2546222	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1
+W	1	0	4	1	-1	44d2af36b6914db	55	W	2383750	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+B	1	0	4	1	-1	5c9ac17076bf3192	40	B	1515818	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1
+W	1	0	4	1	-1	63bebff0f06fec66	63	B	1783058	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+B	1	0	4	1	-1	6533adc7bfd895cc	48	B	1398523	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1
+W	1	0	4	1	-1	4c9a235ef0b87401	49	B	2228896	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1
+B	1	0	4	1	-1	d6527d8fff3ce7dd	54	W	2399746	ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1

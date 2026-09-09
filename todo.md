@@ -315,8 +315,21 @@ against the same seams.
     by `analysis/rung_convergence.py`: floor of 32 games/pair, then stop when
     order is stable (Spearman >= 0.99, no core moving > 3 places), all 6
     champions are unchanged and moved < 1 combined SE, and median pm fell by
-    1.30-1.55x. Measured rate 21,300 games/hour on 10 workers, so 8/pair lands at
-    27.5h and 32/pair at about 110h `[Now]` {cpu: days, dev: low}
+    1.30-1.55x. Rungs 1 to 3 completed 2026-09-09, 8 games/pair, 562,952 rows in
+    2,645.7 min on 10 workers. Rung snapshots go in `ranking/rungs/` because a
+    snapshot records a past game count and cannot be regenerated. The core set
+    then dropped 37 -> 33: measured on rung 1's own rows, the six
+    `position_elo mlp mu_shape=129-512-8-1` seed replicates were 46.9 of the
+    run's 96.9 core-hours, since a node budget fixes nodes and not time and that
+    recipe runs 4.15 us/node for 292-413 ms/move against ~23 ms on the cheap
+    cores. Four are benched, keeping the two lowest model numbers, a rule fixed
+    before reading any fit. Cutting games instead was rejected on measurement,
+    not taste: Bradley-Terry information per game is p(1-p), and the pool
+    averages 0.1642 against a 0.2500 ideal with 82% of pairs inside 400 Elo, so
+    the round robin is only 1.5x off optimal pairing and holds no pile of
+    foregone conclusions. Rungs 4 and 5 (16 and 32 games/pair) launched
+    2026-09-09 on `ranking/q8/cohort_round4b.txt`, 198 agents
+    `[Now]` {cpu: days, dev: low}
   - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
     Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the
     Round 4 entry why it no longer applies rather than letting it vanish. Move
@@ -790,8 +803,47 @@ plus the D14 RaceWin detector; see `plans/heuristic-eval-overhaul-results-1-buzz
     round-boundary check already designed for GAZ above), which would cut the
     worst-case overshoot (an entire doomed iteration) without touching the
     existing per-node check's granularity. See `ranking/CHAMPION.md`'s Summary
-    section for the full writeup and measured numbers `[Next]` {cpu: minutes,
-    dev: low}
+    section for the full writeup and measured numbers.
+    ~~**FIXED, and the fix is `nextIterationFits` (src/ai_minimax.cpp:128),
+    which is the proposed before-the-next-iteration check, already built and
+    called at lines 520 and 696.** It is gated on `s_timeOn` alone, so it covers
+    every time-budgeted search whether or not the agent carries `retain`.
+    Confirmed by re-measuring the exact head and cores that defined the defect,
+    2026-09-09, 4 boards against an `ab(deep=6,tt,ord,nodes=200k)@3` opponent,
+    29 subject moves each:~~
+
+    | head | core | ms/move | of flag | worst single move |
+    |---|---|---|---|---|
+    | `ab(deep=6,tt,ord,time=150ms)@3` | `classic(chip=100)@2` | 6.0 | 0.04x | 14.1 |
+    | `ab(deep=6,tt,ord,time=150ms)@3` | `position_elo mlp model=113` | 6.9 | 0.05x | 15.9 |
+    | `ab(deep=12,tt,ord,time=150ms)@3` | `classic(chip=100)@2` | 68.2 | 0.45x | 150.0 |
+    | `ab(deep=12,tt,ord,time=150ms)@3` | `position_elo mlp model=110` | 64.3 | 0.43x | 150.1 |
+    | `ab(deep=12,tt,ord,time=150ms)@3` | `position_elo mlp model=113` | 65.6 | 0.44x | 150.0 |
+    | `ab(deep=12,tt,ord,time=25ms)@3` | `classic(chip=100)@2` | 13.0 | 0.52x | 34.7 |
+    | `ab(deep=12,tt,ord,time=25ms)@3` | `position_elo mlp model=113` | 12.0 | 0.48x | 34.6 |
+
+    `model=110`/`model=113` on `ab(deep=12,tt,ord,time=150ms)` now spend 64-66
+    ms/move where the 2026-08-24 measurement recorded 477-500, and their worst
+    single move is 150.1 ms against the 150 ms flag. The mean never exceeds the
+    flag on any bare head. Independently, Round 4's own 562,952 rows put all 33
+    cores on `ab(deep=12,tt,ord,retain,time=25ms)@3` between 16.2 and 18.6
+    ms/move, a 1.15x cross-core spread, so the time track's compute-parity
+    guarantee holds in live play too. **Remaining work is not this bug**: retire
+    the `TIME BUDGET NOT ENFORCED` banner and re-check whether the two cost
+    flags in the refutation-oracle target list are still warranted
+    `[Next]` {cpu: minutes, dev: low}
+  - **The `retain` purse, not the deadline check, is what now exceeds a time
+    flag on a single move.** Same measurement as above. `retain` banks the whole
+    unspent remainder with no ceiling (`src/agents.cpp:164-171`), so one move may
+    spend several flags' worth while the per-GAME total stays bounded, which is
+    the documented contract. Measured worst single move: `time=150ms,retain` with
+    `tdleaf_self lin model=169` hit **553.7 ms, 3.7x the flag** (mean 141.0,
+    0.94x), and `time=25ms,retain` with `classic(chip=100)@2` hit **95.6 ms,
+    3.8x** (mean 21.9, 0.88x). Bare heads by contrast top out at 1.00x (150ms)
+    and 1.39x (25ms), the latter being the granularity of the every-4096-nodes
+    deadline test. This is the number the "cap the purse" decision below needs:
+    decide whether a single move may spend 3.8 flags, and if not, cap the purse
+    at a small multiple `[Now]` {cpu: none, dev: low}
 - TT speedup is currently node-count-real but wall-clock-muddied by `positionKey`'s per-node string build; an incremental Zobrist hash would make the TT a wall-clock win too `[Next]` {cpu: seconds, dev: low}
 
 ## Training Regimes
@@ -1337,14 +1389,59 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
     - Separate the two mechanisms by budget: unbudgeted fixed depth isolates
       tie-breaking, `nodes=200k` adds the completed-plies effect.
     `[Next]` {cpu: hours, dev: medium}
-  - **DEFECT (indicated, not yet confirmed): a deterministic opponent does not
-    reproduce its replies when our side stops searching.** Not a theory. A
-    deterministic agent that plays differently across two runs of the same
-    position is broken whatever the cause, so this is a defect to confirm and
-    fix, and only its MECHANISM is an open question. The mechanism guess is
-    recorded below rather than in the theory log, which is for claims about how
-    the domain works and not for root-cause guesses that a debugging session
-    discards.
+  - ~~**DEFECT (indicated, not yet confirmed): a deterministic opponent does not
+    reproduce its replies when our side stops searching.**~~ **NOT CONFIRMED.
+    The direct run this entry asks for was done 2026-09-09 and the deduction
+    does not survive it.** A node-budgeted or fixed-depth agent reproduces its
+    replies exactly when the other side stops searching. What does not reproduce
+    is a `time=` agent, which is not in the deterministic class at all
+    (`rankAgentIsDeterministic` returns false for `timeBudgetMs > 0`, so the
+    2-game cap never applied to it and nothing about the scheduler is wrong).
+    - **What was run.** `tests/test_determinism.cpp`, now in the suite, plus a
+      wider scratch sweep. Reference game, then three perturbations: White never
+      searches and replays its recorded move, White is silent for its first 8
+      plies (the `.opener(rand,moves=8)` shape), and both sides search normally
+      but on a table another game already dirtied. Compared per ply by
+      `positionKey` hash. Swept over 5 boards x 11 configurations: chip counter
+      and `tdleaf_self lin model=169` and `position_elo mlp model=110`, with and
+      without `tt`, with and without `qs`, on `ab(deep=6,tt,ord,nodes=200k)@3`,
+      on both new `deep=12` heads, and on the budget-BOUND case where the node
+      cap actually cuts the search mid-iteration.
+    - **Result.** 0 divergences in every node-budgeted and fixed-depth cell.
+      The only divergences were on `ab(deep=12,tt,ord,retain,time=25ms)@3`, 1 of
+      5 boards under a silent White and 1 of 5 under a dirty table, and they
+      moved between runs, which is wall-clock sensitivity rather than a state
+      leak. The project's own gate agrees over a wider set than the sweep:
+      `rank.exe determinism --replicas 4` across the WHOLE deterministic roster
+      (140 of 426 active agents, 2 colours, 4 replicas, 1,120 games) returns
+      **280/280 subject-colours reproducible**, and `--only deep=12` returns
+      70/70. That set covers the fixed-depth agents the sweep did not, since
+      every case there carried a `nodes=` or `time=` budget. Output kept at
+      `ranking/determinism_full.tsv`.
+    - **The instrument was validated before the reading was quoted.** Two
+      positive controls, both in the test file: replaying the reference
+      identically must match (it does), and a `.dil(prob=20)@1` opponent must
+      diverge (it does, at ply 1). Without the second, every "no divergence"
+      above would be unfalsifiable.
+    - **Why the shared table does not leak.** `setTTContext`
+      (`src/ai_minimax.cpp:196`) salts the key with root side, evaluator and
+      eval params, so a foreign entry is a miss, not a false hit, and
+      `ttStore`'s always-replace eviction costs time rather than correctness.
+      The root move loop is unordered, `orderMoves` runs only at interior nodes,
+      so table-driven ordering cannot reorder the root candidates that a tie is
+      broken among. This is why the eviction mechanism guessed below does not
+      bite, and it is worth keeping: the property depends on the root staying
+      unordered, so a future root-ordering change would need this test rerun.
+    - **What the original observation most likely was.** The `Phase 0`
+      reproducibility gate already recorded that only `model=111` and
+      `model=113` on the `time=150ms` head ever varied, and both
+      miner-versus-`openerBook` disagreements in the book21 run were those same
+      two cores. A `time=` opponent explains the residual without a new defect.
+      The 5 slot-23 lines with `ovr_ply = -1` were never checked for whether
+      their opponent was time-budgeted, and that is the one loose end.
+    - The superseded mechanism guess and the original deduction are kept below,
+      because a later reader meeting them quoted somewhere needs to recognise
+      them.
     - **What was measured.** On the clean A/B (slot 23), 12 lines left the book.
       Seven are conceded lines with no coverage to lose. The other five were
       mined as WINS and all five report `ovr_ply = -1`.
@@ -1361,15 +1458,15 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
       side replaying book moves, and diff its chosen move per ply. That either
       exhibits the defect or kills the deduction. Do this BEFORE any mechanism
       work.
-    - **Blast radius to determine, and it may not be small.** In ordinary ranked
-      play both sides search, so the asymmetry does not arise. It arises whenever
-      one side is NOT searching, which is every book-wearing agent while in book
-      and plausibly every random-opener agent during its opener. That is 77
-      `.opener(...)` rows in `ranking/roster.txt`. Scope this before deciding
-      severity: if stored games between an opener-wearing agent and a searcher
-      are affected, the consequence is the same class as theory 54, which
-      invalidated every stored `tt`-vs-`tt` game and forced the `ab@1 -> @2` bump.
-    `[Now]` {cpu: minutes, dev: medium}
+    - **Blast radius, now measured rather than feared.** The worry was that if
+      stored games between an opener-wearing agent and a searcher were affected,
+      the consequence would be the same class as theory 54, which invalidated
+      every stored `tt`-vs-`tt` game and forced the `ab@1 -> @2` bump. The
+      `.opener(rand,moves=8)` shape was tested directly and shows 0 divergences,
+      so the 77 `.opener(...)` rows in `ranking/roster.txt` are not affected and
+      no stored game is invalidated. No code version bump is needed.
+    ~~`[Now]` {cpu: minutes, dev: medium}~~ CLOSED 2026-09-09, regression test in
+    `tests/test_determinism.cpp` {cpu: none, dev: none}
   - **The ownership check has never fired, so it is untested.** Correct by
     construction and behaviour-neutral on every workload run so far. A targeted
     test would construct two winning lines that genuinely want different moves at

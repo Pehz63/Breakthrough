@@ -16,7 +16,7 @@ cl tests\test_main.cpp ^
    tests\test_move_validation.cpp tests\test_win_detection.cpp ^
    tests\test_eval.cpp tests\test_ai_integration.cpp tests\test_game_outcomes.cpp ^
    tests\test_ml.cpp tests\test_ranking.cpp tests\test_gumbel.cpp tests\test_gumbelzero.cpp ^
-   tests\test_train_budget.cpp ^
+   tests\test_train_budget.cpp tests\test_determinism.cpp ^
    src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
    src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\ml_cluster.cpp ^
