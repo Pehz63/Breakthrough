@@ -1,0 +1,43 @@
+# Core-major standings: one row per evaluator core, one column group per
+# category cell (division x track). Compare Elo only WITHIN this file, which
+# is one fit; never against a number from another fit.
+# A core's cells are separate identities with separate games, so a blank cell
+# means unplayed, not zero.
+mean_elo	core	openless_x_node_elo	openless_x_node_pm	openless_x_node_games	openless_x_time_elo	openless_x_time_pm	openless_x_time_games	opener8_x_node_elo	opener8_x_node_pm	opener8_x_node_games	opener8_x_time_elo	opener8_x_time_pm	opener8_x_time_games	dil20_x_node_elo	dil20_x_node_pm	dil20_x_node_games	dil20_x_time_elo	dil20_x_time_pm	dil20_x_time_games
+942	learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1	1161	9	2972	1162	8	3896	954	7	3592	957	7	3592	707	7	3592	708	7	3592
+938	learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1	1156	10	2734	1160	8	3592	938	7	3592	942	7	3592	718	7	3592	714	7	3592
+937	learned(model=349,5ee50d5c,tdleaf_self,lin,shape=129-1)@1	1139	9	2972	1142	8	3592	948	7	3592	945	7	3592	722	7	3592	725	7	3592
+931	learned(model=171,10d3530c,tdleaf_self,lin,shape=129-1)@1	1123	10	2734	1135	8	3592	945	7	3592	956	7	3592	713	7	3592	714	7	3592
+930	learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1	1127	10	2734	1130	8	3592	950	7	3592	952	7	3592	710	7	3592	710	7	3592
+911	learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1	1083	9	2734	1103	8	3592	933	7	3592	933	7	3592	698	7	3592	715	7	3592
+863	learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1	1015	8	2734	1030	7	3592	896	7	3592	894	7	3592	670	7	3592	675	7	3592
+857	learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1	1060	9	2734	1053	7	3592	861	7	3592	872	7	3592	655	7	3592	643	7	3592
+857	learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1	1046	9	2734	1054	7	3592	842	7	3592	844	7	3592	682	7	3592	675	7	3592
+855	classic(chip=100)@2	1045	8	2972	1011	7	3896	866	7	3592	853	7	3592	679	7	3592	675	7	3592
+841	learned(model=98,5801570e,pool_games,lin,shape=129-1)@1	1025	9	2734	1051	7	3592	839	7	3592	832	7	3592	655	7	3592	645	7	3592
+830	learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1)@1	984	8	2734	986	7	3592	871	7	3592	861	7	3592	645	7	3592	635	7	3592
+814	learned(model=3,68364898,pool_games,lin,shape=129-1)@1	993	8	2734	1010	7	3592	816	7	3592	817	7	3592	628	7	3592	617	7	3592
+806	learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1	948	8	2734	965	7	3592	844	7	3592	838	7	3592	616	7	3592	625	7	3592
+798	learned(model=4,eb105733,pool_games,lin,shape=129-1)@1	961	8	2734	956	7	3592	824	7	3592	812	7	3592	612	7	3592	621	7	3592
+791	learned(model=459,642147d2,tdleaf_self,lin,shape=129-1)@1	907	8	2734	930	7	3592	821	7	3592	823	7	3592	638	7	3592	629	7	3592
+787	learned(model=387,607b64aa,tdleaf_self,lin,shape=30-1)@1	966	8	2734	862	7	3592	857	7	3592	804	7	3592	642	7	3592	591	7	3592
+777	learned(model=405,111c40c8,tdleaf_self,mlp,shape=129-32-1)@1	952	8	2734	890	7	3592	837	7	3592	782	7	3592	610	7	3592	594	7	3592
+764	learned(model=99,59815079,pool_games,lin,shape=129-1)@1	903	8	2734	904	7	3592	763	7	3592	771	7	3592	625	7	3592	617	7	3592
+722	learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1	980	8	2734	773	7	3592	809	7	3592	646	7	3592	605	7	3592	515	7	3592
+718	learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1	943	8	2734	768	7	3592	799	7	3592	656	7	3592	621	7	3592	521	7	3592
+702	learned(model=94,784bb5fe,pool_games,lin,shape=129-1)@1	819	7	2734	840	7	3592	707	7	3592	723	7	3592	566	7	3592	554	7	3592
+700	learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	952	8	2734	716	7	3592	832	7	3592	599	7	3592	627	7	3592	473	8	3592
+676	learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	951	8	2972	699	6	3896	780	7	3592	549	7	3592	607	7	3592	468	8	3592
+675	learned(model=95,07792e69,pool_games,lin,shape=129-1)@1	783	7	2734	789	7	3592	675	7	3592	691	7	3592	556	7	3592	554	7	3592
+647	learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	884	8	2734	649	7	3592	779	7	3592	542	7	3592	593	7	3592	435	8	3592
+638	learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	888	8	2734	639	7	3592	762	7	3592	530	7	3592	582	7	3592	429	8	3592
+638	learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	908	8	2734	640	7	3592	746	7	3592	521	7	3592	577	7	3592	435	8	3592
+634	learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1	739	7	2734	725	7	3592	664	7	3592	669	7	3592	498	8	3592	510	8	3592
+631	learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1	888	8	2734	610	7	3592	773	7	3592	517	7	3592	582	7	3592	417	8	3592
+623	learned(model=333,06bdc1f0,tdleaf_self,mlp,shape=30-16-1)@1	775	7	2734	716	7	3592	674	7	3592	614	7	3592	496	8	3592	464	8	3592
+620	learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1	859	8	2734	624	7	3592	749	7	3592	493	8	3592	581	7	3592	415	8	3592
+586	learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1	733	7	2734	672	7	3592	472	8	3592	466	8	3592	589	7	3592	583	7	3592
+567	learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1	701	7	2972	697	6	3896	522	7	3592	534	7	3592	479	8	3592	467	8	3592
+497	learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1	578	8	2734	585	7	3592	524	7	3592	547	7	3592	376	9	3592	371	9	3592
+481	learned(model=279,409dc0b3,tdleaf_self,mlp,shape=30-16-1)@1	604	8	2734	498	8	3592	545	7	3592	483	8	3592	398	9	3592	355	9	3592
+450	learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1	551	8	2734	500	8	3592	491	8	3592	450	8	3592	352	9	3592	354	9	3592

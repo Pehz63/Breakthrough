@@ -42,12 +42,20 @@ on   learned(model=76,ef183148,position_elo,lin,mu_shape=129-1,sigma_shape=129-1
 on   learned(model=77,ddaa5090,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
 on   learned(model=78,2fa21eda,position_elo,mlp,mu_shape=129-128-64-1,sigma_shape=129-32-1)@1
 on   learned(model=79,18f19059,position_elo,mlp,mu_shape=129-256-128-1,sigma_shape=129-64-1)@1
+# Seed replicates of mu_shape=129-512-8-1 are benched down to two (models 110
+# and 111). Measured on Round 4 rung 1, the six of them were 46.9 of the run's
+# 96.9 core-hours, because a node budget fixes nodes and not time and this
+# recipe runs 4.15 us/node, spending 292-413 ms/move on the node head against
+# ~23 ms for the cheap cores. The two kept are the two lowest model numbers,
+# picked before reading any fit so the cut cannot select on the outcome. The
+# benched four keep their stored games, which still anchor the scale, they
+# simply hold no category and are scheduled no further games.
 on   learned(model=110,1466db6c,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 on   learned(model=111,78ef6974,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on   learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on   learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on   learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
-on   learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off  learned(model=112,baa2951a,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off  learned(model=113,e3cc8b4e,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off  learned(model=114,316257e9,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
+off  learned(model=115,21d7e638,position_elo,mlp,mu_shape=129-512-8-1,sigma_shape=129-64-1)@1
 
 # tdleaf_self, linear: the online bootstrapped regime, currently the strongest
 on   learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1
