@@ -236,6 +236,13 @@ extern unsigned long long g_lastNodes;
 extern double g_lastSearchMs;
 extern unsigned long long g_lastLeafs;
 
+// The salt ttStore/ttProbe mix into every key inside the last top-level search
+// (root side, evaluator, eval params, quiescence), so each player gets a disjoint
+// region of the one process-wide table. Anything OUTSIDE ai_minimax.cpp that wants
+// to read entries that search left must xor this in, or it probes with a key the
+// search never wrote. TD-Leaf's PV walk is the one such reader.
+uint64_t ttSearchContext();
+
 // Per-iteration node profile of the last search. g_nodesAtDepth[d] is the CUMULATIVE
 // node count at the instant iterative deepening finished depth d, so the cost of the
 // depth-d iteration alone is g_nodesAtDepth[d] - g_nodesAtDepth[d-1]. A depth that

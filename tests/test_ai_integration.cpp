@@ -1,7 +1,9 @@
 #include "catch.hpp"
 #include "transposition.h"   // ttClear (searcher-context regression test)
+#include "datastore.h"       // positionKey (PV-walk salt regression test)
 #include "helpers.h"
 #include <cstring>
+#include <climits>
 
 // These tests call moveWhite/moveBlack with MiniMax and verify it makes the correct
 // decision in positions where there is an obvious best move.
@@ -357,4 +359,53 @@ TEST_CASE("root filter - the search plays a whitelisted move, not its free choic
     REQUIRE(tookCaptureUnfiltered);          // unfiltered: it grabs the piece
     REQUIRE(board[6][3] == WHITE);           // filtered: it plays the only allowed move
     REQUIRE(board[3][3] == BLACK);           // and leaves the capture on the board
+}
+
+TEST_CASE("MiniMax - a reader outside the search must xor in ttSearchContext") {
+    // The searcher context above gives each player a disjoint region of the one
+    // table, which is exactly why anything OUTSIDE ai_minimax.cpp that wants to
+    // read what a search stored has to apply the same salt. Probing the bare
+    // position hash matches nothing.
+    //
+    // This is not hypothetical. TD-Leaf reconstructs the principal variation by
+    // walking stored best-moves from the root outward (walkPV, src/ml_tdleaf.cpp),
+    // and it probed the bare hash. From the day the salt landed until 2026-09-09
+    // every one of those probes missed, the walk stopped at its first step, and
+    // the regime trained on the position one ply after the root instead of on a
+    // depth-d leaf: mean PV depth 1 of 12, 100% truncated. Fixing the probe took
+    // the same run to 5.62 of 12. No rostered checkpoint was affected, because
+    // every tdleaf core predates the salt, so this asserts the contract rather
+    // than guarding a number.
+    clearBoard();
+    int wcols[5] = {1,3,5,2,4}, wrows[5] = {2,2,2,3,3};
+    int bcols[5] = {1,3,5,2,4}, brows[5] = {5,5,5,4,4};
+    for (int i = 0; i < 5; i++) { board[wcols[i]][wrows[i]] = WHITE; board[bcols[i]][brows[i]] = BLACK; }
+    g_whiteCount = 5; g_blackCount = 5; g_chipDiff = 0; g_whiteAtEnd = 0; g_blackAtEnd = 0;
+
+    int params[MAX_EVAL_PARAMS] = { 0, 100, 0, 0 };
+    g_useAlphaBeta = true; g_useTT = true; g_useMoveOrder = true;
+    ttClear();
+    ttNewSearch();
+
+    // Search AND play, then probe the position the move led to. The root itself
+    // is never stored (searchRootWhite stores only what maxAlphaBeta/minAlphaBeta
+    // write at interior nodes), so the first entry a PV walk can find is the
+    // root's child, which is exactly where walkPV starts.
+    moveWhite(MiniMax, 4, 0, params, StandardOpener);
+
+    uint64_t bare = (uint64_t)positionKey(Black, false).hash;
+    uint64_t salted = bare ^ ttSearchContext();
+    REQUIRE(ttSearchContext() != 0ULL);
+
+    int sc = 0, f = -1, t = -1;
+    ttProbe(salted, 0, INT_MIN, INT_MAX, sc, f, t);
+    CHECK(f >= 0);
+    CHECK(t >= 0);
+
+    int sc2 = 0, f2 = -1, t2 = -1;
+    ttProbe(bare, 0, INT_MIN, INT_MAX, sc2, f2, t2);
+    CHECK(f2 == -1);
+    CHECK(t2 == -1);
+
+    g_useAlphaBeta = false; g_useTT = false; g_useMoveOrder = false;
 }

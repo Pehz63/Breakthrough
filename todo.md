@@ -140,11 +140,34 @@ against the same seams.
     merely defusing a threat, or the capturing piece being the defender's OWN last piece
     needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]` {cpu: minutes, dev: high}
 
-## Budget-parity rebuild (PLANNED, not started)
+## Budget-parity rebuild (Part 1 done, Part 2 started)
+
+- **Part 2 Pass 1 (sanity) opened 2026-09-09, and it immediately paid for itself.**
+  TD-Leaf's PV walk had been silently broken since the TT searcher-context salt
+  landed (`06e4738`, 2026-08-27): `walkPV` probed the bare position hash, every
+  probe missed, and the regime trained on the position one ply after the root
+  instead of on a depth-d PV leaf. Mean PV depth **1.0 of 12, 100% truncated**.
+  Fixed by XORing `ttSearchContext()` into the probe, which takes the same run to
+  **5.62 of 12**. No rostered checkpoint is affected: all 16 `tdleaf_self` cores
+  were trained 2026-07-30, four weeks before the salt. Theory 72. Also verified in
+  the same run: the wall-clock ladder fires at its marks, the hard stop works, and
+  each rung's provenance carries its OWN `games=`/`secs=`/`nodes=` (63/60.7s,
+  125/120.4s, 188/180.3s), so P5 is genuinely fixed rather than fixed in one place.
+  `[Now]` {cpu: none, dev: none}
+- **Part 2's head definitions are stale and must be re-specified before Pass 2.**
+  The plan was written against `deep=12,tt,ord,nodes=200k` and `time=150ms`. Round 4
+  migrated both tracks to `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3` and
+  `ab(deep=12,tt,ord,retain,time=25ms)@3`. Every "train under the serving budget"
+  instruction in R1 through R8 names the old head. Separately, `train.exe tdleaf`
+  can set `--depth` and `--node-budget` but has no `rem=`/`retain` equivalent, so
+  the generator **cannot reproduce the node track's serving head at all**. Decide
+  whether that matters before spending Pass 3 compute on a mismatch.
+  `[Now]` {cpu: none, dev: medium}
 
 - **Re-run every agent-production regime under matched training compute, on both
   compute tracks.** Full plan: `plans/budget-parity-plan-1-steady-meridian.md`
-  (written 2026-09-01, nothing executed yet). 8 regimes in scope, 3 deferred.
+  (written 2026-09-01). Part 1 landed 2026-09-01, Part 2 Pass 1 opened 2026-09-09.
+  8 regimes in scope, none retrained yet, 3 deferred.
   Developer decisions recorded in the plan's "Decisions taken" section.
   **The finding that drives it: neither track currently constrains compute.**
   Measured over 623,774 rows of `ranking/matches.jsonl`, the node track runs at

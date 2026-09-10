@@ -1405,6 +1405,16 @@ TEST_CASE("trainTDLeaf - runs end to end and moves the weights") {
     c.reportEvery = 0;
     REQUIRE(trainTDLeaf(c) == 0);
 
+    // The PV walk must actually find entries. It reads the table the search just
+    // filled, and the search salts every key it stores with its own context, so a
+    // probe that forgets the salt matches nothing, the walk stops at its first
+    // step, and every "leaf" is the position one ply after the root. That regime
+    // is not TD-Leaf, and it fails silently: no error, no crash, weights still
+    // move. depth is 2 here, so anything above 1.0 means at least one PV step was
+    // recovered. Measured 1.0 exactly with the salt omitted (2026-08-27 to
+    // 2026-09-09), 5.62 of 12 at the real training head once fixed.
+    REQUIRE(g_tdLastMeanPV > 1.0);
+
     Model* out = loadModel(string(outBase) + ".txt");
     REQUIRE(out != nullptr);
     REQUIRE(out->featureVersion() == 2);

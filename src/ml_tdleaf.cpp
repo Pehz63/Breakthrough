@@ -96,7 +96,10 @@ static int walkPV(int side, int maxPlies, std::vector<PVStep>& steps) {
         if (nearWinCheck(s) != 0) break;            // decided: this IS the leaf
         PosKey pk = positionKey(s, false);
         int sc = 0, fromSq = -1, toSq = -1;
-        ttProbe((unsigned long long)pk.hash, 0, INT_MIN, INT_MAX, sc, fromSq, toSq);
+        // The search salts every key it stores with its own context, so probing
+        // the bare position hash matches nothing and the walk stops at depth 1.
+        ttProbe((unsigned long long)pk.hash ^ ttSearchContext(),
+                0, INT_MIN, INT_MAX, sc, fromSq, toSq);
         if (fromSq < 0 || toSq < 0) break;          // no stored move here
         int sx = fromSq % SIZE, sy = fromSq / SIZE;
         int dx = toSq % SIZE,   dy = toSq / SIZE;
@@ -171,6 +174,8 @@ static int maxLadderRung(const std::vector<int>& v) {
 // ============================================================
 // REGIME
 // ============================================================
+double g_tdLastMeanPV = 0.0;
+
 int trainTDLeaf(const TDLeafConfig& cfg) {
     srand(cfg.seed);
     PRNT = 0;
@@ -489,8 +494,9 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     cout << "\n";
     cout << "  trained positions: " << trainedPositions
          << "   skipped (decided leaf): " << skippedDecided << "\n";
+    g_tdLastMeanPV = pvCount ? (double)pvDepthSum / pvCount : 0.0;
     cout << "  mean PV depth reached: "
-         << (pvCount ? (double)pvDepthSum / pvCount : 0.0) << " of " << cfg.depth
+         << g_tdLastMeanPV << " of " << cfg.depth
          << "   truncated: " << pvTruncated << "/" << pvCount;
     if (pvCount) cout << " (" << (100.0 * pvTruncated / pvCount) << "%)";
     cout << "\n";

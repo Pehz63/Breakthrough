@@ -116,3 +116,12 @@ TDLeafConfig tdLeafDefaults();
 // came to claim the last rung's game count: slot169's header says games=4000
 // and it trained on 1,500 (plans/budget-parity-plan-1-steady-meridian.md, P5).
 int trainTDLeaf(const TDLeafConfig& cfg);
+
+// Mean PV depth the last trainTDLeaf run actually reached, the same number its
+// summary prints. Exposed so a test can assert the PV walk is finding entries at
+// all: this regime's whole premise is that the gradient is taken at the leaf of
+// the principal variation, so a walk that stops at its first step silently turns
+// TD-Leaf into TD on the root's successor, with no error and no crash. That is
+// what a bare (unsalted) transposition probe did between 2026-08-27 and
+// 2026-09-09. Set to 0.0 when a run captured no leaf.
+extern double g_tdLastMeanPV;

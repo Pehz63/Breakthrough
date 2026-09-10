@@ -206,6 +206,8 @@ static void setTTContext(int rootSide, int evaluator, const int* evalParams) {
     s_ttCtx = h;
 }
 
+uint64_t ttSearchContext() { return s_ttCtx; }
+
 static void resetSearchHeuristics() {
     for (int p = 0; p < MAXPLY; p++) { g_killerFrom[p][0]=g_killerFrom[p][1]=-1;
                                        g_killerTo[p][0]=g_killerTo[p][1]=-1; }

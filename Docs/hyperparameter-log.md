@@ -20,6 +20,14 @@ still open.
 
 ## `tdleaf` (`train.exe tdleaf`, `src/ml_tdleaf.cpp`)
 
+> **Every value in this table was measured on 2026-07-30, before the transposition
+> table gained its searcher-context salt (`06e4738`, 2026-08-27). Those runs are
+> unaffected: they predate the salt. Any tdleaf run made BETWEEN 2026-08-27 and
+> 2026-09-09 is not, because the PV walk probed the bare position hash, matched
+> nothing, and trained on the position one ply after the root instead of on a
+> depth-d leaf (mean PV depth 1.0 of 12, 100% truncated). No such run exists in
+> `models/sweep/`. Fixed 2026-09-09, guarded by `tests/test_ml.cpp`.**
+
 Source: `plans/tdleaf-results-1-amber-pangolin.md` (screening fit, 2026-07-29).
 
 | Hyperparameter | Values tried | Finding | Settled? |
