@@ -135,12 +135,21 @@ python -m http.server 8765 --bind 127.0.0.1 -d build\web
 ```
 
 Open `http://127.0.0.1:8765/?mode=watch&hints=1` to watch two presets play with
-arrows on. For a hands-off screenshot, headless Chrome with a throwaway profile
-works: `chrome --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader
---user-data-dir=<temp> --disk-cache-size=1 --window-size=1280,860
---virtual-time-budget=8000 --screenshot=<png> <url>`. Use a fresh profile (or a
-cache-busting query) after every rebuild: a reused profile can serve the previous
-`index.wasm` from its cache.
+arrows on. For hands-off screenshots, `.\tools\web_shot.ps1` serves `build\web`
+itself, loads each page in its own hidden headless Chrome, waits 20 s of real
+time, and saves `build\web_shots\<name>.png`. Read them: Watch should show a
+game well under way, Hard its first move and Black's arrows.
+
+Two headless Chrome shortcuts give misleading pictures of this page:
+- `--virtual-time-budget` freezes the clock inside each task, so the page's
+  clock-paced agent moves and the analysis time limits stall or run away. A
+  Watch page can sit on move 1 however large the budget.
+- `--timeout=N --screenshot` does not wait N ms. The shot is taken about a
+  second after load.
+
+`web_shot.ps1` uses a fresh profile per run. When driving Chrome by hand, use a
+fresh profile (or a cache-busting query) after every rebuild: a reused profile
+can serve the previous `index.wasm` from its cache.
 
 Board orientation truth (useful when checking click-to-move and coordinates): on
 `board1.txt`, **Black is at the top** (rows 6-7) and **White is at the bottom**

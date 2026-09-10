@@ -84,6 +84,7 @@ for the full verification playbook, including what to look for visually.
 | `gui/presets.txt` | Curated GUI agents, including the web page's Easy / Medium / Hard |
 | `gui/raygui.h` | Vendored single-header raygui widget library |
 | `gui/shell.html` | Emscripten HTML shell for the web build |
+| `gui/web_models/` | Byte-exact copies of the preset agents' model files, bundled into the web build |
 
 ## Running
 
@@ -143,8 +144,11 @@ pairs two agents with randomized openings, so every game differs. Hints (arrows
 and the eval bar) start off. URL options open a matchup directly:
 `?mode=white|black|watch&level=easy|medium|hard&hints=0|1`.
 
-`build\web\` is a static site: any static host can serve it. See
-[INSTALL.md](INSTALL.md) for setup.
+`build\web\` is a static site: any static host can serve it. On Linux or macOS,
+`bash build_web.sh` makes the same build. The GitHub Actions workflow
+`.github/workflows/web.yml` builds the page on every push to `main` that touches
+its inputs and publishes it to GitHub Pages. See [INSTALL.md](INSTALL.md) for
+setup and the one-time Pages setting.
 
 ### Using the GUI
 

@@ -11,7 +11,11 @@ The GUI is an additive layer over the engine. Native: `.\build_gui.bat` ->
 `INSTALL.md`). Web: `.\build_web.bat` -> `build\web\index.html` (+ `.js`,
 `.wasm`, `.data`), `.\build_web.bat dev` for a debug build. It needs the emsdk
 and a raylib-for-web `libraylib.a` (`INSTALL.md` section 3), and activates
-`third_party\emsdk` itself when `emcc` is not on PATH.
+`third_party\emsdk` itself when `emcc` is not on PATH. `build_web.sh` is the
+same build for Linux and macOS (it honors an `OUTDIR` environment variable), and
+`.github/workflows/web.yml` runs it on an Ubuntu runner and deploys the page to
+GitHub Pages (`INSTALL.md` section 3d). Keep the two scripts' source lists and
+flags identical.
 
 Both builds link the same set: `gui\main_gui.cpp gui\gui_engine.cpp
 gui\gui_library.cpp`, the engine link set, and `src\agents.cpp
@@ -31,8 +35,18 @@ Web build specifics (`build_web.bat`):
   (`tools\web_preloads.ps1` prints the `--preload-file` list, mirroring
   `rankSlotFile`). A preset's id carries its model file's hash, so the file must
   be bundled byte-identical at the same relative path.
+- The bundled model files come from `gui/web_models/`, not `models/`. The
+  canonical id's hash (`rankFileHash8`) is over the file's bytes as they sit in
+  the Windows working tree, which are CRLF, while git stores them LF, so a Linux
+  checkout of `models/` hashes differently. Some preset slots (10, 76) are not
+  tracked in git at all. `gui/web_models/.gitattributes` (`* -text`) keeps the
+  copies byte-exact on every platform. `web_preloads.ps1` checks every copy's
+  hash against its preset id, and `-Sync` refreshes the copies from `models/`.
 - Model files are CRLF in a Windows checkout and the web build's text streams
   do not strip `\r`, which is why `loadModel` (`src/ml_model.cpp`) strips it.
+- Timers use `GetTime()` differences, never a sum of `GetFrameTime()`. On the
+  web, raylib's `GetFrameTime()` covers only the frame's own work, not the
+  browser's wait between frames, so a summed delay runs many times too long.
 
 MSVC and raylib gotchas: the GUI is built with `/MD` (the prebuilt raylib links
 the dynamic CRT). `raylib.h` defines `WHITE`/`BLACK` as `Color` macros that
@@ -91,6 +105,7 @@ copy of the position:
 | `presets.txt` | Curated agents: `role | name | canonical id | description`. Roles `easy` / `medium` / `hard` are simple mode's difficulties and `watch_white` / `watch_black` its Watch matchup. Every learned model a preset names is bundled into the web build. |
 | `raygui.h` | Vendored single-header raygui 4.0 (`RAYGUI_IMPLEMENTATION` in `main_gui.cpp`). |
 | `shell.html` | Emscripten page shell: a full-window canvas (the app is resizable, so raylib sizes the canvas to the browser window) and a loading line. |
+| `web_models/` | Byte-exact copies of the preset model files the web build bundles, at their `models/...` relative paths. `.gitattributes` turns off line-ending conversion. Refresh with `tools\web_preloads.ps1 -Sync`. |
 
 Local, gitignored files the native GUI writes next to the exe:
 `gui_settings.txt`, `gui_favorites.txt`, `gui_agent_history.txt`.
@@ -110,6 +125,7 @@ full-screen grab) refuses to run while a Steam or Epic game is running. Open the
 PNGs and read them: an exit code of 0 does not catch invisible text or overlap.
 See `TESTING.md` for the visual-inspection lessons and raygui gotchas.
 
-Web: `.\build_web.bat`, then `python -m http.server -d build\web` and open
-`http://127.0.0.1:8000/?mode=watch&hints=1` (headless Chrome with
-`--screenshot` and `--virtual-time-budget` works for a hands-off check).
+Web: `.\build_web.bat`, then `.\tools\web_shot.ps1` (real-time screenshots of
+Watch, Hard, and Easy in hidden headless Chrome, into `build\web_shots\`). For a
+live look, `python -m http.server -d build\web` and open
+`http://127.0.0.1:8000/?mode=watch&hints=1`.

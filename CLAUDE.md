@@ -241,6 +241,7 @@ workflows, study scripts, subcommand flags, and artifact directories:
 .\build_gui.bat          # native (needs third_party/ raylib, see INSTALL.md)
 .\build_web.bat          # web via emsdk -> build\web\;  "dev" arg for a debug build
 .\tools\gui_shot.ps1 -All   # hidden-window screenshots of every GUI scenario
+.\tools\web_shot.ps1        # real-time headless screenshots of the built web page
 ```
 Build gotchas (`/MD`, `WHITE`/`BLACK` macro collision, `em++` flags), the GUI's
 engine-thread contract, and internals: `gui/CLAUDE.md`.
@@ -273,6 +274,8 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `minimax_params.txt` | Saved MiniMax weights, auto-loaded when a MiniMax player is selected |
 | `.gitignore` | Excludes exes, `build/`, `third_party/`, and generated ML artifacts |
 | `build_gui.bat` / `build_web.bat` | GUI builds: native raylib exe / Emscripten WASM to `build\web\` |
+| `build_web.sh` | The web build for Linux and macOS, run by the Pages workflow |
+| `.github/workflows/web.yml` | Builds the web page on an Ubuntu runner and deploys it to GitHub Pages (setup: `INSTALL.md` section 3d) |
 | `build_tests.bat` / `build_train.bat` / `build_rank.bat` | MSVC batch builds for `tests.exe` / `train.exe` / `rank.exe` |
 | `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
 | `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md`. The match store is PARTS + a live tail listed in `ranking/matches.index.txt`, and the rating outputs are gitignored (regenerate with `rank.exe rate`) |
@@ -318,6 +321,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `presets.txt` | Curated GUI agents: the web page's Easy/Medium/Hard and Watch matchup |
 | `raygui.h` | Vendored single-header raygui v4 |
 | `shell.html` | Emscripten HTML shell for the web build (full-window canvas) |
+| `web_models/` | Byte-exact copies of the preset model files the web build bundles (no line-ending conversion, hash-checked by `tools/web_preloads.ps1`) |
 
 ### `tests/` (details: `tests/CLAUDE.md`)
 | File | Purpose |

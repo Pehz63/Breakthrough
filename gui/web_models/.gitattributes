@@ -1,0 +1,5 @@
+# Byte-exact copies of the web page's preset model files (tools/web_preloads.ps1).
+# A learned agent's id carries a hash of its model file's bytes, so git must not
+# convert line endings here: every checkout, Windows or Linux, gets the bytes
+# that were hashed.
+* -text

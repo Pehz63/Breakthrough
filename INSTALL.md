@@ -119,15 +119,34 @@ Copy-Item third_party\raylib-src\src\raylib.h, third_party\raylib-src\src\raymat
 python -m http.server -d build\web   # then open http://localhost:8000
 ```
 
+On Linux or macOS, `bash build_web.sh` makes the same build (it needs `pwsh`
+for the model list).
+
 The build bundles `boards/`, `gui/presets.txt`, and the model file of every
-learned agent `gui/presets.txt` names, so those files must exist locally.
+learned agent `gui/presets.txt` names. The model files come from
+`gui/web_models/`, byte-exact copies that git stores without line-ending
+conversion, because each preset's id carries a hash of its model file's bytes.
+After changing a preset, refresh the copies and commit them:
+
+```powershell
+.\tools\web_preloads.ps1 -Sync      # copy from models\, then check every hash
+```
 
 ### 3d. Hosting
 
-`build\web\` is a self-contained static site (four files). Upload it to any
-static host. The output does not go to a `docs/` folder because this repo
-already has a tracked `Docs/` folder, and Windows treats the two names as the
-same folder.
+`build\web\` is a self-contained static site (four files). Any static host can
+serve it. The output does not go to a `docs/` folder because this repo already
+has a tracked `Docs/` folder, and Windows treats the two names as the same
+folder.
+
+The repo publishes it with GitHub Pages through `.github/workflows/web.yml`. The
+workflow installs the emsdk and raylib 5.5 on an Ubuntu runner, runs
+`build_web.sh`, and deploys `build/web`. It runs on every push to `main` that
+touches `gui/`, `src/`, `boards/`, or the build files, and from the Actions tab
+on demand. One-time setup on GitHub: **Settings -> Pages -> Build and
+deployment -> Source: GitHub Actions**. The page is then served at
+`https://<user>.github.io/<repo>/`. On a free GitHub plan, Pages requires a
+public repository.
 
 ---
 

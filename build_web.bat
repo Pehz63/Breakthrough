@@ -12,7 +12,9 @@ REM serve that folder. Local test:  python -m http.server -d build\web
 REM
 REM The page is the GUI's simple mode: play White or Black against the Easy /
 REM Medium / Hard presets of gui\presets.txt, or watch two presets play. The
-REM preset agents' model files are bundled (tools\web_preloads.ps1 lists them).
+REM preset agents' model files are bundled from gui\web_models\
+REM (tools\web_preloads.ps1 lists them and checks their hashes).
+REM build_web.sh is the same build for Linux and macOS.
 REM
 REM Pass "dev" as the first argument for a debug build (assertions + source map).
 setlocal

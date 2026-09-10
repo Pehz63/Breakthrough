@@ -2,9 +2,10 @@
 #
 # The GUI's "Presets" library tab lists every line. The roles easy / medium /
 # hard pick the simple mode's difficulties (the web build's only mode), and
-# watch_white / watch_black pick its "Watch" matchup. build_web.bat bundles the
-# model file of every learned(model=N,...) agent named here, so a preset's model
-# must exist under models/.
+# watch_white / watch_black pick its "Watch" matchup. The web build bundles the
+# model file of every learned(model=N,...) agent named here from the byte-exact
+# copies in gui/web_models/. After changing a line, run
+# tools\web_preloads.ps1 -Sync and commit the copies.
 #
 # Ids are canonical: an id with a stale module version fails to load and the GUI
 # reports it. Elo figures quoted below are from ranking/standings.tsv's fit of

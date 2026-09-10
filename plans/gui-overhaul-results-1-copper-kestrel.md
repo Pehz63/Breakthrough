@@ -25,6 +25,7 @@ Companion to `plans/gui-overhaul-plan-1-copper-kestrel.md`. Session of
 .\tools\smoke_test_gui.ps1 -Build                         # hidden, build\gui_smoke.png
 .\tools\gui_shot.ps1 -All                                 # hidden, build\gui_shots\*.png
 .\build_web.bat; python -m http.server -d build\web       # http://localhost:8000/?mode=black&level=hard
+.\tools\web_shot.ps1                                      # hidden, real time, build\web_shots\*.png
 ```
 
 What to expect: White is Human and Black the Medium preset on first launch. With
@@ -64,10 +65,23 @@ at 22/23 root moves after 4.7 s and 8.2M nodes. One run, not a benchmark.
 
 ### Web
 
-Headless Chrome (SwiftShader, real time): `?mode=black&level=hard&hints=1`
-showed Hard's first move `f1e` (depth 6.0, 75k nodes) and Black's analysis
-arrows. `?mode=watch&hints=0` (virtual time) showed the opener move `h1g`. Sizes:
-`index.wasm` 809 KB, `index.js` 178 KB, `index.data` 13 KB.
+Headless Chrome (SwiftShader), screenshots taken through the DevTools protocol
+after 20 s of wall-clock time (`tools/web_shot.ps1`), one browser per page:
+
+| Page | What the screenshot shows |
+|---|---|
+| `?mode=black&level=hard&hints=1` | Hard's first move `f1e` (depth 6.0, 75k nodes), then Black's three arrows (+382 / +400 / +413) and the reply arrow |
+| `?mode=black&level=easy&hints=1` | Easy's first move `c1d` (depth 6.0, 65k nodes) and Black's arrows |
+| `?mode=watch&hints=0` | 18 moves each and the game still going. Watch Black (model 76) plays past its 8 opener moves |
+| `?mode=watch&hints=1` | A finished game ("Black wins" in one run, "White wins" in another) with the eval bar |
+
+Sizes: `index.wasm` 809 KB, `index.js` 178 KB, `index.data` 13 KB.
+
+Check that the instrument measures the page: the screenshot's file time is the
+capture time. An earlier `--timeout=30000 --screenshot` run saved all its shots
+within about one second of launch, and a `--virtual-time-budget` run of Watch
+sat on move 1, so neither shows what a user sees after waiting. Both are
+recorded as gotchas in `TESTING.md`.
 
 ## Implementation notes and differences from the plan
 
@@ -95,6 +109,50 @@ arrows. `?mode=watch&hints=0` (virtual time) showed the opener move `h1g`. Sizes
 - The eval bar maps learned scores linearly over +/-900 (the model files'
   `out_scale`) and heuristic scores through tanh at 2.5 chips.
 - Dropped from the plan: nothing. Deferred: an agent-vs-agent ladder runner.
+- **Agent-vs-agent pacing on the web ran many times too slow.** The delay
+  before an agent move summed `GetFrameTime()`, which on the web covers only the
+  frame's own work, not the browser's wait between frames. Under headless
+  Chrome's virtual time the sum never reached the delay, so Watch stopped after
+  White's first move (the first frame's time includes page startup). The timer
+  is now a `GetTime()` difference. Native pacing is unchanged: the `aivai`
+  capture played 72 moves in 900 frames, longest frame 1.0 ms, against 67 moves
+  before the change (move counts vary with the random openers).
+
+## Web hosting: GitHub Pages
+
+The developer chose GitHub Pages through GitHub Actions (asked at the end of the
+session, alongside keeping the difficulty, analysis, and style defaults as
+built).
+
+| Area | Change |
+|---|---|
+| `.github/workflows/web.yml` (new) | On pushes to `main` touching `gui/`, `src/`, `boards/`, or the build files, and on demand: install emsdk 6.0.9 and raylib 5.5 on `ubuntu-latest`, run `build_web.sh`, upload `build/web`, deploy with `actions/deploy-pages`. |
+| `build_web.sh` (new) | The `build_web.bat` build for Linux and macOS, same sources and flags, `OUTDIR` overridable. |
+| `gui/web_models/` (new) | Byte-exact copies of the five bundled model files, `* -text` in its `.gitattributes`. |
+| `tools/web_preloads.ps1` | Reads the copies, mounts them at the `rankSlotFile` paths, checks every copy's hash against its preset id, `-Sync` refreshes them from `models/`. |
+| `tools/web_shot.ps1` (new) | Real-time web screenshots through the DevTools protocol. |
+| `gui/main_gui.cpp` | The pacing fix above. |
+
+Why a snapshot folder: two things stop a Linux runner from bundling `models/`.
+Slots 10 and 76 (Easy, Medium, Watch) are not tracked in git. And a canonical
+id's hash is over the file's working-tree bytes, which are CRLF on this machine
+(`core.autocrlf=true`) while git stores LF, so a Linux checkout hashes
+differently. Measured with the engine's hash: `slot169.txt` is `4975683c` as
+CRLF (the id's hash) and `0916f6d4` as LF, and the other two differ the same way.
+`web_preloads.ps1` rejected an LF copy of slot 169 with exactly that `0916f6d4`,
+and passed the CRLF copies. `git ls-files --eol` shows the copies stored
+`i/crlf` with `attr/-text`.
+
+Checks run: `build_web.bat` and `build_web.sh` (under Git Bash with the emsdk on
+PATH, `OUTDIR=build/web_sh`) both built, with identical `index.wasm` and
+`index.data` sizes. The screenshots in the Web table above are from this build.
+The workflow itself has not run on GitHub: that needs a push of `main` and the
+Pages source set to "GitHub Actions" (`INSTALL.md` section 3d).
+
+Found along the way, left for the owners of the ranking code (both in
+`todo.md`): roster-cited slots 10 and 76 are untracked despite `.gitignore`'s
+rule that anything the roster cites lives in git, and the working-tree-bytes
+hash makes every learned id platform-dependent.
 
 ## Gotchas for later sessions
 
@@ -105,12 +163,24 @@ arrows. `?mode=watch&hints=0` (virtual time) showed the opener move `h1g`. Sizes
   read before the process exits.
 - A preset whose model file changes on disk no longer matches its id's hash and
   fails to load with the parser's error. Re-pin the preset id after a retrain
-  of that slot.
+  of that slot, then run `tools\web_preloads.ps1 -Sync`.
+- The engine's FNV-1a starts from `1469598103934665603`, not the standard
+  offset basis `14695981039346656037` (one digit shorter). Any tool that
+  recomputes an id hash must use the engine's value.
+- PowerShell 5.1 `Start-Process -ArgumentList` joins arguments with spaces and
+  does not quote them. The project path contains a space, so path arguments
+  need explicit quotes.
+- In PowerShell 5.1, a hex literal like `0xffffffff` is an `Int32` (-1). Use
+  decimal `[long]` constants for 32-bit masks.
+- raylib's `GetFrameTime()` on the web is the frame's work time, not the
+  interval between frames. Time anything with `GetTime()` differences.
 
 ## Commit
 
-`Overhaul the GUI: agent library, analysis arrows, a non-blocking engine thread, and a web page`
-(see `git log` for the full message).
+- `Overhaul the GUI: agent library, analysis arrows, a non-blocking engine thread, and a web page`
+- `Publish the web page with GitHub Pages, and fix agent pacing on the web`
+
+See `git log` for the full messages.
 
 ## Future Work
 
@@ -127,6 +197,14 @@ arrows. `?mode=watch&hints=0` (virtual time) showed the opener move `h1g`. Sizes
   entries mid-game, which could change an agent's move versus `rank.exe`'s
   games. A test that plays one game with analysis on and one with it off and
   compares move lists would show whether this happens at the default TT size.
+- **The Pages workflow on GitHub.** It was checked piecewise here (the Linux
+  script built under Git Bash, the snapshot hashes pass, the page works from
+  the snapshot), never as a whole on an Ubuntu runner. The first run after the
+  push settles whether the emsdk install, the raylib build, and the deploy
+  steps work as written.
+- **Web pacing in a real browser.** The pacing fix was checked in headless
+  Chrome at real time. A look at Watch at each speed in a desktop browser would
+  confirm the delays match the native app's.
 - **Preset strength for humans.** Easy / Medium / Hard were chosen from the
   pool's Elo, which measures agent vs agent. Whether Easy is beatable and Hard
   unbeatable for a person is untested.

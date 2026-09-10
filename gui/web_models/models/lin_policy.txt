@@ -1,0 +1,16 @@
+# Breakthrough ML model
+type=linear
+head=policy
+feature_version=1
+feature_count=9
+out_scale=1
+bias=-5.68366
+w0=4.02725
+w1=3.39173
+w2=4.29426
+w3=1.72221
+w4=0.920613
+w5=-2.30289
+w6=-0.981486
+w7=-2.75828
+w8=-2.73763

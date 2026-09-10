@@ -1873,5 +1873,19 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   after another today `[Later]` {cpu: minutes, dev: high}
 - GUI: a "rush" or pondering option for agents, where the agent searches during the human's
   turn (the analysis thread already has the machinery) `[Later]` {cpu: seconds, dev: medium}
-- Web page hosting: pick where `build\web\` is published (see the questions in
-  `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}
+- ~~Web page hosting: pick where `build\web\` is published (see the questions in
+  `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}~~
+  GitHub Pages through `.github/workflows/web.yml` (2026-09-10). The workflow has not run on
+  GitHub yet: it needs a push of `main` and the Pages source set to "GitHub Actions"
+  (`INSTALL.md` section 3d).
+- Model files cited by `ranking/roster.txt` but not tracked in git: `models/sweep/slot10.txt`
+  (`fead67b7`, the dil20 x node champion's core) and `models/sweep/slot76.txt` (`ef183148`, the
+  opener8 x node champion's core). `.gitignore` says anything the roster cites lives in git, and
+  slot 9 was lost this way before. Add `!models/sweep/slotN.txt` lines for every roster-cited slot
+  (the web page carries its own copies in `gui/web_models/`) `[Next]` {cpu: seconds, dev: low}
+- Canonical ids hash a model file's working-tree bytes (`rankFileHash8`), which are CRLF on a
+  Windows checkout with `core.autocrlf=true` while git stores LF. A Linux clone, or a Windows clone
+  with autocrlf off, hashes every model file differently, and every learned roster agent fails its
+  hash check there. Options: have `rankFileHash8` convert bare `\n` to `\r\n` before hashing,
+  which reproduces every existing id on any platform, or mark `models/**/*.txt` `-text` in
+  `.gitattributes` and renormalize the index to CRLF `[Later]` {cpu: seconds, dev: medium}

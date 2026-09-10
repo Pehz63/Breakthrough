@@ -1,0 +1,73 @@
+# Build the web page (the GUI's simple mode, see gui/CLAUDE.md) and publish it
+# to GitHub Pages. One-time setup: repository Settings -> Pages -> Source:
+# "GitHub Actions". Runs on every push to main that touches the page's inputs,
+# and on demand from the Actions tab.
+name: Web page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gui/**"
+      - "src/**"
+      - "boards/**"
+      - "build_web.sh"
+      - "tools/web_preloads.ps1"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  EMSDK_VERSION: "6.0.9"   # the version the page was first built and tested with
+  RAYLIB_VERSION: "5.5"    # matches the native build's raylib (INSTALL.md)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git third_party/emsdk
+          third_party/emsdk/emsdk install "$EMSDK_VERSION"
+          third_party/emsdk/emsdk activate "$EMSDK_VERSION"
+
+      - name: Build raylib for the web
+        run: |
+          source third_party/emsdk/emsdk_env.sh
+          git clone --depth 1 --branch "$RAYLIB_VERSION" https://github.com/raysan5/raylib.git third_party/raylib-src
+          cd third_party/raylib-src/src
+          emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c rglfw.c \
+            -Os -Wall -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2 -I.
+          emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o rglfw.o
+          mkdir -p ../../raylib-web/lib ../../raylib-web/include
+          cp libraylib.a ../../raylib-web/lib/
+          cp raylib.h raymath.h rlgl.h ../../raylib-web/include/
+
+      - name: Build the page
+        run: |
+          source third_party/emsdk/emsdk_env.sh
+          bash build_web.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

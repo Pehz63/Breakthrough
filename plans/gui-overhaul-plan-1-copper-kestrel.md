@@ -86,6 +86,13 @@ over every slot file. GUI settings in a key=value file.
   preset model files.
 - `tools/smoke_test_gui.ps1` defaults to hidden capture. New `tools/gui_shot.ps1`.
 
+### Hosting (decided by the developer at the end of the session)
+
+GitHub Pages through GitHub Actions: a workflow builds the page on an Ubuntu
+runner with a Linux twin of `build_web.bat` and deploys `build/web`. The preset
+model files the page bundles must reach the runner byte-identical to the files
+their ids hash.
+
 ## Verification
 
 - Hidden-capture screenshots of every scenario, read by eye.

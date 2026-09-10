@@ -166,7 +166,11 @@ static SideReadout g_readW, g_readB;
 
 // Pacing.
 static int    g_speedIndex = 2;          // 0=Step 1=0.25x 2=1x 3=4x 4=Instant
-static double g_aiTimer = 0.0;
+// When the current agent turn began waiting, by GetTime(). A wall clock, not a
+// sum of GetFrameTime(): on the web GetFrameTime() counts only the frame's own
+// work, not the browser's wait between frames, so a summed delay ran many times
+// too long (and never ended under headless Chrome's virtual time).
+static double g_aiWaitStart = 0.0;
 static bool   g_paused = false;
 static bool   g_stepRequested = false;
 static bool   g_delay2s = false;
@@ -513,7 +517,7 @@ static bool IsHumanSide(int side) { return side == White ? g_white.isHuman : g_b
 
 static void NextTurnState() {
     if (IsHumanSide(g_pos.side)) g_state = AppState::WaitingForHuman;
-    else { g_state = AppState::WaitingBeforeAI; g_aiTimer = 0.0; }
+    else { g_state = AppState::WaitingBeforeAI; g_aiWaitStart = GetTime(); }
 }
 
 static void StartGame() {
@@ -747,16 +751,16 @@ static void Update() {
     HandleBoardInput();
 
     if (g_state == AppState::WaitingBeforeAI) {
-        g_aiTimer += GetFrameTime();
+        double waited = GetTime() - g_aiWaitStart;
         Matchup mu = ClassifyMatchup();
         bool go = false;
         if (mu.aiVsAi) {
             bool stepMode = (g_speedIndex == 0);
             if (g_stepRequested) go = true;
-            else if (!g_paused && !stepMode && g_aiTimer >= SPEED_DELAY[g_speedIndex]) go = true;
+            else if (!g_paused && !stepMode && waited >= SPEED_DELAY[g_speedIndex]) go = true;
         } else {
             double need = (!mu.aiSlow && g_delay2s) ? 2.0 : 0.0;
-            if (g_aiTimer >= need) go = true;
+            if (waited >= need) go = true;
         }
         if (go) { g_stepRequested = false; LaunchAIMove(); }
     }
