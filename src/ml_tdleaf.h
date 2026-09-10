@@ -59,6 +59,11 @@ struct TDLeafConfig {
     int    games;                   // self-play games to run
     int    depth;                   // search depth of the self-play agent
     unsigned long long nodeBudget;  // per-move node cap (0 = off)
+    double timeBudgetMs;            // per-move wall-clock cap in ms (0 = off)
+    int    iterMinRemain;           // rem=N: decline a deepening iteration unless N%
+                                    // of the node budget is unspent (0 = off)
+    bool   retainBudget;            // bank a move's unspent budget into the same side's
+                                    // next move, so the cap is per GAME not per move
     double lambda;                  // eligibility decay in [0,1]
     double lr;                      // SGD step size (schedule start value if lrDecayGames > 0)
     double lrFloor;                 // lr decays to this by lrDecayGames games (default = lr, i.e. off)

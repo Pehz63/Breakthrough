@@ -370,6 +370,9 @@ int main(int argc, char** argv) {
         c.games       = getInt(argc, argv, "--games", c.games);
         c.depth       = getInt(argc, argv, "--depth", c.depth);
         c.nodeBudget  = (unsigned long long)getDbl(argc, argv, "--node-budget", (double)c.nodeBudget);
+        c.timeBudgetMs = getDbl(argc, argv, "--time-budget-ms", c.timeBudgetMs);
+        c.iterMinRemain = getInt(argc, argv, "--rem", c.iterMinRemain);
+        c.retainBudget  = hasFlag(argc, argv, "--retain") || c.retainBudget;
         c.lambda      = getDbl(argc, argv, "--lambda", c.lambda);
         c.lr          = getDbl(argc, argv, "--lr", c.lr);
         c.lrFloor     = getDbl(argc, argv, "--lr-floor", c.lr);   // default = lr (off)

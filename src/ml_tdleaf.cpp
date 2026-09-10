@@ -144,6 +144,9 @@ TDLeafConfig tdLeafDefaults() {
     // would buy nothing.
     c.depth       = 6;
     c.nodeBudget  = 200000;
+    c.timeBudgetMs   = 0.0;
+    c.iterMinRemain  = 0;
+    c.retainBudget   = false;
     c.lambda      = 0.7;
     c.lr          = 0.01;
     c.lrFloor     = 0.01;   // == lr: off unless lrDecayGames > 0
@@ -250,10 +253,19 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     AgentSpec agent = agentMakeSearch("tdleaf", explorerIdxTD("AlphaBeta"),
                                       learnedValueIndex(), cfg.depth, slot);
     agent.nodeBudget    = cfg.nodeBudget;
+    agent.timeBudgetMs  = cfg.timeBudgetMs;
     agent.useAlphaBeta  = true;
     agent.useTT         = true;      // REQUIRED: the PV walk reads this table
     agent.useMoveOrder  = true;
     agent.randomMoveProb = 0.0;      // exploration is handled explicitly below
+    // The serving heads carry `rem=` and `retain`, and both change WHERE the
+    // budget goes rather than how much of it there is: the gate declines an
+    // iteration that cannot finish, and the purse moves the saving onto a later
+    // move. A TD-Leaf target IS the value this search backs up, so a generator
+    // without them trains against a different search than the one being rated.
+    // Same argument as the depth/nodeBudget defaults above, one level finer.
+    agent.iterMinRemain = cfg.iterMinRemain;
+    agent.retainBudget  = cfg.retainBudget;
 
     // Provenance is split into the RECIPE (fixed by the command line) and the
     // SPEND (only knowable once a save point is reached). The recipe is built
@@ -266,6 +278,11 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
             prov << "->" << cfg.lrFloor << "/" << cfg.lrDecayGames << "g";
         prov << ",l2=" << cfg.l2 << ",d" << cfg.depth;
         if (cfg.nodeBudget) prov << ",nb" << cfg.nodeBudget;
+        if (cfg.timeBudgetMs > 0.0) prov << ",tb" << cfg.timeBudgetMs << "ms";
+        // Emitted only when set, so an existing recipe string is unchanged and a
+        // checkpoint trained without the gate keeps the provenance it always had.
+        if (cfg.iterMinRemain > 0) prov << ",rem=" << cfg.iterMinRemain;
+        if (cfg.retainBudget)      prov << ",retain";
         prov << ",batch=" << cfg.batchGames
              << ",open=" << cfg.openPlies << ",explore=" << cfg.explore;
         if (cfg.exploreDecayGames > 0)
@@ -335,6 +352,10 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         // games preceded it (the cross-game TT pollution defect fixed elsewhere in
         // this project). Every game starts from a clean table.
         ttClear();
+        // Same reason as ttClear, one purse further out: a retained budget is
+        // cross-game state, so without this a game's play would depend on which
+        // games preceded it.
+        retainResetCarry();
         reloadBoard(cfg.boardFile);
 
         effLr = tdLeafScheduledValue(cfg.lr, cfg.lrFloor, cfg.lrDecayGames, g);
