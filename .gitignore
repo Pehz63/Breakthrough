@@ -58,9 +58,11 @@ compile_commands.json
 *.bak
 *.swp
 
-# GUI-local state: the agent editor's validated id history (see gui/CLAUDE.md).
-# Per-machine MRU state, not a project artifact -- never committed.
+# GUI-local state: the agent history, saved favorites, and settings (see
+# gui/CLAUDE.md). Per-machine state, not a project artifact -- never committed.
 gui_agent_history.txt
+gui_favorites.txt
+gui_settings.txt
 
 # vcpkg
 vcpkg_installed/

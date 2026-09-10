@@ -71,10 +71,13 @@ After any `gui/` change:
 .\tools\smoke_test_gui.ps1 -Build
 ```
 
-This rebuilds `breakthrough_gui.exe`, launches it, captures a full-screen
-screenshot to `build\gui_smoke.png`, and closes it. **Exit code 0** means it built
-and stayed alive, non-zero means the build failed or it crashed on startup. Add
-`-KeepOpen` to interact with the window by hand.
+This rebuilds `breakthrough_gui.exe`, runs it in its `--capture` mode for 180
+frames, and saves the last frame to `build\gui_smoke.png`. The window is created
+hidden: nothing appears on screen and nothing takes focus, so it is safe to run
+while the developer is playing a full-screen game. **Exit code 0** means it built,
+ran, and exited cleanly. Non-zero means the build failed, it crashed, or it hung.
+`-Visible` restores the old behavior (a real window and a full-screen grab), and
+refuses to run while a Steam or Epic game is running.
 
 This proves the GUI *runs*. It does not prove it *looks right*.
 
@@ -84,8 +87,13 @@ Exit code 0 hides visual bugs that only a human (or a look at the image) catches
 wrong colors, invisible glyphs, bad layout, overlapping widgets. Real examples this
 project hit, none of which changed the exit code:
 
-- A custom speed glyph drawn in a light color on raygui's light button face, so it
-  was invisible. Fix: draw custom glyphs in a **dark** color for contrast.
+- A custom speed glyph drawn in the same shade as the button face, so it was
+  invisible. Fix: draw custom glyphs in a color that contrasts with the current
+  raygui style (light, since `ApplyDarkStyle` makes button faces dark).
+- Text drawn in the app's light label color inside a raygui scroll panel or list
+  whose background was raygui's default light gray, so move-log lines and editor
+  labels were unreadable. Fix: one raygui palette for everything
+  (`ApplyDarkStyle`), rather than mixing app-drawn and raygui-drawn colors.
 - Piece-count badges placed on the wrong side of the board, and a black circle that
   blended into a dark pill background.
 - Speed buttons showing the wrong icon (a single left arrow instead of the intended
@@ -94,35 +102,45 @@ project hit, none of which changed the exit code:
 So: after the smoke test passes, **open `build\gui_smoke.png`** and confirm the
 board, pieces, and controls actually render as intended.
 
-### Targeted / zoomed capture of a single widget
+### Scenario screenshots (modals, tabs, matchup-gated UI)
 
-`gui_smoke.png` is a full-screen grab. To inspect one widget closely, use the
-committed helper:
+Many controls only appear in a specific state: a modal window, a panel tab, the
+agent-vs-agent pacing row, a finished game. `tools\gui_shot.ps1` reaches them
+through the GUI's own `--scenario` and `--moves` flags, with no temporary code
+edits:
 
 ```powershell
-.\tools\gui_capture.ps1 -Out build\widget.png
+.\tools\gui_shot.ps1 -All                                  # every scenario -> build\gui_shots\*.png
+.\tools\gui_shot.ps1 -Scenario editor                      # one scenario
+.\tools\gui_shot.ps1 -Scenario "view,red,flip" -Moves "c1c,f6f"
 ```
 
-It captures just the client area of the GUI window. To read small glyphs or text,
-open the PNG and zoom with **nearest-neighbor** (no smoothing) so it stays crisp.
+Scenarios: `library`, `standings`, `presets`, `editor`, `models`, `analysis`,
+`view`, `simple`, `aivai` (two presets at 4x), `red` (Red / Blue pieces), `flip`,
+`nopanel`, `hard` (Black = the Hard preset). `--moves` plays moves in engine
+notation first (`c1c` = c1 to c2). Capture mode starts from defaults and never
+reads or writes `gui_settings.txt`, favorites, or history. To read small glyphs,
+zoom the PNG with **nearest-neighbor** (no smoothing).
 
-Why the helper is non-trivial: `FindWindow` by title returns 0 for raylib windows.
-The helper instead enumerates top-level windows by process id and matches the
-window **class `GLFW30`**, moves the window to a known size, then crops the
-**client** rectangle. Keep captures under git-ignored `build\` so they never
-clutter commits.
+`tools\gui_capture.ps1` (client-area grab of a real, visible window, matched by
+the window class `GLFW30` because `FindWindow` by title returns 0 for raylib)
+still works for interactive sessions, but it shows a window, so do not use it
+while the developer may be in a game.
 
-### Verifying conditional / matchup-gated UI
+### Web build check
 
-Some controls only appear for a specific setup. For example, the AI-vs-AI speed and
-transport row is gated by `ClassifyMatchup` in `main_gui.cpp`, so a default Human
-vs MiniMax launch never shows it. To screenshot it:
+```powershell
+.\build_web.bat
+python -m http.server 8765 --bind 127.0.0.1 -d build\web
+```
 
-1. Temporarily set both player defaults to the needed types in `main()` (e.g. both
-   `MiniMax` for the AI-vs-AI controls).
-2. Build, run `gui_capture.ps1`, and inspect.
-3. **Revert the temporary edit before finishing.** Do not leave the forced defaults
-   in a commit.
+Open `http://127.0.0.1:8765/?mode=watch&hints=1` to watch two presets play with
+arrows on. For a hands-off screenshot, headless Chrome with a throwaway profile
+works: `chrome --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader
+--user-data-dir=<temp> --disk-cache-size=1 --window-size=1280,860
+--virtual-time-budget=8000 --screenshot=<png> <url>`. Use a fresh profile (or a
+cache-busting query) after every rebuild: a reused profile can serve the previous
+`index.wasm` from its cache.
 
 Board orientation truth (useful when checking click-to-move and coordinates): on
 `board1.txt`, **Black is at the top** (rows 6-7) and **White is at the bottom**
@@ -137,7 +155,8 @@ with `LNK1104`. Kill it first:
 Get-Process breakthrough_gui -EA 0 | Stop-Process -Force
 ```
 
-Both `tools\smoke_test_gui.ps1` and `tools\gui_capture.ps1` already do this at startup.
+`tools\smoke_test_gui.ps1 -Build` and `tools\gui_capture.ps1` already do this at
+startup.
 
 ---
 
@@ -153,8 +172,8 @@ Both `tools\smoke_test_gui.ps1` and `tools\gui_capture.ps1` already do this at s
 - **raygui icons** embed in widget text as `#NNN#` (e.g. `#131#` play, `#132#`
   pause, `#134#` step, `#211#` restart). There is **no** double-arrow rewind /
   fast-forward icon, so the slow-motion (`|>`) and fast-forward (`>>`) speed glyphs
-  are custom-drawn by `DrawSpeedGlyph`. Custom glyphs need a dark fill to be
-  visible on the light button face (see above).
+  are custom-drawn by `DrawSpeedGlyph`, in a color that contrasts with the button
+  face (see above).
 - **`GuiToggleGroup`'s `bounds` is the size of ONE item, not the whole group.**
   Each subsequent item is placed at `bounds.x += bounds.width + GROUP_PADDING`
   (see raygui.h's implementation), so passing the full row/column width as
@@ -171,7 +190,14 @@ Both `tools\smoke_test_gui.ps1` and `tools\gui_capture.ps1` already do this at s
   above, this is a type name, so `#undef` cannot fix it: including any header
   that pulls in `ml_model.h` (e.g. `ml_eval.h`, for its `ML_SLOTS` constant)
   into `main_gui.cpp` fails with `C2011: 'Model': 'struct' type redefinition`.
-  Work around it by not including that header from `main_gui.cpp`; duplicate
-  just the small constant you need locally with a comment pointing at the
-  original (see `GUI_MODEL_SLOTS` in `main_gui.cpp`, mirroring `ml_eval.h`'s
-  `ML_SLOTS`) rather than pulling in the whole ML model hierarchy.
+  The GUI works around it by keeping every model-slot operation in
+  `gui/gui_engine.cpp`, which includes no raylib header, so `main_gui.cpp`
+  never needs `ml_eval.h`.
+- **An open `GuiDropdownBox` list must draw last**, over every control below it,
+  and those controls must ignore the click that lands on the list. `main_gui.cpp`
+  queues dropdowns with `DeferDropdown` and draws them in `FlushDropdowns` after
+  the rest of the panel or modal, locking the other controls while one is open.
+- **`MeasureText` is linear in raylib's glyph table per character**, so a list
+  that re-truncates thousands of rows every frame (the model picker) can drop the
+  frame rate to a crawl. Cache row strings and truncate with a binary search
+  (`FitText`).

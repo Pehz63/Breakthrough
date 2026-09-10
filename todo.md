@@ -8,15 +8,16 @@ Priority tags: `[Now]` = active focus, `[Next]` = queued up, `[Later]` = valuabl
 
 # 1v1 / GUI Track
 
-- Display whose turn it is in the main board area `[Next]` {cpu: seconds, dev: high}
-- Add a button or something that changes the white and black pieces to red and blue in the GUI `[Next]` {cpu: seconds, dev: high}
-- Best moves list or recommendation arrow `[Later]` {cpu: seconds, dev: high}
-- GUI: play against a named saved agent `[Next]` {cpu: seconds, dev: high}
+- ~~Display whose turn it is in the main board area~~ (top bar and the side-to-move badge, `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: high}
+- ~~Add a button or something that changes the white and black pieces to red and blue in the GUI~~ (View tab piece themes) `[Next]` {cpu: seconds, dev: high}
+- ~~Best moves list or recommendation arrow~~ (analysis arrows + the Analysis tab's line list) `[Later]` {cpu: seconds, dev: high}
+- ~~GUI: play against a named saved agent~~ (agent library: favorites, presets, champions, standings) `[Next]` {cpu: seconds, dev: high}
 - GUI: agent-vs-agent ladder / leaderboard view `[Later]` {cpu: seconds, dev: high}
 ## Pondering / 1v1 Performance
-- Run the side-bar evaluator's minimax at iterative deepening with no node or depth limit
+- ~~Run the side-bar evaluator's minimax at iterative deepening with no node or depth limit
   while waiting for the human's turn. Only use this for the visual evaluation readout, not
-  the move actually played `[Now]` {cpu: seconds, dev: medium}
+  the move actually played~~ (the GUI's live analysis: iterative deepening on the engine
+  thread, depth and time limits user-set, drives the arrows and the eval bar) `[Now]` {cpu: seconds, dev: medium}
 - Pipeline eval: instantly show a precomputed eval, then precompute the response and
   resulting eval for every possible next move in the background while waiting for the
   opponent's turn (can be parallelized) `[Next]` {cpu: seconds, dev: medium}
@@ -1846,21 +1847,31 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - Python training (PyTorch) for MLP/NNUE/transformer, exporting C++-format weights `[Later]` {cpu: days, dev: high}
 - Optional Weights & Biases tracking (local metrics by default, W&B opt-in) `[Dream]` {cpu: minutes, dev: low}
 ## GUI
-- Add MLP models to the GUI (developer, 2026-07-21). `DrawPlayerConfig` generates its controls
+- ~~Add MLP models to the GUI (developer, 2026-07-21). `DrawPlayerConfig` generates its controls
   from the evaluator registry the same way the console's `getEvaluatorSettings` does (root
   `CLAUDE.md` Architecture Notes), so this is likely a model-slot-picker generalization rather
   than new UI machinery -- needs checking `gui/main_gui.cpp` for whatever currently limits
-  LearnedValue selection to linear models specifically `[Now]` {cpu: seconds, dev: high}
+  LearnedValue selection to linear models specifically~~ (the model picker lists every slot
+  file of any type, for agents and for the analysis evaluator) `[Now]` {cpu: seconds, dev: high}
 - Set a dist MLP (`dist_mlp_wide` once incrementalized, or any dist model meanwhile) as the
   GUI's default on-screen board-state evaluator `[Now]` {cpu: seconds, dev: high}
-- Give the on-screen board-state evaluator iterative deepening: currently (needs confirming
+- ~~Give the on-screen board-state evaluator iterative deepening: currently (needs confirming
   against `gui/main_gui.cpp`) it looks like a static immediate leaf eval; make it a live,
   progressively-deepening background search the way a chess GUI's analysis panel updates as it
-  thinks, rather than a single flat number `[Now]` {cpu: seconds, dev: high}
-- Sharding to evaluate multiple lines at once in the GUI without freezing it (a multi-PV-style
+  thinks, rather than a single flat number~~ (the analysis job in `gui/gui_engine.cpp`) `[Now]` {cpu: seconds, dev: high}
+- ~~Sharding to evaluate multiple lines at once in the GUI without freezing it (a multi-PV-style
   analysis view). Real architectural tension to resolve first: the engine's board/eval state is
   global (root `CLAUDE.md` Architecture Notes), which is exactly why every other parallel
   workload in this project (rank.exe, tournaments) shards across separate OS processes rather
   than threads. A GUI analysis panel showing several lines at once likely needs the same
   process-per-line approach with results streamed back to the GUI process, not an in-process
-  thread pool over the current global-state engine `[Now]` {cpu: minutes, dev: high}
+  thread pool over the current global-state engine~~ (solved in-process with ONE engine thread
+  that owns every engine global and scores each root move with its own search, so every line
+  has an exact score and the UI thread never touches engine state) `[Now]` {cpu: minutes, dev: high}
+- GUI analysis speed: split the root moves across several `rank.exe`-style worker processes so
+  multi-line analysis reaches deeper per second. One engine thread scores the root moves one
+  after another today `[Later]` {cpu: minutes, dev: high}
+- GUI: a "rush" or pondering option for agents, where the agent searches during the human's
+  turn (the analysis thread already has the machinery) `[Later]` {cpu: seconds, dev: medium}
+- Web page hosting: pick where `build\web\` is published (see the questions in
+  `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}

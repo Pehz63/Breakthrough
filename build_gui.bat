@@ -15,7 +15,7 @@ call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
 
 if not exist build mkdir build
 
-cl gui\main_gui.cpp ^
+cl gui\main_gui.cpp gui\gui_engine.cpp gui\gui_library.cpp ^
    src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
    src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
    src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\ml_cluster.cpp ^

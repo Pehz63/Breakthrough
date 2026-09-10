@@ -4,39 +4,40 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Breakthrough</title>
+    <!--
+      Emscripten shell for the web build. The canvas fills the browser window:
+      the app is built with FLAG_WINDOW_RESIZABLE, so raylib sizes the canvas to
+      window.innerWidth x innerHeight on load and on every resize. URL options
+      (read by main_gui.cpp): ?mode=white|black|watch  &level=easy|medium|hard
+      &hints=0|1
+    -->
     <style>
         html, body {
             margin: 0;
             padding: 0;
-            background: #15171d;
+            overflow: hidden;
+            background: #22242c;
             color: #d8d8e0;
             font-family: system-ui, Segoe UI, Arial, sans-serif;
-            text-align: center;
         }
-        h1 { font-weight: 600; margin: 16px 0 4px; }
-        p.sub { margin: 0 0 12px; color: #8a8a98; font-size: 14px; }
-        #canvas {
-            display: block;
-            margin: 0 auto;
-            border: 1px solid #2a2d36;
-            background: #22242c;
+        #canvas { display: block; border: 0; background: #22242c; }
+        #status {
+            position: fixed; left: 0; right: 0; top: 45%;
+            text-align: center; color: #8a8a98; font-size: 16px;
         }
-        #status { color: #8a8a98; font-size: 13px; margin: 10px; }
     </style>
 </head>
 <body>
-    <h1>Breakthrough</h1>
-    <p class="sub">8x8 abstract strategy with a C++ AI compiled to WebAssembly.</p>
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
-    <div id="status">Loading...</div>
+    <div id="status">Loading Breakthrough...</div>
     <script>
         var statusEl = document.getElementById('status');
         var Module = {
             canvas: (function () { return document.getElementById('canvas'); })(),
             print: function (text) { console.log(text); },
             printErr: function (text) { console.error(text); },
-            setStatus: function (text) { if (statusEl) statusEl.textContent = text; },
-            onRuntimeInitialized: function () { if (statusEl) statusEl.textContent = ''; }
+            setStatus: function (text) { if (statusEl && text) statusEl.textContent = text; },
+            onRuntimeInitialized: function () { if (statusEl) statusEl.style.display = 'none'; }
         };
     </script>
     {{{ SCRIPT }}}

@@ -46,10 +46,10 @@ Then run from the project root (required so puzzle board paths resolve correctly
 .\tests.exe
 ```
 
-For the GUI, the smoke test (`.\tools\smoke_test_gui.ps1 -Build`) and the targeted
-screenshot helper (`.\tools\gui_capture.ps1`) are the main tools. See
-[TESTING.md](TESTING.md) for the full verification playbook, including what to look
-for visually and how to capture matchup-gated controls.
+For the GUI, the smoke test (`.\tools\smoke_test_gui.ps1 -Build`) and the scenario
+screenshot helper (`.\tools\gui_shot.ps1 -All`) are the main tools. Both run the GUI
+in a hidden window and never show anything on screen. See [TESTING.md](TESTING.md)
+for the full verification playbook, including what to look for visually.
 
 ## Source files
 
@@ -78,7 +78,10 @@ for visually and how to capture matchup-gated controls.
 | `ranking.cpp` | Persistent agent Elo ranking: canonical agent-ID codec, roster file, append-only match store, incremental scheduler, anchored Bradley-Terry fit, reports |
 | `tools/train_main.cpp` | `train.exe` CLI front end |
 | `tools/rank_main.cpp` | `rank.exe` CLI front end |
-| `gui/main_gui.cpp` | raylib + raygui front end: window, per-frame state machine, board rendering, click-to-move, widget panel, move log |
+| `gui/main_gui.cpp` | raylib + raygui front end: board, analysis arrows and eval bar, panel tabs, agent library, agent editor, simple (web) mode |
+| `gui/gui_engine.cpp` | The GUI's engine service: agent moves and live analysis on their own thread, so the window never freezes |
+| `gui/gui_library.cpp` | The GUI's agent sources: standings, champions, presets, favorites, recent ids, and the model catalog |
+| `gui/presets.txt` | Curated GUI agents, including the web page's Easy / Medium / Hard |
 | `gui/raygui.h` | Vendored single-header raygui widget library |
 | `gui/shell.html` | Emscripten HTML shell for the web build |
 
@@ -123,100 +126,92 @@ rebuild; close it first, or kill it inline:
 Get-Process breakthrough_gui -EA 0 | Stop-Process -Force; .\build_gui.bat; if ($?) { .\breakthrough_gui.exe }
 ```
 
-### Web build (GitHub Pages)
+### Web build
 
 ```powershell
-.\build_web.bat            # release -> docs\index.html (+ .wasm/.js/.data)
-python -m http.server -d docs
+.\build_web.bat                      # release -> build\web\index.html (+ .js/.wasm/.data)
+python -m http.server -d build\web   # then open http://localhost:8000
 ```
 
-Commit `docs\` and enable GitHub Pages on the `/docs` folder to host it. See
-[INSTALL.md](INSTALL.md) for details.
+The web page is the GUI's **simple mode** only: play White or Black against
+**Easy**, **Medium**, or **Hard**, or **Watch** two agents play. The difficulties
+are presets from `gui/presets.txt` (all on the `ab(deep=6,tt,ord,nodes=200k)@3`
+head): Easy plays 20% of its moves at random, Medium randomizes its first 8 moves
+and then plays at full strength, and Hard is the openless node-track category
+champion from [ranking/CHAMPION.md](ranking/CHAMPION.md). Watch
+pairs two agents with randomized openings, so every game differs. Hints (arrows
+and the eval bar) start off. URL options open a matchup directly:
+`?mode=white|black|watch&level=easy|medium|hard&hints=0|1`.
+
+`build\web\` is a static site: any static host can serve it. See
+[INSTALL.md](INSTALL.md) for setup.
 
 ### Using the GUI
 
-- The window is **resizable** and the board **scales to fill it** (kept square and
-  centered).
-- The options live in a narrow panel on the **left**. The board sits **beside** it
-  (it is not covered). Toggle the panel with the **Options** / **Hide** button in
-  the top-left, or the **Tab** key. Hiding it lets the board grow to fill the
-  window.
-- **Native build only.** The sections below (agent-ID selection, the agent
-  editor, id history) are native-only: `ranking.cpp`, which the native build
-  links for the canonical-ID codec, does not compile under Emscripten (it
-  needs `<windows.h>`). The web build keeps a separate, simpler player-type
-  system without agent-ID selection.
-- Each side (**White**/**Black**) is either **Human** or **Agent**, chosen with a
-  toggle. The default matchup is **Human (White) vs Agent (Black)**, Black
-  defaulting to the historical MiniMax-depth-8-Classic agent. A Human side plays
-  by clicking; an Agent side is any agent expressible by the project's canonical
-  ID grammar (`src/ranking.h`) -- the same identifier `ranking/roster.txt` and
-  `rank.exe` use, so any agent currently in the roster can be pasted in and
-  played, including learned-model agents, dilution, and identity-level openers.
-- **Setting an agent:** click **Edit Agent...** next to an Agent side to open its
-  editor. At the top, a text box holds the canonical ID directly -- type or paste
-  one (e.g. `ab(deep=6,tt,ord,nodes=200000)@1.classic(chip=100)@2`) and click
-  elsewhere or press Enter to validate it; an invalid ID shows the parser's error
-  message beneath the box instead of being applied. A **Recent** list below it
-  remembers previously-applied IDs (persisted to `gui_agent_history.txt` next to
-  the executable, so it survives restarts) -- click one to reload it.
-- **Structured editing:** below the ID box, dropdowns and sliders cover every
-  field the grammar exposes, so the same agent can be built without typing IDs
-  by hand: **Brain** (Search or Policy), then either a **Search** explorer +
-  **Eval** dropdown (Search) or a **Policy** chooser (Policy), an **Opener**
-  dropdown (None, or one of the project's pluggable openers), and a scrollable
-  list of numeric fields -- search depth, feature-toggle checkboxes (no
-  alpha-beta / transposition table / move ordering / quiescence / partial-depth
-  keep), aspiration window, node/time budgets, a depth cap, the selected
-  evaluator's weights (or a model slot + Risk for a learned evaluator/policy),
-  dilution probability/depth, and the opener's own argument(s). Editing any of
-  these live-updates the ID box at the top, and editing the ID box (or picking a
-  Recent entry) updates all of these to match -- both views describe the same
-  agent. Numeric fields use the same modular slider controls described below.
-  **Apply** commits the agent (loading its model, if any) and closes the editor;
-  **Cancel** discards the edit.
-- **Slider designs:** the numeric parameters use prototype controls that each show
-  both a bar and the number and step with a "+" (up) above a "-" (down) button.
-  Each row demonstrates a different design (Bar+number, Segments, Number+bar,
-  Handle, Ruler) so you can compare them, and you can also click or drag a bar to
-  set its value directly. The **Sliders** switcher at the top of the panel forces
-  one design across all rows ("Per-row" restores the mixed view).
-- **Search depth / node budget:** the Depth and Nodes controls (the Number+bar
-  design) let you type an exact value, step it with +/-, or drag the bar (which
-  tops out well below the field's real range, though the typed/stepped value can
-  go higher). Large depths and budgets get very slow. The AI's search runs on a
-  background thread (native build), so the window stays responsive (resize,
-  panel, buttons) while it thinks. The board shows the position before the move
-  until the search finishes, then updates to the move played. The web build runs
-  the search inline, so a deep search still stalls it.
-- The game starts automatically when the GUI opens using the default board and
-  matchup. To change the board file, type a new path in the **Board** box and press
-  **New Game** to apply it.
-- **Changing settings mid-game:** if you adjust any player option (including
-  applying a different agent) while a game is in progress, a "Settings changed."
-  notice appears above the **New Game** button. Press **New Game** to restart
-  with the new settings.
-- **Piece counts** are shown on the board itself as small badges (a piece icon plus
-  the count) on each side, so they stay visible even with the options panel hidden.
-- **Board-state evaluation** is shown under each side's count badge. `now` is the
-  immediate static evaluation of the position that side faced; for a search-brain
-  agent using the AlphaBeta explorer, a second line `pred` shows its predicted
-  best-line ("downstream") evaluation (not shown for a Greedy/policy agent, or a
-  move an opener played, neither of which produces one). Numbers are
-  white-centric: a positive value favors White, and a forced win shows as `+WIN`
-  / `-WIN`. Turn off the readouts with the **Show evaluations** checkbox or the
-  **E** key (useful for a hint-free PvP / PvC game).
-- **Human moves:** click one of your pieces to select it (legal destinations are
-  highlighted), then click the destination square one row forward.
-- **Pacing** adapts to the matchup:
-  - **Human vs a strong AI** (an AlphaBeta search past depth 5): no pacing
-    controls, the AI's own search sets the pace.
-  - **Human vs a fast AI** (a shallow search, Greedy, or a policy/random agent): a
-    **Min 2s per AI move** checkbox so the AI does not snap back instantly.
-  - **AI vs AI:** the full set, slow-motion (`|>`) / fast-forward (`>>`) buttons
-    that step the speed presets (Step / 0.25x / 1x / 4x / Instant) shown between
-    them, plus icon buttons for **play/pause**, **step**, and **restart**.
-- The **Move Log** scrolls through the move history.
+- The window is **resizable** and the board scales to fill it. The panel on the
+  left has three tabs: **Play**, **Analysis**, and **View**. **Tab** (or the
+  top-left button) hides it so the board can grow.
+- The window never freezes: agent moves and the live analysis run on a separate
+  engine thread (native). The web build runs the same work in short slices
+  between frames.
+- **Players.** Each side is **Human** or **Agent**. An agent is any agent the
+  project's canonical ID grammar (`src/ranking.h`) can express, the same ids
+  `ranking/roster.txt` and `rank.exe` use. Each side card shows the agent's name
+  and, when it is in `ranking/standings.tsv`, its Elo on its head. **Swap**
+  exchanges the two sides. The default matchup is Human (White) vs the Medium
+  preset (Black), and the GUI remembers the last matchup in `gui_settings.txt`.
+- **Agent library** (the **Library** button). Tabs: **Champions** (the category
+  champions from `ranking/CHAMPION.md`), **Presets** (`gui/presets.txt`),
+  **Standings** (every active agent in `ranking/standings.tsv`, filterable by
+  search head, since Elo compares only within one head), **Favorites** (agents you
+  saved), and **Recent** (the last 30 agents you applied). Select one to see its
+  full canonical id, Elo, games, and speed, then **Play as White**, **Play as
+  Black**, **Edit a copy**, **Analyse with it** (copy its evaluator into the
+  Analysis tab), or save it as a favorite. `ranking/standings.tsv` is gitignored,
+  so in a fresh clone run `rank.exe rate` first to fill the Standings tab.
+- **Agent editor** (the **Edit** button). The canonical id box at the top and the
+  structured fields below describe the same agent, and editing either updates the
+  other: brain (Search or Policy), explorer, evaluator (with its weights, or a
+  model slot and Risk for a learned evaluator), opener, depth, search flags (`tt`,
+  `ord`, `qs`, `part`, `retain`, no alpha-beta), aspiration margin, node and time
+  budgets, `rem=`, depth cap, Gumbel MCTS knobs, and dilution. **Pick model...**
+  opens the model catalog: every model slot file with its type, feature count,
+  teacher, and the best Elo of any rated agent using it. **Apply** validates the
+  id and puts the agent on that side. A retrained model file is reloaded the next
+  time that agent moves.
+- **Save** on a side card stores the agent as a named favorite
+  (`gui_favorites.txt`).
+- **Changing an agent mid-game** takes effect from its next move. **New Game**
+  restarts, and also loads the board chosen in the **Board** dropdown.
+- **Recommended moves.** With analysis on (**A**), arrows show the best moves for
+  the side to move: green for the best, then amber, orange, and gray. Each carries
+  its score, and a dashed red arrow shows the opponent's best reply to the top
+  move. Scores are white-centric: positive favors White, and a forced win shows as
+  `+WIN` / `-WIN`. The **eval bar** left of the board shows the top score as
+  White's share. The analysis deepens continuously in the background and restarts
+  whenever the position changes.
+- **Analysis tab.** Number of arrows (0-8), reply arrow, score labels, eval bar,
+  the evaluator the analysis uses (any evaluator and its weights, or a learned
+  model picked from the catalog, or **Use White's** / **Use Black's** to copy a
+  player's), depth and time limits, and TT / move ordering / quiescence. Below
+  them, every root move with its score and best reply at the deepest completed
+  depth.
+- **View tab.** Piece colors (Classic, Red / Blue, Blue / Red, Gold / Purple),
+  board colors (Wood, Slate, Green, Blue), flip board (**F**), coordinates,
+  last-move highlight, legal-move dots, per-agent readouts (**E**), the slider
+  design switch, and **Simple mode** (the web layout, also available natively).
+- **Human moves.** Click a piece and then its destination, or drag it. Legal
+  destinations show as dots (rings for captures). **Undo** (**U** or Ctrl+Z)
+  takes back to your previous turn.
+- **Per-agent readouts** under each piece-count badge: `now` is the static eval of
+  the position the agent moved from, by its own evaluator, `pred` its predicted
+  best-line eval, then its effective depth and node count. White-centric.
+- **Pacing.** Agent vs agent gets slow-motion (`|>`) and fast-forward (`>>`)
+  buttons over the speed presets (Step / 0.25x / 1x / 4x / Instant), plus pause
+  (**Space**), step, and restart. Against a fast agent, **Min 2s per agent move**
+  keeps it from answering instantly.
+- **Keys:** Tab panel, A analysis, F flip, E readouts, U undo, N new game, Space
+  pause agent vs agent, Esc close a window.
 
 ## Gameplay
 

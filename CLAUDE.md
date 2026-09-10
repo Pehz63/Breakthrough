@@ -137,6 +137,17 @@ which is NOT force-loaded, so read it before writing a doc or a strength claim.
 - **Alternative build:** CMake (`CMakeLists.txt`), which is not the primary workflow
 - **Entry point:** `.\breakthrough.exe` from project root
 
+### Research goal
+
+The project's research goal (set 2026-09-10) is a paper that replicates
+training techniques published on other board games on Breakthrough and
+compares them against each other, each on the same head, the same compute
+budget, and the same full-roster refit. It refines the dethrone loop rather
+than replacing it: a stronger agent is expected as a by-product. Frame new
+training studies as replications of a named published technique, cited in
+`Docs/works-cited.md`. Detail: `Docs/Memories/breakthrough-replication-study-goal.md`
+and `todo.md`'s "Cross-technique replication study" section.
+
 ---
 
 ## Build & Run
@@ -228,10 +239,11 @@ workflows, study scripts, subcommand flags, and artifact directories:
 ### GUI
 ```
 .\build_gui.bat          # native (needs third_party/ raylib, see INSTALL.md)
-.\build_web.bat          # web via emsdk -> docs/;  "dev" arg for a debug build
+.\build_web.bat          # web via emsdk -> build\web\;  "dev" arg for a debug build
+.\tools\gui_shot.ps1 -All   # hidden-window screenshots of every GUI scenario
 ```
-Build gotchas (`/MD`, `WHITE`/`BLACK` macro collision) and internals:
-`gui/CLAUDE.md`.
+Build gotchas (`/MD`, `WHITE`/`BLACK` macro collision, `em++` flags), the GUI's
+engine-thread contract, and internals: `gui/CLAUDE.md`.
 
 ---
 
@@ -260,7 +272,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
 | `minimax_params.txt` | Saved MiniMax weights, auto-loaded when a MiniMax player is selected |
 | `.gitignore` | Excludes exes, `build/`, `third_party/`, and generated ML artifacts |
-| `build_gui.bat` / `build_web.bat` | GUI builds: native raylib exe / Emscripten WASM to `docs/` |
+| `build_gui.bat` / `build_web.bat` | GUI builds: native raylib exe / Emscripten WASM to `build\web\` |
 | `build_tests.bat` / `build_train.bat` / `build_rank.bat` | MSVC batch builds for `tests.exe` / `train.exe` / `rank.exe` |
 | `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
 | `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md`. The match store is PARTS + a live tail listed in `ranking/matches.index.txt`, and the rating outputs are gitignored (regenerate with `rank.exe rate`) |
@@ -300,9 +312,12 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 ### `gui/` (details: `gui/CLAUDE.md`)
 | File | Purpose |
 |---|---|
-| `main_gui.cpp` | raylib + raygui front end: layout, state machine, widgets, pacing controls |
+| `main_gui.cpp` | raylib + raygui front end: board, analysis arrows + eval bar, Play/Analysis/View tabs, agent library, agent editor, model picker, simple (web) mode, `--capture` mode |
+| `gui_engine.h/.cpp` | Engine service: the only GUI code that touches engine globals, on its own thread (agent moves + live multi-line analysis), plus pure `GuiPos` rule helpers |
+| `gui_library.h/.cpp` | Agent sources (standings, champions, presets, favorites, recent), model catalog scan, GUI settings file |
+| `presets.txt` | Curated GUI agents: the web page's Easy/Medium/Hard and Watch matchup |
 | `raygui.h` | Vendored single-header raygui v4 |
-| `shell.html` | Emscripten HTML shell for the web build |
+| `shell.html` | Emscripten HTML shell for the web build (full-window canvas) |
 
 ### `tests/` (details: `tests/CLAUDE.md`)
 | File | Purpose |

@@ -840,6 +840,9 @@ Model* loadModel(const string& path) {
     map<string, string> kv;
     string line;
     while (std::getline(f, line)) {
+        // A CRLF checkout keeps its '\r' wherever text mode does not strip it
+        // (the Emscripten build), and "type=linear\r" would match no type.
+        if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty() || line[0] == '#') continue;
         auto eq = line.find('=');
         if (eq == string::npos) continue;

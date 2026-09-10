@@ -75,17 +75,23 @@ compiler environment, so you can run it from a plain terminal.
 
 ## 3. Emscripten + raylib-for-web (optional, only for the web build)
 
-This is only needed to produce the browser/WebAssembly version for GitHub Pages.
+This is only needed to produce the browser/WebAssembly version.
 
 ### 3a. Install the Emscripten SDK (emsdk)
 
+Clone it into `third_party\emsdk` (gitignored), where `build_web.bat` looks for it
+when `emcc` is not already on PATH:
+
 ```powershell
-git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk
-.\emsdk install latest
-.\emsdk activate latest
-.\emsdk_env.ps1        # run this in each new shell to put emcc on PATH
+git clone https://github.com/emscripten-core/emsdk.git third_party\emsdk
+& "$PWD\third_party\emsdk\emsdk.bat" install latest
+& "$PWD\third_party\emsdk\emsdk.bat" activate latest
 ```
+
+Call `emsdk.bat` and `emsdk_env.bat` by their full path. On a machine where
+`NoDefaultCurrentDirectoryInExePath` is set (it is on this project's dev
+machine), a bare `emsdk` or `.\emsdk` from inside that folder is "not
+recognized". The SDK takes about 1 GB.
 
 ### 3b. Build raylib for the web (one time)
 
@@ -108,17 +114,20 @@ Copy-Item third_party\raylib-src\src\raylib.h, third_party\raylib-src\src\raymat
 ### 3c. Build and preview the web version
 
 ```powershell
-.\build_web.bat            # release build -> docs\index.html (+ .wasm/.js/.data)
-.\build_web.bat dev        # debug build (assertions + source map)
-python -m http.server -d docs   # then open http://localhost:8000
+.\build_web.bat                      # release build -> build\web\index.html (+ .js/.wasm/.data)
+.\build_web.bat dev                  # debug build (assertions + source map)
+python -m http.server -d build\web   # then open http://localhost:8000
 ```
 
-### 3d. Host on GitHub Pages
+The build bundles `boards/`, `gui/presets.txt`, and the model file of every
+learned agent `gui/presets.txt` names, so those files must exist locally.
 
-Commit the generated `docs\` folder, push, then in the GitHub repo go to
-**Settings -> Pages** and set the source to **Deploy from a branch**, branch
-`main`, folder `/docs`. The game will be served at
-`https://<user>.github.io/<repo>/`.
+### 3d. Hosting
+
+`build\web\` is a self-contained static site (four files). Upload it to any
+static host. The output does not go to a `docs/` folder because this repo
+already has a tracked `Docs/` folder, and Windows treats the two names as the
+same folder.
 
 ---
 
