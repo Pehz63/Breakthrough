@@ -246,7 +246,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `CLAUDE.md` | This file: rules, commands, map (per-directory CLAUDE.mds hold the detail) |
 | `Docs/theories.md` | Running log of testable theories, each with status, origin, and tested-in links |
 | `Docs/terminology.md` | Glossary of project and domain terms with definitions and example sentences |
-| `Docs/works-cited.md` | External research referenced in this project's docs and decisions (currently: Bergstra & Bengio 2012 on random search) |
+| `Docs/works-cited.md` | External research referenced in this project's docs and decisions, including the published Breakthrough studies the replication paper positions against |
 | `Docs/axioms.md` | Breakthrough truths in four tiers: rules, project choices, proofs, empirical claims |
 | `Docs/Memories/` | Git-tracked mirror of project auto-memories (see the memory Standing Instruction) |
 | `Docs/benchmarking.md` | Guide to measuring engine speed: metric choice, harness contract, confounds checklist, tools |

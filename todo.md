@@ -140,6 +140,31 @@ against the same seams.
     merely defusing a threat, or the capturing piece being the defender's OWN last piece
     needed elsewhere. Filed as theory 17 in `Docs/theories.md`.) `[Later]` {cpu: minutes, dev: high}
 
+## Cross-technique replication study (the paper)
+
+Research goal set 2026-09-10 (`Docs/Memories/breakthrough-replication-study-goal.md`):
+replicate training techniques published on other games on Breakthrough, each on the
+same head, the same compute budget, and the same full-roster refit, and write the
+cross-comparison up as a paper. Closest prior study to position against:
+Cohen-Solal 2026 (`Docs/works-cited.md`), whose Breakthrough numbers are round-robin
+win percentages among its own combinations, not ratings against outside programs.
+
+- Write the study plan: the technique list, the shared protocol (head, budget,
+  seeds, refit), and for each technique its source paper, original domain, reported
+  result, and the adaptations Breakthrough needs `[Now]` {cpu: none, dev: high}
+- Candidate techniques, by whether Breakthrough prior art exists:
+  - Replicated on Breakthrough already, re-measure under our protocol: tree learning
+    vs root vs terminal learning, Descent, the additive depth reward heuristic
+    (Cohen-Solal 2026), TD learning inside MCTS and supervised expert-move CNNs
+    (Lorentz and Zosa 2017), implicit minimax backups (Lanctot et al. 2014)
+  - Not found on Breakthrough: TD-Leaf(lambda) (Baxter, Tridgell, Weaver, the
+    existing `tdleaf` regime), alpha-beta TreeStrap (Veness et al. 2009), search-score
+    distillation (NNUE practice), KataGo-style auxiliary targets, Gumbel AlphaZero
+    (Danihelka et al. 2022, the existing `gumbelzero` regime), symmetry augmentation
+  `[Next]` {cpu: days, dev: high}
+- Verify the TreeStrap numbers against the Veness et al. 2009 paper itself before
+  citing them (only a secondary source has been read) `[Next]` {cpu: none, dev: low}
+
 ## Budget-parity rebuild (Part 1 done, Part 2 started)
 
 - **Part 2 Pass 1 (sanity) opened 2026-09-09, and it immediately paid for itself.**
@@ -158,11 +183,11 @@ against the same seams.
   The plan was written against `deep=12,tt,ord,nodes=200k` and `time=150ms`. Round 4
   migrated both tracks to `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3` and
   `ab(deep=12,tt,ord,retain,time=25ms)@3`. Every "train under the serving budget"
-  instruction in R1 through R8 names the old head. Separately, `train.exe tdleaf`
-  can set `--depth` and `--node-budget` but has no `rem=`/`retain` equivalent, so
-  the generator **cannot reproduce the node track's serving head at all**. Decide
-  whether that matters before spending Pass 3 compute on a mismatch.
+  instruction in R1 through R8 names the old head and must be rewritten.
   `[Now]` {cpu: none, dev: medium}
+  - ~~`train.exe tdleaf` has no `rem=`/`retain` equivalent, so the generator cannot
+    reproduce the node track's serving head~~ Done in `778487e`: `--rem`, `--retain`,
+    and `--time-budget-ms`, stamped into provenance.
 
 - **Re-run every agent-production regime under matched training compute, on both
   compute tracks.** Full plan: `plans/budget-parity-plan-1-steady-meridian.md`
