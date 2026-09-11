@@ -1,0 +1,215 @@
+# Replication study, Stage 1: results
+
+Companion to `plans/replication-study-plan-1-brass-lectern.md`. This document
+records Pass 0 (the build). Later passes append their own sections.
+
+## Pass 0: what was built
+
+Every item in the plan's Pass 0 table landed with a test, except the panel file
+and study store of I8, which wait on dependency 1 (Round 4's fit).
+
+| Item | Built | Where |
+|---|---|---|
+| I1 | `--backup td-leaf\|td-directed\|rootstrap\|treestrap`, `--tree-min-depth N` | `src/ml_tdleaf.cpp`, `tools/train_main.cpp` |
+| I2 | read-only `ttPeek` and `ttGeneration`, the walk accepts only entries of the latest search | `src/transposition.h/.cpp` |
+| I3 | `tdScoreToProb`, the inverse of the learned leaf tail `round(tanh(out)*900)` | `src/ml_tdleaf.cpp` |
+| I4 | `--terminal winloss\|depth`, `tdTerminalTarget`, P = `TD_MAX_GAME_PLIES` = 177 | `src/ml_tdleaf.h/.cpp` |
+| I5 | `--augment mirror`, `mlv2MirrorIndex` and `mlv2MirrorFeatures` made public | `src/ml_features.h/.cpp` |
+| I6 | `--explore-dist eps\|ordinal`, `--ordinal-start/--ordinal-end/--ordinal-games`, root move ranking | `src/ml_tdleaf.cpp` |
+| I7 | process CPU seconds (`GetProcessTimes`) in the budget and a `cpu=` provenance token | `src/train_budget.h/.cpp` |
+| I8 | `rank.exe play/run --common-openings` (common random numbers across the cohort), store rows keep `seed`, `export` and `verify-store` in the analysis script. Panel file and study store: not yet | `src/ranking.cpp`, `tools/rank_main.cpp`, `analysis/replication_stage1.py` |
+| I9 | `analysis/replication_stage1.py` (`analyze`, `export`, `verify-store`, `selftest`) | `analysis/` |
+
+Model slots 1858..3857 are claimed for the study in `src/CLAUDE.md`'s slot
+ledger. Nothing above 1857 was in use (checked against `models/sweep/`,
+`.gitignore`'s exception list and the rosters).
+
+### How the root is recovered
+
+TreeStrap and ordinal need the root position after `agentChooseMove` has
+already played. The trainer snapshots the board, recovers the played move by
+diffing the snapshot, takes the move back (board, piece counts and
+`g_chipDiff`), and checks that the root is restored exactly on every ply. A
+mismatch exits with an error rather than training on a wrong position. TreeStrap
+then walks the table, ordinal picks a move, and the move is replayed. Nothing
+in `ai_minimax.cpp` changed.
+
+## Verification
+
+Full suite: **All tests passed (5870 assertions in 236 test cases)**, on the
+committed build (all four binaries rebuilt after the last source change).
+
+| Plan check | Test | Result |
+|---|---|---|
+| I1: the walk never changes the search | "trainTDLeaf switches - none of them changes what the search plays": at `lr = 0`, every switch against the baseline over 3 games | nodes, plies, searches and white wins equal for all 7 switches. Mirror updates exactly 2x. Ordinal at e = 1 plays identically with 0 non-best moves |
+| I1: each switch acts | "each one changes what is learned" | weight L1 distance to the baseline > 1e-4 for each switch. Ordinal at e = 1 gives weights exactly equal to the baseline |
+| I1: closed form | "treestrap - restricted to the root it IS rootstrap" (`treeMinDepth` 99) | weights equal within 1e-5. At d_min 1 the walk accepts more entries than there are searches |
+| I2 | "ttPeek / ttGeneration" | a previous search's entry reads `gen = 1` while the current generation is 2, the current one matches, an absent key is not found. The walk's generation filter itself is code, not separately asserted |
+| I3 | "tdScoreToProb - inverts the learned score tail on real positions" | 40 random positions, model output recovered within 1e-3 in probability |
+| I4 | "tdTerminalTarget" | l held at P (a one-ply game) reproduces win/loss exactly, draws stay 0.5, quicker wins and slower losses score higher, a game past P clamps at l = 1 |
+| I5 | "mlv2MirrorFeatures" | the mirrored board's features equal the mirrored features |
+| I6 | "tdOrdinalProb / tdOrdinalPick" | 200,000 draws against the closed form within 0.005 per rank. e = 1 draws no random number, so it cannot shift later openings |
+| I6 | "ordinal - e = 0 plays moves other than the search's" | non-best count > 0 |
+| I7 | "CPU seconds charge busy work and not idle waiting" | a busy loop is charged, a sleeping wait of the same wall time is not |
+| I8 | "common openings give every cohort agent the same couples", "rand opener - one seed plays one opening line" | seeds equal across the cohort for one panel agent, differ with the flag off. One seed replays one opening whatever the agents |
+| I9 | `python analysis/replication_stage1.py selftest` | 0 failures (below) |
+
+The plan's I7 check asked for two busy-loop loads giving equal CPU seconds and
+different wall seconds. The test built is the stronger half of that: CPU
+seconds track work done and ignore waiting. Wall seconds under load are not
+asserted.
+
+### Analysis self-test
+
+Synthetic arms with known effects, 60 null repetitions for the family-wise
+rate:
+
+| check | result |
+|---|---|
+| NULL (true 0): Dunnett CI | [-20.8, 25.3], reported equivalent at +/-30 |
+| CEIL (true +80 ceiling): Dunnett CI | [65.3, 111.5], positive, classified ceiling, ceiling gain 87.5, AULC gain 86.3 |
+| SPEED (true 2 doublings, +31.1 at the last rung): Dunnett CI | [17.3, 63.4], classified speed, shift 1.95 doublings [1.80, 2.20], compute multiplier 0.213 (true 0.25) |
+| NEG (true -60): Dunnett CI | [-61.6, -15.5], negative, multiplier censored |
+| family-wise false positives under the null | 2 of 60 |
+| verify-store | accepts paired common openings (12 couples, 0 broken), rejects a broken couple (2 broken couples, 4 agents with a differing seed set) |
+
+## Cost smoke: every arm at the study head
+
+Head `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3` (train flags
+`--depth 12 --node-budget 100000 --rem 70 --retain`), scratch init, 20 games,
+seed 1001, 4 opener plies. All 9 processes ran at once on one machine. One
+seed and 20 games, so game lengths differ by arm partly by chance. The learning
+rates are placeholders (0.01, TreeStrap 0.0005), not tuned values. This is the
+Pass 0 cost check, not Pass 2's cost calibration.
+
+| arm | switch | CPU s | searched moves | mean game length (plies) | nodes | CPU ms per searched move | nodes per searched move |
+|---|---|---|---|---|---|---|---|
+| B0 | TD-Leaf | 25.28 | 1112 | 64.6 | 100,920,751 | 22.7 | 90,756 |
+| A1 | `--backup td-directed` | 27.00 | 1214 | 69.7 | 110,966,543 | 22.2 | 91,406 |
+| A2 | `--backup rootstrap` | 24.08 | 1050 | 61.5 | 94,906,371 | 22.9 | 90,387 |
+| A3 | `--backup treestrap` | 79.25 | 996 | 58.8 | 87,907,832 | 79.6 | 88,261 |
+| A4 | `--lambda 1` | 22.30 | 1004 | 59.2 | 88,835,136 | 22.2 | 88,481 |
+| A5 | `--terminal depth` | 24.64 | 1100 | 64.0 | 98,667,036 | 22.4 | 89,697 |
+| A6 | `--augment mirror` | 26.81 | 1204 | 69.2 | 109,555,371 | 22.3 | 90,993 |
+| A7 | `--explore 0.1` | 23.42 | 1009 | 64.7 | 93,008,879 | 23.2 | 92,179 |
+| A8 | `--explore-dist ordinal`, e 0 -> 1 over 20 games | 16.80 | 738 | 45.9 | 64,036,927 | 22.8 | 86,771 |
+
+Instrument readings from the same runs:
+
+| arm | reading |
+|---|---|
+| B0 | mean PV depth 5.63 of 12, 1112 of 1112 truncated, 38 decided leaves skipped |
+| A4 | mean PV depth 6.18 of 12 |
+| A3 | 6,991,769 table entries accepted (7,019.85 per search), 3,235,486 updates with a nonzero gradient |
+| A6 | 1179 of 2358 updates mirrored |
+| A8 | 738 draws, 353 not the search's choice, alternatives ranked by table entry 16,727 times and by static eval 2,147 times |
+
+What the table shows:
+
+- Every arm except A3 costs 22.2 to 23.2 CPU ms per searched move, so their
+  per-game cost is set by game length. A3 costs 3.5x more per move (79.6 ms
+  against 22.7) from the table walk, at the same nodes per move. At equal CPU
+  seconds A3 therefore plays roughly 3.5x fewer games, which is the matching the
+  study is built to make.
+- A6's mirrored updates add nothing measurable per move (22.3 ms).
+- Every B0 PV is truncated before depth 12 (mean 5.63). The table is
+  always-replace and a depth-12 search at 100k nodes does not keep a full line.
+  Theory 72's guard asks for mean PV depth well above 1, which holds. Truncation
+  at this head is a property of the baseline to report, not a defect.
+- A8's e starts at 0 in this smoke, so 48% of its moves are not the search's
+  choice and its games are shorter (45.9 plies).
+
+## Implementation decisions and deviations
+
+These carry into the per-arm deviation lists in the final write-up.
+
+1. **Ordinal ranking (I6) ranks by the serving search's own table, not a second
+   search.** The plan left a choice between a training-only full-window root
+   search and ranking by bound. Built: the search's chosen move first, then
+   each other root move by its child's stored fail-soft entry from the same
+   search (generation-matched), then by static eval where the entry was
+   overwritten. A move that wins at once ranks above all stored entries, a move
+   into a decided loss below. Within a tier moves sort by value, ties by move
+   generation order. No
+   second search, so ordinal costs the same per move as the baseline (22.8 ms
+   against 22.7). The ranking of non-best moves is by bounds, not exact values,
+   which is the recorded deviation. In the smoke 89% of alternatives were
+   ranked by a table entry.
+2. **Decided roots are not trained in any arm.** A root that `nearWinCheck`
+   already decides is played out without a training entry, as in the baseline.
+   A root whose search proves a result (a score inside the win sentinels) maps
+   to target 1 or 0, as the plan says.
+3. **P = 177, derived, not the 400-ply cap.** Every move advances a piece one
+   row and reaching the far row wins, so a side makes at most 8x6 + 8x5 = 88
+   non-winning moves and a game lasts at most 88 + 88 + 1 = 177 plies. The
+   derivation is in `src/ml_tdleaf.h`.
+4. **A searched move that ends the game gives no training entry**, as in the
+   baseline, and for TreeStrap its tree terms are dropped too.
+5. **TreeStrap accumulates densely and applies once per game** (or per batch),
+   the same update timing as the other arms. `l2` is applied once per
+   application. The study uses `l2 = 0`, where the dense per-game sum equals
+   sequential SGD within the game's fixed weights.
+6. **Ordinal and `--explore` are exclusive**: the trainer refuses both at once.
+   Ordinal draws every searched move, so there is no separate epsilon.
+7. **Mirror needs v2 features, TreeStrap needs a linear model head.** Both are
+   refused otherwise.
+8. **Summary printing.** A TreeStrap run prints the table-walk line instead of
+   the trained-positions line, and only TD-Leaf prints mean PV depth. The
+   first cost smoke printed zeros there, which would have read as a broken
+   arm.
+
+## How to test
+
+```powershell
+.\tools\run_tests.ps1 -Build          # or tests.exe after building
+python analysis/replication_stage1.py selftest
+.\train.exe tdleaf --out <scratch>\a3 --init "" --depth 12 --node-budget 100000 --rem 70 --retain --games 20 --seed 1001 --backup treestrap --lr 0.0005
+```
+
+Expect the suite to pass, the self-test to report 0 failures, and the TreeStrap
+run to print a `treestrap (d_min 1): table entries accepted ...` line and a
+provenance ending `backup=treestrap,dmin=1,seed=1001,games=20,secs=...,cpu=...,nodes=...`.
+
+## Still open before Pass 1
+
+- The panel file and the study store (I8) wait for Round 4's fit and the
+  `ranking/CHAMPION.md` rewrite, from which the panel ratings are pinned.
+- C2 (Baxter 1999 full text), C6 and C7 are read from their sources before the
+  pre-registration.
+
+## Future Work
+
+- **The generation filter is not asserted end to end.** The `ttPeek` test shows
+  a stale entry reads as stale, and the lr = 0 test shows the walk leaves the
+  search unchanged. No test builds a table where a stale entry would be reached
+  by the walk and checks it is not trained. That matters to A3's claim that it
+  trains only on the current search's tree. A test that searches twice, then
+  counts accepted entries with and without the generation check, would settle
+  it.
+- **The I7 load check.** CPU seconds under contention were not compared to an
+  idle machine. The cost smoke ran 9 processes at once, so its CPU seconds may
+  include cache contention. Pass 2's cost calibration should run one arm alone
+  and one under the study's worker count and report both.
+- **Ordinal's bound ranking against an exact ranking.** How often the bound
+  order differs from a full-window root search's order is unmeasured. A small
+  offline comparison on sampled roots would say whether deviation 1 changes
+  which move rank e draws.
+
+## Ideas This Inspired
+
+- The table walk's accepted-entry count (7,020 per search at this head) is a
+  cheap measure of how much of a search's tree survives in an always-replace
+  table. It could size the table for any head.
+- The take-back and replay machinery makes any root-level intervention cheap:
+  a trainer could also try policy-target distillation from the same table
+  entries without touching the search.
+- A5 and the search's win-decay both reward short wins. A version of A5 with the
+  search's decay switched off would separate the two.
+
+## Commit
+
+Pass 0 commit message:
+
+```
+Build the replication study's Pass 0: backup, terminal, mirror and ordinal switches
+```

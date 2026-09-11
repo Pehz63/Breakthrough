@@ -279,7 +279,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `build_tests.bat` / `build_train.bat` / `build_rank.bat` | MSVC batch builds for `tests.exe` / `train.exe` / `rank.exe` |
 | `tools/*.ps1` | Run/build wrappers, smoke test, study scripts: see `tools/CLAUDE.md` |
 | `ranking/`, `runs/`, `data/`, `models/`, `agents/` | Persistent Elo state and ML artifacts: see `tools/CLAUDE.md`. The match store is PARTS + a live tail listed in `ranking/matches.index.txt`, and the rating outputs are gitignored (regenerate with `rank.exe rate`) |
-| `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract, interpretable best/worst-value prediction over a cohort sweep for any per-checkpoint target -- Elo, speed (`cpu_ms_move`), or efficiency (`analysis/predict_peak_elo.py`) -- and standard charts (Elo-vs-axis, rung-ladder learning curves, seed-spread) rendered from the same cohort export (`analysis/plot_cohort_results.py`), and inverse-variance pooling of a per-cell Elo contrast across cores with Q and I^2 heterogeneity reported (`analysis/pool_retain_effect.py`, the backing for theory 70) |
+| `analysis/`, `train_py/`, `requirements.txt` | Optional Python layer: DuckDB queries, model export contract, interpretable best/worst-value prediction over a cohort sweep for any per-checkpoint target -- Elo, speed (`cpu_ms_move`), or efficiency (`analysis/predict_peak_elo.py`) -- and standard charts (Elo-vs-axis, rung-ladder learning curves, seed-spread) rendered from the same cohort export (`analysis/plot_cohort_results.py`), and inverse-variance pooling of a per-cell Elo contrast across cores with Q and I^2 heterogeneity reported (`analysis/pool_retain_effect.py`, the backing for theory 70), and the replication study's Stage 1 analysis: Dunnett contrasts against the baseline, bootstrap intervals over seeds, compute multiplier, learning-curve area and speed-vs-ceiling fits, with a synthetic self-test (`analysis/replication_stage1.py`) |
 | `plans/` | Archived session plans + companion results docs. A study's `plot_cohort_results.py` charts live in their own `plans/<export-name>/` subfolder (never loose PNGs at the `plans/` top level), so the root listing stays dominated by `.md` docs |
 | `.claude/skills/run-tests.md` | Skill: always run tests via `run_tests.ps1 -Build`, never bare `cl` |
 
@@ -302,7 +302,7 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `agents.cpp/.h` | `AgentSpec` composition (brain + dilution + budgets + toggles), `agentChooseMove` |
 | `datastore.cpp/.h` | Append-only JSONL + canonical `positionKey` (also keys the TT) |
 | `transposition.cpp/.h` | Opt-in transposition table (inert unless `useTT`) |
-| `train_budget.cpp/.h` | Shared training-compute meter: wall-clock checkpoint rungs, hard stop, node/game/second accounting, and the `secs=`/`nodes=`/`games=` provenance stamp every regime writes and `--resume` reads back |
+| `train_budget.cpp/.h` | Shared training-compute meter: wall-clock checkpoint rungs, hard stop, node/game/second/CPU-second accounting, and the `secs=`/`cpu=`/`nodes=`/`games=` provenance stamp every regime writes and `--resume` reads back |
 | `ml_train.cpp/.h` | Trainer: self-play, supervised value + imitation policy, tournament play/rate, run archive |
 | `ranking.cpp/.h` | Persistent Elo ranking: ID codec, roster, match store, scheduler, BT fit, subcommands (incl. the posgen/label/labelfit position-oracle pipeline) |
 

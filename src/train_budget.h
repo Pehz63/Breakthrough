@@ -23,6 +23,13 @@
 //    g_lastNodes over every search the run performs, fed by agentChooseMove's
 //    g_trainNodesTotal counter.
 //
+// 2b. CPU SECONDS are the process's user + kernel time. Wall clock also
+//    charges for whatever else the machine was running, and a node count
+//    does not charge for work done outside the search (a TreeStrap walk, a
+//    mirrored update). CPU seconds charge both of those and neither of the
+//    others' load, which is why the replication study
+//    (plans/replication-study-plan-1-brass-lectern.md) matches arms on them.
+//
 // 3. UNITS are what the regime itself counts (games for the online regimes,
 //    iterations for the climber). Recorded so a checkpoint says what it
 //    actually did, not what its command line asked for.
@@ -45,19 +52,21 @@ struct TrainBudget {
 
     // ---- carried in from a --resume checkpoint (0 for a fresh run) ----
     double             priorSec;
+    double             priorCpu;
     unsigned long long priorNodes;
     long long          priorUnits;
 
     // ---- live state ----
     double             startClock;    // steady-clock seconds latched by tbBegin
+    double             startCpu;      // process CPU seconds latched by tbBegin
     unsigned long long baseNodes;     // g_trainNodesTotal at tbBegin
     long long          units;         // units completed by THIS process
     size_t             nextMark;      // index into wallCkptAt of the next unwritten mark
     bool               running;
 
     TrainBudget()
-        : wallStopSec(0.0), priorSec(0.0), priorNodes(0), priorUnits(0),
-          startClock(0.0), baseNodes(0), units(0), nextMark(0), running(false) {}
+        : wallStopSec(0.0), priorSec(0.0), priorCpu(0.0), priorNodes(0), priorUnits(0),
+          startClock(0.0), startCpu(0.0), baseNodes(0), units(0), nextMark(0), running(false) {}
 };
 
 // Fill the defaults (everything off), so a caller that never sets a wall flag
@@ -74,6 +83,13 @@ void tbBegin(TrainBudget& b);
 
 // Cumulative seconds: this process's elapsed time plus any resumed prior.
 double tbElapsed(const TrainBudget& b);
+
+// This process's user + kernel CPU seconds since it started.
+double tbProcessCpuSeconds();
+
+// Cumulative CPU seconds: this process's CPU time since tbBegin plus any
+// resumed prior.
+double tbCpu(const TrainBudget& b);
 
 // Cumulative search nodes: this process's accumulated g_lastNodes plus prior.
 unsigned long long tbNodes(const TrainBudget& b);
@@ -96,7 +112,7 @@ bool tbTakeDueMark(TrainBudget& b, double& markOut);
 std::string tbMarkPath(const std::string& outPath, double markSec);
 
 // The provenance fragment recording what was ACTUALLY spent, e.g.
-//   ",games=1500,secs=7203.4,nodes=41288301"
+//   ",games=1500,secs=7203.4,cpu=7011.2,nodes=41288301"
 // `unitName` is the regime's own word for a unit ("games", "iters").
 std::string tbStamp(const TrainBudget& b, const char* unitName);
 

@@ -43,12 +43,15 @@ Copy-paste forms beyond the root's short list:
 .\train.exe tdleaf --out models/sweep/tdl --init models/pst_value.txt --ckpt-at "100,250,500,1000,2000" --lambda 0.7 --lr 0.01 --seed 1001
 .\train.exe tdleaf --out models/sweep/tdl --init models/pst_value.txt --wall-ckpt-at "7200,14400,28800" --seed 1001   # wall-clock rungs: _t7200/_t14400/_t28800 + a hard stop at the last mark
 .\train.exe tdleaf --out models/sweep/tdl2 --resume models/sweep/tdl.txt --wall-stop 57600 --seed 1001   # continue ONE cumulative ladder (2x rung, plan Part 5 answer 4)
+.\train.exe tdleaf --out models/sweep/slot1858 --init "" --depth 12 --node-budget 100000 --rem 70 --retain --backup treestrap --lr 0.0005 --seed 1001   # replication-study switches: --backup td-leaf|td-directed|rootstrap|treestrap, --tree-min-depth N, --terminal winloss|depth, --augment mirror, --explore-dist eps|ordinal (--ordinal-start/--ordinal-end/--ordinal-games)
 .\train.exe gumbelzero --out models/sweep/slot650 --games 40 --sims 50 --ckpt-at "20,40" --seed 1001   # Pass-1 sanity only, no Elo certified
 .\train.exe gumbelzero --out models/sweep/slot650 --games 40 --sims 50 --model-type mlp --mlp-hidden "64,32" --seed 1001   # mlp applies to both heads
 .\train.exe gumbelzero --out models/sweep/slot650 --games 40 --sims 50 --model-type conv --conv-channels "16,16" --seed 1001   # conv: value head only, policy head stays linear
 .\tools\tdleaf_study.ps1 -Workers 12 -Phase all --GamesPerPair 8   # the full TD-Leaf cohort study
 .\rank.exe play --roster ranking/roster_tdleaf.txt --cohort ranking/cohort_tdleaf.txt --games 32
 .\rank.exe rate --roster ranking/roster_tdleaf.txt --pin ranking/standings.tsv   # screen on a FROZEN scale
+.\rank.exe play --roster <roster> --cohort <cohort> --paired-openings --common-openings --games 400   # every cohort agent meets each panel agent on the SAME opening couples (common random numbers)
+python analysis/replication_stage1.py selftest   # Stage 1 analysis (analyze / export / verify-store / selftest), must recover its synthetic effects before any real reading
 ```
 
 **Rating a new cohort without moving the existing scale.** A normal refit

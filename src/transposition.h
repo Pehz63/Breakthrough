@@ -36,3 +36,15 @@ bool ttProbe(uint64_t key, int depthLeft, int alpha, int beta,
 
 // Store (always-replace, preferring deeper/newer). Callers must skip near-win scores.
 void ttStore(uint64_t key, int depthLeft, int score, int flag, int fromSq, int toSq);
+
+// Read-only access for training code that walks the tree a search left behind
+// (TD-Leaf's TreeStrap backup and ordinal move ranking, src/ml_tdleaf.cpp). The
+// search itself never calls these, so a rated agent's behavior cannot depend on
+// them. ttPeek copies the slot holding `key` into `out` and returns true only
+// when the slot's key matches. ttGeneration is the generation the most recent
+// ttNewSearch set, so `out.gen == ttGeneration()` means "stored by the latest
+// top-level search" rather than left over from an earlier move. The generation
+// is 8 bits and ttClear resets it to 0, so the test is exact for the first 255
+// searches after a clear.
+bool    ttPeek(uint64_t key, TTEntry& out);
+uint8_t ttGeneration();

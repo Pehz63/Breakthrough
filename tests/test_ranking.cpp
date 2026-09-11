@@ -3222,3 +3222,68 @@ TEST_CASE("category config - membership needs an exact head match, not a budget 
     REQUIRE(trk == "node");
     REQUIRE(div == "openless");
 }
+
+// The replication study's evaluation design (plans/replication-study-plan-1-
+// brass-lectern.md, "Game independence"): each study agent plays a frozen panel
+// on colour-swapped opening couples, and every study agent must meet a given
+// panel opponent on the SAME couples, so opening luck cancels between arms.
+TEST_CASE("ranking scheduler - common openings give every cohort agent the same couples") {
+    std::istringstream in("anchor rand@1\n"
+                          "on ab(deep=4)@3.classic(chip=100)@2\n"
+                          "on ab(deep=6)@3.classic(chip=10,wall=3,column=2)@2\n");
+    std::vector<RankAgent> roster;
+    string err;
+    REQUIRE(rankLoadRoster(in, roster, err));
+    for (size_t i = 0; i < roster.size(); i++) roster[i].active = true;
+    std::set<string> cohort;
+    for (size_t i = 0; i < roster.size(); i++)
+        if (roster[i].id != "rand@1") cohort.insert(roster[i].id);
+    REQUIRE(cohort.size() == 2);
+
+    // seeds[agent] = the seeds of its games against the panel agent, in
+    // emission order (couple k = entries 2k and 2k+1).
+    auto seedsVsPanel = [&](bool common) {
+        std::map<string, std::vector<unsigned> > seeds;
+        std::vector<RankPendingGame> p =
+            rankSchedule(roster, std::vector<RankMatchRow>(), 6, 7, true, &cohort, common);
+        for (size_t i = 0; i < p.size(); i++) {
+            if (p[i].w != "rand@1" && p[i].b != "rand@1") continue;
+            const string& x = (p[i].w == "rand@1") ? p[i].b : p[i].w;
+            seeds[x].push_back(p[i].seed);
+        }
+        return seeds;
+    };
+    std::map<string, std::vector<unsigned> > on = seedsVsPanel(true), off = seedsVsPanel(false);
+    REQUIRE(on.size() == 2);
+    const std::vector<unsigned>& s1 = on.begin()->second;
+    const std::vector<unsigned>& s2 = on.rbegin()->second;
+    REQUIRE(s1.size() == 6);
+    REQUIRE(s1 == s2);                               // common random numbers across the cohort
+    for (size_t k = 0; k + 1 < s1.size(); k += 2) {
+        REQUIRE(s1[k] == s1[k + 1]);                 // a couple shares one seed
+        if (k >= 2) REQUIRE(s1[k] != s1[k - 2]);     // and couples differ from each other
+    }
+    // Without the flag each pair draws its own couples, as before.
+    REQUIRE(off.begin()->second != off.rbegin()->second);
+    REQUIRE(off.begin()->second[0] == off.begin()->second[1]);
+}
+
+TEST_CASE("rand opener - one seed plays one opening line, whoever the agents are") {
+    // What the common-openings seed relies on: during the opener window no brain
+    // is consulted, so the line is a function of the rand() stream alone.
+    int k = openerIndexByIdName("rand");
+    REQUIRE(k >= 0);
+    auto openingAfter = [&](unsigned seed) {
+        REQUIRE(reloadBoard("boards/board1.txt") == true);
+        srand(seed);
+        int victor = None;
+        for (int h = 0; h < 8; h++) {
+            int side = (h % 2 == 0) ? White : Black;
+            REQUIRE(g_openers[k].fn(side, h / 2, h, 4, 0, victor) == true);
+        }
+        return positionKey(White, false).hash;
+    };
+    unsigned long long a = openingAfter(424242u), b = openingAfter(424242u), c = openingAfter(515151u);
+    REQUIRE(a == b);
+    REQUIRE(a != c);
+}

@@ -153,13 +153,24 @@ win percentages among its own combinations, not ratings against outside programs
 - ~~Write the study plan: the technique list, the shared protocol (head, budget,
   seeds, refit), and for each technique its source paper, original domain, reported
   result, and the adaptations Breakthrough needs~~ Done:
-  `plans/replication-study-plan-1-brass-lectern.md` (a 32-cell factorial over
-  backup target, terminal reward, symmetry augmentation, exploration distribution,
-  rated against a frozen panel, pre-registered before Pass 3)
-- Settle the plan's four open questions, then build Pass 0 (items I1 to I7: the
-  backup-target, terminal-reward, augmentation and ordinal-exploration switches,
-  CPU-seconds accounting, the study panel and store, the factorial analysis
-  script) `[Now]` {cpu: none, dev: high}
+  `plans/replication-study-plan-1-brass-lectern.md`. Stage 1 measures each
+  technique alone against a TD-Leaf baseline (8 arms), rated against a frozen
+  panel, pre-registered before Pass 3. Combinations are Stage 2, designed after
+  Stage 1's results
+- ~~Build Stage 1's Pass 0 (items I1 to I9: the backup-target, terminal-reward,
+  augmentation and exploration switches, the TreeStrap table walk and its
+  generation stamp, CPU-seconds accounting, the study panel and store, the
+  Stage 1 analysis script)~~ Done except the panel file and study store:
+  `plans/replication-study-results-1-brass-lectern.md`. Slots 1858..3857
+- Build the study panel file and study store (I8's remainder) once Round 4's
+  fit pins the panel ratings `[Next]` {cpu: none, dev: low}
+- Pass 1 sanity: every arm trains at the study head, stops at its rung, writes
+  truthful provenance, loads through the real search path, same seed twice
+  gives a byte-identical model, panel games independent. Report to the
+  developer before Pass 2 `[Next]` {cpu: hours, dev: medium}
+- Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
+  (Sutton 1988, TD-Gammon) before the pre-registration is committed `[Next]`
+  {cpu: none, dev: low}
 - Candidate techniques, by whether Breakthrough prior art exists:
   - Replicated on Breakthrough already, re-measure under our protocol: tree learning
     vs root vs terminal learning, Descent, the additive depth reward heuristic

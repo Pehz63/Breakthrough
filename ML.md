@@ -458,6 +458,23 @@ search than the one being rated is a distribution mismatch.
 `forward()` still supplies the value, keeping a frozen residual skip inside `p`
 exactly as search sees it.
 
+**Replication-study switches.** The cross-technique replication study
+(`plans/replication-study-plan-1-brass-lectern.md`) swaps one component of this
+regime at a time. Each switch defaults to the behaviour above and is written
+into the checkpoint's provenance only when it is not the default.
+
+| flag | values | what it changes |
+|---|---|---|
+| `--backup` | `td-leaf` (default), `td-directed`, `rootstrap`, `treestrap` | what is trained and toward what. `td-directed` puts the lambda-return on the root positions instead of PV leaves. `rootstrap` trains each root toward its own search score, mapped back to a probability by inverting the learned leaf tail. `treestrap` also trains every table entry the finished search stored at remaining depth >= `--tree-min-depth`, one-sided toward its bound (Veness et al. 2009), linear models only |
+| `--terminal` | `winloss` (default), `depth` | the final target: `depth` adds Cohen-Solal's depth reward, a quicker win worth more and a slower loss less, with P = 177 plies |
+| `--augment` | `mirror` | each trained position's left-right mirror is trained toward the same target (v2 features) |
+| `--explore-dist` | `eps` (default), `ordinal` | `ordinal` draws every searched move from Cohen-Solal's ordinal distribution over the root moves, `e` annealed from `--ordinal-start` to `--ordinal-end` over `--ordinal-games` |
+
+TreeStrap and ordinal need the root position after the search has played, so
+the played move is taken back, checked to restore the board exactly, and then
+replayed or replaced. With `--lr 0` no switch changes what the search plays,
+which the unit tests assert.
+
 Strength is measured by `tools/tdleaf_study.ps1` (see `tools/CLAUDE.md`), not by
 training loss. Standing prior to beat: every offline self-play variant tried in
 this project so far has lost to replay data mined from the ranked pool by

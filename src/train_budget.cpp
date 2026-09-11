@@ -1,3 +1,12 @@
+// Windows headers MUST precede the project headers: globals.h does `#define SIZE 8`,
+// which would otherwise mangle wingdi.h's `SIZE` struct. NOMINMAX keeps std::min/max.
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <ctime>
+#endif
 #include "train_budget.h"
 #include <chrono>
 #include <sstream>
@@ -11,6 +20,19 @@ using TBClock = std::chrono::steady_clock;
 double tbNowSeconds() {
     return std::chrono::duration<double>(TBClock::now().time_since_epoch()).count();
 }
+}
+
+double tbProcessCpuSeconds() {
+#ifdef _WIN32
+    FILETIME ct, et, kt, ut;
+    if (!GetProcessTimes(GetCurrentProcess(), &ct, &et, &kt, &ut)) return 0.0;
+    ULARGE_INTEGER k, u;
+    k.LowPart = kt.dwLowDateTime; k.HighPart = kt.dwHighDateTime;
+    u.LowPart = ut.dwLowDateTime; u.HighPart = ut.dwHighDateTime;
+    return (double)(k.QuadPart + u.QuadPart) / 1e7;   // 100ns ticks -> seconds
+#else
+    return (double)std::clock() / (double)CLOCKS_PER_SEC;
+#endif
 }
 
 TrainBudget tbDefaults() {
@@ -44,6 +66,7 @@ bool tbParseMarks(const std::string& csv, std::vector<double>& out, std::string&
 
 void tbBegin(TrainBudget& b) {
     b.startClock = tbNowSeconds();
+    b.startCpu   = tbProcessCpuSeconds();
     b.baseNodes  = g_trainNodesTotal;
     b.units      = 0;
     b.running    = true;
@@ -57,6 +80,11 @@ void tbBegin(TrainBudget& b) {
 double tbElapsed(const TrainBudget& b) {
     if (!b.running) return b.priorSec;
     return b.priorSec + (tbNowSeconds() - b.startClock);
+}
+
+double tbCpu(const TrainBudget& b) {
+    if (!b.running) return b.priorCpu;
+    return b.priorCpu + (tbProcessCpuSeconds() - b.startCpu);
 }
 
 unsigned long long tbNodes(const TrainBudget& b) {
@@ -92,6 +120,7 @@ std::string tbStamp(const TrainBudget& b, const char* unitName) {
     std::ostringstream o;
     o << "," << (unitName ? unitName : "units") << "=" << tbUnits(b)
       << ",secs=" << tbElapsed(b)
+      << ",cpu=" << tbCpu(b)
       << ",nodes=" << tbNodes(b);
     return o.str();
 }
@@ -120,6 +149,9 @@ bool tbParsePrior(const std::string& teacher, TrainBudget& b, const char* unitNa
     double v = 0.0;
     if (tbFindNumber(teacher, unitName ? unitName : "units", v)) { b.priorUnits = (long long)v; any = true; }
     if (tbFindNumber(teacher, "secs", v))  { b.priorSec = v; any = true; }
+    // Stamps written before CPU accounting existed carry no cpu=, and resume
+    // from them with a zero CPU prior rather than refusing.
+    if (tbFindNumber(teacher, "cpu", v))   { b.priorCpu = v; any = true; }
     if (tbFindNumber(teacher, "nodes", v)) { b.priorNodes = (unsigned long long)v; any = true; }
     return any;
 }

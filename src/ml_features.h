@@ -54,6 +54,12 @@ const char* mlValueFeatureNameV2(int i);
 // Fill out[0..MLV2_FEATURES-1] from the current board (single scan, no move
 // generation). turnColor sets the side-to-move input.
 void        mlExtractValueFeaturesV2(int turnColor, float* out);
+// Left-right mirror partner of v2 input i: same color plane, same row, column
+// x -> SIZE-1-x. The side-to-move input maps to itself. Breakthrough's rules
+// are left-right symmetric, so a position and its mirror have the same value.
+int         mlv2MirrorIndex(int i);
+// out[mlv2MirrorIndex(i)] = in[i]: the v2 features of the mirrored board.
+void        mlv2MirrorFeatures(const float* in, float* out);
 
 // ---- Move features (move -> float vector, side-relative) ----
 #define MLM_FEATURES 9

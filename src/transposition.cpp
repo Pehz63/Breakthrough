@@ -42,6 +42,16 @@ bool ttProbe(uint64_t key, int depthLeft, int alpha, int beta,
     return false;
 }
 
+bool ttPeek(uint64_t key, TTEntry& out) {
+    ttEnsure();
+    const TTEntry& e = g_tt[key & TT_MASK];
+    if (e.key != key) return false;
+    out = e;
+    return true;
+}
+
+uint8_t ttGeneration() { return g_ttGen; }
+
 void ttStore(uint64_t key, int depthLeft, int score, int flag, int fromSq, int toSq) {
     ttEnsure();
     TTEntry& e = g_tt[key & TT_MASK];

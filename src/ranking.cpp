@@ -2494,7 +2494,8 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
                                           int gamesPerPair, unsigned runSeed,
                                           bool pairedOpenings,
-                                          const std::set<std::string>* cohort) {
+                                          const std::set<std::string>* cohort,
+                                          bool commonOpenings) {
     std::vector<RankPendingGame> out;
     std::vector<string> ids;
     std::map<string, const RankAgent*> specOf;
@@ -2528,13 +2529,21 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
             if (pendAW < 0) pendAW = 0;
             if (pendBW < 0) pendBW = 0;
             long long ordinal = haveAW + haveBW;
+            // Common openings: key the couple on the opponent outside the
+            // cohort, so every cohort agent draws that opponent's same
+            // sequence of opening lines. Couple k is the k-th couple a pair
+            // has played, so agents filled to the same count share them all.
+            const bool inA = cohort && cohort->count(a), inB = cohort && cohort->count(b);
+            const bool common = pairedOpenings && commonOpenings && (inA != inB);
+            const string& anchor = inA ? b : a;
             while (pendAW > 0 || pendBW > 0) {
                 RankPendingGame g;
                 if (pendAW >= pendBW) { g.w = a; g.b = b; pendAW--; }
                 else                  { g.w = b; g.b = a; pendBW--; }
                 // Emission order alternates a-White / b-White, so ordinals 2k and
                 // 2k+1 are one colour-swapped couple and share a couple index.
-                g.seed = pairedOpenings ? coupleSeed(a, b, ordinal / 2, runSeed)
+                g.seed = common         ? coupleSeed(anchor, "*common*", ordinal / 2, runSeed)
+                       : pairedOpenings ? coupleSeed(a, b, ordinal / 2, runSeed)
                                         : gameSeed(g.w, g.b, ordinal, runSeed);
                 ordinal++;
                 out.push_back(g);
@@ -3081,9 +3090,14 @@ static bool loadPinnedRatings(const string& path, std::map<std::string,double>& 
 
 int rankPlay(const string& rosterFile, const string& storeFile, const string& outFile,
              int gamesPerPair, int shard, int ofK, unsigned runSeed, const string& board,
-             bool pairedOpenings, const string& cohortFile, bool ladder) {
+             bool pairedOpenings, const string& cohortFile, bool ladder,
+             bool commonOpenings) {
     std::vector<RankAgent> roster;
     string err;
+    if (commonOpenings && (!pairedOpenings || cohortFile.empty())) {
+        cout << "ERROR: --common-openings needs --paired-openings and --cohort\n";
+        return 1;
+    }
     if (!rankLoadRosterFile(rosterFile, roster, err)) { cout << "ERROR: " << err << "\n"; return 1; }
     std::set<std::string> cohort;
     if (!cohortFile.empty()) {
@@ -3127,7 +3141,8 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     // cost. Both are exact, which is the point: no multiplier is involved.
     std::vector<size_t> cum(rungs.size(), 0);
     for (size_t r = 0; r < rungs.size(); r++)
-        cum[r] = rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr).size();
+        cum[r] = rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr,
+                              commonOpenings).size();
 
     int nActive = 0;
     for (size_t i = 0; i < roster.size(); i++) if (roster[i].active) nActive++;
@@ -3135,7 +3150,7 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
     string pre = (ofK > 1) ? ("[s" + std::to_string(shard) + "] ") : string("");
     cout << pre << "rank: " << nActive << " active agents, " << cum.back()
          << " pending games (target " << gamesPerPair << "/pair)";
-    if (pairedOpenings) cout << ", paired openings";
+    if (pairedOpenings) cout << (commonOpenings ? ", paired common openings" : ", paired openings");
     if (ofK > 1) cout << ", shard " << shard << "/" << ofK;
     cout << "\n" << flush;
     if (cum.back() == 0) {
@@ -3171,7 +3186,8 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
         // Re-schedule against the store INCLUDING this run's earlier rungs, so
         // each rung issues only its own increment.
         std::vector<RankPendingGame> pending =
-            rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr);
+            rankSchedule(roster, store, rungs[r], runSeed, pairedOpenings, cohortPtr,
+                         commonOpenings);
         std::chrono::steady_clock::time_point tRung = std::chrono::steady_clock::now();
         long long rungPlayed = 0;
 

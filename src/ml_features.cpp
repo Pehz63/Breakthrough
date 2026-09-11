@@ -159,6 +159,18 @@ void mlExtractValueFeaturesV2(int turnColor, float* f) {
     f[MLV2_STM] = (turnColor == White) ? 1.0f : -1.0f;
 }
 
+int mlv2MirrorIndex(int i) {
+    if (i == MLV2_STM) return i;
+    int plane = (i >= SIZE * SIZE) ? SIZE * SIZE : 0;
+    int sq = i - plane;
+    int x = sq % SIZE, y = sq / SIZE;
+    return plane + (SIZE - 1 - x) + SIZE * y;
+}
+
+void mlv2MirrorFeatures(const float* in, float* out) {
+    for (int i = 0; i < MLV2_FEATURES; i++) out[mlv2MirrorIndex(i)] = in[i];
+}
+
 // ============================================================
 // MOVE FEATURES (move -> side-relative float vector)
 // ============================================================

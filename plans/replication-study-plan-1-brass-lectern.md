@@ -14,18 +14,17 @@ regime gets its own best shot, tuned separately, with its own data source and
 code path. The answer is an ordering of finished agents.
 
 This study asks a science question: **what is the causal effect of each
-published technique on learning, and do the effects add?** That needs a
-different design.
+published technique on learning?** That needs a different design.
 
 | | Budget-parity rebuild | Replication study |
 |---|---|---|
-| Unit compared | a whole regime (its code path, data, tuning) | one technique, switched on or off inside ONE shared pipeline |
+| Unit compared | a whole regime (its code path, data, tuning) | one technique, switched on inside ONE shared pipeline, everything else identical |
 | Everything else | differs between regimes by design | held identical, down to the binary and the seed list |
 | Tuning | each regime tuned for its best shot | an equal tuning budget per technique, by protocol |
-| Result | an Elo ordering, category titles | effect sizes with confidence intervals, interaction estimates, replication verdicts against named published numbers |
+| Result | an Elo ordering, category titles | effect sizes with confidence intervals, and a replication verdict against each named published number |
 | Seeds | 3 per regime | set by a power analysis from measured noise |
-| Evaluation | the full-roster refit | a frozen reference panel, so every estimate is independent and on one fixed scale, plus certification of the winner |
-| Pre-registration | stopping rule only | hypotheses, primary endpoint, analysis model, correction, equivalence margins |
+| Evaluation | the full-roster refit | a frozen reference panel, so every estimate is independent and on one fixed scale |
+| Pre-registration | stopping rule only | hypotheses, primary endpoint, analysis, correction, equivalence margins |
 
 What carries over from budget-parity unchanged: its Part 1 fixes (wall-clock
 rungs and resume in `src/train_budget.cpp`, truthful provenance, `time=`
@@ -35,285 +34,356 @@ Budget-parity Part 2's pending lambda sweep folds into this study's Pass 2
 calibration, since the same numbers serve both. Budget-parity itself continues
 separately: it answers the leaderboard question and this study does not.
 
-## Research questions
+## Staging
+
+- **Stage 1 (this plan): individual effects.** Each technique is measured
+  alone, as one switch flipped on the baseline pipeline, against that baseline.
+- **Stage 2 (later, designed from Stage 1's results): combinations.** Which
+  techniques to combine, whether their gains add, and the recipe for a strong
+  agent. Not designed here, by developer decision. The section at the end only
+  records what Stage 1 must collect so Stage 2 is possible.
+
+## Research questions (Stage 1)
 
 - **RQ1 (transfer).** Which published techniques improve self-play learning on
   Breakthrough, and by how much, at matched training compute?
 - **RQ2 (efficiency kind).** Does each technique make learning faster (the same
-  strength for less compute) or raise the strength it eventually reaches, or
+  strength for less compute), raise the strength it eventually reaches, or
   both? Sample efficiency (per game) and compute efficiency (per CPU second) are
-  reported separately, because techniques like TreeStrap buy more updates per
-  game at a higher cost per game.
-- **RQ3 (additivity).** When two techniques are combined, is the gain the sum
-  of their separate gains, less than the sum, or more?
-- **RQ4 (direct replication).** Do Cohen-Solal 2026's Breakthrough results
+  reported separately, because some techniques buy more updates per game at a
+  higher cost per game.
+- **RQ3 (direct replication).** Do Cohen-Solal 2026's Breakthrough results
   (the only published controlled comparison on this game) reproduce under an
   independent implementation and a stronger evaluation protocol?
 
 ## Published claims under test
 
-Each claim gets a card in the results doc: source, original domain, original
-protocol, original numbers, our adaptation, every deviation, and the verdict.
-"Verified" means read from the paper's own text this session. Everything else
+"Verified" means read from the paper's own text on 2026-09-10. Everything else
 must be read from the source before the pre-registration is committed.
 
-| ID | Technique | Source | Domain | Published result | Replication type | Verified |
+| ID | Claim | Source | Domain | Published result | Replication type | Verified |
 |---|---|---|---|---|---|---|
-| C1 | TreeStrap(alpha-beta) vs TreeStrap(minimax) vs RootStrap(alpha-beta) vs TD-Leaf | Veness, Silver, Blair, Uther, NIPS 2009 | chess, linear evaluator, 1812 features, self-play from random weights | Best Elo (95% CI): TreeStrap(alpha-beta) 2157 +/- 31, TreeStrap(minimax) 1807 +/- 32, RootStrap(alpha-beta) 1362 +/- 59, TD-Leaf 1068 +/- 36, untrained 250 +/- 63. One training run per method. Games at fixed time control, update time charged against thinking time. Step size tuned per method | conceptual (new game) | yes, Table 2 |
-| C2 | TD-Leaf(lambda) vs TD(lambda) vs TD-directed(lambda) | Baxter, Tridgell, Weaver 1999 (arXiv cs/9901001) | chess (KnightCap), backgammon | KnightCap 1650 -> 2100 in 308 games on FICS. Veness 2009 notes those weights were initialised from expert values and that random-init TD-Leaf stalled at weak amateur level | conceptual | abstract only |
-| C3 | tree learning vs root learning vs terminal learning | Cohen-Solal, JMLR 27 (2026), Table 2 | 11 games incl. Breakthrough, conv net | Breakthrough, iterative-deepening alpha-beta: tree 79.2%, root 50.6%, terminal 14.3% (MCTS: 78.1 / 45.5 / 22.3) | **direct** (same game) | yes |
-| C4 | additive depth reward (win fast, lose slow) vs plain win/loss | Cohen-Solal 2026, Table 4, Section 6.2.2 | same | Breakthrough: additive depth 69.5%, win/loss 39.0% (multiplicative depth 40.4, mobility 43.9, presence 48.5). Terminal value l = P - p + 1 for a win, -l for a loss, P = maximum actions in a game, p = actions played | **direct** | yes |
-| C5 | ordinal action distribution vs epsilon-greedy | Cohen-Solal 2026, Section 7, Remark 16 | many games | "performs better on average and on the majority of games... the gain is however quite slight". No numbers shown in the paper | conceptual, **exploratory only** (no published effect size to test) | yes |
-| C6 | symmetry data augmentation | AlphaGo / AlphaGo Zero line (Silver et al.) | Go | to be read before pre-registration | conceptual | no |
-| C7 | TD(lambda < 1) vs Monte Carlo (lambda = 1) targets | Sutton 1988, Tesauro (TD-Gammon) | backgammon | to be read before pre-registration. In-project prior: lambda = 1 scored below the untrained init (`Docs/hyperparameter-log.md`) | conceptual | no |
+| C1 | TreeStrap(alpha-beta) > RootStrap(alpha-beta) > TD-Leaf | Veness, Silver, Blair, Uther, NIPS 2009 | chess, linear evaluator of 1812 features, self-play from random weights | Best Elo (95% CI): TreeStrap(alpha-beta) 2157 +/- 31, TreeStrap(minimax) 1807 +/- 32, RootStrap(alpha-beta) 1362 +/- 59, TD-Leaf 1068 +/- 36, untrained 250 +/- 63. One training run per method | conceptual (new game) | yes, Table 2 |
+| C2 | TD-Leaf(lambda) > TD-directed(lambda) | Baxter, Tridgell, Weaver 1999 (arXiv cs/9901001) | chess (KnightCap), backgammon | KnightCap 1650 -> 2100 in 308 games on FICS, from expert-initialized weights (Veness 2009's note) | conceptual | abstract only |
+| C3 | tree learning > root learning > terminal learning | Cohen-Solal, JMLR 27 (2026), Table 2 | 11 games incl. Breakthrough, conv net | Breakthrough, iterative-deepening alpha-beta: tree 79.2%, root 50.6%, terminal 14.3% | **direct** (same game) | yes |
+| C4 | additive depth reward > plain win/loss | Cohen-Solal 2026, Table 4, Section 6.2.2 | same | Breakthrough: additive depth 69.5%, win/loss 39.0% | **direct** | yes |
+| C5 | ordinal action distribution > epsilon-greedy | Cohen-Solal 2026, Section 7, Remark 16 | many games | "performs better on average and on the majority of games... the gain is however quite slight". No numbers published | conceptual, **exploratory only** | yes |
+| C6 | symmetry augmentation helps | AlphaGo / AlphaGo Zero line (Silver et al.) | Go | to be read before pre-registration | conceptual | no |
+| C7 | TD(lambda < 1) > Monte Carlo (lambda = 1) | Sutton 1988, Tesauro (TD-Gammon) | backgammon | to be read before pre-registration. In-project prior: lambda = 1 scored below the untrained init (`Docs/hyperparameter-log.md`) | conceptual | no |
 
-Protocol notes that matter for C3 and C4. Cohen-Solal trained each variant 48
-hours per repetition, repeated 32 times (48 for Table 4), and scored a variant
-by an all-play-all among the final evaluation functions of every variant and
-repetition, with every match played at **minimax depth 1**. So their
-percentages measure static-evaluation quality inside a pool of six variants,
-not playing strength against outside opponents. This study reproduces their
-statistic as a secondary instrument (see "Evaluation") and adds a
-serving-depth, fixed-panel rating on top.
+**Cohen-Solal's protocol, which bounds what C3 and C4 can be compared on.**
+Each variant trained 48 hours per repetition, 32 repetitions (48 for Table 4).
+A variant's score is its win percentage in an all-play-all among the final
+evaluation functions of every variant and repetition, every match played at
+**minimax depth 1**. So their percentages measure static-evaluation quality
+inside a pool of five or six variants, not strength against outside
+opponents. Read as Elo against the pool average, their Breakthrough gaps are
+roughly 200 Elo for both C3 (tree vs root) and C4 (depth vs win/loss). That
+conversion is rough and is used only to size the power analysis below.
 
-## Design
+## The baseline pipeline
 
-### The shared pipeline (every run, every cell)
+One trainer, `train.exe tdleaf`, extended with switches in Pass 0. A technique
+is a switch value, never a different code path or binary. The baseline is the
+pipeline with every switch at its reference value:
 
-One trainer, `train.exe tdleaf`, extended with switches (Pass 0). A technique
-is a switch value, never a different code path or binary. Held fixed across the
-whole study and recorded in every checkpoint's provenance:
+| Controlled variable | Baseline value | Why |
+|---|---|---|
+| backup target | TD-Leaf(lambda), gradient at the PV leaf toward the lambda-return | the regime this project already runs and validates (theory 72), and the method C1 and C2 both report against |
+| lambda | one value calibrated in Pass 2 over [0, 0.7] | `Docs/hyperparameter-log.md`: only 0.0, 0.7, 1.0 ever tried |
+| terminal value | win/loss, z = 1 or 0 (0 draws in 1,132,483 stored games, so z = 0.5 never occurs) | the plain reward every claim compares against |
+| loss | cross-entropy between sigmoid(model output) and the target probability | the trainer's existing loss, kept for every arm so arms differ only in which positions and which targets |
+| move selection | uniform-random opening plies (`--open-plies`, one calibrated value), then the search's best move | the project's existing diversity mechanism. Veness also played greedily after an opening book |
+| update timing | after each game, over that game's positions | the trainer's existing schedule. Cohen-Solal also learns after each game |
+| augmentation | none | |
+| model | linear v2 piece-square, 129 features + bias | playbook architecture default, and close in kind to Veness's linear evaluator |
+| initialization | scratch, small random weights from the run seed | developer decision, matches Veness and Cohen-Solal |
+| generator search | the study head below, exactly | playbook generator-depth rule |
+| l2 | 0.0 | |
+| learning rate | tuned per arm with an equal budget | see "Hyperparameter fairness" |
+| binary | one commit, hash stamped into provenance, no rebuild mid-study | |
+| machine, threading | this machine, one thread per training process, a fixed number of concurrent processes | |
 
-| Controlled variable | Value |
-|---|---|
-| game, start | `boards/board1.txt` |
-| model | linear v2 piece-square, 129 features + bias (`Docs/model-training-playbook.md`, architecture guidance) |
-| initialization | scratch, small random weights drawn from the run seed (Veness and Cohen-Solal both learn from scratch) |
-| generator search | the study head below, exactly (playbook, generator depth rule) |
-| opening diversity | `--open-plies` at one calibrated value |
-| exploration schedule | one calibrated schedule (unless the exploration factor is on) |
-| update schedule | strictly online, `--batch 1` |
-| lambda (TD levels only) | one calibrated value |
-| l2 | 0.0 |
-| learning rate | tuned per technique level with an equal budget (see "Hyperparameter fairness") |
-| binary | one commit, hash stamped into provenance, no rebuild mid-study |
-| machine, threading | this machine, one thread per training process, a fixed number of concurrent processes |
+## The Stage 1 arms
 
-### Factors (Block A, the confirmatory factorial)
+Every arm differs from the baseline in exactly one switch. The contrast for
+each arm is arm minus baseline, and two arm-to-arm contrasts are also
+pre-registered because a published claim is stated that way (C1's ordering and
+C3's tree-vs-root).
 
-| Factor | Levels | Reference level | Claims |
-|---|---|---|---|
-| F1 backup target | TD-Root, TD-Leaf, RootStrap(alpha-beta), TreeStrap(alpha-beta) | TD-Leaf | C1, C2, C3 |
-| F2 terminal reward | win/loss, additive depth | win/loss | C4 |
-| F3 symmetry augmentation | off, left-right mirror | off | C6 |
-| F4 exploration distribution | epsilon-greedy, ordinal | epsilon-greedy | C5 |
+| Arm | Switch | Claim |
+|---|---|---|
+| B0 | baseline | reference for every contrast |
+| A1 | TD-directed(lambda) | C2 |
+| A2 | RootStrap(alpha-beta) | C1, C3 (root learning) |
+| A3 | TreeStrap(alpha-beta) | C1, C3 (tree learning) |
+| A4 | lambda = 1 (Monte Carlo target on PV leaves) | C7 |
+| A5 | additive depth terminal reward | C4 |
+| A6 | left-right mirror augmentation | C6 |
+| A7 | epsilon-greedy exploration | C5's control |
+| A8 | ordinal exploration | C5 |
 
-Full factorial: 4 x 2 x 2 x 2 = **32 cells**. TD-Leaf is the reference level
-because it is the regime this project already runs and validates, and C1 and
-C2 both report against it. The reference level only changes which contrasts
-print by default. It does not change any estimate.
+Pre-registered contrasts: A1..A8 each against B0, plus A3 against A2 (C3's
+tree-vs-root, and the top of C1's ordering) and A8 against A7 (C5 as stated).
 
-The C7 contrast (TD vs Monte Carlo) sits inside the calibration sweep of lambda
-rather than in the factorial, since lambda is continuous and lambda = 1 is one
-end of it.
+### A1. TD-directed(lambda) (Baxter et al. 1999)
 
-**Why a full factorial rather than "baseline, each alone, then combinations".**
-That one-at-a-time layout is contained in the factorial: the all-reference cell
-is the baseline, the cells with one factor switched are "each alone", and the
-rest are the combinations. What the factorial adds is that every run informs
-every effect. In a balanced two-level factorial with N runs, each main effect
-and each two-way interaction is a difference of two means over N/2 runs each,
-so its standard error is 2 sigma / sqrt(N). A one-at-a-time design spends the
-same runs estimating each effect from only two cells. The factorial also
-estimates interactions, which the one-at-a-time layout cannot do at all.
+- **What changes.** The lambda-return is computed over the ROOT positions'
+  static evaluations instead of the PV leaves'. The search still chooses every
+  move. Baxter et al. call this TD-directed(lambda). It is the comparison their
+  paper makes against TD-Leaf.
+- **Implementation.** `tdLeafGradients` is unchanged. Only the vector `p` and
+  the features the gradient is applied to switch from `leaf(s_t)` to `s_t`.
+- **Closed-form check.** At lambda = 1 both arms reduce to Monte Carlo on their
+  own positions, so A1 at lambda = 1 is Monte Carlo on root positions.
+- **Prediction (C2).** A1 below B0.
+- **Deviations.** Baxter's KnightCap started from expert weights. This study
+  starts from scratch (developer decision), which Veness reports is the harder
+  setting for TD-Leaf.
 
-### Block B: techniques that change the generator or need a teacher
+### A2. RootStrap(alpha-beta) (Veness et al. 2009)
 
-Run after Block A, each against a control arm drawn from Block A's pipeline at
-the identical compute budget. They cannot be factors in Block A without
-changing the search or the data source for every cell.
+- **What changes.** After each search, the root's static evaluation is moved
+  toward the root's search value. No lambda, no game outcome except where the
+  search itself proves a result.
+- **Target mapping.** The search returns an integer score, `lround(tanh(out) *
+  900)` for a linear model plus whatever `mlLeafScore`'s tail adds. The target
+  output is the inverse of that tail, `out* = atanh(score / 900)` after
+  undoing any blend, clamped inside (-1, 1). A proven win or loss maps to
+  target probability 1 or 0. Pass 1 verifies the round trip on random
+  positions: static eval, depth-0 search score, inverse, equal to the model
+  output within the 1/900 rounding step.
+- **Prediction (C1).** A2 above B0.
+- **Deviations.** Veness used squared error on the evaluation. This study keeps
+  cross-entropy for every arm so the loss is a controlled variable. Veness
+  updated after every search, this study after every game (controlled
+  variable). Veness used a simplified training-time search. This study uses the
+  serving head, per the playbook.
 
-| ID | Technique | Source | Why it is separate |
-|---|---|---|---|
-| B1 | Descent as the data generator | Cohen-Solal 2026, Table 3 (Breakthrough: Descent 86.5%, unbounded best-first minimax 72.5%, alpha-beta tree learning 47.6%) | a new search algorithm, not a switch |
-| B2 | Gumbel AlphaZero | Danihelka et al. 2022, existing `gumbelzero` | a different search family, no node budget grammar (`ranking/tracks.txt`) |
-| B3 | supervised learning from strong-agent games | Lorentz and Zosa 2017 (expert-move CNNs), existing `pool_games` path | needs a teacher, whose compute is charged to the budget |
-| B4 | search-score distillation | NNUE training practice | needs a deep-search teacher, charged to the budget |
-| B5 | experience replay | Lin 1992, Mnih et al. 2015 | promotable to a Block A factor if Pass 2's power analysis leaves room |
+### A3. TreeStrap(alpha-beta) (Veness et al. 2009, closest to Cohen-Solal's tree learning)
 
-### Block C: deferred
+- **What changes.** After each search, EVERY searched node with remaining depth
+  at least d_min is moved toward its alpha-beta bound, with Veness's one-sided
+  loss: if the static eval is above the node's upper bound it is pushed down to
+  it, if below the lower bound it is pushed up, otherwise no update. An exact
+  entry is both bounds.
+- **Implementation, Veness's own procedure.** Veness computes the update by
+  walking the transposition table from the root (`DeltaFromTransTbl`, his
+  Algorithm 2): probe a position, apply its bound, recurse into each successor
+  that has an entry of sufficient depth. That needs no change to the search, so
+  the rated path stays untouched, exactly as `ml_tdleaf.h` requires. Our table
+  already stores score, bound flag and remaining depth per entry
+  (`src/transposition.h`), and keys are salted, so the walk XORs in
+  `ttSearchContext()` (theory 72's lesson). Features are extracted as the walk
+  steps through positions.
+- **Two engine facts to handle in Pass 0.** The table is always-replace, so
+  some of the tree is overwritten before the walk reads it. The walk logs
+  coverage (nodes updated per search), the counterpart of TD-Leaf's mean PV
+  depth. The table also persists across moves of a game, while Veness cleared
+  it before each training search. Clearing it would change the generator away
+  from the serving head, so instead each entry gets a search-generation stamp
+  that only the walk reads, and the walk uses only the current search's
+  entries.
+- **Hyperparameter.** d_min, Veness used 1. Calibrated in Pass 2 over a small
+  set, since it trades updates per search against their quality.
+- **Closed-form check.** With the walk limited to the root, A3 equals A2.
+- **Prediction.** A3 above A2 above B0 (C1), and A3 above A2 (C3).
+- **Deviations.** Same loss, update-timing and search-mode deviations as A2.
+  Cohen-Solal's tree learning differs from TreeStrap: it learns after each game
+  on the stored partial tree with non-terminal leaves removed, with minimax
+  values from its own searches. The A3 vs A2 contrast is the closest this
+  engine gets to their tree-vs-root comparison, and the results doc states that
+  mapping plainly rather than calling it identical.
 
-Architecture scaling (Jones 2021, Hex), KataGo-style auxiliary targets (needs
-multi-head models), potential-based reward shaping, implicit minimax backups
-(Lanctot et al. 2014, needs MCTS with an evaluator). Recorded so they are not
-lost.
+### A4. Monte Carlo target (lambda = 1)
+
+- **What changes.** lambda = 1, which by the unit-tested closed form is
+  outcome-supervised training on PV leaves.
+- **Prediction (C7).** A4 below B0. The in-project prior agrees: lambda = 1
+  scored below the untrained init on the old d6 head.
+- **Note.** B0's lambda is calibrated in Pass 2, so A4 is a pre-registered
+  contrast against whichever value the calibration picks, stated before Pass 3.
+
+### A5. Additive depth reward (Cohen-Solal 2026, Section 6.2.2)
+
+- **What changes.** The terminal value rewards short wins and long losses.
+  Cohen-Solal's form: l = P - p + 1 for a first-player win and -l for a loss,
+  with P the maximum number of actions in a game and p the actions played.
+  Mapped into this model's win-probability target as z = 0.5 + 0.5 l / P for a
+  White win and 0.5 - 0.5 l / P for a Black win.
+- **P.** The proven maximum game length if `Docs/axioms.md` can supply one,
+  otherwise the engine's 400-ply cap, fixed in Pass 1.
+- **Check.** With l held at P for every terminal, the targets equal win/loss
+  exactly.
+- **Prediction (C4).** A5 above B0.
+- **Deviations.** Cohen-Solal's evaluation is unbounded, this model's target is
+  a probability, so the mapping is bounded. They measured it with Descent and
+  tree learning, here it rides on the TD-Leaf baseline. Whether it behaves
+  differently on TreeStrap is a Stage 2 question.
+- **Interaction with the search.** The search already prefers faster wins
+  (win-decay in `ai_minimax.cpp`). A5 is the training-side counterpart, so the
+  results doc reports mean game length per arm, since Cohen-Solal's stated
+  mechanism is shorter games.
+
+### A6. Left-right mirror augmentation
+
+- **What changes.** Every trained position is also trained as its left-right
+  mirror, with the same target. Breakthrough's rules are left-right symmetric.
+  The v2 feature map already has a mirror partner function, `mlv2MirrorIndex`
+  (used by `train.exe ensemble --mirror`).
+- **Check.** A mirror-symmetric position yields the identical feature vector.
+  Updates per game double, and both counts are logged.
+- **Prediction (C6).** A6 above B0 at matched games. At matched compute it
+  could go either way, since each game costs more to learn from.
+- **Relevant in-project result.** Mirroring the champion's trained WEIGHTS
+  after the fact cost 135 Elo (theory 30). Augmentation during training is a
+  different operation, and the results doc says so rather than treating one as
+  evidence about the other.
+
+### A7 and A8. Exploration: epsilon-greedy and ordinal (Cohen-Solal 2026, Section 7)
+
+- **A7 epsilon-greedy.** With probability epsilon a uniformly random move,
+  otherwise the best. Implemented today as `--explore`. Positions after a
+  random move are currently skipped for training (no valid PV), which is kept.
+- **A8 ordinal.** Moves are ranked by search value. The probability of the i-th
+  best of n moves is P(c_i) = (e + (1 - e) / (n - i)) (1 - sum_{j<i} P(c_j)),
+  so e = 1 always plays the best move and smaller e spreads probability down
+  the ranking. Cohen-Solal anneals e = t / T over training. Needs the root's
+  per-move search values, which the root loop computes but does not keep
+  (`ai_minimax.cpp`, root loop): only the best move's value is exact, the rest
+  are alpha-beta bounds. Pass 0 decides between a training-only full-window
+  root search for exploratory plies and ranking by bound. Whichever is chosen
+  is a recorded deviation.
+- **Training on a non-best move.** Under TD-Leaf, the PV below a second-best
+  move is still that child's own principal variation, so those positions stay
+  trainable in A8. Recorded as a design choice.
+- **Hyperparameters.** epsilon for A7 and the e schedule for A8 each get the
+  same tuning budget.
+- **Prediction (C5).** A8 above A7. Exploratory only, since no published
+  effect size exists. Both are also compared to B0, which does not explore past
+  the opening.
 
 ## Outcome measures
 
-The developer's question: converged Elo, time to reach some Elo, or Elo after
-the same training time? **All three come off one learning curve, so every run
-is rated at every rung, and the pre-registration names which one is primary.**
+Every run is rated at every rung, so all of these come off one learning curve,
+and the pre-registration names which one is primary.
 
-- **Primary: Elo at the final rung, T_max, at matched training compute.** It is
-  defined for every run, it answers the practitioner's question ("I have this
-  much compute, which technique?"), and it needs no assumption about
-  convergence.
+- **Primary: Elo at the final rung T_max, at matched training compute.** It is
+  defined for every run, answers the practitioner's question ("I have this much
+  compute, which technique?"), and needs no assumption about convergence.
 - **S1, area under the learning curve** on a log2 compute axis, the mean Elo
   over rungs. Robust to curves that peak and decline.
-- **S2, compute multiplier.** The compute a cell needs to reach the reference
-  cell's T_max Elo, log-interpolated between rungs, divided by T_max. A value of
-  0.25 means the technique reaches baseline strength on a quarter of the
-  compute. Censored as "> 1" when the cell never gets there. This is the
-  time-to-threshold measure, stated in a unit that does not depend on this
-  machine.
-- **S3, peak Elo, corrected for selection.** Veness reports "best performance",
-  which is the maximum over checkpoints and is biased upward by the noise of
-  the checkpoint that wins. Correction: split each agent's panel games by game
-  index parity, pick the peak rung on one half, report its Elo from the other.
+- **S2, compute multiplier.** The compute an arm needs to reach B0's T_max Elo,
+  log-interpolated between rungs, divided by T_max. A value of 0.25 means the
+  technique reaches baseline strength on a quarter of the compute. Censored as
+  "> 1" when the arm never gets there. This is the time-to-threshold measure,
+  in a unit that does not depend on this machine.
+- **S3, peak Elo, corrected for selection.** Veness reports the best checkpoint,
+  which is biased upward by the noise of whichever checkpoint wins. Correction:
+  split each agent's panel games by game index parity, pick the peak rung on
+  one half, report its Elo from the other.
 - **S4, plateau Elo, only where a plateau is shown.** Reported only for runs
-  whose last two rungs differ by less than one combined SE. Otherwise the run
-  is reported as not converged.
-- **Sample efficiency.** Elo at matched GAME counts, secondary, since TreeStrap
-  and augmentation change the cost of a game.
+  whose last two rungs differ by less than one combined SE. Otherwise the run is
+  reported as not converged.
+- **Sample efficiency.** Elo at matched GAME counts, secondary, since A3 and A6
+  change the cost of a game.
+- **RQ2 decomposition.** A curve model with a per-arm shift along log compute
+  (speed) and a per-arm asymptote (ceiling). It says which kind of gain each
+  technique gives, which Stage 2 needs: two speed gains should compose on the
+  compute scale, while two ceiling gains compete for the same headroom.
 
 Why converged Elo is not primary: self-play value learning in this project has
 an interior optimum more often than not. TD-Leaf peaked at 1,000 to 1,500 games
 and declined (theory 46), and 93 of 101 Gumbel-Zero arms were non-monotonic
-(theory 50). A convergence point inside a finite budget cannot be verified, so
-a primary endpoint built on it would rest on an assumption the data contradicts.
-
-## Interaction model: do techniques add?
-
-The developer's example: A gives +100, B gives +150. Additive predicts +250 for
-both. The measured quantity is the interaction
-
-```
-I_AB = E[AB] - E[A] - E[B] + E[baseline]
-```
-
-so if both together give +200, I_AB = -50 (sub-additive). The analysis fits,
-on the primary endpoint,
-
-```
-Elo_run = mu + sum_i beta_i x_i + sum_{i<j} beta_ij x_i x_j + e_run
-```
-
-with effect-coded factors, reports every beta_ij with its 95% CI, and tests
-the main-effects-only model against the two-way model. Three-way terms are
-estimated and reported as exploratory.
-
-**The scale additivity is judged on changes the answer, so two scales are
-reported, with Elo primary.**
-
-1. **Elo** is log-odds of winning against the panel. Additivity there means
-   the two techniques multiply the odds independently.
-2. **Log compute.** If A is worth a compute multiplier of 0.5 and B one of
-   0.33, independence predicts 0.17 for both. This is the scale on which "two
-   speedups" should compose.
-
-Expect some sub-additivity in Elo from a ceiling alone: a 130-parameter linear
-evaluator has a representational ceiling (theory 10), and gains shrink near it
-whatever the mechanism. The compute scale separates that from a genuine
-interaction. So does the learning-curve decomposition from RQ2: a curve model
-with a per-cell shift along log compute (speed) and a per-cell asymptote
-(ceiling) says which kind each technique is. Two speed techniques should
-compose on the compute scale. Two ceiling techniques compete for the same
-headroom.
-
-**Out-of-sample additivity check.** Fit the main-effects-only model on the
-reference cell and the single-switch cells alone, predict every combination
-cell, and report predicted against measured, cell by cell.
+(theory 50). A convergence point inside a finite budget cannot be verified.
 
 ## Power and sample size
 
-Every run's endpoint carries two noise sources: seed-to-seed training variance
-sigma_seed and rating error sigma_meas, so sigma^2 = sigma_seed^2 +
-sigma_meas^2. Both are measured in Pass 2. The seed-noise band (50 to 150 Elo
-between replicas, theory 8) is a range, not a standard deviation, so it only
-brackets the guess below.
+Each run's endpoint carries seed-to-seed training variance sigma_seed and
+rating error sigma_meas, so sigma^2 = sigma_seed^2 + sigma_meas^2. Both are
+measured in Pass 2. The seed-noise band (50 to 150 Elo between replicas, theory
+8) is a range, not a standard deviation, so it only brackets the values below.
 
-Standard error of a two-level main effect or two-way interaction, balanced
-factorial, N runs total: 2 sigma / sqrt(N).
+For an arm with n_a seeds against a baseline with n_0 seeds, the contrast's
+standard error is sigma sqrt(1/n_a + 1/n_0). Every contrast shares the baseline,
+so the baseline gets more seeds than any arm. The standard allocation for
+comparing k arms to one control is n_0 = n_a sqrt(k), about 2.8 n_a for k = 8.
 
-| sigma | N = 32 | N = 64 | N = 96 | N = 128 |
-|---|---|---|---|---|
-| 50 | 17.7 | 12.5 | 10.2 | 8.8 |
-| 75 | 26.5 | 18.8 | 15.3 | 13.3 |
-| 100 | 35.4 | 25.0 | 20.4 | 17.7 |
+| seeds (arm / baseline) | sigma = 50 | sigma = 75 | sigma = 100 |
+|---|---|---|---|
+| 5 / 5 | 31.6 | 47.4 | 63.2 |
+| 5 / 12 | 26.6 | 39.9 | 53.2 |
+| 8 / 20 | 20.9 | 31.4 | 41.8 |
+| 10 / 24 | 18.8 | 28.2 | 37.6 |
 
-F1 has four levels, so a pairwise contrast between two of them uses N/4 runs
-per level: SE = sigma sqrt(8 / N). At sigma = 75 and N = 96 that is 21.7.
-
-Minimum detectable effect at 80% power, two-sided alpha 0.05, is about 2.8 SE.
-At sigma = 75 and 3 seeds per cell (N = 96), that is 43 Elo for a two-level
-effect or interaction and 61 Elo for an F1 pairwise contrast. Veness's C1 gaps
-are several hundred Elo, so the F1 ordering is well inside reach. Interactions
-smaller than about 40 Elo would need more seeds.
+Minimum detectable effect at 80% power is about 3.5 SE once the 8 comparisons
+against the baseline are corrected with Dunnett's procedure (the standard test
+for many arms against one control). At sigma = 75 and 8 / 20 seeds that is
+about 110 Elo. The published gaps are larger than that for C1 (hundreds of
+Elo) and roughly 200 Elo for C3 and C4, so those claims are within reach. C5's
+"quite slight" gain is not, and the plan says so in advance: A8 against A7 will
+most likely be inconclusive, and it is labelled exploratory for that reason.
 
 Rating error per agent against a panel, G games at mean p(1-p) = 0.2:
-SE = 173.7 / sqrt(0.2 G), which is 19.4 at G = 400 and 12.3 at G = 1,000. The
-rule is to choose G so that sigma_meas <= sigma_seed / 2, which keeps rating
-error under 20% of the total variance. Spending more on games past that point
-buys less than spending it on seeds.
+SE = 173.7 / sqrt(0.2 G), which is 19.4 at G = 400 and 12.3 at G = 1,000.
+Choose G so that sigma_meas <= sigma_seed / 2, which keeps rating error under
+20% of the total variance. Past that point, compute spent on seeds buys more
+than compute spent on games.
 
-**Multiple comparisons.** The confirmatory family is fixed in the
-pre-registration: the C1 ordering, C3, C4, the C7 lambda contrast, and the
-global additivity test. Holm correction across that family. Everything else is
-labelled exploratory.
+**Multiple comparisons.** The confirmatory family, fixed in the
+pre-registration: A1..A7 against B0 (Dunnett), A3 against A2, and the C1
+ordering. A8 and anything not listed are exploratory.
 
 **"Did not transfer" needs an equivalence test, not a failed significance
 test.** A technique is reported as having no effect only if its 90% CI lies
 inside a pre-registered margin (two one-sided tests, margin proposed at +/- 30
-Elo). A CI that is wide and straddles zero is reported as inconclusive.
+Elo). A wide CI straddling zero is reported as inconclusive.
 
 ## Evaluation instrument
 
 **Study head: `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`**, the Round 4
-node-track head. Three reasons:
+node-track head.
 
 - A node budget measures strength per node, which isolates evaluator quality,
   and evaluator quality is what a training technique changes.
-- Every Block A model is linear v2 with identical per-node cost, so the node
-  and time tracks sit at the same operating point by construction (0.25
-  us/node, `ranking/tracks.txt`). Each agent's `cpu_ms_move` is still recorded
-  to confirm it.
+- Every arm's model is linear v2 with identical per-node cost, so the node and
+  time tracks sit at the same operating point (0.25 us/node,
+  `ranking/tracks.txt`). Each agent's `cpu_ms_move` is still recorded to
+  confirm it.
 - Node-budget agents are deterministic (theory 71). `time=` agents are not
   (theories 59 and 71), which would put machine load into every game.
 
 **Frozen reference panel.** A fixed set of opponents spanning the whole range
-the learning curves cross, from untrained scratch models and weak fixed agents
+the learning curves cross: untrained scratch models and weak fixed agents
 (`rand@1`, `greedy@1`, shallow `ab` heads) through the Classic chip counter to
-the current top Round 4 cores. Panel ratings are pinned from the converged
-Round 4 full-roster fit. Each study agent plays only the panel, into a study
-store separate from `ranking/matches.jsonl`, and is rated with
-`rank.exe rate --pin`. Consequences: every study agent's Elo is an independent
-estimate on one fixed scale, study agents never shift each other, and the
-pool-compression hazard of comparing across fits does not arise. Panel size and
-spread are fixed in Pass 2 so that low rungs are resolved as well as high ones.
+the top Round 4 cores. Panel ratings are pinned from the converged Round 4
+full-roster fit. Each study agent plays only the panel, into a study store
+separate from `ranking/matches.jsonl`, and is rated with `rank.exe rate --pin`.
+So every study agent's Elo is an independent estimate on one fixed scale, study
+agents never shift each other, and the hazard of comparing across fits does
+not arise. Panel size and spread are fixed in Pass 2 so low rungs are resolved
+as well as high ones.
 
 **Game independence.** Deterministic agents against deterministic opponents
 replay one game per colour (`Docs/benchmarking.md`, defect 3). Games therefore
 start from paired random openings, each opening played twice with colours
 swapped (`rank.exe play --paired-openings`). If the same opening sequence is
-drawn for every study agent against a given panel member, differences between
-study agents also benefit from common random numbers. Pass 1 verifies both
+drawn for every study agent against a given panel member, the contrasts between
+arms also benefit from common random numbers (every arm faces identical
+openings, so opening luck cancels in the difference). Pass 1 verifies both
 properties by reading back stored games. The distinct-trajectory count is
 reported next to every rating.
 
 **Secondary instruments.**
 
-1. **Cohen-Solal's statistic (RQ4).** An all-play-all among the final
-   checkpoints of the cells matching their contrasts, every agent at
-   `ab(deep=1)@3` (their matches are depth 1), scored as they score it. Their
-   percentages come from their own six-variant pools, so the comparison is the
-   ordering and the direction of each gap, not the absolute percentage.
+1. **Cohen-Solal's statistic (RQ3).** An all-play-all among the final
+   checkpoints of B0, A2, A3 and A5, every agent at `ab(deep=1)@3` (their
+   matches are depth 1), scored as they score it. Their percentages come from
+   their own pools, so the comparison is the ordering and the direction of
+   each gap, not the absolute percentage.
 2. **Transitivity check.** A head-to-head matrix among the best final agent of
-   each F1 level, compared against panel Elo. Techniques that learn different
-   styles can order differently head to head than against a panel.
-3. **Certification.** The best Block A cell and the reference cell enter the
-   unpinned full-roster refit under `ranking/CHAMPION.md`'s rules. This is the
-   only step that can make a title claim, and the paper's strength claim for
-   the best recipe comes from it.
+   each arm, compared against panel Elo. Techniques that learn different styles
+   can order differently head to head than against a panel.
 
 ## Training compute accounting
 
@@ -322,36 +392,33 @@ reported next to every rating.
   (`steady_clock`) today, and budget-parity P6 recorded per-game rates
   differing 15x under contention, so wall clock alone cannot carry a compute
   claim. Wall seconds, nodes searched, games, positions trained and gradient
-  updates are all logged beside it.
+  updates are logged beside it.
 - **Update cost is charged to the budget**, as Veness did. TreeStrap's extra
-  updates are part of its price.
-- **Rungs are geometric in compute**, a doubling ladder from T_0 to T_max,
-  sized in Pass 2 from where curves flatten (playbook, Pass 2).
-- **Reproducibility.** A run that stops on a clock produces a checkpoint that
-  depends on machine speed. The recommended alternative, open for the
-  developer: Pass 2 measures each cell's CPU seconds per game, and Pass 3
-  expresses every rung as a game count equal to the compute target divided by
-  that cost. Every checkpoint is then a pure function of (commit, config,
-  seed), realized CPU seconds are still logged, and the analysis uses realized
-  compute on the x axis. This is the method theory 48's compute-matched Gumbel
-  sweep used.
+  updates and augmentation's doubled updates are part of their price.
+- **Rungs are game counts calibrated to compute (developer decision).** Pass 2
+  measures each arm's CPU seconds per game. Pass 3 expresses each rung as a
+  game count equal to the compute target divided by that cost, on a doubling
+  ladder from T_0 to T_max sized from where Pass 2's curves flatten. Every
+  checkpoint is then a pure function of (commit, config, seed). Realized CPU
+  seconds are logged and are the analysis x axis. This is the method theory
+  48's compute-matched Gumbel sweep used.
 
 ## Hyperparameter fairness
 
 Unequal tuning is the standard confound in method comparisons (Henderson et
-al. 2018). Veness tuned the step size per method, and so does this study, under
-a fixed protocol:
+al. 2018). Veness tuned the step size per method, and so does this study,
+under a fixed protocol:
 
-- For every F1 level, and for F2 and F3 (they change target magnitude and the
-  number of updates), the learning rate gets the **same random-search budget**:
-  the same number of draws over the same log range, the same seeds, the other
-  factors at their reference levels (Bergstra and Bengio 2012).
-- The tuned rate is fixed for Pass 3. Nothing else is tuned per cell.
-- Sensitivity is reported: each technique's effect at its own tuned rate and at
-  the reference level's rate. A technique whose gain disappears at a shared
-  rate is reported that way.
-- Lambda is calibrated once for the TD levels, over [0, 0.7] plus the
-  lambda = 1 end for C7. RootStrap and TreeStrap have no lambda.
+- Every arm's learning rate gets the **same random-search budget**: the same
+  number of draws over the same log range, with the same seeds (Bergstra and
+  Bengio 2012).
+- Arm-specific hyperparameters (lambda for B0 and A1, d_min for A3, epsilon for
+  A7, the e schedule for A8) get the same budget again, jointly with the
+  learning rate.
+- Tuned values are fixed for Pass 3. Nothing else is tuned per arm.
+- Sensitivity is reported: each arm's effect at its own tuned learning rate and
+  at the baseline's rate. A technique whose gain disappears at a shared rate is
+  reported that way.
 
 ## Pass 0: what has to be built
 
@@ -359,62 +426,60 @@ Each item lands with its test before any Pass 1 run.
 
 | Item | What | Verification |
 |---|---|---|
-| I1 | `--backup td-root\|td-leaf\|rootstrap\|treestrap` in `trainTDLeaf`. TD-Root takes the gradient at the root's static eval. RootStrap moves the root's static eval toward the root search value. TreeStrap(alpha-beta) moves every searched node at depth >= d_min toward its search bound, only when the static eval violates the bound (Veness, Section 4) | closed forms: TreeStrap restricted to the root equals RootStrap, TD-Root at lambda = 1 equals Monte Carlo on root positions. The TreeStrap node collector must not touch the rated search path: with collection on, the search returns the identical move, score and node count on a fixed position set, and rated us/node is unchanged (the reason `ml_tdleaf.h` gives for never modifying the hot recursion) |
-| I2 | `--terminal winloss\|depth`. Cohen-Solal's l = P - p + 1 mapped into the model's win-probability target, z = 0.5 + 0.5 l / P for a White win and the mirror for a loss | with l held at P for every terminal position, the depth targets equal the win/loss targets exactly. P is fixed in Pass 1 as the proven maximum game length if `Docs/axioms.md` can supply one, otherwise the engine cap. The bounded mapping is a recorded deviation, since Cohen-Solal's output is unbounded |
-| I3 | `--augment mirror`. Each trained position is also trained as its left-right mirror, reusing `mlv2MirrorIndex` from `trainEnsemble` | a mirror-symmetric position yields the identical feature vector, updates and positions trained double, both logged |
-| I4 | `--explore-dist eps\|ordinal`, Cohen-Solal's ordinal distribution (their Algorithm 14, parameter range from the paper) | the empirical move-rank distribution over many draws matches the closed form |
-| I5 | CPU-seconds accounting in `train_budget`, written into provenance | two settings of a busy-loop load give the same CPU seconds and different wall seconds |
-| I6 | panel file, study store, analysis export | paired openings verified from stored games, study store disjoint from the main store |
-| I7 | `analysis/replication_factorial.py`: factorial fit, bootstrap CIs over runs, compute multiplier, AULC, split-half peak, two one-sided tests, predicted-vs-measured additivity table | run on synthetic data with known effects, which it must recover |
+| I1 | `--backup td-leaf\|td-directed\|rootstrap\|treestrap` in `trainTDLeaf` (A1, A2, A3) | the closed forms above. The TreeStrap walk never runs inside the search: with the walk on, the search returns the identical move, score and node count on a fixed position set |
+| I2 | search-generation stamp on table entries, read only by the TreeStrap walk | a stale entry from the previous move is never updated. The rated search's behavior is byte-identical with the stamp present |
+| I3 | score-to-target inverse mapping (A2, A3) | round trip within the 1/900 step on random positions |
+| I4 | `--terminal winloss\|depth` (A5) | l held at P reproduces win/loss exactly |
+| I5 | `--augment mirror` (A6) | mirror-symmetric positions yield identical features, update counts double |
+| I6 | `--explore-dist eps\|ordinal` and the root move-value source (A7, A8) | the empirical move-rank distribution over many draws matches the closed form |
+| I7 | CPU-seconds accounting in `train_budget`, written into provenance | two settings of a busy-loop load give the same CPU seconds and different wall seconds |
+| I8 | panel file, study store, analysis export | paired openings verified from stored games, study store disjoint from the main store |
+| I9 | `analysis/replication_stage1.py`: contrasts against baseline with Dunnett correction, bootstrap CIs over seeds, compute multiplier, AULC, split-half peak, two one-sided tests, speed-vs-ceiling curve fit | run on synthetic data with known effects, which it must recover |
 
 ## Passes
 
-The playbook's four passes, mapped onto this study.
+The playbook's four passes, mapped onto Stage 1.
 
 **Pass 1, sanity.** Every switch at two settings, output differs as claimed.
-Each cell trains, stops at its rung, writes truthful provenance, and loads
+Each arm trains, stops at its rung, writes truthful provenance, and loads
 through the real search path. Mean PV depth is well above 1 on every TD-Leaf
-cell (theory 72's guard). Same seed twice gives a byte-identical model. Panel
-games are independent. Report to the developer before Pass 2.
+arm (theory 72's guard), and TreeStrap coverage is reported. Same seed twice
+gives a byte-identical model. Panel games are independent. Report to the
+developer before Pass 2.
 
 **Pass 2, calibration.** Four outputs, all required before the grid is shown:
 
-1. Curve shape: the reference cell, each single-switch cell and the all-on cell
-   at 1 seed, on a generous ladder, to place T_max past where curves flatten.
-2. Noise: 5 seeds of the reference cell and of one contrasting cell at the
-   candidate T_max, giving sigma_seed. Panel fits give sigma_meas. The power
-   analysis above then fixes seeds per cell and G.
-3. Tuning: the equal-budget learning-rate search per level, and lambda.
-4. Cost: CPU seconds per game per cell, which sets the game-count rungs.
+1. Curve shape: B0 and every arm at 1 seed on a generous ladder, to place
+   T_max past where curves flatten.
+2. Noise: 5 seeds of B0 and of one contrasting arm at the candidate T_max,
+   giving sigma_seed. Panel fits give sigma_meas. The power analysis then fixes
+   seeds per arm, seeds for the baseline, and G.
+3. Tuning: the equal-budget search per arm, including lambda.
+4. Cost: CPU seconds per game per arm, which sets the game-count rungs.
 
-Then the grid goes to the developer: cells, seeds, rungs, agent count, total
+Then the grid goes to the developer: arms, seeds, rungs, agent count, total
 games implied, and one projection from measured throughput if it exceeds a
 day.
 
-**Pass 3, the confirmatory factorial.** Run exactly the pre-registered grid.
-This deliberately departs from the playbook's "1 seed per draw" rule for Pass
-3: that rule exists for exploratory random search analysed by a fitted model.
-This pass is a designed confirmatory experiment, and its replication comes from
-seeds within cells. Report the shape of the result to the developer before
-Pass 4.
+**Pass 3, the confirmatory run.** Exactly the pre-registered grid. This
+departs on purpose from the playbook's "1 seed per draw" rule for Pass 3: that
+rule is for exploratory random search analysed by a fitted model. This pass is
+a designed confirmatory comparison whose replication comes from seeds. Report
+the shape of the result to the developer before Pass 4.
 
-**Pass 4, validation.** Two parts:
-
-1. **Winner's-curse control.** The best cell and the reference cell are trained
-   again on fresh seeds (at least 5 each) never used for selection, with the
-   ladder extended to confirm the plateau. The paper quotes these numbers for
-   the best recipe, not the Pass 3 numbers that selected it.
-2. **Certification** of the best recipe in the unpinned full-roster refit.
-
-Block B then runs as its own cycle, each technique against a Block A control
-arm at identical compute.
+**Pass 4, validation.** Every arm claimed as a positive effect is trained
+again on fresh seeds (at least 5) never used for any Pass 2 or Pass 3 choice,
+together with fresh baseline seeds, with the ladder extended to confirm any
+plateau. A claimed effect must hold on those seeds, which controls the
+winner's curse of picking the best-looking results. Certification in the
+full-roster refit waits for Stage 2's strong-agent recipe.
 
 ## Pre-registration
 
 Before any Pass 3 game, commit
 `plans/replication-study-prereg-1-brass-lectern.md` containing: the directional
-hypotheses from the claim cards, the primary endpoint, the analysis model, alpha
-and the Holm family, the equivalence margin, the rung list and T_max, seeds and
+hypotheses from the claim table, the primary endpoint, the contrasts and their
+correction, alpha, the equivalence margin, the rung list and T_max, seeds and
 G, exclusion rules (a crashed run is rerun on the same seed and reported), and
 the code commit hash. Its commit date and hash are the evidence that the
 analysis was fixed before the data existed. Every later deviation is listed in
@@ -424,26 +489,26 @@ the results doc with its reason.
 
 | Level | Recorded |
 |---|---|
-| training run | full config, seed, commit hash, CPU seconds, wall seconds, nodes searched, games, positions trained, gradient updates, mean PV depth (TD-Leaf), mean absolute TD error, weight norm, per-rung checkpoint files |
+| training run | full config, seed, commit hash, CPU seconds, wall seconds, nodes searched, games, positions trained, gradient updates, mean game length, mean PV depth (TD-Leaf arms), TreeStrap coverage, mean absolute TD error or bound violation, weight norm, per-rung checkpoint files |
 | rated agent | canonical ID, rung, compute at the rung, panel Elo and SE, games and distinct trajectories, `cpu_ms_move`, realized nodes per move |
 | game | both IDs, opening sequence and its pair index, colour, result, plies, per-side nodes and ms |
 | study | panel membership and pinned ratings, the Round 4 fit they came from, the pre-registration hash |
 
-## What the paper reports
+## What Stage 1 reports
 
-- Levels first: Elo per cell per rung with per-seed points, and learning curves
+- Levels first: Elo per arm per rung with per-seed points, and learning curves
   with 95% bootstrap intervals over seeds.
-- Then main effects, interactions with CIs, compute multipliers, equivalence
-  verdicts, and the predicted-against-measured additivity table.
-- Each claim card side by side with the published numbers. C1 is compared on
+- Then each contrast with its CI, compute multipliers, equivalence verdicts,
+  and the speed-vs-ceiling classification per arm.
+- Each claim side by side with the published numbers. C1 is compared on
   ordering and on the ratio of gains over the untrained agent, never on
   absolute Elo, since the scales belong to different pools and games. From
-  Veness Table 2, the gains over untrained are TreeStrap(alpha-beta) 1907,
-  TreeStrap(minimax) 1557, RootStrap(alpha-beta) 1112, TD-Leaf 818, a
-  TreeStrap-to-TD-Leaf ratio of 2.33.
-- A reporting style that follows Agarwal et al. 2021: interval estimates over
-  runs rather than point estimates, and the distribution of per-seed results
-  rather than a mean alone.
+  Veness Table 2 the gains over untrained are TreeStrap(alpha-beta) 1907,
+  RootStrap(alpha-beta) 1112, TD-Leaf 818, so TreeStrap gains 2.33 times what
+  TD-Leaf gains.
+- Reporting follows Agarwal et al. 2021: interval estimates over runs rather
+  than point estimates, and the distribution of per-seed results rather than a
+  mean alone.
 - Artifact release: code at the study commit, every config and seed, every
   checkpoint, the study match store, the analysis scripts, and a compute
   statement (hardware, total CPU hours for training and for evaluation).
@@ -451,17 +516,27 @@ the results doc with its reason.
 ## Threats to validity
 
 - **One game.** Transfer to other games is not claimed.
-- **Linear evaluator.** Cohen-Solal used conv nets, Veness a 1812-feature
-  linear model. A technique that needs capacity (tree learning on a deep net)
-  may underperform here for a reason unrelated to Breakthrough.
-- **Implementation fidelity.** Each adaptation is a reimplementation from the
-  paper's text. Every deviation is listed on its card.
+- **Linear evaluator.** Cohen-Solal used conv nets, Veness a linear model of
+  1812 features. A technique that needs capacity may underperform here for a
+  reason unrelated to Breakthrough.
+- **Implementation fidelity.** Each arm is a reimplementation from the paper's
+  text. Every deviation is listed in its arm's section and carried into the
+  results doc.
 - **Panel dependence.** Elo against a fixed panel can differ from head-to-head
   strength. The transitivity check measures how much.
 - **Single machine.** CPU seconds tie compute to this hardware. Nodes and games
   are logged so the result can be restated elsewhere.
 - **Tuning.** An equal budget is fair by protocol, not optimal for every
   technique. The sensitivity table shows how much it matters.
+
+## Stage 2, deferred: what Stage 1 must leave behind
+
+Stage 2 designs combinations after Stage 1's results are in. For it to be
+possible, Stage 1 keeps: every arm's tuned hyperparameters, its speed-vs-ceiling
+classification, and its effect size with CI. The additivity question Stage 2
+will ask is measured by the interaction I_AB = E[AB] - E[A] - E[B] + E[B0], on
+both the Elo scale and the log-compute scale, since a ceiling alone makes Elo
+gains look sub-additive near the top.
 
 ## Dependencies
 
@@ -470,19 +545,16 @@ the results doc with its reason.
 2. Budget-parity Part 1 fixes (landed) and theory 72's PV fix (landed).
 3. A contiguous model-slot range claimed and recorded in `src/CLAUDE.md` before
    the first checkpoint is published.
+4. The unverified claims (C2 beyond its abstract, C6, C7) are read from their
+   sources before the pre-registration is committed.
 
 ## Decisions taken (developer, 2026-09-10)
 
-1. **Compute matching: calibrated game counts.** Pass 2 measures each cell's
-   CPU seconds per game, Pass 3's rungs are game counts, every checkpoint is
-   reproducible from (commit, config, seed), and realized CPU seconds are the
-   analysis x axis.
-2. **Scratch initialization only.** No champion-initialized arm. C2's
-   KnightCap result started from expert weights, which is recorded on its card
-   as a deviation.
-3. **F1 reference level: TD-Leaf.**
-
-## Open questions for the developer
-
-1. Is F4 (ordinal exploration) in the confirmatory factorial, given its source
-   publishes no effect size, or moved to exploratory Block B?
+1. **Compute matching: calibrated game counts.** Every checkpoint reproducible
+   from (commit, config, seed). Realized CPU seconds are the analysis x axis.
+2. **Scratch initialization only.** C2's KnightCap result started from expert
+   weights, which is recorded as A1's deviation.
+3. **Baseline backup target: TD-Leaf.**
+4. **Stage 1 measures individual effects only.** Combinations, and the question
+   of how to assemble a strong agent from them, are designed after Stage 1's
+   results.

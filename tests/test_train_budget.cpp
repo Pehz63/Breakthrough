@@ -23,6 +23,8 @@
 #include "ml_tdleaf.h"
 #include "board_io.h"
 #include <vector>
+#include <chrono>
+#include <thread>
 
 // ============================================================
 // MARK PARSING
@@ -83,6 +85,36 @@ TEST_CASE("train budget - stamp lookup does not match inside a longer key") {
     REQUIRE(tbParsePrior("regime(opengames=99,games=7,secs=1.5,nodes=8)", r, "games") == true);
     REQUIRE(r.priorUnits == 7);
     REQUIRE(r.priorNodes == 8ULL);
+}
+
+TEST_CASE("train budget - CPU seconds charge busy work and not idle waiting") {
+    // The knob check for the replication study's compute unit: waiting moves
+    // the wall clock and not the CPU meter, spinning moves both.
+    TrainBudget b = tbDefaults();
+    tbBegin(b);
+    double c0 = tbCpu(b), w0 = tbElapsed(b);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    double cIdle = tbCpu(b) - c0, wIdle = tbElapsed(b) - w0;
+    INFO("idle: wall " << wIdle << " s, cpu " << cIdle << " s");
+    REQUIRE(wIdle >= 0.25);
+    REQUIRE(cIdle < 0.1);
+
+    double c1 = tbCpu(b), w1 = tbElapsed(b);
+    volatile double sink = 0.0;
+    while (tbElapsed(b) - w1 < 0.3) sink = sink + 1.0;
+    double cBusy = tbCpu(b) - c1;
+    INFO("busy: cpu " << cBusy << " s");
+    REQUIRE(cBusy >= 0.15);
+
+    // The stamp carries it and a resume reads it back.
+    string stamp = "regime(x=1" + tbStamp(b, "games") + ")";
+    REQUIRE(stamp.find(",cpu=") != string::npos);
+    TrainBudget r = tbDefaults();
+    REQUIRE(tbParsePrior("regime(games=4,secs=9,cpu=7.25,nodes=11)", r, "games") == true);
+    REQUIRE(r.priorCpu == Approx(7.25));
+    TrainBudget old = tbDefaults();
+    REQUIRE(tbParsePrior("regime(games=4,secs=9,nodes=11)", old, "games") == true);
+    REQUIRE(old.priorCpu == Approx(0.0));   // pre-CPU stamps resume with a zero prior
 }
 
 // ============================================================

@@ -185,6 +185,9 @@ static void usage() {
     cout << "  rank.exe play --roster <roster+cohort> --cohort <ids.txt> --games 32\n";
     cout << "      --cohort <file>  schedule ONLY pairs touching a listed agent, so a cohort can be\n";
     cout << "                       played in without also topping up every roster-vs-roster pair\n";
+    cout << "      --paired-openings --common-openings  every cohort agent meets each non-cohort\n";
+    cout << "                       opponent on the SAME colour-swapped opening sequence, so opening\n";
+    cout << "                       luck cancels between cohort agents (common random numbers)\n";
     cout << "  rank.exe rate --roster <roster+cohort> --pin ranking/standings.tsv\n";
     cout << "      --pin <ratings/standings tsv>  hold those agents at their listed Elo and solve only\n";
     cout << "                       for the rest, so the reference scale stays fixed across a study.\n";
@@ -214,7 +217,8 @@ int main(int argc, char** argv) {
                       games, getInt(argc, argv, "--shard", 0), getInt(argc, argv, "--of", 1),
                       seed, board, hasFlag(argc, argv, "--paired-openings"),
                       getOpt(argc, argv, "--cohort", ""),
-                      !hasFlag(argc, argv, "--no-ladder"));
+                      !hasFlag(argc, argv, "--no-ladder"),
+                      hasFlag(argc, argv, "--common-openings"));
     } else if (cmd == "rate") {
         rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""),
                       hasFlag(argc, argv, "--regime-balanced"));
@@ -222,7 +226,8 @@ int main(int argc, char** argv) {
         rc = rankPlay(roster, store, store, games, 0, 1, seed, board,
                       hasFlag(argc, argv, "--paired-openings"),
                       getOpt(argc, argv, "--cohort", ""),
-                      !hasFlag(argc, argv, "--no-ladder"));
+                      !hasFlag(argc, argv, "--no-ladder"),
+                      hasFlag(argc, argv, "--common-openings"));
         if (rc == 0) rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
     } else if (cmd == "seal") {
         string err;

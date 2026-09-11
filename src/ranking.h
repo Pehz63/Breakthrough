@@ -400,7 +400,14 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
                                           const std::vector<RankMatchRow>& store,
                                           int gamesPerPair, unsigned runSeed,
                                           bool pairedOpenings = false,
-                                          const std::set<std::string>* cohort = nullptr);
+                                          const std::set<std::string>* cohort = nullptr,
+                                          bool commonOpenings = false);
+// commonOpenings (needs pairedOpenings and a cohort): a pair with exactly one
+// cohort agent derives its couple seed from the NON-cohort agent alone, so
+// every cohort agent meets a given opponent on the same sequence of openings.
+// Opening luck then cancels in any cohort-vs-cohort contrast (common random
+// numbers), which is what the replication study's arm-vs-baseline contrasts
+// need (plans/replication-study-plan-1-brass-lectern.md, "Game independence").
 
 // ---- Rating ----
 // Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with a
@@ -471,7 +478,8 @@ int rankCheck(const std::string& rosterFile, const std::string& storeFile,
 int rankPlay(const std::string& rosterFile, const std::string& storeFile,
              const std::string& outFile, int gamesPerPair, int shard, int ofK,
              unsigned runSeed, const std::string& board, bool pairedOpenings = false,
-             const std::string& cohortFile = "", bool ladder = true);
+             const std::string& cohortFile = "", bool ladder = true,
+             bool commonOpenings = false);
 // pinFile (optional): a ratings.tsv / standings.tsv whose agents are held at
 // their listed Elo (rankFitBTPinned) instead of being re-solved. Screening only.
 // regimeBalanced: run the fit with every regime bloc weighted equally (see

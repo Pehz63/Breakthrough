@@ -520,16 +520,8 @@ int trainSupervisedValue(const string& outDir, const string& boardFile, int game
 // ============================================================
 // REGIME: ENSEMBLE (mirror symmetrization + seed averaging)
 // ============================================================
-// The v2 layout's left-right mirror partner of input i (same color plane,
-// same row, column x -> SIZE-1-x). The side-to-move input maps to itself.
-static int mlv2MirrorIndex(int i) {
-    if (i == MLV2_STM) return i;
-    int plane = (i >= SIZE * SIZE) ? SIZE * SIZE : 0;
-    int sq = i - plane;
-    int x = sq % SIZE, y = sq / SIZE;
-    return plane + (SIZE - 1 - x) + SIZE * y;
-}
-
+// Mirror symmetrization uses the v2 layout's mirror partner, mlv2MirrorIndex
+// (src/ml_features.h).
 int trainEnsemble(const std::vector<string>& modelFiles, bool mirror, const string& outDir) {
     if (modelFiles.empty()) { cout << "ERROR: ensemble needs at least one --models file\n"; return 1; }
     LinearModel* out = nullptr;

@@ -12,7 +12,9 @@
 #include "ranking.h"
 #include "datastore.h"
 #include "ml_cluster.h"
+#include "transposition.h"
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <cstdio>
 
@@ -1529,6 +1531,341 @@ TEST_CASE("trainTDLeaf - lr-decay and explore-decay schedules actually move the 
     delete off; delete on;
     std::remove("models/sweep/tdl_test_sched_off.txt");
     std::remove("models/sweep/tdl_test_sched_on.txt");
+}
+
+// ============================================================
+// REPLICATION-STUDY SWITCHES (plans/replication-study-plan-1-brass-lectern.md)
+// ============================================================
+// Pass 0's instrument checks: each switch's closed form, a proof that the
+// switches never change what the search plays, and a knob check that each one
+// changes what is learned.
+
+TEST_CASE("tdTerminalTarget - win/loss, draws, and the additive depth reward") {
+    const int P = TD_MAX_GAME_PLIES;
+    REQUIRE(tdTerminalTarget(1, 60, false, P) == 1.0);
+    REQUIRE(tdTerminalTarget(2, 60, false, P) == 0.0);
+    REQUIRE(tdTerminalTarget(0, 60, false, P) == 0.5);
+    REQUIRE(tdTerminalTarget(0, 60, true, P) == 0.5);
+    // l held at P (a one-ply game) reproduces win/loss exactly.
+    REQUIRE(tdTerminalTarget(1, 1, true, P) == 1.0);
+    REQUIRE(tdTerminalTarget(2, 1, true, P) == 0.0);
+    // l = P - p + 1: faster wins score higher, slower losses score higher.
+    REQUIRE(tdTerminalTarget(1, 41, true, P) == Approx(0.5 + 0.5 * (P - 40) / (double)P));
+    REQUIRE(tdTerminalTarget(2, 41, true, P) == Approx(0.5 - 0.5 * (P - 40) / (double)P));
+    REQUIRE(tdTerminalTarget(1, 30, true, P) > tdTerminalTarget(1, 60, true, P));
+    REQUIRE(tdTerminalTarget(2, 60, true, P) > tdTerminalTarget(2, 30, true, P));
+    // The longest possible game still counts as a win, just barely.
+    REQUIRE(tdTerminalTarget(1, P, true, P) == Approx(0.5 + 0.5 / P));
+    REQUIRE(tdTerminalTarget(1, P + 50, true, P) == Approx(0.5 + 0.5 / P));   // clamped at l = 1
+}
+
+TEST_CASE("tdScoreToProb - inverts the learned score tail on real positions") {
+    REQUIRE(tdScoreToProb(0, 900.0f) == Approx(0.5).margin(1e-15));
+    REQUIRE(tdScoreToProb(WhiteWin - 5, 900.0f) == 1.0);
+    REQUIRE(tdScoreToProb(BlackWin + 5, 900.0f) == 0.0);
+    REQUIRE(tdScoreToProb(900, 900.0f) == 1.0);
+    REQUIRE(tdScoreToProb(-900, 900.0f) == 0.0);
+    REQUIRE(tdScoreToProb(300, 900.0f) == Approx(1.0 - tdScoreToProb(-300, 900.0f)).margin(1e-12));
+
+    // Round trip: the search scores a learned leaf round(tanh(out) * 900), and
+    // the trainer's value is sigmoid(out), so the inverse of the score must
+    // agree with sigmoid(out) within one 1/900 rounding step (at most about
+    // 1e-3 in probability for |out| < 1.5, where the inverse's slope is < 1.8).
+    srand(8080);
+    LinearModel* lm = new LinearModel(HEAD_VALUE, 2, MLV2_FEATURES, 900.0f);
+    for (int i = 0; i < lm->n; i++) lm->w[i] = (float)(((rand() % 2001) - 1000) / 1000.0 * 0.08);
+    lm->bias = 0.03f;
+    mlSetModel(0, lm);
+    int checked = 0;
+    for (int trial = 0; trial < 40; trial++) {
+        REQUIRE(reloadBoard("boards/board1.txt") == true);
+        int plies = 2 + trial % 12, side = White, victor = None;
+        for (int k = 0; k < plies && !victor; k++) {
+            victor = (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+            side = (side == White) ? Black : White;
+        }
+        if (victor >= WhiteWin || victor <= BlackWin || nearWinCheck(side) != 0) continue;
+        float f[MLV2_FEATURES];
+        mlExtractValueFeaturesV2(side, f);
+        double out = lm->forward(f, MLV2_FEATURES);
+        REQUIRE(fabs(out) < 1.5);
+        int s = mlValueScore(side, 0);
+        double pv = 1.0 / (1.0 + exp(-out));
+        INFO("trial " << trial << " out " << out << " score " << s);
+        REQUIRE(tdScoreToProb(s, 900.0f) == Approx(pv).margin(1e-3));
+        checked++;
+    }
+    REQUIRE(checked >= 20);
+    mlClearSlots();
+}
+
+TEST_CASE("tdOneSidedGrad - only a violated bound moves the value") {
+    REQUIRE(tdOneSidedGrad(0.7, 0.6, TT_EXACT) == Approx(0.1));
+    REQUIRE(tdOneSidedGrad(0.5, 0.6, TT_EXACT) == Approx(-0.1));
+    // Lower bound (true value >= 0.6): above it is consistent, below it pushes up.
+    REQUIRE(tdOneSidedGrad(0.7, 0.6, TT_LOWER) == 0.0);
+    REQUIRE(tdOneSidedGrad(0.5, 0.6, TT_LOWER) == Approx(-0.1));
+    // Upper bound (true value <= 0.6): below it is consistent, above it pushes down.
+    REQUIRE(tdOneSidedGrad(0.5, 0.6, TT_UPPER) == 0.0);
+    REQUIRE(tdOneSidedGrad(0.7, 0.6, TT_UPPER) == Approx(0.1));
+}
+
+TEST_CASE("tdOrdinalProb / tdOrdinalPick - closed form and the empirical draw agree") {
+    for (int n : { 1, 2, 5, 30 }) {
+        for (double e : { 0.0, 0.3, 0.8, 1.0 }) {
+            double sum = 0.0;
+            for (int i = 0; i < n; i++) sum += tdOrdinalProb(e, n, i);
+            REQUIRE(sum == Approx(1.0).margin(1e-12));
+        }
+        for (int i = 0; i < n; i++)                                   // e = 0 is uniform
+            REQUIRE(tdOrdinalProb(0.0, n, i) == Approx(1.0 / n).margin(1e-12));
+        REQUIRE(tdOrdinalProb(1.0, n, 0) == Approx(1.0));             // e = 1 is the max
+    }
+    // Spot value: n = 4, e = 0.5. P0 = 0.5 + 0.5/4 = 0.625, P1 = (0.5 + 0.5/3)(0.375).
+    REQUIRE(tdOrdinalProb(0.5, 4, 0) == Approx(0.625));
+    REQUIRE(tdOrdinalProb(0.5, 4, 1) == Approx((0.5 + 0.5 / 3.0) * 0.375));
+
+    srand(2468);
+    const int n = 5, draws = 200000;
+    const double e = 0.3;
+    std::vector<int> count(n, 0);
+    for (int k = 0; k < draws; k++) count[tdOrdinalPick(e, n)]++;
+    for (int i = 0; i < n; i++) {
+        INFO("rank " << i << ": " << count[i] << " of " << draws);
+        REQUIRE((double)count[i] / draws == Approx(tdOrdinalProb(e, n, i)).margin(0.005));
+    }
+    // e = 1 never draws, so it cannot shift the opening of a later game.
+    srand(99); int r1 = rand();
+    srand(99); REQUIRE(tdOrdinalPick(1.0, 7) == 0); REQUIRE(rand() == r1);
+}
+
+TEST_CASE("mlv2MirrorFeatures - the mirrored board's features are the mirrored features") {
+    REQUIRE(reloadBoard("boards/board1.txt") == true);
+    srand(1357);
+    int side = White;
+    for (int k = 0; k < 9; k++) {
+        (side == White) ? pureRandomMoveWhite() : pureRandomMoveBlack();
+        side = (side == White) ? Black : White;
+    }
+    float f[MLV2_FEATURES], fm[MLV2_FEATURES], g[MLV2_FEATURES];
+    mlExtractValueFeaturesV2(side, f);
+    mlv2MirrorFeatures(f, fm);
+    char saved[SIZE][SIZE];
+    memcpy(saved, board, sizeof(saved));
+    for (int x = 0; x < SIZE; x++)
+        for (int y = 0; y < SIZE; y++) board[x][y] = saved[SIZE - 1 - x][y];
+    mlExtractValueFeaturesV2(side, g);
+    memcpy(board, saved, sizeof(saved));
+    for (int i = 0; i < MLV2_FEATURES; i++) {
+        INFO("feature " << i);
+        REQUIRE(fm[i] == g[i]);
+        REQUIRE(mlv2MirrorIndex(mlv2MirrorIndex(i)) == i);   // an involution
+    }
+    // A left-right symmetric position (the start) is its own mirror.
+    REQUIRE(reloadBoard("boards/board1.txt") == true);
+    mlExtractValueFeaturesV2(White, f);
+    mlv2MirrorFeatures(f, fm);
+    for (int i = 0; i < MLV2_FEATURES; i++) REQUIRE(fm[i] == f[i]);
+}
+
+TEST_CASE("ttPeek / ttGeneration - read entries without touching them, and tell searches apart") {
+    ttClear();
+    REQUIRE(ttGeneration() == 0);
+    ttNewSearch();
+    ttStore(0x1234567ULL, 3, 55, TT_LOWER, 9, 17);
+    ttNewSearch();
+    ttStore(0x7654321ULL, 2, -40, TT_EXACT, 10, 18);
+    REQUIRE(ttGeneration() == 2);
+    TTEntry e;
+    REQUIRE(ttPeek(0x1234567ULL, e) == true);
+    REQUIRE(e.score == 55); REQUIRE(e.depth == 3); REQUIRE(e.flag == TT_LOWER);
+    REQUIRE(e.gen == 1);                        // an earlier search's entry reads as stale
+    REQUIRE(ttPeek(0x7654321ULL, e) == true);
+    REQUIRE(e.gen == ttGeneration());           // this search's entry reads as current
+    REQUIRE(ttPeek(0x1111111ULL, e) == false);  // absent key
+    ttClear();
+}
+
+// Shared runner for the switch tests: a short scratch-init run at depth 3,
+// returning the trained weights, so two configurations can be compared.
+static std::vector<float> runTDSwitch(TDLeafConfig c, const char* out, TDLeafRunStats& st,
+                                      int games = 3) {
+    c.outPath = out;
+    c.initModel = "";
+    c.games = games;
+    c.depth = 3;
+    c.openPlies = 2;
+    c.reportEvery = 0;
+    std::vector<float> w;
+    REQUIRE(trainTDLeaf(c) == 0);
+    st = g_tdLastRun;
+    Model* m = loadModel(string(out) + ".txt");
+    REQUIRE(m != nullptr);
+    LinearModel* lm = dynamic_cast<LinearModel*>(m);
+    REQUIRE(lm != nullptr);
+    w = lm->w;
+    w.push_back(lm->bias);
+    delete m;
+    std::remove((string(out) + ".txt").c_str());
+    return w;
+}
+
+static double weightL1(const std::vector<float>& a, const std::vector<float>& b) {
+    double d = 0.0;
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) d += fabs((double)a[i] - (double)b[i]);
+    return d;
+}
+
+TEST_CASE("trainTDLeaf switches - none of them changes what the search plays") {
+    // With lr = 0 nothing is learned, so every configuration must play the
+    // same games as the baseline, move for move. This is what shows the
+    // TreeStrap walk, the root take-back and replay, and the mirrored updates
+    // leave the search exactly as it was: same node total, same game lengths,
+    // same results. Ordinal at e = 1 always plays the search's move, so it is
+    // held to the same standard.
+    TDLeafConfig base = tdLeafDefaults();
+    base.lr = 0.0; base.lrFloor = 0.0;
+    base.seed = 3131;
+    TDLeafRunStats b0, s;
+    runTDSwitch(base, "models/sweep/tdl_test_sw_base", b0);
+    REQUIRE(b0.searches > 0);
+    REQUIRE(b0.nodes > 0);
+
+    const char* backups[] = { "td-directed", "rootstrap", "treestrap" };
+    for (const char* bk : backups) {
+        TDLeafConfig c = base; c.backup = bk;
+        runTDSwitch(c, "models/sweep/tdl_test_sw_bk", s);
+        INFO("backup " << bk);
+        REQUIRE(s.nodes == b0.nodes);
+        REQUIRE(s.gamePlies == b0.gamePlies);
+        REQUIRE(s.searches == b0.searches);
+        REQUIRE(s.wWins == b0.wWins);
+    }
+    TDLeafConfig tm = base; tm.terminal = "depth";
+    runTDSwitch(tm, "models/sweep/tdl_test_sw_term", s);
+    REQUIRE(s.nodes == b0.nodes);
+
+    TDLeafConfig mi = base; mi.augment = "mirror";
+    runTDSwitch(mi, "models/sweep/tdl_test_sw_mir", s);
+    REQUIRE(s.nodes == b0.nodes);
+    REQUIRE(s.updates == 2 * b0.updates);      // every trained position also trained mirrored
+    REQUIRE(s.mirrorUpdates == b0.updates);
+
+    TDLeafConfig o1 = base; o1.exploreDist = "ordinal"; o1.ordinalStart = 1.0;
+    runTDSwitch(o1, "models/sweep/tdl_test_sw_ord1", s);
+    REQUIRE(s.nodes == b0.nodes);
+    REQUIRE(s.gamePlies == b0.gamePlies);
+    REQUIRE(s.ordinalMoves > 0);
+    REQUIRE(s.ordinalNonBest == 0);
+}
+
+TEST_CASE("trainTDLeaf switches - each one changes what is learned") {
+    TDLeafConfig base = tdLeafDefaults();
+    base.lr = 0.05; base.lrFloor = 0.05;
+    base.seed = 4242;
+    TDLeafRunStats st;
+    std::vector<float> w0 = runTDSwitch(base, "models/sweep/tdl_test_kn_base", st);
+
+    struct Arm { const char* name; TDLeafConfig c; } arms[] = {
+        { "td-directed", base }, { "rootstrap", base }, { "treestrap", base },
+        { "terminal=depth", base }, { "mirror", base }, { "ordinal e=0.3", base },
+    };
+    arms[0].c.backup = "td-directed";
+    arms[1].c.backup = "rootstrap";
+    arms[2].c.backup = "treestrap"; arms[2].c.lr = arms[2].c.lrFloor = 0.002;
+    arms[3].c.terminal = "depth";
+    arms[4].c.augment = "mirror";
+    arms[5].c.exploreDist = "ordinal"; arms[5].c.ordinalStart = 0.3;
+    for (auto& a : arms) {
+        std::vector<float> w = runTDSwitch(a.c, "models/sweep/tdl_test_kn_arm", st);
+        INFO("arm " << a.name);
+        REQUIRE(weightL1(w, w0) > 1e-4);
+    }
+
+    // Ordinal at e = 1 is the baseline, weights and all.
+    TDLeafConfig o1 = base; o1.exploreDist = "ordinal"; o1.ordinalStart = 1.0;
+    std::vector<float> w1 = runTDSwitch(o1, "models/sweep/tdl_test_kn_ord1", st);
+    REQUIRE(weightL1(w1, w0) == 0.0);
+}
+
+TEST_CASE("trainTDLeaf treestrap - restricted to the root it IS rootstrap") {
+    // Veness's TreeStrap updates the root toward its search score and every
+    // stored node toward its bound. With d_min above any stored depth the walk
+    // accepts nothing, leaving exactly RootStrap's update. One game, so the two
+    // runs cannot drift apart through float rounding in an earlier game.
+    TDLeafConfig base = tdLeafDefaults();
+    base.lr = 0.05; base.lrFloor = 0.05;
+    base.seed = 5151;
+    TDLeafRunStats sr, st, sfull;
+    TDLeafConfig rs = base; rs.backup = "rootstrap";
+    std::vector<float> wr = runTDSwitch(rs, "models/sweep/tdl_test_ts_root", sr, 1);
+    TDLeafConfig ts = base; ts.backup = "treestrap"; ts.treeMinDepth = 99;
+    std::vector<float> wt = runTDSwitch(ts, "models/sweep/tdl_test_ts_d99", st, 1);
+    REQUIRE(st.treeNodes == 0);
+    REQUIRE(st.searches == sr.searches);
+    for (size_t i = 0; i < wr.size(); i++) {
+        INFO("weight " << i);
+        REQUIRE(wt[i] == Approx(wr[i]).margin(1e-5));
+    }
+    REQUIRE(weightL1(wr, wt) < 1e-3);
+
+    // With d_min = 1 the walk finds this search's entries and trains them.
+    TDLeafConfig tf = base; tf.backup = "treestrap"; tf.treeMinDepth = 1;
+    std::vector<float> wf = runTDSwitch(tf, "models/sweep/tdl_test_ts_d1", sfull, 1);
+    INFO("entries accepted " << sfull.treeNodes << " over " << sfull.searches << " searches");
+    REQUIRE(sfull.treeNodes > sfull.searches);   // more than one node per search
+    REQUIRE(weightL1(wf, wr) > 1e-4);
+}
+
+TEST_CASE("trainTDLeaf ordinal - e = 0 plays moves other than the search's") {
+    TDLeafConfig c = tdLeafDefaults();
+    c.lr = 0.0; c.lrFloor = 0.0;
+    c.seed = 6161;
+    c.exploreDist = "ordinal"; c.ordinalStart = 0.0;
+    TDLeafRunStats s;
+    runTDSwitch(c, "models/sweep/tdl_test_ord0", s);
+    INFO("drawn " << s.ordinalMoves << ", not best " << s.ordinalNonBest
+         << ", ranked by entry " << s.ordinalRanked << ", by eval " << s.ordinalUnranked);
+    REQUIRE(s.ordinalMoves > 0);
+    REQUIRE(s.ordinalNonBest > s.ordinalMoves / 2);   // uniform over ~20+ moves
+    REQUIRE(s.ordinalRanked > 0);
+}
+
+TEST_CASE("trainTDLeaf switches - provenance names each non-default switch, and only those") {
+    TDLeafConfig c = tdLeafDefaults();
+    c.outPath = "models/sweep/tdl_test_prov_sw";
+    c.games = 1; c.depth = 2; c.openPlies = 2; c.reportEvery = 0; c.seed = 7171;
+    c.backup = "treestrap"; c.treeMinDepth = 2;
+    c.terminal = "depth"; c.augment = "mirror";
+    c.exploreDist = "ordinal"; c.ordinalStart = 0.0; c.ordinalEnd = 1.0; c.ordinalGames = 500;
+    REQUIRE(trainTDLeaf(c) == 0);
+    Model* m = loadModel("models/sweep/tdl_test_prov_sw.txt");
+    REQUIRE(m != nullptr);
+    INFO(m->teacher);
+    REQUIRE(m->teacher.find(",backup=treestrap,dmin=2,terminal=depth,augment=mirror,ordinal=0->1/500g")
+            != string::npos);
+    REQUIRE(m->teacher.find(",cpu=") != string::npos);
+    delete m;
+
+    TDLeafConfig d = tdLeafDefaults();
+    d.outPath = "models/sweep/tdl_test_prov_def";
+    d.games = 1; d.depth = 2; d.openPlies = 2; d.reportEvery = 0; d.seed = 7171;
+    REQUIRE(trainTDLeaf(d) == 0);
+    Model* md = loadModel("models/sweep/tdl_test_prov_def.txt");
+    REQUIRE(md != nullptr);
+    REQUIRE(md->teacher.find("backup=") == string::npos);
+    REQUIRE(md->teacher.find("terminal=") == string::npos);
+    REQUIRE(md->teacher.find("augment=") == string::npos);
+    REQUIRE(md->teacher.find("ordinal=") == string::npos);
+    delete md;
+    std::remove("models/sweep/tdl_test_prov_sw.txt");
+    std::remove("models/sweep/tdl_test_prov_def.txt");
+
+    // Bad values are refused rather than silently treated as the baseline.
+    TDLeafConfig bad = d; bad.backup = "treestrapp";
+    REQUIRE(trainTDLeaf(bad) != 0);
+    bad = d; bad.exploreDist = "ordinal"; bad.explore = 0.1;
+    REQUIRE(trainTDLeaf(bad) != 0);
 }
 
 // ============================================================

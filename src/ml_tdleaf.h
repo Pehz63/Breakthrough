@@ -52,6 +52,54 @@ void tdLeafGradients(const std::vector<double>& p, double z, double lambda,
 // over training progress, not an opening's diversity window.
 double tdLeafScheduledValue(double start, double floor, int decayGames, int gameIndex);
 
+// ============================================================
+// Replication-study switches (plans/replication-study-plan-1-brass-lectern.md)
+// ============================================================
+// Each published technique is one switch on this trainer, so two arms differ
+// in exactly one setting. The helpers below are the pure parts, exposed so the
+// closed forms can be asserted in tests/test_ml.cpp.
+
+// Longest possible Breakthrough game in plies on the 8x8 board. Every move
+// advances a piece one row, and reaching the far row wins, so a White piece
+// starting on row 0 makes at most 6 non-winning moves and one on row 1 at
+// most 5: 8*6 + 8*5 = 88 non-winning moves per side. The side that wins makes
+// one more, so a game has at most 88 + 88 + 1 = 177 plies. Captures only
+// remove moves. This is P in the additive-depth reward.
+#define TD_MAX_GAME_PLIES 177
+
+// Terminal target in [0,1], white-centric. outcome: 1 White won, 2 Black won,
+// 0 draw. With depthReward off this is win/loss (1, 0, 0.5). With it on it is
+// Cohen-Solal's additive depth reward (JMLR 2026, Section 6.2.2) mapped into a
+// probability: l = P - plies + 1 clamped to [1, P], and z = 0.5 + 0.5*l/P for
+// a White win, 0.5 - 0.5*l/P for a Black win. plies = 1 gives l = P, which is
+// exactly win/loss, the closed form tests/test_ml.cpp asserts.
+double tdTerminalTarget(int outcome, int plies, bool depthReward, int maxPlies);
+
+// Inverse of the learned evaluator's score tail. A learned leaf is scored
+// round(tanh(out) * outScale), and the trainer's value is sigmoid(out), so a
+// white-centric search score s maps back to the target probability
+// sigmoid(atanh(s / outScale)) = sqrt(1+u) / (sqrt(1+u) + sqrt(1-u)), u = s/outScale.
+// A proven result (the search's near-win sentinels) maps to exactly 1 or 0.
+// Used by the RootStrap and TreeStrap backups (Veness et al. 2009).
+double tdScoreToProb(int whiteScore, float outScale);
+
+// Veness's one-sided update toward a transposition-table bound, as dL/dlogit
+// for cross-entropy. v = the model's win probability at the node, q = the
+// bound's probability, flag = TT_EXACT, TT_LOWER or TT_UPPER. An EXACT entry
+// always pulls v to q. A LOWER bound (true value >= q) only pushes v up when
+// v < q. An UPPER bound (true value <= q) only pushes v down when v > q.
+double tdOneSidedGrad(double v, double q, int flag);
+
+// Cohen-Solal's ordinal action distribution (JMLR 2026, Section 7): the
+// probability of playing the i-th best of n moves (i = 0 is the best),
+//   P(c_i) = (e + (1 - e) / (n - i)) * (1 - sum_{j<i} P(c_j)).
+// e = 1 always plays the best move, e = 0 is uniform.
+double tdOrdinalProb(double e, int n, int i);
+// Draw a rank from that distribution with rand(), exactly as their Algorithm
+// 14 does it: walk down the ranking, stopping at rank i with probability
+// e + (1 - e) / (n - i).
+int    tdOrdinalPick(double e, int n);
+
 struct TDLeafConfig {
     string outPath;                 // model base name; final model at outPath + ".txt"
     string boardFile;               // starting position
@@ -75,6 +123,40 @@ struct TDLeafConfig {
     double exploreFloor;            // explore decays to this by exploreDecayGames games (default 0)
     int    exploreDecayGames;       // 0 = off (constant explore); > 0 = linear decay over this many games
     int    batchGames;              // 1 = strictly online; N > 1 = apply updates every N games
+
+    // ---- Replication-study switches. The defaults are the baseline pipeline,
+    // and each is written into provenance only when it is not the default, so
+    // a checkpoint trained before they existed keeps the recipe it always had.
+    //
+    // backup: which positions are trained, toward which target.
+    //   "td-leaf"     (default) PV leaf of each root, toward the lambda-return
+    //                 over the game's PV leaves (Baxter et al. 1999).
+    //   "td-directed" the root itself, toward the lambda-return over the
+    //                 game's roots. The search still picks every move.
+    //   "rootstrap"   the root, toward the root's own search score. No lambda,
+    //                 no game outcome (Veness et al. 2009, RootStrap(ab)).
+    //   "treestrap"   the root toward its search score, plus every node the
+    //                 search stored with remaining depth >= treeMinDepth,
+    //                 toward that node's bound with the one-sided update
+    //                 (Veness et al. 2009, TreeStrap(ab)). Linear models only.
+    string backup;
+    int    treeMinDepth;            // treestrap: Veness's d_min (default 1)
+    // terminal: "winloss" (default) or "depth" (additive depth reward, see
+    // tdTerminalTarget). Only the lambda-return backups read the outcome.
+    string terminal;
+    // augment: "" (default) or "mirror", which also trains every trained
+    // position's left-right mirror toward the same target. v2 features only.
+    string augment;
+    // exploreDist: "eps" (default) plays a uniformly random move with
+    // probability `explore` and does not train on it. "ordinal" draws every
+    // searched move from Cohen-Solal's ordinal distribution over the root's
+    // moves, ranked by the search, and trains on it. e follows the linear
+    // schedule ordinalStart -> ordinalEnd over ordinalGames games (their
+    // annealing is e = t/T, so 0 -> 1 over the whole run).
+    string exploreDist;
+    double ordinalStart;
+    double ordinalEnd;
+    int    ordinalGames;
     string modelType;               // "linear" | "mlp"
     std::vector<int> mlpHidden;     // hidden widths when modelType == "mlp"
     int    featureVersion;          // 1 (dense, 30) | 2 (sparse piece-square, 129). Scratch-init only --
@@ -130,3 +212,22 @@ int trainTDLeaf(const TDLeafConfig& cfg);
 // what a bare (unsalted) transposition probe did between 2026-08-27 and
 // 2026-09-09. Set to 0.0 when a run captured no leaf.
 extern double g_tdLastMeanPV;
+
+// What the last trainTDLeaf run actually did, for the instrument checks in
+// tests/test_ml.cpp and the per-arm diagnostics the replication study reports.
+struct TDLeafRunStats {
+    long long games;              // games this process played
+    long long gamePlies;          // plies over those games, openings included
+    long long searches;           // searched (non-random, undecided) root moves
+    unsigned long long nodes;     // search nodes this process spent
+    long long updates;            // gradient applications, mirrored ones included
+    long long mirrorUpdates;      // of which mirrored
+    long long treeNodes;          // treestrap: table entries accepted by the walk
+    long long treeUpdated;        // treestrap: of which moved (a bound was violated)
+    long long ordinalMoves;       // ordinal: moves drawn from the distribution
+    long long ordinalNonBest;     // ordinal: of which not the search's choice
+    long long ordinalRanked;      // ordinal: root moves ranked from a table entry
+    long long ordinalUnranked;    // ordinal: root moves ranked by static eval instead
+    int       wWins, bWins, draws;
+};
+extern TDLeafRunStats g_tdLastRun;
