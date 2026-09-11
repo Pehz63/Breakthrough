@@ -418,15 +418,28 @@ al. 2018). Veness tuned the step size per method, and so does this study,
 under a fixed protocol:
 
 - Every arm's learning rate gets the **same random-search budget**: the same
-  number of draws over the same log range, with the same seeds (Bergstra and
-  Bengio 2012).
+  number of draws over a log range of the same width, with the same seeds
+  (Bergstra and Bengio 2012). The width is shared and the position is each
+  arm's own, set by one probe applied identically to every arm (developer
+  decision, 2026-09-11). Pass 1 showed why a single shared range cannot work:
+  TreeStrap sums its update over about 9,000 table entries per search and
+  diverges at a rate 100 to 1,000 times below the baseline's
+  (`plans/replication-study-results-1-brass-lectern.md`, Pass 1 section 6).
+  **The probe** (`tools/replication_lr_probe.ps1`): every arm at every
+  half-decade learning rate from 1e-8 to 1, one calibration seed, 50 games,
+  checkpoints every 10 games. D, the divergence point, is the lowest rate
+  whose weights exceed max |w| 5 at any checkpoint. L, the floor, is the lowest
+  rate whose weights move a mean of 0.01 from the initialization. The tuning
+  range is [D / 10^2.5, D / 10^0.5], 2 decades below D, with L reported beside
+  it so a range reaching below the floor is visible.
 - Arm-specific hyperparameters (lambda for B0 and A1, d_min for A3, epsilon for
   A7, the e schedule for A8) get the same budget again, jointly with the
   learning rate.
 - Tuned values are fixed for Pass 3. Nothing else is tuned per arm.
 - Sensitivity is reported: each arm's effect at its own tuned learning rate and
-  at the baseline's rate. A technique whose gain disappears at a shared rate is
-  reported that way.
+  at the rate sitting at the same position relative to its own D as the
+  baseline's tuned rate sits relative to the baseline's D. A technique whose
+  gain disappears there is reported that way.
 
 ## Pass 0: what has to be built
 

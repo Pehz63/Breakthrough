@@ -169,10 +169,13 @@ win percentages among its own combinations, not ratings against outside programs
   gives a byte-identical model~~ Done 2026-09-11, all pass
   (`tools/replication_pass1_sanity.ps1`, results doc Pass 1). Panel-game
   independence still waits for the panel
-- Settle A3 (TreeStrap)'s learning-rate range before Pass 2: it diverges at
-  lr 0.0005 by game 10 and moves weights at 5e-5, 100 to 1,000 times below
-  B0's rate, so the plan's shared log range and "effect at the baseline's
-  rate" need restating for it `[Now]` {cpu: none, dev: medium}
+- ~~Settle A3 (TreeStrap)'s learning-rate range before Pass 2~~ Decided
+  2026-09-11: per-arm ranges of one shared width, placed by one probe applied
+  to every arm (plan, "Hyperparameter fairness")
+- ~~Run the learning-rate probe (`tools/replication_lr_probe.ps1`)~~ Done
+  2026-09-11: D from 1e-4 (A3) to 1 (A1, A5, A7, A8), B0 0.316. Per-arm
+  ranges in the results doc, to be confirmed by the developer before the
+  tuning search
 - Pass 2 calibration: curve shape, seed noise, the equal-budget tuning
   search, CPU seconds per game per arm `[Next]` {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7

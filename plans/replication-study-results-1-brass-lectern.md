@@ -295,11 +295,69 @@ saturated too, accepting 7,020 entries per search against about 9,400 at a
 working rate. A3's CPU per move at a working rate is Pass 2's cost
 calibration to measure.
 
-## Still open before Pass 2
+## Pass 2: the learning-rate probe
+
+Developer decision (2026-09-11): every arm's learning rate is tuned over a
+log range of one shared width, placed at each arm's own divergence point by
+one probe. Run by `tools/replication_lr_probe.ps1`: all 9 arms x 17
+half-decade rates from 1e-8 to 1, seed 3001, 50 games, head
+`ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`, scratch init, 10 at once.
+Rows: `models/sweep/replication_lr_probe.csv`.
+
+Max |w| at game 50 (the scratch init is 0.049). `*` marks a run whose max |w|
+passed 5 at some 10-game checkpoint:
+
+| lr | 1e-5 | 3.2e-5 | 1e-4 | 3.2e-4 | 1e-3 | 3.2e-3 | 0.01 | 0.032 | 0.1 | 0.32 | 1 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| B0 | 0.049 | 0.050 | 0.050 | 0.049 | 0.065 | 0.109 | 0.178 | 0.326 | 1.569 | 5.19* | 13.45* |
+| A1 | 0.049 | 0.050 | 0.051 | 0.052 | 0.050 | 0.067 | 0.107 | 0.347 | 0.766 | 4.19 | 15.12* |
+| A2 | 0.049 | 0.050 | 0.050 | 0.050 | 0.063 | 0.108 | 0.167 | 0.310 | 2.431 | 10.44* | 26.54* |
+| A3 | 0.074 | 0.207 | 7.00* | 17.16* | 138.8* | 325.9* | 632.9* | 2,417* | 10,643* | 23,816* | 74,209* |
+| A4 | 0.052 | 0.055 | 0.061 | 0.073 | 0.207 | 0.661 | 2.007 | 8.78* | 22.52* | 54.36* | 174.9* |
+| A5 | 0.049 | 0.049 | 0.050 | 0.051 | 0.063 | 0.071 | 0.134 | 0.278 | 0.625 | 2.78 | 11.27* |
+| A6 | 0.049 | 0.050 | 0.050 | 0.052 | 0.071 | 0.098 | 0.157 | 0.512 | 3.300 | 8.68* | 39.10* |
+| A7 | 0.049 | 0.049 | 0.050 | 0.050 | 0.052 | 0.068 | 0.140 | 0.409 | 1.099 | 3.92 | 14.57* |
+| A8 | 0.050 | 0.050 | 0.050 | 0.050 | 0.058 | 0.066 | 0.154 | 0.467 | 1.400 | 4.59 | 9.84* |
+
+A3 below 1e-5: 0.058 at 1e-6, 0.063 at 3.2e-6. B0's 0.32 row peaked at 5.54
+at game 40, A1's at 4.19, so their D values differ by half a decade on a
+threshold both rows sit near.
+
+D (divergence point), L (the lowest rate moving mean |w - init| >= 0.01 by
+game 50) and the resulting tuning range [D / 10^2.5, D / 10^0.5]:
+
+| arm | L | D | range low | range high |
+|---|---|---|---|---|
+| B0 | 0.00316 | 0.316 | 0.001 | 0.1 |
+| A1 | 0.01 | 1 | 0.00316 | 0.316 |
+| A2 | 0.01 | 0.316 | 0.001 | 0.1 |
+| A3 | 3.16e-5 | 1e-4 | 3.16e-7 | 3.16e-5 |
+| A4 | 0.001 | 0.0316 | 1e-4 | 0.01 |
+| A5 | 0.01 | 1 | 0.00316 | 0.316 |
+| A6 | 0.00316 | 0.316 | 0.001 | 0.1 |
+| A7 | 0.01 | 1 | 0.00316 | 0.316 |
+| A8 | 0.01 | 1 | 0.00316 | 0.316 |
+
+Every range starts below its arm's L, by half a decade (B0, A6) to 2 decades
+(A3). L is measured at 50 games, and a rate that barely moves the weights in
+50 games can move them over a Pass 3 ladder, so the low end is not ruled out
+by this reading. The same horizon limit applies at the top: a rate half a
+decade below D can still diverge after game 50. B0's current rate, 0.01, sits
+inside its range.
+
+CPU seconds per 50 games: 63.5 to 80.5 for B0 at every rate, 437 to 458 for
+A3 at rates that did not diverge and 251 to 259 at rates that did. At a
+working rate A3 costs about 9.0 CPU s per game against B0's 1.33, 6.8x, not
+the 3.5x the saturated cost smoke showed. At equal CPU seconds A3 plays about
+a seventh as many games.
+
+## Still open before Pass 2's rated steps
 
 - The panel file and the study store (I8) wait for Round 4's fit and the
   `ranking/CHAMPION.md` rewrite, from which the panel ratings are pinned.
-- The learning-rate range for A3 (section 6).
+  Curve shape, seed noise and the tuning search are all rated against the
+  panel.
+- The developer's confirmation of the per-arm ranges above.
 - C2, C6 and C7 have been read (plan's claims table). C2's chess comparison
   was against human opponents from standard material values, not from
   expert weights and not by self-play. C6's source reports a practice and no
@@ -347,4 +405,10 @@ Pass 1 commit message:
 
 ```
 Run the replication study's Pass 1 sanity checks: all pass, TreeStrap's step size diverges
+```
+
+Learning-rate probe commit message:
+
+```
+Probe every replication arm's learning rate: divergence points span 1e-4 to 1
 ```
