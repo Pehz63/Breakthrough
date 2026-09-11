@@ -64,12 +64,12 @@ must be read from the source before the pre-registration is committed.
 | ID | Claim | Source | Domain | Published result | Replication type | Verified |
 |---|---|---|---|---|---|---|
 | C1 | TreeStrap(alpha-beta) > RootStrap(alpha-beta) > TD-Leaf | Veness, Silver, Blair, Uther, NIPS 2009 | chess, linear evaluator of 1812 features, self-play from random weights | Best Elo (95% CI): TreeStrap(alpha-beta) 2157 +/- 31, TreeStrap(minimax) 1807 +/- 32, RootStrap(alpha-beta) 1362 +/- 59, TD-Leaf 1068 +/- 36, untrained 250 +/- 63. One training run per method | conceptual (new game) | yes, Table 2 |
-| C2 | TD-Leaf(lambda) > TD-directed(lambda) | Baxter, Tridgell, Weaver 1999 (arXiv cs/9901001) | chess (KnightCap), backgammon | KnightCap 1650 -> 2100 in 308 games on FICS, from expert-initialized weights (Veness 2009's note) | conceptual | abstract only |
+| C2 | TD-Leaf(lambda) > TD-directed(lambda) | Baxter, Tridgell, Weaver 1999 (arXiv cs/9901001), Section 5 | chess (KnightCap, linear evaluator), learning in games against human opponents on FICS, not self-play | Material weights at standard values, every other weight 0, lambda 0.7. TD-Leaf: FICS blitz rating 1650 +/- 50 -> 2110 +/- 50 in 308 games. TD-directed: "a 200 point rating rise over 300 games", "slower than TDLeaf". One run each. Backgammon (Section 6): from weights already trained by TD(lambda), neither variant changed strength significantly in 50,000 games | conceptual, and the chess comparison is against humans, so no self-play comparison exists | yes, full text |
 | C3 | tree learning > root learning > terminal learning | Cohen-Solal, JMLR 27 (2026), Table 2 | 11 games incl. Breakthrough, conv net | Breakthrough, iterative-deepening alpha-beta: tree 79.2%, root 50.6%, terminal 14.3% | **direct** (same game) | yes |
 | C4 | additive depth reward > plain win/loss | Cohen-Solal 2026, Table 4, Section 6.2.2 | same | Breakthrough: additive depth 69.5%, win/loss 39.0% | **direct** | yes |
 | C5 | ordinal action distribution > epsilon-greedy | Cohen-Solal 2026, Section 7, Remark 16 | many games | "performs better on average and on the majority of games... the gain is however quite slight". No numbers published | conceptual, **exploratory only** | yes |
-| C6 | symmetry augmentation helps | AlphaGo / AlphaGo Zero line (Silver et al.) | Go | to be read before pre-registration | conceptual | no |
-| C7 | TD(lambda < 1) > Monte Carlo (lambda = 1) | Sutton 1988, Tesauro (TD-Gammon) | backgammon | to be read before pre-registration. In-project prior: lambda = 1 scored below the untrained init (`Docs/hyperparameter-log.md`) | conceptual | no |
+| C6 | symmetry augmentation helps | Silver et al. 2018 (AlphaZero, Science) on AlphaGo Zero | Go, 8 board symmetries | No ablation isolates augmentation. AlphaGo Zero augmented every position with its 8 symmetries and averaged evaluation over a random symmetry. AlphaZero dropped both, among other changes, and "defeated AlphaGo Zero, winning 61% of games", which the paper reads as a general approach recovering "the performance of an algorithm that exploited board symmetries to generate eight times as much data". So the source gives a practice, not a measured effect | conceptual, **no measured effect in the source**. Breakthrough has 1 symmetry, not 8 | yes, full text |
+| C7 | TD(lambda < 1) > Monte Carlo (lambda = 1) | Sutton 1988 (Machine Learning 3), Tesauro 1992 (Machine Learning 8) | Sutton: a 5-state random walk prediction task, linear. Tesauro: backgammon self-play, neural net | Sutton: lambda = 1 (Widrow-Hoff) gave the worst error in both experiments, lowest at lambda = 0 under repeated presentation (Fig. 3) and near 0.3 after one presentation (Fig. 5). Tesauro: lambda "appeared to have almost no effect on the maximum obtainable performance, although there was a speed advantage to using large values", and in the full-game experiment "a few experiments" suggested larger lambda would decrease performance and smaller would not. Neither tested lambda = 1 in a game. In-project prior: lambda = 1 scored below the untrained init (`Docs/hyperparameter-log.md`) | conceptual, and the only game evidence is Tesauro's informal remark | yes, full text |
 
 **Cohen-Solal's protocol, which bounds what C3 and C4 can be compared on.**
 Each variant trained 48 hours per repetition, 32 repetitions (48 for Table 4).
@@ -137,9 +137,15 @@ tree-vs-root, and the top of C1's ordering) and A8 against A7 (C5 as stated).
 - **Closed-form check.** At lambda = 1 both arms reduce to Monte Carlo on their
   own positions, so A1 at lambda = 1 is Monte Carlo on root positions.
 - **Prediction (C2).** A1 below B0.
-- **Deviations.** Baxter's KnightCap started from expert weights. This study
-  starts from scratch (developer decision), which Veness reports is the harder
-  setting for TD-Leaf.
+- **Deviations.** Baxter's chess comparison learned in games against human
+  opponents on FICS, starting from standard material values with every other
+  weight 0. This study learns by self-play from scratch (developer decision).
+  Baxter reports both choices as handicaps: a start from all weights at a
+  pawn's value gained 280 points in over 1,000 games against 460 in 308, and
+  600 self-play games lost 11 to 89 to the FICS-trained weights. Their
+  self-play run trained TD-Leaf only, so no self-play TD-Leaf vs TD-directed
+  result exists to replicate, and A1 against B0 is new evidence rather than a
+  replication of a measured gap.
 
 ### A2. RootStrap(alpha-beta) (Veness et al. 2009)
 
@@ -233,7 +239,9 @@ tree-vs-root, and the top of C1's ordering) and A8 against A7 (C5 as stated).
   (used by `train.exe ensemble --mirror`).
 - **Check.** A mirror-symmetric position yields the identical feature vector.
   Updates per game double, and both counts are logged.
-- **Prediction (C6).** A6 above B0 at matched games. At matched compute it
+- **Prediction (C6).** A6 above B0 at matched games. The source reports the
+  practice, not a measured gain (C6 row), so A6 is labelled a test of common
+  practice rather than a replication of a number. At matched compute it
   could go either way, since each game costs more to learn from.
 - **Relevant in-project result.** Mirroring the champion's trained WEIGHTS
   after the fact cost 135 Elo (theory 30). Augmentation during training is a
@@ -545,15 +553,16 @@ gains look sub-additive near the top.
 2. Budget-parity Part 1 fixes (landed) and theory 72's PV fix (landed).
 3. A contiguous model-slot range claimed and recorded in `src/CLAUDE.md` before
    the first checkpoint is published.
-4. The unverified claims (C2 beyond its abstract, C6, C7) are read from their
-   sources before the pre-registration is committed.
+4. Every claim read from its source before the pre-registration is committed.
+   C2, C6 and C7 were read on 2026-09-10 (table above).
 
 ## Decisions taken (developer, 2026-09-10)
 
 1. **Compute matching: calibrated game counts.** Every checkpoint reproducible
    from (commit, config, seed). Realized CPU seconds are the analysis x axis.
-2. **Scratch initialization only.** C2's KnightCap result started from expert
-   weights, which is recorded as A1's deviation.
+2. **Scratch initialization only.** C2's KnightCap result started from
+   standard material values and learned against humans, both recorded as A1's
+   deviations.
 3. **Baseline backup target: TD-Leaf.**
 4. **Stage 1 measures individual effects only.** Combinations, and the question
    of how to assemble a strong agent from them, are designed after Stage 1's

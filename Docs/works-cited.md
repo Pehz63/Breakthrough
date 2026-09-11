@@ -69,11 +69,47 @@ untrained 250 +/- 63. Claim C1 of `plans/replication-study-plan-1-brass-lectern.
 
 **Baxter, J., Tridgell, A. and Weaver, L. (1999). "TDLeaf(lambda):
 Combining Temporal Difference Learning with Game-Tree Search."** arXiv
-cs/9901001. Abstract only: TD-Leaf(lambda) applies TD(lambda) at the leaf
-of the principal variation. KnightCap rose from 1650 to 2100 on FICS in 308
-games. Compared against TD(lambda) and TD-directed(lambda) in chess and
-backgammon. Veness et al. 2009 note the KnightCap weights started from
-expert values. The basis of `train.exe tdleaf`.
+cs/9901001. Full text read 2026-09-10. TD-Leaf(lambda) applies TD(lambda)
+at the leaf of the principal variation. Section 5, chess: KnightCap's linear
+evaluator started with standard material values and every other weight 0,
+learned in blitz games against human opponents on FICS with lambda 0.7, and
+rose from 1650 +/- 50 to 2110 +/- 50 in 308 games. TD-directed(lambda), the
+same run repeated, rose 200 points in 300 games. Starting every weight at a
+pawn's value gave 1260 -> about 1540 in over 1,000 games, and 600 games of
+self-play from the material start lost 11 to 89 against the FICS-trained
+weights. Section 6, backgammon: from weights already trained by 270,000
+games of TD(lambda), 50,000 more games of TD-directed or TD-Leaf changed
+nothing significant over 1,600 test games. The basis of `train.exe tdleaf`,
+and claim C2 of `plans/replication-study-plan-1-brass-lectern.md`.
+
+**Sutton, R. S. (1988). "Learning to Predict by the Methods of Temporal
+Differences." Machine Learning 3, 9-44.** Full text read 2026-09-10. On a
+5-state random walk with linear predictions, TD(lambda) at lambda = 1 is
+Widrow-Hoff supervised learning. Under repeated presentation of 100 training
+sets of 10 sequences, error fell as lambda dropped below 1 and was lowest at
+lambda = 0 (Fig. 3). After one presentation, lambda = 1 was worst at every
+learning rate and the best lambda was near 0.3 (Figs. 4 and 5). Prediction,
+not control or games. Claim C7.
+
+**Tesauro, G. (1992). "Practical Issues in Temporal Difference Learning."
+Machine Learning 8, 257-277.** Full text read 2026-09-10. TD(lambda)
+backgammon from self-play with a neural network, alpha 0.1, lambda 0.7 "set
+(somewhat arbitrarily)". On the lambda question: it "appeared to have almost
+no effect on the maximum obtainable performance, although there was a speed
+advantage to using large values", and in the full-game experiments "a few
+experiments" suggested larger lambda would decrease performance while
+smaller would give about the same. No controlled lambda = 1 comparison.
+Claim C7.
+
+**Silver, D. et al. (2018). "A general reinforcement learning algorithm that
+masters chess, shogi, and Go through self-play." Science 362, 1140-1144.**
+Full text read 2026-09-10. AlphaGo and AlphaGo Zero augmented every training
+position with its 8 board symmetries and evaluated each MCTS position under a
+random one. AlphaZero does neither, and "defeated AlphaGo Zero, winning 61% of
+games", which the paper reads as recovering "the performance of an algorithm
+that exploited board symmetries to generate eight times as much data".
+AlphaZero also differs in other ways, so no result isolates the augmentation.
+Claim C6.
 
 **Jones, A. L. (2021). "Scaling Scaling Laws with Board Games."** arXiv
 2104.03113. Abstract only: AlphaZero on Hex at several board sizes. The

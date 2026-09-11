@@ -164,13 +164,21 @@ win percentages among its own combinations, not ratings against outside programs
   `plans/replication-study-results-1-brass-lectern.md`. Slots 1858..3857
 - Build the study panel file and study store (I8's remainder) once Round 4's
   fit pins the panel ratings `[Next]` {cpu: none, dev: low}
-- Pass 1 sanity: every arm trains at the study head, stops at its rung, writes
+- ~~Pass 1 sanity: every arm trains at the study head, stops at its rung, writes
   truthful provenance, loads through the real search path, same seed twice
-  gives a byte-identical model, panel games independent. Report to the
-  developer before Pass 2 `[Next]` {cpu: hours, dev: medium}
-- Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
-  (Sutton 1988, TD-Gammon) before the pre-registration is committed `[Next]`
-  {cpu: none, dev: low}
+  gives a byte-identical model~~ Done 2026-09-11, all pass
+  (`tools/replication_pass1_sanity.ps1`, results doc Pass 1). Panel-game
+  independence still waits for the panel
+- Settle A3 (TreeStrap)'s learning-rate range before Pass 2: it diverges at
+  lr 0.0005 by game 10 and moves weights at 5e-5, 100 to 1,000 times below
+  B0's rate, so the plan's shared log range and "effect at the baseline's
+  rate" need restating for it `[Now]` {cpu: none, dev: medium}
+- Pass 2 calibration: curve shape, seed noise, the equal-budget tuning
+  search, CPU seconds per game per arm `[Next]` {cpu: days, dev: medium}
+- ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
+  (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
+  2026-09-10: the plan's claims table and `Docs/works-cited.md` now carry
+  what each source reports
 - Candidate techniques, by whether Breakthrough prior art exists:
   - Replicated on Breakthrough already, re-measure under our protocol: tree learning
     vs root vs terminal learning, Descent, the additive depth reward heuristic

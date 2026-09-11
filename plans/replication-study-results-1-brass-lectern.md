@@ -110,7 +110,8 @@ What the table shows:
   per-game cost is set by game length. A3 costs 3.5x more per move (79.6 ms
   against 22.7) from the table walk, at the same nodes per move. At equal CPU
   seconds A3 therefore plays roughly 3.5x fewer games, which is the matching the
-  study is built to make.
+  study is built to make. A3's model here was saturated by its learning rate
+  (Pass 1, section 6), so this per-move cost is for a diverged model.
 - A6's mirrored updates add nothing measurable per move (22.3 ms).
 - Every B0 PV is truncated before depth 12 (mean 5.63). The table is
   always-replace and a depth-12 search at 100k nodes does not keep a full line.
@@ -170,12 +171,140 @@ Expect the suite to pass, the self-test to report 0 failures, and the TreeStrap
 run to print a `treestrap (d_min 1): table entries accepted ...` line and a
 provenance ending `backup=treestrap,dmin=1,seed=1001,games=20,secs=...,cpu=...,nodes=...`.
 
-## Still open before Pass 1
+## Pass 1: sanity
+
+Run by `tools/replication_pass1_sanity.ps1` (seed 2001, head
+`ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`, scratch init, 4 random
+opener plies, placeholder learning rates as in the cost smoke). Every check
+passed (0 failures). The panel-game independence check waits for the panel.
+
+### 1. Rungs stop where they should and provenance is truthful
+
+Each arm trained with `--ckpt-at 10,20`. Every rung's `games=` equals its rung,
+`cpu=` and `nodes=` grow from rung 10 to rung 20, the arm's switch token is
+present, the baseline carries no switch token, and every model says
+`init:scratch`.
+
+| arm | rung 10 CPU s | rung 20 CPU s | rung 10 nodes | rung 20 nodes |
+|---|---|---|---|---|
+| B0 | 13.61 | 27.42 | 53,958,562 | 108,260,354 |
+| A1 | 14.92 | 29.69 | 58,810,275 | 116,783,343 |
+| A2 | 14.63 | 28.78 | 56,969,476 | 111,495,238 |
+| A3 | 57.34 | 101.23 | 48,965,481 | 90,105,192 |
+| A4 | 12.94 | 25.11 | 51,641,817 | 100,720,047 |
+| A5 | 13.77 | 27.55 | 54,050,367 | 108,839,841 |
+| A6 | 13.48 | 27.78 | 52,813,715 | 108,223,767 |
+| A7 | 10.73 | 22.88 | 40,901,976 | 87,542,430 |
+| A8 | 7.13 | 15.03 | 27,937,892 | 58,281,324 |
+
+### 2. Same seed twice gives the same model
+
+Each arm was trained twice with the same command. Both rungs of all 9 arms
+are identical in every byte except the measured `secs=` and `cpu=` values.
+
+### 3. At lr 0 no switch changes what the search plays
+
+3 games per arm at `--lr 0`, A8 with e held at 1. A7 is excluded because
+exploring is meant to change play.
+
+| arm | search nodes | searched moves | W-B-D |
+|---|---|---|---|
+| B0 | 13,178,700 | 149 | 1-2-0 |
+| A1, A2, A3, A4, A5, A6, A8 | 13,178,700 | 149 | 1-2-0 (each) |
+
+### 4. Every checkpoint loads through the real search path
+
+Each rung-20 checkpoint was published to its slot (1858..1875, ledger
+`models/sweep/replication_stage1_pass1.csv`) and played 2 games against B0's
+rung 20 by `rank.exe pairgen` with 4 random opener plies. B0's own row is its
+rung 10 against its rung 20. Two games per pair is a load test, not a
+strength reading.
+
+| arm | agent (a) | a wins | B0 rung 20 wins |
+|---|---|---|---|
+| B0 (rung 10) | `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(s1858,57d884ef)@1` | 1 | 1 |
+| A1 | `...learned(s1861,29aa5040)@1` | 1 | 1 |
+| A2 | `...learned(s1863,611eb82d)@1` | 1 | 1 |
+| A3 | `...learned(s1865,f6bf0760)@1` | 2 | 0 |
+| A4 | `...learned(s1867,845b883e)@1` | 0 | 2 |
+| A5 | `...learned(s1869,d89f2e3a)@1` | 1 | 1 |
+| A6 | `...learned(s1871,bf5941db)@1` | 1 | 1 |
+| A7 | `...learned(s1873,4d8a036d)@1` | 0 | 2 |
+| A8 | `...learned(s1875,a8907b4c)@1` | 1 | 1 |
+
+### 5. The runs went to 500 games, which gave a longer reading
+
+The first run passed `--ckpt-at 10,20` without `--games`, and the trainer ran
+to `max(500, top rung)`: its default game count wins over a ladder shorter
+than 500. The rung files were written on the way and are what sections 1 to 4
+test. The script now passes `--games` equal to the top rung. The full logs
+give a 500-game reading per arm (9 runs plus their 9 repeats, up to 10 at once):
+
+| arm | CPU s | searched moves | mean game length | CPU ms per searched move | mean PV depth (of 12) |
+|---|---|---|---|---|---|
+| B0 | 678.8 | 28,820 | 66.6 | 23.6 | 5.72 |
+| A1 | 641.4 | 27,603 | 64.2 | 23.2 | |
+| A2 | 651.4 | 27,607 | 64.2 | 23.6 | |
+| A3 | 2,102.7 | 26,013 | 61.0 | 80.8 | |
+| A4 | 702.6 | 30,766 | 70.5 | 22.8 | 6.36 |
+| A5 | 702.5 | 30,634 | 70.3 | 22.9 | 5.76 |
+| A6 | 690.0 | 30,276 | 69.6 | 22.8 | 5.74 |
+| A7 | 498.3 | 20,870 | 55.5 | 23.9 | 5.82 |
+| A8 | 680.9 | 30,148 | 69.3 | 22.6 | 5.78 |
+
+Every TD-Leaf arm's mean PV depth is above 5.7 of 12 with every PV truncated,
+as at Pass 0. A6 mirrored 29,640 of 59,280 updates. A8 drew 30,148 moves, 326
+not the search's choice, since e reached 1 at game 20.
+
+### 6. TreeStrap diverged at the placeholder learning rate
+
+A3 accepted 170,696,145 table entries (6,561.96 per search) but only 474,027
+had a nonzero gradient, 0.28%, against 46% in the 20-game cost smoke. Its
+weights show why:
+
+| checkpoint | bias | max \|w\| | mean \|w\| |
+|---|---|---|---|
+| B0 rung 20 | 0.0150 | 0.0912 | 0.0277 |
+| B0, 500 games | 0.0343 | 0.6380 | 0.1026 |
+| A2, 500 games | 0.1667 | 0.3927 | 0.0882 |
+| A3 rung 10 (lr 0.0005) | 18.42 | 19.67 | 3.256 |
+| A3 rung 20 | 18.42 | 19.67 | 3.256 |
+| A3, 500 games | 17.97 | 19.28 | 3.212 |
+
+By game 10 the evaluation is saturated, every score sits at the sentinel edge,
+and the one-sided gradient is zero almost everywhere. The dense per-game sum
+covers about 6,500 to 9,500 entries per search times about 60 searches, so a
+step size sized for one position per search is several hundred times too
+large. The same seed at smaller rates, 20 games:
+
+| lr | rung 10 bias | rung 10 max \|w\| | rung 20 max \|w\| | entries accepted per search | nonzero updates |
+|---|---|---|---|---|---|
+| 0.00005 | -0.163 | 0.2906 | 0.2719 | 9,238.64 | 2,748,500 of 10,799,967 |
+| 0.000005 | -0.0028 | 0.0506 | 0.0520 | 9,442.03 | 2,053,032 of 9,800,824 |
+| 0.0000005 | 0.00003 | 0.0502 | 0.0504 | 9,404.71 | 3,339,181 of 11,135,173 |
+| 0.00000005 | 0.000006 | 0.0500 | 0.0500 | 9,468.54 | 3,704,849 of 10,595,295 |
+
+The scratch init has max |w| 0.050. At 5e-5 the weights move to the size B0
+reaches and stay there to game 20. At 5e-6 and below they barely move in 20
+games. So A3's workable learning rate is 100 to 1,000 times below B0's, and
+the plan's "same log range for every arm" and "each arm's effect at the
+baseline's rate" both need restating for A3 before Pass 2.
+
+This also qualifies the Pass 0 cost smoke: A3 there ran at lr 0.0005 and was
+saturated too, accepting 7,020 entries per search against about 9,400 at a
+working rate. A3's CPU per move at a working rate is Pass 2's cost
+calibration to measure.
+
+## Still open before Pass 2
 
 - The panel file and the study store (I8) wait for Round 4's fit and the
   `ranking/CHAMPION.md` rewrite, from which the panel ratings are pinned.
-- C2 (Baxter 1999 full text), C6 and C7 are read from their sources before the
-  pre-registration.
+- The learning-rate range for A3 (section 6).
+- C2, C6 and C7 have been read (plan's claims table). C2's chess comparison
+  was against human opponents from standard material values, not from
+  expert weights and not by self-play. C6's source reports a practice and no
+  measured effect. C7's evidence is Sutton's random walk and an informal
+  remark in Tesauro 1992.
 
 ## Future Work
 
@@ -212,4 +341,10 @@ Pass 0 commit message:
 
 ```
 Build the replication study's Pass 0: backup, terminal, mirror and ordinal switches
+```
+
+Pass 1 commit message:
+
+```
+Run the replication study's Pass 1 sanity checks: all pass, TreeStrap's step size diverges
 ```
