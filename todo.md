@@ -150,9 +150,16 @@ cross-comparison up as a paper. Closest prior study to position against:
 Cohen-Solal 2026 (`Docs/works-cited.md`), whose Breakthrough numbers are round-robin
 win percentages among its own combinations, not ratings against outside programs.
 
-- Write the study plan: the technique list, the shared protocol (head, budget,
+- ~~Write the study plan: the technique list, the shared protocol (head, budget,
   seeds, refit), and for each technique its source paper, original domain, reported
-  result, and the adaptations Breakthrough needs `[Now]` {cpu: none, dev: high}
+  result, and the adaptations Breakthrough needs~~ Done:
+  `plans/replication-study-plan-1-brass-lectern.md` (a 32-cell factorial over
+  backup target, terminal reward, symmetry augmentation, exploration distribution,
+  rated against a frozen panel, pre-registered before Pass 3)
+- Settle the plan's four open questions, then build Pass 0 (items I1 to I7: the
+  backup-target, terminal-reward, augmentation and ordinal-exploration switches,
+  CPU-seconds accounting, the study panel and store, the factorial analysis
+  script) `[Now]` {cpu: none, dev: high}
 - Candidate techniques, by whether Breakthrough prior art exists:
   - Replicated on Breakthrough already, re-measure under our protocol: tree learning
     vs root vs terminal learning, Descent, the additive depth reward heuristic
@@ -163,8 +170,8 @@ win percentages among its own combinations, not ratings against outside programs
     distillation (NNUE practice), KataGo-style auxiliary targets, Gumbel AlphaZero
     (Danihelka et al. 2022, the existing `gumbelzero` regime), symmetry augmentation
   `[Next]` {cpu: days, dev: high}
-- Verify the TreeStrap numbers against the Veness et al. 2009 paper itself before
-  citing them (only a secondary source has been read) `[Next]` {cpu: none, dev: low}
+- ~~Verify the TreeStrap numbers against the Veness et al. 2009 paper itself before
+  citing them~~ Done: Table 2 read from the paper, entered in `Docs/works-cited.md`
 
 ## Budget-parity rebuild (Part 1 done, Part 2 started)
 
@@ -1876,8 +1883,15 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - ~~Web page hosting: pick where `build\web\` is published (see the questions in
   `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}~~
   GitHub Pages through `.github/workflows/web.yml` (2026-09-10). The workflow has not run on
-  GitHub yet: it needs a push of `main` and the Pages source set to "GitHub Actions"
-  (`INSTALL.md` section 3d).
+  GitHub yet: it needs a push of `main` (blocked, see the next item) and the Pages source set to
+  "GitHub Actions" (`INSTALL.md` section 3d).
+- Make `main` pushable. `ranking/matches.jsonl` grew past GitHub's 100 MB file limit inside the
+  unpushed history: 39.1 MB on `origin/main`, 581.9 MB at HEAD, and 8 versions of 240 to 582 MB
+  across 9 of the 51 unpushed commits (measured 2026-09-10, when `git push origin main` failed).
+  Run `rank.exe seal --max-mb 90` (`tools/CLAUDE.md`, "Keeping the match store a size a host will
+  accept"), then rewrite or squash the unpushed commits so no commit carries an oversized version,
+  and seal at every checkpoint after that. Blocks the web page's Pages workflow. The developer chose
+  to leave this to the ranking side `[Next]` {cpu: seconds, dev: medium}
 - Model files cited by `ranking/roster.txt` but not tracked in git: `models/sweep/slot10.txt`
   (`fead67b7`, the dil20 x node champion's core) and `models/sweep/slot76.txt` (`ef183148`, the
   opener8 x node champion's core). `.gitignore` says anything the roster cites lives in git, and

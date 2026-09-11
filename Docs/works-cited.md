@@ -54,6 +54,46 @@ MCTS with the trained model at 40 iterations per move won 100.00% against
 untrained MCTS at 800 iterations per move. A sanity result against a weak
 baseline, not a strength rating.
 
+**Veness, J., Silver, D., Blair, A. and Uther, W. (2009). "Bootstrapping
+from Game Tree Search." Advances in Neural Information Processing Systems
+22.** https://papers.nips.cc/paper_files/paper/2009/hash/389bc7bb1e1c2a5e7e147703232a88f6-Abstract.html
+Updates a linear evaluator (1812 mostly binary chess features) toward the
+values an alpha-beta search computes, at every searched node (TreeStrap)
+rather than one node (TD-Leaf, RootStrap). Self-play from small random
+weights, fixed 1m+1s time control, update time charged against thinking
+time, step size tuned per method, one training run per method. Table 2,
+best Elo with 95% CI in a BayesElo tournament of about 16,000 games, untrained
+anchored at 250: TreeStrap(alpha-beta) 2157 +/- 31, TreeStrap(minimax)
+1807 +/- 32, RootStrap(alpha-beta) 1362 +/- 59, TD-Leaf 1068 +/- 36,
+untrained 250 +/- 63. Claim C1 of `plans/replication-study-plan-1-brass-lectern.md`.
+
+**Baxter, J., Tridgell, A. and Weaver, L. (1999). "TDLeaf(lambda):
+Combining Temporal Difference Learning with Game-Tree Search."** arXiv
+cs/9901001. Abstract only: TD-Leaf(lambda) applies TD(lambda) at the leaf
+of the principal variation. KnightCap rose from 1650 to 2100 on FICS in 308
+games. Compared against TD(lambda) and TD-directed(lambda) in chess and
+backgammon. Veness et al. 2009 note the KnightCap weights started from
+expert values. The basis of `train.exe tdleaf`.
+
+**Jones, A. L. (2021). "Scaling Scaling Laws with Board Games."** arXiv
+2104.03113. Abstract only: AlphaZero on Hex at several board sizes. The
+strength reachable at fixed compute degrades predictably as the board grows,
+and train-time and test-time compute trade off against each other.
+
+**Henderson, P., Islam, R., Bachman, P., Pineau, J., Precup, D. and Meger,
+D. (2018). "Deep Reinforcement Learning that Matters." AAAI 2018.** arXiv
+1709.06560. Abstract only: seed variance, implementation details and
+reporting practice change RL comparisons enough to reverse conclusions, and
+the paper proposes reporting guidelines. The basis for the replication
+study's equal-tuning-budget protocol.
+
+**Agarwal, R., Schwarzer, M., Castro, P. S., Courville, A. and Bellemare,
+M. G. (2021). "Deep Reinforcement Learning at the Edge of the Statistical
+Precipice." NeurIPS 2021.** arXiv 2108.13264. Abstract only: point estimates
+over few runs are unreliable. Recommends interval estimates, performance
+profiles, the interquartile mean and stratified bootstrap confidence
+intervals. The reporting standard the replication study follows.
+
 **Danihelka, I., Pohlen, T., Rowland, M., Hessel, M., Ozair, S., Silver, D.
 and van Hasselt, H. (2022). "Policy improvement by planning with Gumbel."
 ICLR 2022.** https://openreview.net/forum?id=bERaNdoegnO -- Replaces

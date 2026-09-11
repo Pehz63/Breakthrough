@@ -149,6 +149,14 @@ PATH, `OUTDIR=build/web_sh`) both built, with identical `index.wasm` and
 The workflow itself has not run on GitHub: that needs a push of `main` and the
 Pages source set to "GitHub Actions" (`INSTALL.md` section 3d).
 
+The push is blocked. A `git push origin main` at the end of the session failed,
+and the cause is in the unpushed history, not the GUI commits:
+`ranking/matches.jsonl` is 39.1 MB on `origin/main` and 581.9 MB at HEAD, 9 of
+the 51 unpushed commits change it, and 8 of those versions are 240 to 582 MB.
+GitHub rejects any file over 100 MB in any pushed commit, so `rank.exe seal` at
+HEAD alone does not unblock it. The developer chose to wait and leave the fix to
+the ranking side (`todo.md`).
+
 Found along the way, left for the owners of the ranking code (both in
 `todo.md`): roster-cited slots 10 and 76 are untracked despite `.gitignore`'s
 rule that anything the roster cites lives in git, and the working-tree-bytes
