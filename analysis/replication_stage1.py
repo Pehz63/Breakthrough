@@ -441,22 +441,40 @@ def export(manifest, standings, out_path, half_a=None, half_b=None):
 
 
 # ------------------------------------------------------------------ verify-store
+def store_files(store):
+    """The files rank.exe reads for a store: the parts its <stem>.index.txt
+    lists (relative to the store's directory), then the live tail."""
+    import os
+    stem = store[:-len(".jsonl")] if store.endswith(".jsonl") else store
+    files = []
+    if os.path.exists(stem + ".index.txt"):
+        d = os.path.dirname(store)
+        with open(stem + ".index.txt", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    files.append(os.path.join(d, line))
+    files.append(store)
+    return [p for p in files if os.path.exists(p)]
+
+
 def verify_store(store, cohort_ids):
     cohort = set(cohort_ids)
     games = {}   # (cohort agent, panel agent) -> list of (seed, cohort agent is white)
-    with open(store, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            g = json.loads(line)
-            if g.get("t", "g") != "g":
-                continue
-            w, b = g["w"], g["b"]
-            if (w in cohort) == (b in cohort):
-                continue
-            x, p = (w, b) if w in cohort else (b, w)
-            games.setdefault((x, p), []).append((g["seed"], w == x))
+    for path in store_files(store):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                g = json.loads(line)
+                if g.get("t", "g") != "g":
+                    continue
+                w, b = g["w"], g["b"]
+                if (w in cohort) == (b in cohort):
+                    continue
+                x, p = (w, b) if w in cohort else (b, w)
+                games.setdefault((x, p), []).append((g["seed"], w == x))
     bad_couples, couples = 0, 0
     per_panel = {}
     for (x, p), lst in games.items():

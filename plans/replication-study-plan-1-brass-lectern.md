@@ -431,7 +431,10 @@ under a fixed protocol:
   whose weights exceed max |w| 5 at any checkpoint. L, the floor, is the lowest
   rate whose weights move a mean of 0.01 from the initialization. The tuning
   range is [D / 10^2.5, D / 10^0.5], 2 decades below D, with L reported beside
-  it so a range reaching below the floor is visible.
+  it so a range reaching below the floor is visible. The probe's ranges were
+  locked as computed on 2026-09-11 (developer decision, table in the results
+  doc's Pass 2 section). If an arm's best tuning draw lands on a range edge,
+  that arm's range is widened before Pass 3 (playbook, range sizing).
 - Arm-specific hyperparameters (lambda for B0 and A1, d_min for A3, epsilon for
   A7, the e schedule for A8) get the same budget again, jointly with the
   learning rate.

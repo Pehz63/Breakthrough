@@ -174,10 +174,15 @@ win percentages among its own combinations, not ratings against outside programs
   to every arm (plan, "Hyperparameter fairness")
 - ~~Run the learning-rate probe (`tools/replication_lr_probe.ps1`)~~ Done
   2026-09-11: D from 1e-4 (A3) to 1 (A1, A5, A7, A8), B0 0.316. Per-arm
-  ranges in the results doc, to be confirmed by the developer before the
-  tuning search
+  ranges in the results doc, locked as computed by the developer
+- ~~Build the Pass 2 driver (curve shape, seed noise, tuning search, cost),
+  with the panel file as an input~~ Done 2026-09-11:
+  `tools/replication_pass2.ps1`, tested end to end on a stand-in panel
+  (results doc, "Pass 2 driver")
 - Pass 2 calibration: curve shape, seed noise, the equal-budget tuning
-  search, CPU seconds per game per arm `[Next]` {cpu: days, dev: medium}
+  search, CPU seconds per game per arm. Launches with
+  `tools/replication_pass2.ps1 -Step curve -Panel <panel>` once the panel is
+  pinned `[Next]` {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
   2026-09-10: the plan's claims table and `Docs/works-cited.md` now carry

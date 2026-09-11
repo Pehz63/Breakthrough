@@ -351,13 +351,90 @@ working rate A3 costs about 9.0 CPU s per game against B0's 1.33, 6.8x, not
 the 3.5x the saturated cost smoke showed. At equal CPU seconds A3 plays about
 a seventh as many games.
 
+## Pass 2 driver
+
+`tools/replication_pass2.ps1` runs Pass 2's three rated steps against a
+panel file given as input (developer decision, 2026-09-11: build the driver
+now, launch once Round 4 pins the panel).
+
+| step | what it trains | what it reports |
+|---|---|---|
+| `curve` | every arm, seed 4001, ladder 10, 20, 40, ... 5120 games, at the geometric middle of its locked range | Elo per arm per rung, cumulative CPU seconds per rung, CPU seconds per game between rungs (the cost output) |
+| `noise` | B0 and one contrasting arm, 5 seeds (4101..4105), to the game count at which each arm's curve run reached `-NoiseCpu` CPU seconds, every curve rung below it rated | Elo by seed per rung, the spread over seeds (sigma_seed), the mean pm (sigma_meas) |
+| `tune` | the same random draws for every arm over its locked range, 1 seed per draw (5001 + draw), to the game count matching `-TuneCpu` | per arm, draws sorted by learning rate with Elo, the best draw, and an EDGE flag when the best rate sits within 0.2 decades of a range end |
+
+Choices the plan left open, made in the driver and listed here so they are
+visible when the grid goes to the developer:
+
+1. **Curve and noise run at the middle of each arm's locked range**
+   (D / 10^1.5): 0.01 for B0, A2, A6, 0.0316 for A1, A5, A7, A8, 0.001 for
+   A4, 3.16e-6 for A3. Every arm sits at the same position relative to its
+   own D. For A3 that is a decade below its L (3.16e-5), so its curve may
+   rise late for a reason that is the rate, not the technique. The tuning
+   step does not depend on this choice.
+2. **Tuning budget.** `-Draws` (default 16) draws for the lr-only arms (A2,
+   A4, A5, A6), twice that for arms with an arm-specific hyperparameter,
+   drawn jointly with the rate. Every arm uses the same (u, v) pairs from one
+   seeded generator (`-DrawSeed 7`, written to `<work>/tune_draws.csv`), so
+   the draws sit at the same relative positions in every range.
+3. **Arm-specific ranges.** lambda uniform on [0, 1] for B0 and A1, d_min
+   from {1, 2, 4, 8} for A3, epsilon log-uniform on [0.01, 0.3] for A7, the
+   ordinal start e uniform on [0, 1] for A8, rising linearly to 1 over the
+   run. A4 keeps lambda = 1. RootStrap and TreeStrap do not read lambda.
+4. **A5 to A8 train at B0's tuned lambda** (`-BaseLambda`, required before
+   they tune), since each differs from B0 in one switch. So B0, A1, A2, A3
+   and A4 tune first, then A5 to A8.
+5. **Tuning and noise run at matched CPU seconds, not matched games.** Each
+   arm's game count is where its curve run's cumulative CPU seconds reach
+   the target, linear between rungs. At a working rate A3 costs about 6.8x
+   B0 per game (probe), so matched games would give it 6.8x the compute.
+6. **Every study agent wears `.opener(rand,moves=8)@1`**, the opener8
+   division's opener. `rank.exe` plays a pair of two deterministic agents
+   only 2 games (one per colour), so an openless study agent against an
+   openless panel member would never reach `-GamesPerPair`.
+7. **One process per study agent, one store part per agent.** `rank.exe
+   play --cohort` schedules every pair touching a cohort agent, study agents
+   against each other included, which the plan rules out. A roster of the
+   panel plus one study agent schedules only that agent's panel games.
+   Common openings are keyed on the panel opponent, so separate processes
+   still draw identical couples. The parts are listed in
+   `ranking/matches_rep1.index.txt`, which `rank.exe` reads as one store,
+   and `analysis/replication_stage1.py verify-store` now reads the same
+   index.
+
+### Stand-in test
+
+Run end to end on a stand-in panel from the 2026-09-06
+`ranking/standings.tsv` (not the study panel): `rand@1` (0), `tiered@1`
+(412), `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.opener(rand,moves=8)@1`
+(471), `greedy@1.classic(chip=100)@2` (553),
+`ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.opener(rand,moves=8)@1`
+(846), `ab(deep=6,tt,ord,nodes=200k)@3.learned(model=96,990e39e7,pool_games,lin,shape=129-1)@1.opener(rand,moves=4)@1`
+(1057). Arms B0, A3, A8 (A2 added to tune), curve ladder 4 and 8 games, 4
+games per panel opponent, slots 3820..3847. The test's models, slots, store
+and pinned outputs were deleted afterwards.
+
+| check | result |
+|---|---|
+| curve: train, publish, play, rate, report, export | 6 agents rated, 24 games each |
+| noise, `-NoiseCpu 30` | B0's curve run reached 30 CPU s at 28 games, A3's at 4, the ladder became 4, 8, 28 for B0 and 4 for A3 |
+| tune, `-Draws 2` | 4 draws each for B0, A3, A8, 2 for A2. B0 and A2 drew the same rates (0.00584, 0.0210) and A3 and A8 the same relative positions. Every model's provenance carries the drawn lambda, d_min, or ordinal start. A8 was passed `-BaseLambda 0.7`, which equals the trainer's default, so this test does not show the value arriving |
+| `verify-store`, every step | 0 couples without exactly one game per colour, 0 agents whose seeds differ from the others' against any panel opponent |
+| distinct trajectories | 23 of 24 rows on every agent. The repeat is one game against `greedy@1.classic(chip=100)@2`, lost in 12 plies with 0 search nodes: the study agent's 6 moves were all opener moves, so two openings lost the same way. Two different seeds, not a replay |
+
+Two PowerShell traps hit while building it, both fixed: a local `$draws`
+overwrote the `-Draws` parameter (variable names are case-blind), and a
+`switch` statement's automatic `$switch` shadowed a script variable of the
+same name inside functions it called.
+
 ## Still open before Pass 2's rated steps
 
 - The panel file and the study store (I8) wait for Round 4's fit and the
   `ranking/CHAMPION.md` rewrite, from which the panel ratings are pinned.
   Curve shape, seed noise and the tuning search are all rated against the
-  panel.
-- The developer's confirmation of the per-arm ranges above.
+  panel. The driver is ready: `-Step curve -Panel <file>`.
+- The per-arm ranges above were locked as computed (developer decision,
+  2026-09-11), with the playbook's edge check as the safety net.
 - C2, C6 and C7 have been read (plan's claims table). C2's chess comparison
   was against human opponents from standard material values, not from
   expert weights and not by self-play. C6's source reports a practice and no
@@ -381,6 +458,15 @@ a seventh as many games.
   order differs from a full-window root search's order is unmeasured. A small
   offline comparison on sampled roots would say whether deviation 1 changes
   which move rank e draws.
+- **Games decided inside the opener carry no information about the model.**
+  With 8 random opener moves, a study agent can lose to a weak panel member
+  before its first search (the stand-in test's 12-ply loss with 0 nodes).
+  Such games add the same noise to every arm. Counting games whose study
+  side searched 0 nodes, per panel member, would say whether the weakest
+  panel members should be dropped or the opener shortened.
+- **A3's curve lr sits below its L.** If A3's curve rises late, a second A3
+  curve at the top of its range would say whether T_max is being placed by
+  the technique or by the rate.
 
 ## Ideas This Inspired
 
@@ -411,4 +497,10 @@ Learning-rate probe commit message:
 
 ```
 Probe every replication arm's learning rate: divergence points span 1e-4 to 1
+```
+
+Pass 2 driver commit message:
+
+```
+Add the replication study's Pass 2 driver: curve, noise and tuning against a panel file
 ```
