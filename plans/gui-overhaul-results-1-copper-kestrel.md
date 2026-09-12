@@ -209,6 +209,10 @@ the same sizes:
 - Desktop (no `-Device`, a 1264x765 viewport): the same page as before the
   change.
 
+Deployed by Pages run 34705898595 (commit `05b0b0a`). The live page under the
+same 390x760 emulation came up with a 390x760 canvas, and tapping `d1` then
+`d2` played the move and Medium replied.
+
 Not checked: a real phone. Headless touch emulation sends the same DOM touch
 events raylib listens for, but iOS Safari's toolbars, rotation, and text
 rendering were not seen.
