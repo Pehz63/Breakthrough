@@ -427,8 +427,29 @@ win percentages among its own combinations, not ratings against outside programs
     8 merged 0 rows, so the sealed parts are read, and rung 16 scheduled
     477,944 games. The sealed parts and the index must be committed
     together: a clone with the index but not the parts loads without them.
-    The replication study's panel waits on this round
-    `[Now]` {cpu: days, dev: low}
+    **Round 4 stops after rung 16 (developer decision, 2026-09-12).** At
+    12.95 h rung 16 had played 228,864 of 477,944 games (about 17,700 per
+    hour, counted from the shard files), which projected rung 32 to about
+    54 h more. The rung-16 fit is taken as final for now: it is below the
+    plan's 32-games/pair floor, so it supports no title claim and
+    `ranking/CHAMPION.md` is not re-certified from it. The replication
+    study's panel is pinned from it. Rung 32 stays open for later
+    `[Now]` {cpu: hours, dev: low}
+  - **Snapshot rung 16 with the same fit as rung 8.** `ranking/rungs/cores_r8.tsv`
+    is byte-identical to `ranking/cores_pinned.tsv` of 2026-09-09, a fit pinned
+    to the 2026-09-06 `ranking/standings.tsv`, now preserved as
+    `ranking/rungs/pin_source_standings_20260906.tsv` (the rung-16 run's
+    unpinned rate overwrites `standings.tsv`). The resume script copies the
+    UNPINNED `cores.tsv` to `cores_r16.tsv`. After rung 16: rename that to
+    `cores_r16_unpinned.tsv`, run `rank.exe rate --pin
+    ranking/rungs/pin_source_standings_20260906.tsv`, copy `cores_pinned.tsv` to
+    `cores_r16.tsv`, then `python analysis/rung_convergence.py
+    ranking/rungs/cores_r8.tsv ranking/rungs/cores_r16.tsv` `[Next]` {cpu: minutes, dev: none}
+- **Sparse opponent graphs instead of round robins** (developer question
+  2026-09-12: game count grows with the square of the pool). Theory and the
+  offline test that subsamples Round 4's rung-16 games:
+  `plans/sparse-schedule-plan-1-cedar-lynx.md`. Runs after rung 16 `[Next]`
+  {cpu: hours, dev: medium}
   - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
     Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the
     Round 4 entry why it no longer applies rather than letting it vanish. Move

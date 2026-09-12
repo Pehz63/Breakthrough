@@ -130,6 +130,37 @@ over few runs are unreliable. Recommends interval estimates, performance
 profiles, the interquartile mean and stratified bootstrap confidence
 intervals. The reporting standard the replication study follows.
 
+**Shah, N. B., Balakrishnan, S., Bradley, J., Parekh, A., Ramchandran, K.
+and Wainwright, M. J. (2016). "Estimation from Pairwise Comparisons: Sharp
+Minimax Bounds with Topology Dependence." JMLR 17.** arXiv 1505.01462. Full
+text read. For Bradley-Terry and Thurstone models the estimation error is
+governed by the comparison graph's Laplacian spectrum. The complete graph
+and a constant-degree expander have the same minimax risk order, Theta(d^2 /
+n) for d items and n comparisons, while paths and cycles are strictly worse.
+The paper recommends a low-degree expander in practice, since it needs kd
+comparisons to form rather than d choose 2. The basis of
+`plans/sparse-schedule-plan-1-cedar-lynx.md`.
+
+**Chiang, W.-L. et al. (2024). "Chatbot Arena: An Open Platform for
+Evaluating LLMs by Human Preference."** arXiv 2403.04132. HTML full text
+read for sampling and scoring. More than 50 models, about 240,000 votes
+(about 8,000 per model), Bradley-Terry by maximum likelihood with sandwich
+standard errors, and an active sampling rule favouring the pairs whose
+confidence intervals shrink most, reported as needing 54% fewer samples than
+random sampling for the win matrix (Figure 7).
+
+**Heckel, R., Shah, N. B., Ramchandran, K. and Wainwright, M. J. (2019).
+"Active Ranking from Pairwise Comparisons and when Parametric Assumptions Do
+Not Help." Annals of Statistics 47(6).** arXiv 1606.08842. Abstract only: a
+sequential procedure that picks the next pair from current confidence
+intervals recovers a ranking with a number of comparisons optimal up to log
+factors.
+
+**Hunter, D. R. (2004). "MM Algorithms for Generalized Bradley-Terry
+Models." Annals of Statistics 32(1).** Abstract only: MM iterations for
+Bradley-Terry maximum likelihood, with conditions under which they converge
+to the unique estimate.
+
 **Danihelka, I., Pohlen, T., Rowland, M., Hessel, M., Ozair, S., Silver, D.
 and van Hasselt, H. (2022). "Policy improvement by planning with Gumbel."
 ICLR 2022.** https://openreview.net/forum?id=bERaNdoegnO -- Replaces
