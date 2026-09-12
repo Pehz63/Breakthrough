@@ -223,7 +223,11 @@ See `git log` for the full messages.
   (34703014162, commit `85d8e23`) built and uploaded the page, then the deploy
   step failed with "Failed to create deployment (status: 404) ... Ensure GitHub
   Pages has been enabled", because the repository's Pages source was not yet set
-  to GitHub Actions. A rerun after that setting settles the deploy step.
+  to GitHub Actions. After the developer set it, a rerun of that run (attempt 2)
+  deployed. The live page at https://pehz63.github.io/Breakthrough/ serves all
+  four files (`index.wasm` as `application/wasm`), and real-time headless
+  screenshots showed Watch playing a game to the end and Hard opening `f1e` at
+  depth 6.0 with 75k nodes, the same as the local build.
 - **Web pacing in a real browser.** The pacing fix was checked in headless
   Chrome at real time. A look at Watch at each speed in a desktop browser would
   confirm the delays match the native app's.

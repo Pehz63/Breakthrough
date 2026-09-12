@@ -1925,9 +1925,9 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   turn (the analysis thread already has the machinery) `[Later]` {cpu: seconds, dev: medium}
 - ~~Web page hosting: pick where `build\web\` is published (see the questions in
   `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}~~
-  GitHub Pages through `.github/workflows/web.yml` (2026-09-10). `main` is pushed (see the next
-  item). The workflow deploys once the Pages source is set to "GitHub Actions" (`INSTALL.md`
-  section 3d).
+  GitHub Pages through `.github/workflows/web.yml` (2026-09-10). Live since 2026-09-12 at
+  https://pehz63.github.io/Breakthrough/, redeployed by every push to `main` that touches the
+  page's inputs.
 - ~~Make `main` pushable. `ranking/matches.jsonl` grew past GitHub's 100 MB file limit inside the
   unpushed history: 39.1 MB on `origin/main`, 581.9 MB at HEAD, and 8 versions of 240 to 582 MB
   across 9 of the 51 unpushed commits (measured 2026-09-10, when `git push origin main` failed).

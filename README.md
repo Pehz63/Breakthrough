@@ -147,8 +147,9 @@ and the eval bar) start off. URL options open a matchup directly:
 `build\web\` is a static site: any static host can serve it. On Linux or macOS,
 `bash build_web.sh` makes the same build. The GitHub Actions workflow
 `.github/workflows/web.yml` builds the page on every push to `main` that touches
-its inputs and publishes it to GitHub Pages. See [INSTALL.md](INSTALL.md) for
-setup and the one-time Pages setting.
+its inputs and publishes it to GitHub Pages at
+https://pehz63.github.io/Breakthrough/. See [INSTALL.md](INSTALL.md) for setup
+and the one-time Pages setting.
 
 ### Using the GUI
 
