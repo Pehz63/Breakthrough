@@ -1928,6 +1928,12 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   GitHub Pages through `.github/workflows/web.yml` (2026-09-10). Live since 2026-09-12 at
   https://pehz63.github.io/Breakthrough/, redeployed by every push to `main` that touches the
   page's inputs.
+- ~~Web page on phones: half the board was off screen unless the page was zoomed all the way out
+  (developer playtest, 2026-09-12) `[Now]` {cpu: seconds, dev: high}~~ Done 2026-09-12: no minimum
+  canvas size on the web, a stacked layout for upright screens, a compact panel, and touch checked
+  under headless device emulation (`plans/gui-overhaul-results-1-copper-kestrel.md`, "Phone layout").
+- Try the web page on a real iPhone and Android phone: tap and drag moves, rotation, Safari's
+  toolbars, and whether the text looks soft at the phone's pixel density `[Next]` {cpu: seconds, dev: low}
 - ~~Make `main` pushable. `ranking/matches.jsonl` grew past GitHub's 100 MB file limit inside the
   unpushed history: 39.1 MB on `origin/main`, 581.9 MB at HEAD, and 8 versions of 240 to 582 MB
   across 9 of the 51 unpushed commits (measured 2026-09-10, when `git push origin main` failed).

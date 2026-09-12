@@ -12,7 +12,10 @@
 #   .\tools\gui_shot.ps1 -All                              # every scenario below, in parallel
 #
 # Scenarios (comma-separated, applied in order): library, standings, presets,
-# editor, models, analysis, view, simple, aivai, red, flip, nopanel, hard.
+# editor, models, analysis, view, simple, watch (simple mode's Watch), hints
+# (analysis on), aivai, red, flip, nopanel, hard. -All also shoots simple mode at
+# phone sizes (portrait 390x760 and 360x640, landscape 844x390), where it takes
+# the stacked layout or the compact panel.
 param(
     [string]$Scenario = "",
     [string]$Moves = "",
@@ -30,9 +33,9 @@ if (-not (Test-Path .\breakthrough_gui.exe)) { Write-Error "breakthrough_gui.exe
 $dir = Join-Path $root "build\gui_shots"
 New-Item -ItemType Directory -Force $dir | Out-Null
 
-function Start-Shot([string]$name, [string]$scen, [string]$mv, [int]$frames) {
+function Start-Shot([string]$name, [string]$scen, [string]$mv, [int]$frames, [string]$size = $Size) {
     $png = Join-Path $dir "$name.png"
-    $a = @("--capture", "`"$png`"", "--frames", "$frames", "--size", $Size)
+    $a = @("--capture", "`"$png`"", "--frames", "$frames", "--size", $size)
     if ($scen) { $a += @("--scenario", $scen) }
     if ($mv)   { $a += @("--moves", $mv) }
     $log = Join-Path $dir "$name.log"
@@ -54,6 +57,9 @@ if ($All) {
         $f = if ($s[0] -eq "aivai" -or $s[0] -eq "models") { 420 } else { $Frames }
         $procs += Start-Shot $s[0] $s[1] $s[2] $f
     }
+    $procs += Start-Shot "phone" "simple,hints" "" $Frames "390x760"
+    $procs += Start-Shot "phone_watch" "watch,hints" "" 420 "360x640"
+    $procs += Start-Shot "phone_landscape" "simple" "" $Frames "844x390"
 } else {
     $name = if ($Out) { [IO.Path]::GetFileNameWithoutExtension($Out) } elseif ($Scenario) { ($Scenario -replace ",", "_") } else { "default" }
     $procs += Start-Shot $name $Scenario $Moves $Frames

@@ -7,7 +7,9 @@
     <!--
       Emscripten shell for the web build. The canvas fills the browser window:
       the app is built with FLAG_WINDOW_RESIZABLE, so raylib sizes the canvas to
-      window.innerWidth x innerHeight on load and on every resize. URL options
+      window.innerWidth x innerHeight on load and on every resize, with no
+      minimum size, and on a portrait screen the page stacks its panel under
+      the board. URL options
       (read by main_gui.cpp): ?mode=white|black|watch  &level=easy|medium|hard
       &hints=0|1
     -->
@@ -20,7 +22,16 @@
             color: #d8d8e0;
             font-family: system-ui, Segoe UI, Arial, sans-serif;
         }
-        #canvas { display: block; border: 0; background: #22242c; }
+        /* touch-action: none keeps the browser from panning or double-tap
+           zooming when a finger lands on the canvas, so taps and drags reach
+           the game. The rest stops long-press selection and the tap flash. */
+        #canvas {
+            display: block; border: 0; background: #22242c;
+            touch-action: none;
+            -webkit-user-select: none; user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
         #status {
             position: fixed; left: 0; right: 0; top: 45%;
             text-align: center; color: #8a8a98; font-size: 16px;

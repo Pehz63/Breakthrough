@@ -52,6 +52,18 @@ Web build specifics (`build_web.bat`):
 - Timers use `GetTime()` differences, never a sum of `GetFrameTime()`. On the
   web, raylib's `GetFrameTime()` covers only the frame's own work, not the
   browser's wait between frames, so a summed delay runs many times too long.
+- No `SetWindowMinSize` on the web. raylib's web resize callback sizes the
+  canvas to `window.innerWidth x innerHeight` but clamps it to the minimum, so
+  the native 900x640 minimum held the canvas wider than a phone's screen and
+  cut the board off.
+- Touch: raylib maps touch point 0 onto the left mouse button
+  (`IsMouseButtonPressed` / `Released` / `Down`) and the mouse position, so
+  taps, drags, and raygui buttons work with no touch-specific code. A tap whose
+  touchstart and touchend both land between two frames is lost, which can only
+  happen during a long frame (an agent's move job). `shell.html` sets
+  `touch-action: none` on the canvas, and `g_noHover` (from the
+  `(hover: none)` media query) turns off the board's hover highlight, which
+  would otherwise stay on the last square touched.
 
 MSVC and raylib gotchas: the GUI is built with `/MD` (the prebuilt raylib links
 the dynamic CRT). `raylib.h` defines `WHITE`/`BLACK` as `Color` macros that
@@ -104,12 +116,12 @@ copy of the position:
 
 | File | Purpose |
 |---|---|
-| `main_gui.cpp` | The front end. Sections are marked `// ===` (grep it). **State:** `PlayerConfig` per side (Human, or an `AgentSpec` + canonical id + optional label), `g_pos` / `g_history` / `g_moves` (position, undo stack, move log), `AppState` (`WaitingForHuman`, `WaitingBeforeAI`, `ComputingAI`, `GameOver`, `Stopped`). **Flow:** `StartGame`, `ApplyMove` (shared by human and agent moves), `Undo` (back to the last human turn, one move and a pause in agent vs agent), `LaunchAIMove` -> `engRequestMove`, polled with `engTakeMoveResult` and applied by `FinalizeAIMove`. **Analysis:** `UpdateAnalysis` restarts the engine's analysis whenever the position or the settings hash (`AnalysisHash`) changes and stops it when unwanted. `DrawArrows` draws the top N lines (green / amber / orange / gray by rank, width by rank), white-centric score pills, and a dashed red reply to the best line. `DrawEvalBar` sits left of the board (learned evaluators map linearly over +/-900, heuristics through tanh at 2.5 chips). **Panel:** Play / Analysis / View tabs (`DrawPlayTab`, `DrawAnalysisTab`, `DrawViewTab`), or simple mode (`DrawSimplePanel`). **Modals:** agent library (`DrawLibrary`), agent editor (`DrawAgentEditor`, canonical id box + structured fields, both views of one `AgentSpec`), model picker (`DrawModelPicker`), save favorite. Open dropdowns go through `DeferDropdown` / `FlushDropdowns` so their lists draw on top and lock the controls under them. **Widgets:** `StepperRow` with five bar+number designs (`StepStyle`), forced globally by the View tab's Sliders switch. **Style:** `ApplyDarkStyle` sets raygui's DEFAULT palette to match the app's dark panels. **Persistence:** `SaveAllSettings` / `LoadStartupSettings` via `gui_settings.txt` (players as canonical ids). **Capture mode:** `--capture <png> [--frames N] [--size WxH] [--scenario a,b] [--moves m1,m2]` renders into a hidden window's offscreen texture and saves the last frame (`ParseArgs`, `ApplyScenario`, `PlayMovesText`), reading and writing none of the user's files. **Web:** simple mode only, hints off at start, URL options `?mode=white|black|watch&level=easy|medium|hard&hints=0|1` (`ApplyWebUrlOptions`). |
+| `main_gui.cpp` | The front end. Sections are marked `// ===` (grep it). **State:** `PlayerConfig` per side (Human, or an `AgentSpec` + canonical id + optional label), `g_pos` / `g_history` / `g_moves` (position, undo stack, move log), `AppState` (`WaitingForHuman`, `WaitingBeforeAI`, `ComputingAI`, `GameOver`, `Stopped`). **Flow:** `StartGame`, `ApplyMove` (shared by human and agent moves), `Undo` (back to the last human turn, one move and a pause in agent vs agent), `LaunchAIMove` -> `engRequestMove`, polled with `engTakeMoveResult` and applied by `FinalizeAIMove`. **Analysis:** `UpdateAnalysis` restarts the engine's analysis whenever the position or the settings hash (`AnalysisHash`) changes and stops it when unwanted. `DrawArrows` draws the top N lines (green / amber / orange / gray by rank, width by rank), white-centric score pills, and a dashed red reply to the best line. `DrawEvalBar` sits left of the board (learned evaluators map linearly over +/-900, heuristics through tanh at 2.5 chips). **Panel:** Play / Analysis / View tabs (`DrawPlayTab`, `DrawAnalysisTab`, `DrawViewTab`), or simple mode (`DrawSimplePanel`, which switches to `DrawSimplePanelCompact` when the panel is shorter than `SIMPLE_FULL_H`: three rows of buttons, then the status, the rules, the level note, and the move list, each only where it fits). **Layout:** `ComputeLayout` sizes the board for two layouts and picks one each frame. The side layout has the panel left and the badge strip right. The stacked layout (`g_stacked`, simple mode only, taken when its board cell is more than 1.15x the side layout's, as on a phone held upright) puts the board across the width under the top bar, a badge row above and below it (`DrawSideRow`), and the compact panel underneath. The stacked top bar drops the Hide button, and `PanelShown()` counts the panel as shown there. **Modals:** agent library (`DrawLibrary`), agent editor (`DrawAgentEditor`, canonical id box + structured fields, both views of one `AgentSpec`), model picker (`DrawModelPicker`), save favorite. Open dropdowns go through `DeferDropdown` / `FlushDropdowns` so their lists draw on top and lock the controls under them. **Widgets:** `StepperRow` with five bar+number designs (`StepStyle`), forced globally by the View tab's Sliders switch. **Style:** `ApplyDarkStyle` sets raygui's DEFAULT palette to match the app's dark panels. **Persistence:** `SaveAllSettings` / `LoadStartupSettings` via `gui_settings.txt` (players as canonical ids). **Capture mode:** `--capture <png> [--frames N] [--size WxH] [--scenario a,b] [--moves m1,m2]` renders into a hidden window's offscreen texture and saves the last frame (`ParseArgs`, `ApplyScenario`, `PlayMovesText`), reading and writing none of the user's files. **Web:** simple mode only, hints off at start, URL options `?mode=white|black|watch&level=easy|medium|hard&hints=0|1` (`ApplyWebUrlOptions`). |
 | `gui_engine.h/.cpp` | The engine service described above, plus the pure `GuiPos` rule helpers (`guiIsLegal`, `guiLegalMoves`, `guiApplyMove`, `guiWinner`, `guiCountPieces`, `guiMoveText`, `guiLoadBoardFile`). Includes no raylib header. |
 | `gui_library.h/.cpp` | Where agent ids come from, all plain text files read on the UI thread: `ranking/standings.tsv` (header-driven columns, active roster by head), `ranking/CHAMPION.md`'s Summary table, `gui/presets.txt`, `gui_favorites.txt`, `gui_agent_history.txt` (30 most recent). Also the model catalog (a background scan of every slot file via `rankSlotFile`, header lines only, each slot tagged with its best standings Elo), board file discovery, and `gui_settings.txt` key=value settings. |
 | `presets.txt` | Curated agents: `role | name | canonical id | description`. Roles `easy` / `medium` / `hard` are simple mode's difficulties and `watch_white` / `watch_black` its Watch matchup. Every learned model a preset names is bundled into the web build. |
 | `raygui.h` | Vendored single-header raygui 4.0 (`RAYGUI_IMPLEMENTATION` in `main_gui.cpp`). |
-| `shell.html` | Emscripten page shell: a full-window canvas (the app is resizable, so raylib sizes the canvas to the browser window) and a loading line. |
+| `shell.html` | Emscripten page shell: a full-window canvas (the app is resizable, so raylib sizes the canvas to the browser window), `touch-action: none` and no long-press selection on the canvas, and a loading line. |
 | `web_models/` | Byte-exact copies of the preset model files the web build bundles, at their `models/...` relative paths. `.gitattributes` turns off line-ending conversion. Refresh with `tools\web_preloads.ps1 -Sync`. |
 
 Local, gitignored files the native GUI writes next to the exe:
@@ -131,6 +143,8 @@ PNGs and read them: an exit code of 0 does not catch invisible text or overlap.
 See `TESTING.md` for the visual-inspection lessons and raygui gotchas.
 
 Web: `.\build_web.bat`, then `.\tools\web_shot.ps1` (real-time screenshots of
-Watch, Hard, and Easy in hidden headless Chrome, into `build\web_shots\`). For a
-live look, `python -m http.server -d build\web` and open
+Watch, Hard, and Easy in hidden headless Chrome, into `build\web_shots\`).
+`-Device 390x760` emulates a phone with touch, and `-Steps` taps and drags on
+it (`TESTING.md`, "Web build check"). For a live look,
+`python -m http.server -d build\web` and open
 `http://127.0.0.1:8000/?mode=watch&hints=1`.

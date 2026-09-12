@@ -162,6 +162,57 @@ Found along the way, left for the owners of the ranking code (both in
 rule that anything the roster cites lives in git, and the working-tree-bytes
 hash makes every learned id platform-dependent.
 
+## Phone layout
+
+After the page went live, the developer's playtest found that on a phone half
+the board was off screen unless the page was zoomed all the way out.
+
+Cause: `main()` called `SetWindowMinSize(900, 640)` on every platform. raylib's
+web resize callback sizes the canvas to `window.innerWidth x innerHeight` and
+clamps it to that minimum, so on a 390 px wide phone the canvas stayed 900 px
+wide. The layout also always put a 300 px panel and a 136 px badge strip beside
+the board.
+
+| Area | Change |
+|---|---|
+| `gui/main_gui.cpp` | No minimum window size on the web. `ComputeLayout` sizes the board for the side layout and for a stacked layout (board across the width, a badge row above and below it, the panel underneath) and takes the stacked one in simple mode when its cell is more than 1.15x the side layout's. `DrawSimplePanelCompact`: mode, level (or Watch's speed, pause, step), and New / Undo / Hints / Flip as three rows of buttons, then the status, rules, level note, and move list where they fit. It is also used in the side layout when the panel is shorter than 430 px (a landscape phone). The game-over banner shrinks to fit a small board. The board hover highlight is off on screens without hover. Capture scenarios `watch` and `hints`. |
+| `gui/shell.html` | `touch-action: none`, no long-press selection or tap flash on the canvas. |
+| `tools/web_shot.ps1` | One DevTools session per page for the whole run, `-Device WxH` phone emulation with touch, `-Steps` touch taps and drags. |
+| `tools/gui_shot.ps1` | `-All` adds simple mode at 390x760, 360x640, and 844x390. |
+
+Which layout each size gets (simple mode, hints off):
+
+| Viewport (CSS px) | Layout | Board cell |
+|---|---|---|
+| 390x760 (phone, upright) | stacked | 44 px |
+| 360x640 (small phone, upright) | stacked | 40 px |
+| 844x390 (phone, landscape) | side, compact panel | 35 px |
+| 1264x765 (the headless desktop window's viewport) | side, full panel, unchanged | 82 px |
+
+The cells are computed from `ComputeLayout`'s formulas. The 390x760 value is
+also confirmed by the tap coordinates below landing on the intended squares.
+
+Checks run, all in headless Chrome on the local build through `web_shot.ps1`
+(`-Device`, device scale 3, touch emulation), plus hidden native captures at
+the same sizes:
+- 390x760, Play White vs Medium: the canvas came up 390x760
+  (`innerWidth x innerHeight` and `canvas.width x height` read back through the
+  protocol). Tapping `d1` then `d2` played `d1d`, and Medium replied. Dragging
+  `c1` to `c2` played `c1c`, and Medium replied. Tapping "Hard" switched the
+  level and started a new game. After the change to `g_noHover`, no tint stayed
+  on the last square touched.
+- 360x640, Watch with hints: the game played to "White wins" with the eval bar
+  and both readouts in the badge rows.
+- 360x640, Play Black vs Hard with hints: Hard's first move at depth 6.0 with
+  75k nodes, Black's arrows on the flipped board.
+- 844x390: the side layout with the compact panel and a move list.
+- Desktop (no `-Device`, a 1264x765 viewport): the same page as before the
+  change.
+
+Not checked: a real phone. Headless touch emulation sends the same DOM touch
+events raylib listens for, but iOS Safari's toolbars, rotation, and text
+rendering were not seen.
+
 ## Gotchas for later sessions
 
 - Only `gui_engine.cpp` may include `ml_eval.h` (raylib's `struct Model`).
@@ -192,11 +243,20 @@ hash makes every learned id platform-dependent.
   `TraceLog` errors, the corrected list linked.
 - A job log needs admin rights to download through the API. The workflow posts a
   failed build's last 60 lines as a public error annotation for that reason.
+- raylib's `SetWindowMinSize` also clamps the web canvas, which is what pushed
+  the board off a phone's screen.
+- DevTools emulation overrides (`Emulation.setDeviceMetricsOverride`, touch)
+  last only as long as the websocket session that set them. A tool that opens a
+  new socket per request loses them, so `web_shot.ps1` keeps one session per
+  page open for the whole run.
+- In PowerShell 5.1, `Invoke-RestMethod ... | Where-Object` passes a JSON array
+  through as one object. Assign the result to a variable first, then pipe it.
 
 ## Commit
 
 - `Overhaul the GUI: agent library, analysis arrows, a non-blocking engine thread, and a web page`
 - `Publish the web page with GitHub Pages, and fix agent pacing on the web`
+- `Fit the web page to phones: a stacked layout, no minimum canvas size, touch checks`
 
 See `git log` for the full messages.
 
@@ -231,6 +291,18 @@ See `git log` for the full messages.
 - **Web pacing in a real browser.** The pacing fix was checked in headless
   Chrome at real time. A look at Watch at each speed in a desktop browser would
   confirm the delays match the native app's.
+- **The phone layout on a real phone.** The stacked layout and touch input were
+  checked only under headless Chrome's device emulation. iOS Safari's changing
+  `innerHeight` as its toolbars show and hide, rotation, and whether a quick tap
+  ever lands inside one frame were not seen. Opening the live page on an iPhone
+  and an Android phone, playing a few moves by tap and by drag, and rotating
+  once would settle it.
+- **Text sharpness on high-density screens.** The canvas renders at CSS-pixel
+  resolution, so a phone with 3 device pixels per CSS pixel upscales it. It
+  reads fine in the emulated screenshots. Rendering at device resolution would
+  need a scale on every draw and the mouse, and raylib's default font is a
+  small bitmap that stays blocky when drawn large, so a TTF font would have to
+  come with it. Worth doing only if the page looks soft on a real phone.
 - **Preset strength for humans.** Easy / Medium / Hard were chosen from the
   pool's Elo, which measures agent vs agent. Whether Easy is beatable and Hard
   unbeatable for a person is untested.

@@ -87,7 +87,18 @@ static const int PANEL_W     = 300;   // left panel width
 static const int RIGHT_STRIP = 136;   // badges + per-side readouts
 static const int EVALBAR_W   = 18;
 
+// Stacked layout (simple mode on a portrait screen, such as a phone): the board
+// spans the width under the top bar, a badge row sits above and below it, and a
+// compact panel fills the rest of the screen. ComputeLayout picks it.
+static const int ST_LABEL_W   = 26;             // rank labels left of the board
+static const int ST_EVAL_W    = 12;
+static const int ST_ROW       = 28;             // badge row above and below the board
+static const int ST_FILES_H   = 22;             // file labels under the board
+static const int ST_PANEL_MIN = 3 * 36 + 24;    // compact controls plus one status line
+
 static int       g_cell = 64, g_boardX = 0, g_boardY = 0, g_boardPx = 0;
+static bool      g_stacked = false;
+static bool      g_noHover = false;             // touch screen: no board hover highlight
 static Rectangle g_panelRect = { 0, 0, 0, 0 };
 static Rectangle g_evalBarRect = { 0, 0, 0, 0 };
 
@@ -700,6 +711,7 @@ static void AnalysisUseAgentEvaluator(const PlayerConfig &c) {
 // UPDATE
 // ============================================================
 static bool AnyModalOpen() { return g_ed.side >= 0 || g_lib.open || g_mp.open || g_saveFavOpen; }
+static bool PanelShown() { return g_showPanel || g_stacked; }   // the stacked layout has no Hide button
 
 static void OpenAgentEditor(int side, const AgentSpec *from);
 static void OpenLibrary(int side);
@@ -729,7 +741,7 @@ static void HandleKeys() {
 static void HandleBoardInput() {
     if (g_state != AppState::WaitingForHuman || AnyModalOpen()) { g_dragging = false; return; }
     Vector2 m = GetMousePosition();
-    bool overPanel = g_showPanel && CheckCollisionPointRec(m, g_panelRect);
+    bool overPanel = PanelShown() && CheckCollisionPointRec(m, g_panelRect);
     char me = (g_pos.side == White) ? WHITE : BLACK;
     int x, y;
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overPanel && ScreenToSquare(m, x, y)) {
@@ -782,14 +794,38 @@ static void Update() {
 // ============================================================
 static void ComputeLayout() {
     int W = GetScreenWidth(), H = GetScreenHeight();
+    bool evalOn = g_ana.on && g_ana.evalBar;
+
+    // Side layout: panel on the left, badges in a strip on the right.
     int left = g_showPanel ? PANEL_W : 0;
-    int evalSpace = (g_ana.on && g_ana.evalBar) ? EVALBAR_W + 12 : 0;
+    int evalSpace = evalOn ? EVALBAR_W + 12 : 0;
     int areaX = left + evalSpace;
     int areaW = W - areaX - RIGHT_STRIP;
     int byW = (areaW - 2 * MARGIN) / SIZE;
     int byH = (H - TOP - 2 * MARGIN) / SIZE;
-    g_cell = byW < byH ? byW : byH;
-    if (g_cell < 8) g_cell = 8;
+    int sideCell = byW < byH ? byW : byH;
+
+    // Stacked layout, in simple mode where it gives a clearly bigger board. On a
+    // landscape window the two come out about even, so it keeps the side layout.
+    int stLeft = ST_LABEL_W + (evalOn ? ST_EVAL_W + 6 : 0);
+    int stW = W - stLeft - 8;
+    int stFixed = 4 + ST_ROW + 6 + ST_FILES_H + ST_ROW + 8 + ST_PANEL_MIN;
+    int sByW = stW / SIZE, sByH = (H - TOP - stFixed) / SIZE;
+    int stCell = sByW < sByH ? sByW : sByH;
+    g_stacked = g_simple && stCell * 20 > sideCell * 23;
+    if (g_stacked) {
+        g_cell = stCell < 8 ? 8 : stCell;
+        g_boardPx = g_cell * SIZE;
+        g_boardX = stLeft + (stW - g_boardPx) / 2;
+        g_boardY = TOP + 4 + ST_ROW + 6;
+        float panelY = (float)(g_boardY + g_boardPx + ST_FILES_H + ST_ROW + 8);
+        g_panelRect = Rectangle{ 0, panelY, (float)W, (float)H - panelY };
+        g_evalBarRect = Rectangle{ (float)(g_boardX - ST_LABEL_W - ST_EVAL_W - 2), (float)g_boardY,
+                                   (float)ST_EVAL_W, (float)g_boardPx };
+        return;
+    }
+
+    g_cell = sideCell < 8 ? 8 : sideCell;
     g_boardPx = g_cell * SIZE;
     g_boardX = areaX + (areaW - g_boardPx) / 2;
     g_boardY = TOP + (H - TOP - g_boardPx) / 2;
@@ -911,8 +947,8 @@ static void DrawBoard() {
     // Hover highlight while a human is to move.
     Vector2 m = GetMousePosition();
     int hx, hy;
-    if (g_state == AppState::WaitingForHuman && !AnyModalOpen() &&
-        !(g_showPanel && CheckCollisionPointRec(m, g_panelRect)) && ScreenToSquare(m, hx, hy))
+    if (g_state == AppState::WaitingForHuman && !AnyModalOpen() && !g_noHover &&
+        !(PanelShown() && CheckCollisionPointRec(m, g_panelRect)) && ScreenToSquare(m, hx, hy))
         DrawRectangleRec(SquareRect(hx, hy), COL_HOVER);
 
     float pr = g_cell * 0.36f;
@@ -949,7 +985,7 @@ static void DrawBoard() {
             const char *lbl = TextFormat("%c", 'a' + x);
             Rectangle r = SquareRect(x, 0);
             int tx = (int)(r.x + g_cell / 2 - TextW(lbl, fs) / 2);
-            DrawText(lbl, tx, g_boardY - fs - 5, fs, COL_LABEL);
+            if (!g_stacked) DrawText(lbl, tx, g_boardY - fs - 5, fs, COL_LABEL);   // stacked: the badge row is there
             DrawText(lbl, tx, g_boardY + g_boardPx + 5, fs, COL_LABEL);
         }
         for (int y = 0; y < SIZE; y++) {
@@ -1005,6 +1041,7 @@ static void DrawEvalBar() {
         bool atBottom = (whiteAhead != g_flip);
         int tw = TextW(s, fs);
         int tx = (int)(r.x + r.width / 2 - tw / 2);
+        if (tx < 2) tx = 2;
         int ty = atBottom ? (int)(r.y + r.height + 4) : (int)(r.y - fs - 4);
         DrawText(s.c_str(), tx, ty, fs, COL_LABEL);
     }
@@ -1046,14 +1083,39 @@ static void DrawSideInfo(int x, int y, int dir, const PlayerConfig &c, const Sid
     }
 }
 
+// Stacked layout: one row per side, the badge at the board's left edge and the
+// player's name (plus a short search readout) right-aligned to its right edge.
+static void DrawSideRow(int y, const PlayerConfig &c, const SideReadout &rd) {
+    int right = g_boardX + g_boardPx;
+    int minX = g_boardX + 64 + TextW("thinking 00.0s", 12) + 10;
+    std::string name = FitText(PlayerName(c), (float)(right - minX), 14);
+    int nx = right - TextW(name, 14);
+    DrawText(name.c_str(), nx, y + 7, 14, COL_LABEL);
+    if (!g_showReadouts || !rd.has) return;
+    std::string s;
+    if (rd.byOpener) s = "opener";
+    else if (rd.nodes > 1) s = TextFormat("d%.1f %s", rd.effDepth, FormatNodes(rd.nodes).c_str());
+    int sw = TextW(s, 12);
+    if (!s.empty() && nx - 10 - sw >= minX) DrawText(s.c_str(), nx - 10 - sw, y + 8, 12, COL_DIM);
+}
+
 static void DrawBadges() {
     if (g_boardPx <= 0) return;
     int w, b;
     guiCountPieces(g_pos, w, b);
-    int bx = g_boardX + g_boardPx + 10;
-    int topY = g_boardY, botY = g_boardY + g_boardPx - 28;
     bool live = (g_state != AppState::GameOver && g_state != AppState::Stopped);
     bool thinking = (g_state == AppState::ComputingAI);
+    if (g_stacked) {
+        int topY = g_boardY - ST_ROW - 6, botY = g_boardY + g_boardPx + ST_FILES_H;
+        int blackY = g_flip ? botY : topY, whiteY = g_flip ? topY : botY;
+        DrawCountBadge(g_boardX, blackY, BLACK, b, live && g_pos.side == Black, thinking && g_aiSide == Black);
+        DrawCountBadge(g_boardX, whiteY, WHITE, w, live && g_pos.side == White, thinking && g_aiSide == White);
+        DrawSideRow(blackY, g_black, g_readB);
+        DrawSideRow(whiteY, g_white, g_readW);
+        return;
+    }
+    int bx = g_boardX + g_boardPx + 10;
+    int topY = g_boardY, botY = g_boardY + g_boardPx - 28;
     // Unflipped: Black's side is at the top of the screen.
     int blackY = g_flip ? botY : topY, whiteY = g_flip ? topY : botY;
     DrawCountBadge(bx, blackY, BLACK, b, live && g_pos.side == Black, thinking && g_aiSide == Black);
@@ -1066,10 +1128,11 @@ static void DrawGameOverBanner() {
     if (g_state != AppState::GameOver) return;
     std::string who = std::string(g_winner == White ? "WHITE" : "BLACK") + " WINS";
     int fs = 40;
-    int tw = TextW(who, fs);
+    while (fs > 16 && TextW(who, fs) + 40 > g_boardPx) fs -= 2;
+    int tw = TextW(who, fs), bh = fs + 28;
     int bx = g_boardX + (g_boardPx - tw) / 2 - 20;
-    int by = g_boardY + g_boardPx / 2 - 34;
-    DrawRectangle(bx, by, tw + 40, 68, Color{ 0, 0, 0, 190 });
+    int by = g_boardY + g_boardPx / 2 - bh / 2;
+    DrawRectangle(bx, by, tw + 40, bh, Color{ 0, 0, 0, 190 });
     DrawText(who.c_str(), bx + 20, by + 14, fs, COL_ACCENT);
 }
 
@@ -1077,8 +1140,10 @@ static void DrawTopBar() {
     int W = GetScreenWidth();
     DrawRectangle(0, 0, W, TOP, Color{ 26, 28, 35, 255 });
     DrawLine(0, TOP - 1, W, TOP - 1, Color{ 60, 64, 76, 255 });
-    if (GuiButton(Rectangle{ 8, 8, 84, 28 }, g_showPanel ? "#118# Hide" : "#119# Panel")) g_showPanel = !g_showPanel;
-    DrawText("Breakthrough", 104, 11, 22, COL_LABEL);
+    if (!g_stacked) {
+        if (GuiButton(Rectangle{ 8, 8, 84, 28 }, g_showPanel ? "#118# Hide" : "#119# Panel")) g_showPanel = !g_showPanel;
+        DrawText("Breakthrough", 104, 11, 22, COL_LABEL);
+    }
 
     std::string turn;
     Color tc = COL_LABEL;
@@ -1087,6 +1152,14 @@ static void DrawTopBar() {
     else if (g_state == AppState::Stopped) turn = "Stopped";
     else turn = std::string(SideName(g_pos.side)) + " to move";
     if (g_paused && ClassifyMatchup().aiVsAi && g_state != AppState::GameOver) turn += " (paused)";
+    if (g_stacked) {
+        // Title left, turn right, and the title gives way when both do not fit.
+        // The players are named in the badge rows instead.
+        int tw = TextW(turn, 20);
+        DrawText(turn.c_str(), W - tw - 12, 12, 20, tc);
+        if (12 + TextW("Breakthrough", 20) + 16 <= W - tw - 12) DrawText("Breakthrough", 12, 12, 20, COL_LABEL);
+        return;
+    }
     int tw = TextW(turn, 20);
     int cx = g_boardX + g_boardPx / 2 - tw / 2;
     if (cx < 300) cx = 300;
@@ -1574,12 +1647,74 @@ static void DrawViewTab(float x, float y, float w) {
 // ============================================================
 // PANEL: SIMPLE
 // ============================================================
-static void DrawSimplePanel(float x, float y, float w) {
+static const char *SIMPLE_RULES =
+    "Reach the far row with any piece, or capture every enemy piece. "
+    "Pieces step one row forward, straight or diagonally, and capture diagonally.";
+static const char *SIMPLE_WATCH_NOTE = "Two agents with randomized openings play each other, so every game differs.";
+static const float SIMPLE_FULL_H = 430;   // the full simple panel's height with a short move list
+
+static std::string SimpleLevelNote() {
+    static const char *ROLE[3] = { "easy", "medium", "hard" };
+    const LibEntry *e = libPresetByRole(ROLE[g_simpleLevel]);
+    if (!e) return "";
+    std::string d = e->note;
+    size_t c = d.find(": ");
+    return c == std::string::npos ? d : d.substr(c + 2);
+}
+
+// The simple panel for short or narrow screens (phones): the same controls in
+// three rows of buttons, then the status, then the rules, the level note and the
+// move list, each only where it fits.
+static void DrawSimplePanelCompact(float x, float y, float w, float bottom) {
+    const float rowH = 30, gap = 6;
+    int mode = g_simpleMode, level = g_simpleLevel;
+    GuiToggleGroup(Rectangle{ x, y, (w - 4) / 3.0f - 1, rowH }, "Play White;Play Black;Watch", &mode);
+    y += rowH + gap;
+    if (g_simpleMode != 2) {
+        GuiToggleGroup(Rectangle{ x, y, (w - 4) / 3.0f - 1, rowH }, "Easy;Medium;Hard", &level);
+    } else {
+        // Watch: speed down / name / speed up on the left, pause and step on the right.
+        float left = (w - 6) * 0.6f, sbw = 36;
+        Rectangle slowBtn = { x, y, sbw, rowH }, fastBtn = { x + left - sbw, y, sbw, rowH };
+        if (GuiButton(slowBtn, "")) { if (g_speedIndex > 0) g_speedIndex--; }
+        DrawSpeedGlyph(slowBtn, false);
+        if (GuiButton(fastBtn, "")) { if (g_speedIndex < 4) g_speedIndex++; }
+        DrawSpeedGlyph(fastBtn, true);
+        const char *sn = SPEED_NAME[g_speedIndex];
+        float nameX = x + sbw, nameW = left - 2 * sbw;
+        DrawText(sn, (int)(nameX + (nameW - MeasureText(sn, 16)) / 2), (int)(y + 7), 16, COL_LABEL);
+        float px = x + left + 6, pw = (w - left - 6 - 4) / 2.0f;
+        GuiToggle(Rectangle{ px, y, pw, rowH }, g_paused ? "#131#" : "#132#", &g_paused);
+        if (GuiButton(Rectangle{ px + pw + 4, y, pw, rowH }, "#134#")) g_stepRequested = true;
+    }
+    y += rowH + gap;
+    if (mode != g_simpleMode || level != g_simpleLevel) {
+        g_simpleMode = mode;
+        g_simpleLevel = level;
+        ApplySimpleMatchup();
+    }
+    float bw4 = (w - 3 * 4) / 4.0f;
+    if (GuiButton(Rectangle{ x, y, bw4, rowH }, "#211#New")) StartGame();
+    if (GuiButton(Rectangle{ x + (bw4 + 4), y, bw4, rowH }, "#72#Undo")) Undo();
+    bool hints = g_ana.on;
+    GuiToggle(Rectangle{ x + 2 * (bw4 + 4), y, bw4, rowH }, "Hints", &hints);
+    g_ana.on = hints;
+    GuiToggle(Rectangle{ x + 3 * (bw4 + 4), y, bw4, rowH }, "Flip", &g_flip);
+    y += rowH + gap + 2;
+
+    if (!g_status.empty()) y = DrawWrapped(g_status, x, y, w, 13, g_statusErr ? COL_ERR : COL_LABEL) + 4;
+    auto wrappedH = [&](const std::string &s) { return (float)WrapText(s, w, 13).size() * 16; };
+    if (bottom - y >= wrappedH(SIMPLE_RULES) + 4) y = DrawWrapped(SIMPLE_RULES, x, y, w, 13, COL_DIM) + 4;
+    std::string note = (g_simpleMode == 2) ? std::string(SIMPLE_WATCH_NOTE) : SimpleLevelNote();
+    if (!note.empty() && bottom - y >= wrappedH(note) + 4) y = DrawWrapped(note, x, y, w, 13, COL_DIM) + 4;
+    if (bottom - y >= 70) DrawMoveLog(x, y + 2, w, bottom);
+}
+
+static void DrawSimplePanel(float x, float y, float w, float bottom) {
+    if (g_stacked || bottom - y < SIMPLE_FULL_H) { DrawSimplePanelCompact(x, y, w, bottom); return; }
     DrawText("Play Breakthrough", (int)x, (int)y, 20, COL_LABEL);
     y += 30;
-    y = DrawWrapped("Reach the far row with any piece, or capture every enemy piece. "
-                    "Pieces step one row forward, straight or diagonally, and capture diagonally.",
-                    x, y, w, 13, COL_DIM) + 8;
+    y = DrawWrapped(SIMPLE_RULES, x, y, w, 13, COL_DIM) + 8;
     int mode = g_simpleMode;
     GuiToggleGroup(Rectangle{ x, y, (w - 4) / 3.0f - 1, 28 }, "Play White;Play Black;Watch", &mode);
     y += 36;
@@ -1587,17 +1722,10 @@ static void DrawSimplePanel(float x, float y, float w) {
     if (g_simpleMode != 2) {
         GuiToggleGroup(Rectangle{ x, y, (w - 4) / 3.0f - 1, 28 }, "Easy;Medium;Hard", &level);
         y += 34;
-        static const char *ROLE[3] = { "easy", "medium", "hard" };
-        const LibEntry *e = libPresetByRole(ROLE[g_simpleLevel]);
-        if (e) {
-            std::string d = e->note;
-            size_t c = d.find(": ");
-            if (c != std::string::npos) d = d.substr(c + 2);
-            y = DrawWrapped(d, x, y, w, 13, COL_DIM) + 6;
-        }
+        std::string d = SimpleLevelNote();
+        if (!d.empty()) y = DrawWrapped(d, x, y, w, 13, COL_DIM) + 6;
     } else {
-        y = DrawWrapped("Two agents with randomized openings play each other, so every game differs.",
-                        x, y, w, 13, COL_DIM) + 6;
+        y = DrawWrapped(SIMPLE_WATCH_NOTE, x, y, w, 13, COL_DIM) + 6;
     }
     if (mode != g_simpleMode || level != g_simpleLevel) {
         g_simpleMode = mode;
@@ -1615,18 +1743,21 @@ static void DrawSimplePanel(float x, float y, float w) {
     y = DrawPacing(x, y + 4, w);
     Color sc = g_statusErr ? COL_ERR : COL_LABEL;
     y = DrawWrapped(g_status, x, y + 4, w, 13, sc) + 4;
-    DrawMoveLog(x, y, w, (float)GetScreenHeight() - 10);
+    DrawMoveLog(x, y, w, bottom);
 }
 
 static void DrawPanel() {
-    DrawRectangleRec(g_panelRect, COL_PANEL);
-    DrawLineEx(Vector2{ g_panelRect.width, g_panelRect.y }, Vector2{ g_panelRect.width, g_panelRect.y + g_panelRect.height }, 2, Color{ 60, 64, 76, 255 });
-    float x = 12, w = PANEL_W - 24, y = TOP + 10;
+    Rectangle p = g_panelRect;
+    Color edge = { 60, 64, 76, 255 };
+    DrawRectangleRec(p, COL_PANEL);
+    if (g_stacked) DrawLineEx(Vector2{ 0, p.y }, Vector2{ p.width, p.y }, 2, edge);
+    else           DrawLineEx(Vector2{ p.width, p.y }, Vector2{ p.width, p.y + p.height }, 2, edge);
+    float x = 12, w = p.width - 24, y = p.y + 10;
     static bool dropWasOpen = false;
     bool lockedHere = false;
     if (dropWasOpen && !GuiIsLocked()) { GuiLock(); lockedHere = true; }
     if (g_simple) {
-        DrawSimplePanel(x, y, w);
+        DrawSimplePanel(x, y, w, p.y + p.height - 10);
     } else {
         GuiToggleGroup(Rectangle{ x, y, (w - 4) / 3.0f - 1, 26 }, "Play;Analysis;View", &g_panelTab);
         y += 38;
@@ -2192,7 +2323,7 @@ static void DrawAll() {
     DrawBadges();
     DrawGameOverBanner();
     bool modal = AnyModalOpen();
-    if (g_showPanel) {
+    if (PanelShown()) {
         if (modal) GuiLock();
         DrawPanel();
         if (modal) GuiUnlock();
@@ -2291,6 +2422,8 @@ static void ApplyScenario(const std::string &list) {
         else if (t == "analysis")  g_panelTab = 1;
         else if (t == "view")      g_panelTab = 2;
         else if (t == "simple")    { g_simple = true; ApplySimpleMatchup(); }
+        else if (t == "watch")     { g_simple = true; g_simpleMode = 2; ApplySimpleMatchup(); }
+        else if (t == "hints")     g_ana.on = true;
         else if (t == "aivai")     { SetPlayerFromPreset(g_white, "watch_white"); SetPlayerFromPreset(g_black, "watch_black"); g_speedIndex = 3; StartGame(); }
         else if (t == "red")       g_pieceTheme = 1;
         else if (t == "flip")      g_flip = true;
@@ -2386,6 +2519,12 @@ EM_JS(int, WebUrlOptionsPacked, (), {
     return mi | (li << 2) | (hi << 4);
 });
 
+// 1 on a touch screen with no hover (phones, tablets), where a hover highlight
+// would stay on the last square touched.
+EM_JS(int, WebPrimaryPointerNoHover, (), {
+    return (window.matchMedia && window.matchMedia('(hover: none)').matches) ? 1 : 0;
+});
+
 static void ApplyWebUrlOptions() {
     int packed = WebUrlOptionsPacked();
     if (packed & 3)         g_simpleMode = (packed & 3) - 1;
@@ -2419,6 +2558,7 @@ int main(int argc, char **argv) {
     // against the agent is not played off its own arrows.
     g_simple = true;
     g_ana.on = false;
+    g_noHover = WebPrimaryPointerNoHover() != 0;
     ApplyWebUrlOptions();
 #endif
 
@@ -2426,7 +2566,11 @@ int main(int argc, char **argv) {
     if (g_cap.on) flags = FLAG_WINDOW_HIDDEN;
     SetConfigFlags(flags);
     InitWindow(g_cap.on ? g_cap.w : INIT_W, g_cap.on ? g_cap.h : INIT_H, "Breakthrough");
+#if !defined(PLATFORM_WEB)
+    // Not on the web: raylib would hold the canvas at this size, wider than a
+    // phone's screen. The page's simple mode lays itself out at any size.
     if (!g_cap.on) SetWindowMinSize(MIN_W, MIN_H);
+#endif
     SetExitKey(KEY_NULL);   // Esc closes windows inside the GUI instead
     ApplyDarkStyle();
     GuiEnableTooltip();

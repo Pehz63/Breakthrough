@@ -144,6 +144,10 @@ pairs two agents with randomized openings, so every game differs. Hints (arrows
 and the eval bar) start off. URL options open a matchup directly:
 `?mode=white|black|watch&level=easy|medium|hard&hints=0|1`.
 
+The page fits any window size. On a phone held upright, the board spans the
+screen's width with the controls below it, and pieces move by tapping the piece
+and then its destination, or by dragging it.
+
 `build\web\` is a static site: any static host can serve it. On Linux or macOS,
 `bash build_web.sh` makes the same build. The GitHub Actions workflow
 `.github/workflows/web.yml` builds the page on every push to `main` that touches

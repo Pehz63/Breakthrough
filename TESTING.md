@@ -140,6 +140,24 @@ itself, loads each page in its own hidden headless Chrome, waits 20 s of real
 time, and saves `build\web_shots\<name>.png`. Read them: Watch should show a
 game well under way, Hard its first move and Black's arrows.
 
+Phones: `-Device 390x760` loads every page at that CSS viewport with touch
+emulation (`-Dpr`, default 3, device pixels per CSS pixel), where the page takes
+its stacked layout. `-Steps` then drives it with touch events in CSS pixels,
+`tap:x,y`, `drag:x1,y1,x2,y2`, `wait:ms`, and `shot` (saved as
+`<name>_1.png`, `<name>_2.png`, ...). At 390x760 with hints off, a board square
+is 44 px, square (col, row) of an unflipped board is centered at
+`(50 + 44*col, 412 - 44*row)`, and the level buttons sit at y = 553.
+This taps `d1`, taps `d2`, and drags `c1` to `c2`:
+
+```powershell
+.\tools\web_shot.ps1 -Device 390x760 -Seconds 10 -Pages "p=mode=white" -Steps "tap:182,368","tap:182,324","wait:4000","shot","drag:138,368,138,324","wait:4000","shot"
+```
+
+Expect both white moves and Medium's replies in `p_2.png`, and no hover tint
+on the last square touched. Also look at `-Device 360x640` (a small phone) and
+`-Device 844x390` (landscape, which keeps the side layout with the compact
+panel).
+
 Two headless Chrome shortcuts give misleading pictures of this page:
 - `--virtual-time-budget` freezes the clock inside each task, so the page's
   clock-paced agent moves and the analysis time limits stall or run away. A
