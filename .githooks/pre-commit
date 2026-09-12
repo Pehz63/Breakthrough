@@ -1,0 +1,40 @@
+#!/bin/sh
+# Refuse a commit that stages a file GitHub would reject on push.
+#
+# GitHub refuses any file over 100 MiB, and it checks every commit in a push,
+# not only the tip. One oversized commit therefore blocks every later push
+# until the history is rewritten, and because pushes here are infrequent the
+# damage used to surface weeks after the commit that caused it (2026-08-01 and
+# 2026-09-10, both from ranking/matches.jsonl). Checking at commit time stops
+# it at the one commit that would cause it.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+limit=99614720   # 95 MiB, a margin under GitHub's 100 MiB hard limit
+
+staged=$(mktemp) || exit 1
+trap 'rm -f "$staged"' EXIT
+git diff --cached --raw --no-renames --diff-filter=AM --abbrev=40 > "$staged"
+[ -s "$staged" ] || exit 0
+
+# Sizes of the staged blobs, then join them back to their paths.
+over=$(awk '{ print $4 }' "$staged" |
+    git cat-file --batch-check='%(objectname) %(objectsize)' |
+    awk -v lim="$limit" '
+        NR == FNR { if ($2 ~ /^[0-9]+$/ && $2 + 0 > lim) big[$1] = $2; next }
+        ($4 in big) { i = index($0, "\t"); printf "  %6.1f MiB  %s\n", big[$4] / 1048576, substr($0, i + 1) }
+    ' - "$staged")
+[ -z "$over" ] && exit 0
+
+cat >&2 <<EOF
+pre-commit: refusing to commit files over 95 MiB. GitHub rejects files over
+100 MiB in any pushed commit, so one of these would block every later push.
+
+$over
+
+For the match store, seal the live tail into immutable parts and restage:
+  .\\rank.exe seal --max-mb 90
+  git add ranking/matches.jsonl ranking/matches.index.txt ranking/matches.0*.jsonl
+Anything else: keep it out of git (.gitignore) or split it below the limit.
+EOF
+exit 1

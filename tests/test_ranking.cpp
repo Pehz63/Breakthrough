@@ -1622,6 +1622,56 @@ TEST_CASE("ranking match store - sealing preserves every row and bounds shard si
     for (int n = 1; n <= made + 1; n++) std::remove(rankStoreShardPath(base, n).c_str());
 }
 
+TEST_CASE("ranking match store - auto-seal acts only on an indexed store") {
+    const string base = "build\\test_rank_autoseal.jsonl";
+    const string idx  = rankStoreIndexPath(base);
+    std::remove(base.c_str()); std::remove(idx.c_str());
+    for (int n = 1; n <= 8; n++) std::remove(rankStoreShardPath(base, n).c_str());
+
+    const int kRows = 400;
+    {
+        std::ofstream f(base.c_str(), std::ios::trunc);
+        for (int i = 0; i < kRows; i++) f << shardTestRow("rand@1", i) << "\n";
+    }
+    std::ifstream sz(base.c_str(), std::ios::binary | std::ios::ate);
+    const long long total = (long long)sz.tellg();
+    sz.close();
+    const long long cap = total / 4;
+    string err;
+
+    // No index: a scratch or screening store, which git ignores. Left whole
+    // even though it is over the cap.
+    REQUIRE(rankAutoSealStore(base, err, cap) == 0);
+    {
+        std::ifstream s1(rankStoreShardPath(base, 1).c_str());
+        REQUIRE_FALSE(s1.is_open());
+        std::ifstream t(base.c_str(), std::ios::binary | std::ios::ate);
+        REQUIRE((long long)t.tellg() == total);
+    }
+
+    // With an index it is the committed store: sealed below the cap, the new
+    // shards listed in the index, and every row still loads.
+    { std::ofstream f(idx.c_str(), std::ios::trunc); f << "# parts\n"; }
+    int made = rankAutoSealStore(base, err, cap);
+    INFO(err);
+    REQUIRE(made > 0);
+    {
+        std::ifstream t(base.c_str(), std::ios::binary | std::ios::ate);
+        REQUIRE((long long)t.tellg() <= cap);
+    }
+    std::vector<RankMatchRow> rows;
+    int skipped = 0;
+    REQUIRE(rankLoadMatches(base, "", rows, skipped));
+    REQUIRE(rows.size() == (size_t)kRows);
+    REQUIRE(rows.back().seed == (unsigned)(kRows - 1));
+
+    // Under the cap it is a no-op, so writers can call it after every append.
+    REQUIRE(rankAutoSealStore(base, err, cap) == 0);
+
+    std::remove(base.c_str()); std::remove(idx.c_str());
+    for (int n = 1; n <= made + 1; n++) std::remove(rankStoreShardPath(base, n).c_str());
+}
+
 // ============================================================
 // Scheduler
 // ============================================================

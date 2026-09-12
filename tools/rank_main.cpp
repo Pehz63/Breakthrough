@@ -88,7 +88,7 @@ static void usage() {
     cout << "\nCommon options (defaults):\n";
     cout << "  --roster ranking/roster.txt   editable agent list: 'anchor|on|off <id>' lines\n";
     cout << "  --in ranking/matches.jsonl    the append-only match store (live tail; sealed shards read alongside it)\n";
-    cout << "  --max-mb 48                   seal/split: largest part file to emit\n";
+    cout << "  --max-mb 90                   seal: largest part file to emit (split: default 48)\n";
     cout << "  --group tdleaf_self --apply   split: id substring getting its own bucket, and commit the move\n";
     cout << "  --board boards/board1.txt     starting board (history is kept per board)\n";
     cout << "  --games 8                     target games per pair (play/run/check),\n";
@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
         if (rc == 0) rc = rankRate(roster, store, board, getOpt(argc, argv, "--pin", ""));
     } else if (cmd == "seal") {
         string err;
-        long long maxMb = (long long)getInt(argc, argv, "--max-mb", 48);
+        long long maxMb = (long long)getInt(argc, argv, "--max-mb", RANK_STORE_SEAL_MB);
         int made = rankSealStore(store, maxMb * 1024 * 1024, err);
         if (made < 0) { cout << "ERROR: " << err << "\n"; return 1; }
         if (made == 0) {

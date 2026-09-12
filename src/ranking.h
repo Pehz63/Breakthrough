@@ -270,9 +270,16 @@ bool rankLoadMatches(const std::string& file, const std::string& board,
 // Shard indices are contiguous from 1, which is what lets the loader find them
 // by probing successive names instead of enumerating a directory.
 //
-// Writers are unaffected: `play` and the run_rank.ps1 shard merge keep appending
-// to the tail, and sealing is a separate deliberate step.
+// Writers keep appending to the tail. Every writer of an indexed store then
+// seals it before exiting (`play`, `gauntlet --keep`, and the run_rank.ps1 merge
+// after each rung), so the tail never rests above RANK_STORE_SEAL_MB and no
+// commit can carry a store file GitHub would reject. The .githooks/pre-commit
+// hook refuses any staged file over 95 MiB as the backstop.
 std::string rankStoreShardPath(const std::string& storeFile, int index);
+
+// Largest sealed shard, and the size the live tail is sealed down to. 90 MiB
+// sits under GitHub's 100 MiB per-file limit with margin.
+const int RANK_STORE_SEAL_MB = 90;
 
 // Split the live tail into sealed shards of at most maxBytes each, leaving the
 // remainder as the new tail. No-op (returns 0) when the tail is already under
@@ -281,6 +288,13 @@ std::string rankStoreShardPath(const std::string& storeFile, int index);
 // if it does not, because this store is never regenerated.
 // Returns the number of shards created, or -1 on error.
 int rankSealStore(const std::string& storeFile, long long maxBytes, std::string& err);
+
+// The writers' automatic seal: rankSealStore, but only for a store that has a
+// part index (rankStoreIndexPath). The index marks the committed store, so
+// scratch and screening stores, which git ignores, stay single files. Same
+// return convention as rankSealStore.
+int rankAutoSealStore(const std::string& storeFile, std::string& err,
+                      long long maxBytes = (long long)RANK_STORE_SEAL_MB * 1024 * 1024);
 
 // ---- Splitting the store by who played the game ----
 // A screening study leaves behind agents that were never promoted, and their

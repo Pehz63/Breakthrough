@@ -41,6 +41,11 @@
 # -PinEachRung <ratings.tsv> runs `rate --pin <file>` after each rung's merge, so
 # standings appear as the run proceeds. It writes only ranking/*_pinned.tsv and
 # cannot disturb the canonical fit.
+#
+# After each rung's merge the store is sealed (`rank.exe seal --max-mb 90`) when
+# it has a part index, so the committed tail never rests above 90 MB and no
+# commit carries a file GitHub would reject. Stores without an index (screening
+# and scratch stores, all gitignored) stay single files.
 
 # PositionalBinding=$false so pass-through tokens like "--games" land in $Args
 # instead of being bound to $Store positionally.
@@ -185,6 +190,15 @@ for ($r = 0; $r -lt $rungs.Count; $r++) {
 
     $mins = ((Get-Date) - $runStart).TotalMinutes
     Write-Host ("rung $($r + 1)/$($rungs.Count) merged: {0} row(s), {1:N1} min elapsed for the run so far." -f $merged, $mins)
+
+    $index = ($Store -replace '\.jsonl$', '') + ".index.txt"
+    if (Test-Path $index) {
+        & $Exe seal --in $Store --max-mb 90
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Sealing $Store failed (message above). Merged rows are in the store."
+            exit 1
+        }
+    }
 
     if ($PinEachRung -ne "") {
         # `rate` takes --roster and --board; --games/--cohort/--no-ladder are

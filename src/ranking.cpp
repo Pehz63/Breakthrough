@@ -2420,6 +2420,30 @@ int rankSealStore(const string& storeFile, long long maxBytes, string& err) {
     return made;
 }
 
+int rankAutoSealStore(const string& storeFile, string& err, long long maxBytes) {
+    err.clear();
+    std::ifstream idx(rankStoreIndexPath(storeFile).c_str());
+    if (!idx.is_open()) return 0;
+    idx.close();
+    return rankSealStore(storeFile, maxBytes, err);
+}
+
+// Run the automatic seal after a writer has appended to `storeFile`, and say
+// what it did. Returns false only when sealing failed.
+static bool autoSealAfterWrite(const string& storeFile, const string& pre) {
+    string err;
+    int made = rankAutoSealStore(storeFile, err);
+    if (made < 0) {
+        cout << pre << "ERROR: sealing " << storeFile << " failed: " << err << "\n";
+        return false;
+    }
+    if (made > 0)
+        cout << pre << "sealed " << made << " shard(s) of at most " << RANK_STORE_SEAL_MB
+             << " MB from " << storeFile << ". Commit them together with "
+             << rankStoreIndexPath(storeFile) << "\n";
+    return true;
+}
+
 // ============================================================
 // SCHEDULER
 // ============================================================
@@ -3254,6 +3278,8 @@ int rankPlay(const string& rosterFile, const string& storeFile, const string& ou
         }
     }
     cout << pre << "played " << played << " game(s) -> " << outFile << "\n";
+    // A sharded worker's --out is a scratch file the wrapper merges and seals.
+    if (outFile == storeFile && !autoSealAfterWrite(storeFile, pre)) return 1;
     return 0;
 }
 
@@ -4555,6 +4581,7 @@ int rankGauntlet(const string& rosterFile, const string& storeFile, const string
              << "' to " << rosterFile << " so full refits include it\n";
     else
         cout << "  scratch rows in " << outFile << " (not part of the permanent store)\n";
+    if (keep && !autoSealAfterWrite(storeFile, "  ")) return 1;
     return 0;
 }
 

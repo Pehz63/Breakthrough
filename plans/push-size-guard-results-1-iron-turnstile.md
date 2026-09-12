@@ -95,7 +95,8 @@ Two layers, chosen by the developer ("hook + auto-seal").
 | Same, store without an index | 2 games played, no shard written, file 186,433,765 bytes |
 | `run_rank.ps1 -Workers 2 -NoRate` on an indexed 381,564-row store | merged 2 rows, then sealed 1 shard, index updated, rows 381,566 |
 | `rank.exe seal` with no `--max-mb` | "under 90 MB, nothing to seal" on a 94,371,447-byte file (90 MiB = 94,371,840) |
-| New unit test "ranking match store - auto-seal acts only on an indexed store" | TEST_RESULT_PLACEHOLDER |
+| New unit test "ranking match store - auto-seal acts only on an indexed store" | passes, 9 assertions |
+| Full suite, `tests.exe` built from the committed source | all tests passed (5,879 assertions in 237 test cases) |
 
 The smoke-test stores were built from `ranking/matches.0001.jsonl` with every
 `tiered@1` row removed and the result doubled, so the roster pair
