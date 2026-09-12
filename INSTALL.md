@@ -101,9 +101,9 @@ the emsdk environment active:
 ```powershell
 git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git third_party\raylib-src
 cd third_party\raylib-src\src
-emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c rglfw.c `
+emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c utils.c `
   -Os -Wall -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2 -I.
-emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o rglfw.o
+emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o utils.o
 cd ..\..\..
 # Lay it out where build_web.bat expects it:
 New-Item -ItemType Directory -Force third_party\raylib-web\lib, third_party\raylib-web\include | Out-Null

@@ -46,9 +46,11 @@ jobs:
           source third_party/emsdk/emsdk_env.sh
           git clone --depth 1 --branch "$RAYLIB_VERSION" https://github.com/raysan5/raylib.git third_party/raylib-src
           cd third_party/raylib-src/src
-          emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c rglfw.c \
+          # raylib's own PLATFORM_WEB object list: utils.c (TraceLog, file I/O) is
+          # required, rglfw.c is the desktop GLFW backend and is not.
+          emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c utils.c \
             -Os -Wall -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2 -I.
-          emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o rglfw.o
+          emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o utils.o
           mkdir -p ../../raylib-web/lib ../../raylib-web/include
           cp libraylib.a ../../raylib-web/lib/
           cp raylib.h raymath.h rlgl.h ../../raylib-web/include/

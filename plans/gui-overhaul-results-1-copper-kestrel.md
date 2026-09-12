@@ -182,6 +182,16 @@ hash makes every learned id platform-dependent.
   decimal `[long]` constants for 32-bit masks.
 - raylib's `GetFrameTime()` on the web is the frame's work time, not the
   interval between frames. Time anything with `GetTime()` differences.
+- A web `libraylib.a` needs `utils.c` (it defines `TraceLog`) and not `rglfw.c`
+  (the desktop GLFW backend), the object list of raylib's own PLATFORM_WEB
+  makefile. The first Pages run (run 34677223491, 2026-09-12) failed at link with
+  `undefined symbol: TraceLog` because the workflow copied INSTALL.md's command,
+  which listed `rglfw.c` instead. The local library had been built with the right
+  list, so no local build showed it. Reproduced by building the library both ways
+  and linking a clean clone of `main` against each: the old list gave the same 20
+  `TraceLog` errors, the corrected list linked.
+- A job log needs admin rights to download through the API. The workflow posts a
+  failed build's last 60 lines as a public error annotation for that reason.
 
 ## Commit
 
@@ -207,9 +217,10 @@ See `git log` for the full messages.
   compares move lists would show whether this happens at the default TT size.
 - **The Pages workflow on GitHub.** It was checked piecewise here (the Linux
   script built under Git Bash, the snapshot hashes pass, the page works from
-  the snapshot), never as a whole on an Ubuntu runner. The first run after the
-  push settles whether the emsdk install, the raylib build, and the deploy
-  steps work as written.
+  the snapshot), never as a whole on an Ubuntu runner. The first run
+  (2026-09-12) passed the emsdk install and the raylib build, then failed at
+  link on the missing `utils.c` (see the gotchas). The run after the fix settles
+  whether the link and the deploy step work there.
 - **Web pacing in a real browser.** The pacing fix was checked in headless
   Chrome at real time. A look at Watch at each speed in a desktop browser would
   confirm the delays match the native app's.
