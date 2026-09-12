@@ -411,7 +411,23 @@ win percentages among its own combinations, not ratings against outside programs
     averages 0.1642 against a 0.2500 ideal with 82% of pairs inside 400 Elo, so
     the round robin is only 1.5x off optimal pairing and holds no pile of
     foregone conclusions. Rungs 4 and 5 (16 and 32 games/pair) launched
-    2026-09-09 on `ranking/q8/cohort_round4b.txt`, 198 agents
+    2026-09-09 on `ranking/q8/cohort_round4b.txt`, 198 agents. That run
+    stopped 14 minutes in (all 10 shards within 4 seconds, 2026-09-09
+    17:05Z) with 6,760 complete rows unmerged in `ranking/matches.jsonl.0`
+    to `.9`. `tools/run_rank.ps1` deletes those files when it launches, so
+    on 2026-09-11 they were appended to the store first (1,132,483 -> 1,139,243
+    rows, counted), the store was sealed (`rank.exe seal --max-mb 90`: six
+    90 MB parts `ranking/matches.0001.jsonl` to `.0006`, listed in the index,
+    and a 19 MB tail), and the round relaunched: `run_rank.ps1 -Workers 10
+    --roster ranking/roster.txt --cohort ranking/q8/cohort_round4b.txt`, once
+    at `--games 16` and once at `--games 32`, without `--paired-openings` (the
+    stopped run's 870 multi-game pairs shared no seed). Each rung's
+    unpinned fit is copied to `ranking/rungs/cores_r<N>.tsv` and
+    `standings_r<N>.tsv`, and the tail is sealed after each. Rungs 2, 4 and
+    8 merged 0 rows, so the sealed parts are read, and rung 16 scheduled
+    477,944 games. The sealed parts and the index must be committed
+    together: a clone with the index but not the parts loads without them.
+    The replication study's panel waits on this round
     `[Now]` {cpu: days, dev: low}
   - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
     Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the
@@ -1918,7 +1934,9 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   Run `rank.exe seal --max-mb 90` (`tools/CLAUDE.md`, "Keeping the match store a size a host will
   accept"), then rewrite or squash the unpushed commits so no commit carries an oversized version,
   and seal at every checkpoint after that. Blocks the web page's Pages workflow. The developer chose
-  to leave this to the ranking side `[Next]` {cpu: seconds, dev: medium}
+  to leave this to the ranking side. The working tree's store was sealed on 2026-09-11 (Round 4
+  entry above), so the HEAD half is done once it is committed. The unpushed history still carries
+  the oversized versions `[Next]` {cpu: seconds, dev: medium}
 - Model files cited by `ranking/roster.txt` but not tracked in git: `models/sweep/slot10.txt`
   (`fead67b7`, the dil20 x node champion's core) and `models/sweep/slot76.txt` (`ef183148`, the
   opener8 x node champion's core). `.gitignore` says anything the roster cites lives in git, and

@@ -42,3 +42,11 @@ matches.retired_other.0001.jsonl
 # without re-certifying ranking/CHAMPION.md in the same session.
 # Full analysis: plans/store-sharding-results-1-tidy-albatross.md.
 # ---------------------------------------------------------------
+
+# sealed from the tail
+matches.0001.jsonl
+matches.0002.jsonl
+matches.0003.jsonl
+matches.0004.jsonl
+matches.0005.jsonl
+matches.0006.jsonl

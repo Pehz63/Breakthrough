@@ -464,6 +464,19 @@ same name inside functions it called.
   Such games add the same noise to every arm. Counting games whose study
   side searched 0 nodes, per panel member, would say whether the weakest
   panel members should be dropped or the opener shortened.
+- **A8's curve depends on its horizon.** A8's e rises from its start value to
+  1 over the whole run, so the curve step anneals over 5120 games while a
+  Pass 3 run anneals over its own T_max. A8's checkpoint at a given rung is
+  therefore not the checkpoint Pass 3 would produce at that rung, and where
+  A8's curve flattens says less about T_max than the other arms' curves do.
+  One A8 run annealed over the candidate T_max, compared at shared rungs,
+  would measure the difference.
+- **The tuning step reports the best single-seed draw.** With seed noise of
+  50 to 150 Elo between replicas, the best of 16 or 32 one-seed draws is
+  biased upward and its rate is partly chosen by noise. A fitted curve of
+  Elo on log lr (and the second parameter for joint arms), with its peak
+  and an interval, would pick a rate less sensitive to one lucky seed. The
+  pick rule should be written down before the tuning step runs.
 - **A3's curve lr sits below its L.** If A3's curve rises late, a second A3
   curve at the top of its range would say whether T_max is being placed by
   the technique or by the rate.
