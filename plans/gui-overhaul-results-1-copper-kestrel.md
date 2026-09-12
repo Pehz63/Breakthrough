@@ -219,8 +219,11 @@ See `git log` for the full messages.
   script built under Git Bash, the snapshot hashes pass, the page works from
   the snapshot), never as a whole on an Ubuntu runner. The first run
   (2026-09-12) passed the emsdk install and the raylib build, then failed at
-  link on the missing `utils.c` (see the gotchas). The run after the fix settles
-  whether the link and the deploy step work there.
+  link on the missing `utils.c` (see the gotchas). The run after the fix
+  (34703014162, commit `85d8e23`) built and uploaded the page, then the deploy
+  step failed with "Failed to create deployment (status: 404) ... Ensure GitHub
+  Pages has been enabled", because the repository's Pages source was not yet set
+  to GitHub Actions. A rerun after that setting settles the deploy step.
 - **Web pacing in a real browser.** The pacing fix was checked in headless
   Chrome at real time. A look at Watch at each speed in a desktop browser would
   confirm the delays match the native app's.
