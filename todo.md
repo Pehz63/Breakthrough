@@ -221,7 +221,7 @@ win percentages among its own combinations, not ratings against outside programs
   instruction in R1 through R8 names the old head and must be rewritten.
   `[Now]` {cpu: none, dev: medium}
   - ~~`train.exe tdleaf` has no `rem=`/`retain` equivalent, so the generator cannot
-    reproduce the node track's serving head~~ Done in `778487e`: `--rem`, `--retain`,
+    reproduce the node track's serving head~~ Done in `7ccaef6`: `--rem`, `--retain`,
     and `--time-budget-ms`, stamped into provenance.
 
 - **Re-run every agent-production regime under matched training compute, on both
@@ -1925,10 +1925,10 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   turn (the analysis thread already has the machinery) `[Later]` {cpu: seconds, dev: medium}
 - ~~Web page hosting: pick where `build\web\` is published (see the questions in
   `plans/gui-overhaul-results-1-copper-kestrel.md`) `[Next]` {cpu: seconds, dev: low}~~
-  GitHub Pages through `.github/workflows/web.yml` (2026-09-10). The workflow has not run on
-  GitHub yet: it needs a push of `main` (blocked, see the next item) and the Pages source set to
-  "GitHub Actions" (`INSTALL.md` section 3d).
-- Make `main` pushable. `ranking/matches.jsonl` grew past GitHub's 100 MB file limit inside the
+  GitHub Pages through `.github/workflows/web.yml` (2026-09-10). `main` is pushed (see the next
+  item). The workflow deploys once the Pages source is set to "GitHub Actions" (`INSTALL.md`
+  section 3d).
+- ~~Make `main` pushable. `ranking/matches.jsonl` grew past GitHub's 100 MB file limit inside the
   unpushed history: 39.1 MB on `origin/main`, 581.9 MB at HEAD, and 8 versions of 240 to 582 MB
   across 9 of the 51 unpushed commits (measured 2026-09-10, when `git push origin main` failed).
   Run `rank.exe seal --max-mb 90` (`tools/CLAUDE.md`, "Keeping the match store a size a host will
@@ -1936,7 +1936,16 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   and seal at every checkpoint after that. Blocks the web page's Pages workflow. The developer chose
   to leave this to the ranking side. The working tree's store was sealed on 2026-09-11 (Round 4
   entry above), so the HEAD half is done once it is committed. The unpushed history still carries
-  the oversized versions `[Next]` {cpu: seconds, dev: medium}
+  the oversized versions `[Next]` {cpu: seconds, dev: medium}~~
+  Done 2026-09-12 and pushed. The sealed store was committed at HEAD, and the 48 unpushed commits
+  that carried a version over 100 MB were rewritten (`git filter-branch --index-filter`) to hold the
+  last version under the limit instead (39.3 MB, 77,710 rows, set in `51e197e`). Verified: no blob
+  over 100 MB in the pushed range, no commit changed any path but `ranking/matches.jsonl`, the tip
+  tree identical, and every row present at the tip. Consequence: rating one of those 48 commits
+  does not reproduce its standings at the time. The original commits are on the local branch
+  `backup-pre-push-rewrite`. Commit hashes cited in files and commit messages were updated to the
+  rewritten ones. Keep it pushable by sealing the tail (`rank.exe seal --max-mb 90`) before every
+  commit that includes the store.
 - Model files cited by `ranking/roster.txt` but not tracked in git: `models/sweep/slot10.txt`
   (`fead67b7`, the dil20 x node champion's core) and `models/sweep/slot76.txt` (`ef183148`, the
   opener8 x node champion's core). `.gitignore` says anything the roster cites lives in git, and

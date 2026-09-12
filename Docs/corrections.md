@@ -424,7 +424,7 @@ in the same row or column, that is the case to check.
 ## `MIGRATED REPORT PROVENANCE` - flagged 2026-09-09
 
 **Scope: the seven `ranking/refute_book*.tsv` reports, as they stand in the repo
-after commit `d5cb15b` (2026-09-06).** Like `TT CROSS-AGENT CONTAMINATION`, this
+after commit `0acfdd1` (2026-09-06).** Like `TT CROSS-AGENT CONTAMINATION`, this
 is a tooling defect rather than a writing defect: a script edited finished
 experiment records in place.
 
@@ -437,7 +437,7 @@ script's own comment states the principle correctly and applies it to two cases
 (`det_*` and `recert_snapshots`), and the refute reports were simply not in the
 guard.
 
-Two consequences, both measured on 2026-09-09 by diffing against `d5cb15b^`:
+Two consequences, both measured on 2026-09-09 by diffing against `0acfdd1^`:
 
 **1. The reports now name a code version that did not produce them.**
 `ranking/refute_book23.tsv` says
@@ -460,7 +460,7 @@ left the book, against 7 in the pre-migration file. `refute_book23.tsv` and
 recomputed, so every surviving row is the value the run produced. What is wrong
 is the run's attribution and, for five files, its denominator. Quote a rate out
 of one of these files only after checking the row count against
-`git show d5cb15b^:<path>`, and read any `@3` in them as `@2`.
+`git show 0acfdd1^:<path>`, and read any `@3` in them as `@2`.
 
 **What to do instead.** Never renumber or filter a completed report. A report is
 the same kind of artifact as a results document in `plans/`: it is a record of
@@ -468,7 +468,7 @@ what a past binary measured, and a migration should leave it alone and let the
 version in the header say which binary that was. `tools/migrate_ab_v3.py` now
 skips `refute_*` alongside `det_*` and `recert_snapshots`, so the next bump does
 not repeat this. The pre-migration content of all seven files is recoverable with
-`git show d5cb15b^:ranking/refute_book21.tsv` and so on, and is not being
+`git show 0acfdd1^:ranking/refute_book21.tsv` and so on, and is not being
 restored in place, because a second in-place rewrite of the same files would make
 the provenance worse rather than better.
 
