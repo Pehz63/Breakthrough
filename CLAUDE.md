@@ -198,6 +198,18 @@ after the header edit itself (`plans/gumbel-mcts-results-5-violet-harbor.md`).
 Rebuild and smoke-test every linked binary after any shared-header change,
 not just the one under active test.
 
+### Git hook (once per clone)
+```
+git config core.hooksPath .githooks
+```
+`.githooks/pre-commit` refuses any commit that stages a file over 95 MiB.
+GitHub rejects files over 100 MiB in every pushed commit, so one such commit
+blocks all later pushes until history is rewritten. For the match store the fix
+it prints is `rank.exe seal --max-mb 90`. The store's writers (`rank.exe play`,
+`gauntlet --keep`, the `run_rank.ps1` merge) seal it automatically, so the hook
+is the backstop (`tools/CLAUDE.md`, "Keeping the match store a size a host will
+accept").
+
 ### Console engine (`breakthrough.exe`)
 ```
 cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && cl src\main.cpp src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\ml_cluster.cpp src\datastore.cpp src\transposition.cpp /I src /EHsc /Fo"build\\" /Fe:breakthrough.exe'
@@ -273,6 +285,8 @@ One line per file. Deep detail lives in the named per-directory CLAUDE.md.
 | `CMakeLists.txt` | Alternative CMake build (not primary) |
 | `minimax_params.txt` | Saved MiniMax weights, auto-loaded when a MiniMax player is selected |
 | `.gitignore` | Excludes exes, `build/`, `third_party/`, and generated ML artifacts |
+| `.githooks/pre-commit` | Refuses a commit staging any file over 95 MiB (GitHub's push limit is 100 MiB). Enable per clone: `git config core.hooksPath .githooks` |
+| `.gitattributes` | Keeps `.githooks/*` LF on checkout so sh can run them |
 | `build_gui.bat` / `build_web.bat` | GUI builds: native raylib exe / Emscripten WASM to `build\web\` |
 | `build_web.sh` | The web build for Linux and macOS, run by the Pages workflow |
 | `.github/workflows/web.yml` | Builds the web page on an Ubuntu runner and deploys it to GitHub Pages (setup: `INSTALL.md` section 3d) |

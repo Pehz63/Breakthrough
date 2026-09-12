@@ -1944,8 +1944,18 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
   tree identical, and every row present at the tip. Consequence: rating one of those 48 commits
   does not reproduce its standings at the time. The original commits are on the local branch
   `backup-pre-push-rewrite`. Commit hashes cited in files and commit messages were updated to the
-  rewritten ones. Keep it pushable by sealing the tail (`rank.exe seal --max-mb 90`) before every
-  commit that includes the store.
+  rewritten ones. The next item keeps it pushable.
+- ~~Stop oversized files from reaching a commit, so a push cannot be blocked this way again
+  `[Now]` {cpu: seconds, dev: low}~~ Done 2026-09-12
+  (`plans/push-size-guard-results-1-iron-turnstile.md`). `.githooks/pre-commit` refuses any staged
+  file over 95 MiB (enable once per clone with `git config core.hooksPath .githooks`), and every
+  writer of the indexed store seals it to 90 MiB before exiting: `rank.exe play`,
+  `rank.exe gauntlet --keep`, and `tools/run_rank.ps1` after each rung's merge.
+- Install the rebuilt `rank.exe` once Round 4's shards exit. The running shards hold `rank.exe`
+  open, so the auto-seal in `play` and `gauntlet --keep` exists only in source until
+  `build_rank.bat` (or the direct `cl` command) runs. Round 4's merges use the `run_rank.ps1` that
+  was loaded at launch and do not seal, so run `rank.exe seal --max-mb 90` after the round and
+  before committing the store. The hook refuses the commit otherwise `[Next]` {cpu: seconds, dev: low}
 - Model files cited by `ranking/roster.txt` but not tracked in git: `models/sweep/slot10.txt`
   (`fead67b7`, the dil20 x node champion's core) and `models/sweep/slot76.txt` (`ef183148`, the
   opener8 x node champion's core). `.gitignore` says anything the roster cites lives in git, and

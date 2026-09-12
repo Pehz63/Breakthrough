@@ -150,6 +150,20 @@ public repository.
 
 ---
 
+## 4. Git pre-commit hook (every clone)
+
+```
+git config core.hooksPath .githooks
+```
+
+This enables `.githooks/pre-commit`, which refuses a commit that stages any
+file over 95 MiB. GitHub rejects files over 100 MiB in every pushed commit, so
+committing one blocks all later pushes until the history is rewritten. Git does
+not enable hooks from a clone on its own, so run the command once in each new
+clone.
+
+---
+
 ## Summary
 
 | You want to...            | Install                                                            |

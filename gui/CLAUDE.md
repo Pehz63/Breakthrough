@@ -15,7 +15,12 @@ and a raylib-for-web `libraylib.a` (`INSTALL.md` section 3), and activates
 same build for Linux and macOS (it honors an `OUTDIR` environment variable), and
 `.github/workflows/web.yml` runs it on an Ubuntu runner and deploys the page to
 GitHub Pages (`INSTALL.md` section 3d). Keep the two scripts' source lists and
-flags identical.
+flags identical. A workflow run's job log needs admin rights to read through
+the API, so a failed build posts the last 60 lines of `build_web.sh`'s output as
+an error annotation, which anyone can read:
+`curl https://api.github.com/repos/Pehz63/Breakthrough/actions/runs?per_page=5`
+for the run, `.../actions/runs/<run>/jobs` for the job id, then
+`.../check-runs/<job id>/annotations`.
 
 Both builds link the same set: `gui\main_gui.cpp gui\gui_engine.cpp
 gui\gui_library.cpp`, the engine link set, and `src\agents.cpp

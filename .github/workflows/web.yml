@@ -33,7 +33,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install the Emscripten SDK
         run: |
@@ -56,7 +56,20 @@ jobs:
       - name: Build the page
         run: |
           source third_party/emsdk/emsdk_env.sh
-          bash build_web.sh
+          status=0
+          bash build_web.sh > build_web.log 2>&1 || status=$?
+          cat build_web.log
+          exit $status
+
+      # Reading a job's log through the API needs admin rights on the repo, but
+      # annotations are public (GET /repos/<owner>/<repo>/check-runs/<id>/annotations),
+      # so a failed build posts the tail of its output as one.
+      - name: Report a failed build
+        if: failure()
+        run: |
+          test -f build_web.log || exit 0
+          body=$(tail -n 60 build_web.log | sed -e 's/%/%25/g' -e 's/\r//g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=build_web.sh output (last 60 lines)::${body}"
 
       - uses: actions/upload-pages-artifact@v3
         with:

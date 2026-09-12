@@ -428,7 +428,11 @@ only grows and a single file eventually passes what a git host will accept.
 `ranking/matches.index.txt` lists the parts in load order and new games still
 append to `ranking/matches.jsonl`. `rank.exe split` groups the parts by who
 played each game, so games involving agents that have left the roster can be set
-aside; `rank.exe seal --max-mb N` rolls an oversized tail into immutable shards.
+aside. `rank.exe seal` rolls a tail over 90 MB into immutable shards, and the
+tools that write the store (`rank.exe play`, `rank.exe gauntlet --keep`,
+`tools/run_rank.ps1`) run it automatically, so no committed file reaches
+GitHub's 100 MB limit. The `.githooks/pre-commit` hook (see [INSTALL.md](INSTALL.md))
+refuses any commit that stages a file over 95 MiB.
 The rating outputs (`ratings.tsv`, `standings.tsv`, `games.tsv`, `report.md`) are
 not committed, since `rank.exe rate` rebuilds them from the store in about 20
 seconds. Run a rate before reading standings in a fresh clone.
