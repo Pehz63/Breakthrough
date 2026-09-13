@@ -1,7 +1,9 @@
-# Proposed replication-study panel (not pinned yet). 32 active agents nearest to
+# Replication study Stage 1 panel (developer approved 2026-09-13). 32 active agents nearest to
 # 32 evenly spaced Elo targets from rand@1 to the top of ranking/standings.tsv
 # (canonical fit, prior 0.1, 2026-09-13). Excluded: time= heads (load-sensitive),
 # gaz heads and anything over 40 cpu_ms_move (cost), book openers.
+# Ratings are pinned from ranking/replication_panel_pin.tsv, a frozen copy of
+# that standings file, so later refits cannot move the study's scale.
 anchor  rand@1
 on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=75)@1
 on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=63)@1
