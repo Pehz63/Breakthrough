@@ -145,7 +145,9 @@ compares them against each other, each on the same head, the same compute
 budget, and the same full-roster refit. It refines the dethrone loop rather
 than replacing it: a stronger agent is expected as a by-product. Frame new
 training studies as replications of a named published technique, cited in
-`Docs/works-cited.md`. Detail: `Docs/Memories/breakthrough-replication-study-goal.md`
+`Docs/works-cited.md`. Published rating and evaluation methodology results
+(opponent-graph design, active pair sampling) are replication targets too,
+tested on Breakthrough's own game data. Detail: `Docs/Memories/breakthrough-replication-study-goal.md`
 and `todo.md`'s "Cross-technique replication study" section.
 
 ---

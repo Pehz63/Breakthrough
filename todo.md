@@ -199,6 +199,14 @@ win percentages among its own combinations, not ratings against outside programs
   `[Next]` {cpu: days, dev: high}
 - ~~Verify the TreeStrap numbers against the Veness et al. 2009 paper itself before
   citing them~~ Done: Table 2 read from the paper, entered in `Docs/works-cited.md`
+- Rating-methodology replications (second strand, developer 2026-09-12): test
+  published ranking results on Breakthrough's own games. Shah et al. 2016
+  (expander vs complete opponent graph at equal games), Chiang et al. 2024
+  (active pair sampling vs random), Heckel et al. 2019 (active ranking), Hunter
+  2004 (MM convergence conditions). First test: the sparse-schedule subsample of
+  Round 4's rung-16 games (`plans/sparse-schedule-plan-1-cedar-lynx.md`, item in
+  the Round 4 section). Active sampling needs its own design after that `[Next]`
+  {cpu: hours, dev: medium}
 
 ## Budget-parity rebuild (Part 1 done, Part 2 started)
 
@@ -433,9 +441,18 @@ win percentages among its own combinations, not ratings against outside programs
     54 h more. The rung-16 fit is taken as final for now: it is below the
     plan's 32-games/pair floor, so it supports no title claim and
     `ranking/CHAMPION.md` is not re-certified from it. The replication
-    study's panel is pinned from it. Rung 32 stays open for later
-    `[Now]` {cpu: hours, dev: low}
-  - **Snapshot rung 16 with the same fit as rung 8.** `ranking/rungs/cores_r8.tsv`
+    study's panel is pinned from it. Rung 32 stays open for later.
+    Rung 16 finished 2026-09-13 02:21: 477,944 games, store 1,809,009 rows
+    across the index parts and tail (counted), sealed into
+    `ranking/matches.0007.jsonl` and `.0008` plus an 84 MB tail. The watcher
+    stopped the driver before any rung-32 game was written
+  - ~~**Snapshot rung 16 with the same fit as rung 8.**~~ Done 2026-09-13:
+    `cores_r16.tsv` and `standings_r16.tsv` are the pinned fit, the
+    `_unpinned` files the resume script's copies. `rung_convergence.py` against
+    rung 8: order PASS (rho 0.9990, worst move 2), median pm 7 -> 5 (ratio
+    1.40) PASS, champions FAIL on 4 of 6 cells (openless_x_time changed
+    model=169 -> model=602 by 3 Elo, three others moved more than 1 combined
+    SE), verdict DOUBLE AGAIN, which the stop decision above overrides. `ranking/rungs/cores_r8.tsv`
     is byte-identical to `ranking/cores_pinned.tsv` of 2026-09-09, a fit pinned
     to the 2026-09-06 `ranking/standings.tsv`, now preserved as
     `ranking/rungs/pin_source_standings_20260906.tsv` (the rung-16 run's
@@ -448,7 +465,9 @@ win percentages among its own combinations, not ratings against outside programs
 - **Sparse opponent graphs instead of round robins** (developer question
   2026-09-12: game count grows with the square of the pool). Theory and the
   offline test that subsamples Round 4's rung-16 games:
-  `plans/sparse-schedule-plan-1-cedar-lynx.md`. Runs after rung 16 `[Next]`
+  `plans/sparse-schedule-plan-1-cedar-lynx.md`. Runs after rung 16 and before
+  Pass 2 training (developer priority, 2026-09-12), since its k-opponent
+  results also size the replication study's panel `[Next]`
   {cpu: hours, dev: medium}
   - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
     Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the

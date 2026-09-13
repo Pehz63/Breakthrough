@@ -9,6 +9,8 @@ Research goal, stated 2026-09-10: a paper that replicates training techniques pu
 
 Closest prior art: Cohen-Solal (JMLR 27, 2026, arXiv 2008.01188 v5) compares tree/root/terminal learning, Descent vs other searches, and six terminal reward heuristics on 11 games including Breakthrough (round-robin win percentages among the combinations). Lorentz and Zosa (ACG 2017): TD inside MCTS and expert-move CNNs on Breakthrough. Nothing found on Breakthrough for TD-Leaf, alpha-beta TreeStrap, search-score distillation, KataGo auxiliary targets, or potential-based shaping.
 
+**Second strand (developer, 2026-09-12):** published rating and evaluation methodology results are replication targets too, tested on Breakthrough's own game data. First set: Shah et al. 2016 (sparse expander opponent graphs vs round robin), Chiang et al. 2024 Chatbot Arena (active pair sampling), Heckel et al. 2019 (active ranking), Hunter 2004 (Bradley-Terry MM convergence). Breakthrough stresses them with deterministic pairs, opponent-mix effects, and dense contender requirements. Plan: `plans/sparse-schedule-plan-1-cedar-lynx.md`. They also harden the instrument every technique comparison relies on.
+
 **Why:** a controlled cross-comparison on one game is missing from the literature, and the project already has the instrument (matched-budget heads, full-roster anchored refit, measured seed-noise band, the 4-pass playbook).
 
 **How to apply:** frame each training study as a replication of a named published technique. Cite it in `Docs/works-cited.md` with its original domain, protocol, and result, list the adaptations, then measure on the same head, compute budget, and full-roster refit as every other technique. Record failures too, "did not transfer" is a finding.

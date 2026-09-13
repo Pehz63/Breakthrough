@@ -27,7 +27,8 @@ def load(path):
     """core -> {cell: (elo, pm, games)}, plus the mean-elo column."""
     rows = [l for l in open(path, encoding="utf-8") if not l.startswith("#")]
     r = csv.DictReader(rows, delimiter="\t")
-    cells = [c[:-4] for c in r.fieldnames if c.endswith("_elo")]
+    cells = [c[:-4] for c in r.fieldnames
+             if c.endswith("_elo") and c != "mean_elo"]
     out, mean = {}, {}
     for row in r:
         core = row["core"]

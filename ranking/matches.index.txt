@@ -50,3 +50,7 @@ matches.0003.jsonl
 matches.0004.jsonl
 matches.0005.jsonl
 matches.0006.jsonl
+
+# sealed from the tail
+matches.0007.jsonl
+matches.0008.jsonl

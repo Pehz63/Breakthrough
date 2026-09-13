@@ -134,6 +134,20 @@ be fitted and compared against the full data without playing a game.
 Runs after Round 4's rung 16 finishes, since the fits are CPU load and the
 `time=25ms` track's games are sensitive to it.
 
+## As a replication
+
+This test is also the first of the replication study's rating-methodology
+replications (`Docs/Memories/breakthrough-replication-study-goal.md`). The
+claims it tests, each against conditions its source did not have:
+
+| claim | source | what Breakthrough adds |
+|---|---|---|
+| R1: at equal total games, a constant-degree expander's per-agent error matches the complete graph's | Shah et al. 2016 | deterministic pairs (at most 2 distinct games), opponent-style effects, a pinned fit |
+| R2: error depends on games per agent, not on pool size | Shah et al. 2016, per-item form of the minimax risk | same |
+| R3: choosing pairs by where confidence intervals shrink most needs fewer games than random pairing | Chiang et al. 2024, Heckel et al. 2019 | not tested here, needs an adaptive design with new play |
+
+R1 and R2 are tested by the subsample above. R3 needs its own plan.
+
 ## Decision the test feeds
 
 Whether to add a sparse mode to the scheduler: `rank.exe play --opponents K`
