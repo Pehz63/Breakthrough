@@ -70,7 +70,7 @@ flags avoid that:
   gauntlets cannot. Writes its own `ranking/*_pinned.*` family (gitignored) and
   leaves the canonical files untouched.
 - **`rate --prior <X>`** sets the virtual games at 50% added to every played
-  pair (default 0.5, `g_rankPriorGames`) for that run, pinned or not, and
+  pair (default 0.1, `g_rankPriorGames`) for that run, pinned or not, and
   writes a `ranking/*_prior<X>*.*` family. The prior's share of a pair is
   X / (games + X), so it matters when schedules differ in games per pair
   (`Docs/benchmarking.md`, "Elo scale drift across fits").

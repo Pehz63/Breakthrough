@@ -244,6 +244,11 @@ ranking/*_pinned.md
 # that re-certifies every champion (see todo.md).
 ranking/*_balanced.tsv
 ranking/*_balanced.md
+# Core-major standings from the same canonical fit, and fits at a non-default
+# prior (rank.exe rate --prior X), regenerable for the same reasons.
+ranking/cores.tsv
+ranking/*_prior*.tsv
+ranking/*_prior*.md
 
 # Reserved scratch slots (ML_RESERVED_SLOTS, src/ml_eval.h): the test suite's
 # throwaway model load/save writes, structurally separated from models/sweep/

@@ -56,11 +56,13 @@ documented."
 ### Elo scale drift across fits (2026-07-17)
 
 Absolute Elo values are NOT comparable between fits taken before and after the
-pool grows. The Bradley-Terry fit adds 0.5 virtual games at 50% score per
-PLAYED pair (`rankFitBT`, `src/ranking.cpp`), so when a large cohort joins,
-every agent gains prior mass pulling it toward its opponents' mean and the
-whole scale compresses toward the middle even if no real result changed.
-Measured: the 72-ID residual/MLP study cohort compressed every top agent by
+pool grows. The Bradley-Terry fit adds virtual games at 50% score to every
+PLAYED pair (`g_rankPriorGames`, 0.1 by default, `src/ranking.cpp`), so when a
+large cohort joins, every agent gains prior mass pulling it toward its
+opponents' mean and the whole scale compresses toward the middle even if no
+real result changed. Measured at a prior of 0.5 per pair, which was larger
+than today's default and so compressed more: the 72-ID residual/MLP study
+cohort compressed every top agent by
 80-112 Elo between the 2026-07-12 and 2026-07-14 fits (oracle 1254 -> 1142,
 then-champion family 1062-1135 -> 969-1029), on top of any real losses. Rules:
 read ORDER and error bands within one fit, never absolute values across fits;
@@ -83,10 +85,15 @@ down about 10 against the 16-games-per-pair fit, whichever 2 games were kept
 pair. At 16 games per pair, lowering the prior from 0.5 to 0.01 moved cell
 means by -15.5 to +8.3 Elo and the openless node champion by +39, and changed
 no champion and no core's rank. Deterministic pairs stop at 2 games, so the
-openless cells keep carrying the 20% share at every rung.
+openless cells kept carrying the 20% share at every rung. The default is
+therefore 0.1 per pair (4.8% of a 2-game pair), where sparse schedules gave
+nearly the same errors as at 0.01. On the full rung-16 store the unpinned fit
+at 0.1 keeps every cell champion, every core's rank and the top 3 of every
+head with 5 or more agents, and stretches the scale: the openless node leader
+reads 1491 against 1167 at 0.5, with `rand` anchored at 0 in both. Quote
+levels only with the fit date, as rule 3 already requires.
 `rank.exe rate --prior X` sets the prior for one run and writes a
-`_prior<X>` output family. Any design that compares schedules with different
-games per pair has to hold this constant or use a small prior.
+`_prior<X>` output family.
 
 ### A pinned fit reports on the PIN FILE'S scale, not today's (2026-08-01)
 

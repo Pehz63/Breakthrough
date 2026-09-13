@@ -12,13 +12,20 @@ Subcommands:
   run   --cohort <ids> --pin <standings tsv> --ref-standings <tsv> --ref-cores <tsv>
         [--store ranking/matches.jsonl] [--roster ranking/roster.txt]
         [--strata <standings tsv>] [--k 8,16,32,64,128,0] [--g 2,4,8,16]
-        [--modes random,strat] [--seed 1] [--work <dir>] [--workers 1] [--dry]
-      k = 0 means every opponent. Each (mode, k, g) is drawn twice with no pair
+        [--modes random,strat,panel,panelstrat] [--opponents all|noncohort]
+        [--prior X] [--seed 1] [--work <dir>] [--workers 1] [--dry]
+      k = 0 means every opponent. random and strat draw each cohort agent's own
+      opponents. panel and panelstrat draw ONE panel of k active non-cohort
+      agents that every cohort agent meets, as the replication study does.
+      --opponents noncohort drops cohort-vs-cohort pairs from every design.
+      Each (mode, k, g) is drawn twice with no pair (or panel member)
       in common (A and B) when there are enough opponents, else once. Every
       design is fitted with `rank.exe rate --pin <pin>` over the non-cohort rows
       plus the design's cohort rows, and compared (1) against the reference
       fit (the full data, same pin) and (2) A against B, which share no games,
-      so their disagreement is the design's own error. --dry prints the design
+      so their disagreement is the design's own error. The within columns
+      remove each category cell's mean error first, leaving the error in a
+      contrast between two agents of one cell. --dry prints the design
       sizes without fitting. Rows go to <work>/sparse_results.tsv.
 
   selftest
@@ -119,6 +126,33 @@ def build_design(cohort, others_of, k, rng, exclude=frozenset(), bands=None):
     return edges
 
 
+def draw_panel(pool, k, rng, bands=None):
+    """One opponent panel shared by every cohort agent: k agents of `pool`
+    (all of it when k = 0), spread evenly over `bands` when given."""
+    pool = sorted(pool)
+    if k == 0 or k >= len(pool):
+        return set(pool)
+    if bands is None:
+        return set(rng.sample(pool, k))
+    by = {}
+    for o in pool:
+        by.setdefault(bands.get(o, "none"), []).append(o)
+    for lst in by.values():
+        rng.shuffle(lst)
+    labels = sorted(by)
+    rng.shuffle(labels)
+    pick = []
+    while len(pick) < k and any(by[b] for b in labels):
+        for b in labels:
+            if by[b] and len(pick) < k:
+                pick.append(by[b].pop())
+    return set(pick)
+
+
+def panel_edges(cohort, opp_sets, panel):
+    return {frozenset((a, o)) for a in cohort for o in panel if o in opp_sets[a]}
+
+
 def elo_bands(standings, ids, nb=4):
     """Opponent -> quartile label by Elo in `standings` (unrated -> 'none')."""
     rated = sorted((float(standings[i]["elo"]), i) for i in ids if i in standings)
@@ -129,9 +163,12 @@ def elo_bands(standings, ids, nb=4):
 
 
 # ------------------------------------------------------------------ fitting
+RANK_PRIOR_DEFAULT = 0.1   # RANK_PRIOR_GAMES_DEFAULT in src/ranking.h
+
+
 def prior_suffix(prior):
     """rank.exe's output suffix for a non-default prior ('' at the default)."""
-    return "" if prior is None or prior == 0.5 else "_prior%s" % ("%g" % prior)
+    return "" if prior is None or prior == RANK_PRIOR_DEFAULT else "_prior%s" % ("%g" % prior)
 
 
 def fit(tag, base, part_lines, work, roster, pin, rank_exe, prior=None):
@@ -195,6 +232,25 @@ def compare(st, ref, ids):
             "over2pm": sum(1 for x in z if x > 2) / len(z) if z else float("nan")}
 
 
+def cell_of(agent_id):
+    return division(agent_id) + ("_time" if "time=" in agent_id.split(".")[0] else "_node")
+
+
+def within(st, ref, ids):
+    """RMS Elo error after removing each category cell's mean error: the error
+    left in a contrast between two agents of one cell."""
+    by = {}
+    for i in ids:
+        if i in st and i in ref:
+            by.setdefault(cell_of(i), []).append(float(st[i]["elo"]) - float(ref[i]["elo"]))
+    sq, n = 0.0, 0
+    for v in by.values():
+        m = sum(v) / len(v)
+        sq += sum((x - m) ** 2 for x in v)
+        n += len(v)
+    return math.sqrt(sq / n) if n else float("nan")
+
+
 def core_compare(cores_path, ref_cores_path):
     cur, cur_mean, cells = rc.load(cores_path)
     ref, ref_mean, _ = rc.load(ref_cores_path)
@@ -234,6 +290,14 @@ def run(a):
             others_of[v].append(u)
     for x in others_of:
         others_of[x].sort()
+        if a.opponents == "noncohort":
+            others_of[x] = [o for o in others_of[x] if o not in cset]
+    ref = read_standings(a.ref_standings)
+    opp_sets = {x: set(v) for x, v in others_of.items()}
+    # Panel members must be active (in the reference standings) and have met
+    # every cohort agent, so a panel design gives every agent the same opponents.
+    panel_pool = sorted(o for o in set().union(*opp_sets.values())
+                        if o not in cset and o in ref and all(o in s for s in opp_sets.values()))
     print("store: %d non-cohort rows, %d cohort pairs, %d cohort rows, opponents per agent %d..%d"
           % (n_base, len(pairs), sum(len(v) for v in pairs.values()),
              min(len(v) for v in others_of.values()), max(len(v) for v in others_of.values())))
@@ -245,18 +309,29 @@ def run(a):
     modes = a.modes.split(",")
     max_opp = min(len(v) for v in others_of.values())
 
+    print("panel pool: %d active non-cohort agents met by every cohort agent" % len(panel_pool))
+
     jobs = []
     for mode in modes:
-        if mode == "strat" and strata is None:
+        stratified = mode in ("strat", "panelstrat")
+        if stratified and strata is None:
             continue
         for k in ks:
-            if mode == "strat" and k == 0:
+            if stratified and k == 0:
                 continue   # every opponent: nothing to stratify
             rng = random.Random("%s-%d-%d" % (mode, k, a.seed))
-            bands = strata if mode == "strat" else None
-            ea = build_design(cohort, others_of, k, rng, bands=bands)
-            eb = build_design(cohort, others_of, k, rng, exclude=frozenset(ea), bands=bands) \
-                if (k and 2 * k <= max_opp) else None
+            bands = strata if stratified else None
+            if mode.startswith("panel"):
+                pa = draw_panel(panel_pool, k, rng, bands=bands)
+                ea = panel_edges(cohort, opp_sets, pa)
+                eb = None
+                if k and 2 * k <= len(panel_pool):
+                    pb = draw_panel([o for o in panel_pool if o not in pa], k, rng, bands=bands)
+                    eb = panel_edges(cohort, opp_sets, pb)
+            else:
+                ea = build_design(cohort, others_of, k, rng, bands=bands)
+                eb = build_design(cohort, others_of, k, rng, exclude=frozenset(ea), bands=bands) \
+                    if (k and 2 * k <= max_opp) else None
             for g in gs:
                 for half, edges in (("A", ea), ("B", eb)):
                     if edges is None:
@@ -285,7 +360,6 @@ def run(a):
     if a.dry:
         return 0
 
-    ref = read_standings(a.ref_standings)
     div_ids = {d: [x for x in cohort if division(x) == d] for d in ("openless", "opener8", "dil20")}
 
     def one(j):
@@ -301,7 +375,8 @@ def run(a):
     res = os.path.join(a.work, "sparse_results.tsv")
     cols = ["mode", "k", "g", "half", "games_per_agent", "opp_per_agent", "min_opp", "n", "rho", "worst",
             "rms", "max", "mean_shift", "med_pm", "over2pm", "rms_openless", "rms_opener8", "rms_dil20",
-            "core_rho", "core_worst", "champs_same", "ab_rho", "ab_rms"]
+            "core_rho", "core_worst", "champs_same", "ab_rho", "ab_rms",
+            "within", "within_opener8", "ab_within", "ab_within_opener8"]
     with open(res, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, delimiter="\t")
         w.writerow(cols)
@@ -310,10 +385,14 @@ def run(a):
             for d, ids in div_ids.items():
                 m["rms_" + d] = compare(j["st"], ref, ids)["rms"]
             m.update(core_compare(j["cores"], a.ref_cores) if j["cores"] else {})
+            m["within"] = within(j["st"], ref, cohort)
+            m["within_opener8"] = within(j["st"], ref, div_ids["opener8"])
             other = by.get(j["tag"][:-1] + ("B" if j["half"] == "A" else "A"))
             if other is not None:
                 ab = compare(j["st"], other["st"], cohort)
                 m["ab_rho"], m["ab_rms"] = ab["rho"], ab["rms"]
+                m["ab_within"] = within(j["st"], other["st"], cohort)
+                m["ab_within_opener8"] = within(j["st"], other["st"], div_ids["opener8"])
             row = {**{c: j.get(c) for c in ("mode", "k", "g", "half", "games_per_agent",
                                              "opp_per_agent", "min_opp")}, **m}
             w.writerow([("%.4g" % row[c]) if isinstance(row.get(c), float) else row.get(c, "")
@@ -359,6 +438,19 @@ def selftest():
     check(min(spread) >= 3, "stratified draw gives every band >= 3 of 16 opponents (min %d)" % min(spread))
     pairs = {e: ["x\n"] * 16 for e in ea}
     check(sum(len(pairs[e][:4]) for e in ea) == 4 * len(ea), "g = 4 caps games per pair")
+    opp_sets = {c: set(pool) for c in cohort}
+    pa = draw_panel(pool, 12, random.Random(9))
+    pb = draw_panel([o for o in pool if o not in pa], 12, random.Random(9))
+    epa = panel_edges(cohort, opp_sets, pa)
+    check(len(pa) == 12 and not (pa & pb), "two panels of 12, no member in common")
+    check(all({next(iter(e - {c})) for e in epa if c in e} == pa for c in cohort),
+          "every cohort agent meets exactly the panel")
+    ps = draw_panel(pool, 12, random.Random(9), bands=bands)
+    check(min(sum(1 for o in ps if bands[o] == "q%d" % q) for q in range(4)) == 3,
+          "a stratified panel of 12 takes 3 from each of 4 bands")
+    check(abs(within({"x": {"elo": "15"}, "y": {"elo": "5"}},
+                     {"x": {"elo": "10"}, "y": {"elo": "0"}}, ["x", "y"])) < 1e-9,
+          "a common shift leaves no within-cell error")
     print("\nselftest: %d failure(s)" % len(fails))
     return 1 if fails else 0
 
@@ -376,12 +468,15 @@ def main(argv):
     r.add_argument("--strata")
     r.add_argument("--k", default="8,16,32,64,128,0")
     r.add_argument("--g", default="2,4,8,16")
-    r.add_argument("--modes", default="random,strat")
+    r.add_argument("--modes", default="random,strat",
+                   help="random, strat (per-agent opponents), panel, panelstrat (one shared panel)")
+    r.add_argument("--opponents", default="all", choices=("all", "noncohort"),
+                   help="noncohort drops cohort-vs-cohort pairs, as a panel study plays none")
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--work", default="analysis/out/sparse_schedule")
     r.add_argument("--workers", type=int, default=1)
     r.add_argument("--prior", type=float, default=None,
-                   help="rank.exe rate --prior for every fit (default: rank.exe's 0.5). "
+                   help="rank.exe rate --prior for every fit (default: rank.exe's 0.1). "
                         "The reference fit must use the same value")
     r.add_argument("--dry", action="store_true")
     sub.add_parser("selftest")

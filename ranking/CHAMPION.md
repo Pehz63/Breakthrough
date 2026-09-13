@@ -1,5 +1,16 @@
 # Reigning Champions (single source of truth)
 
+> **[FIT PRIOR 0.1 - 2026-09-13]** The canonical fit's prior dropped from 0.5
+> to 0.1 virtual games at 50% per played pair (`RANK_PRIOR_GAMES_DEFAULT`,
+> `src/ranking.h`), because 0.5 made ratings depend on games per pair
+> (`plans/sparse-schedule-results-1-cedar-lynx.md`). Every Elo number below
+> was fitted at 0.5 and is not comparable to a fit made now: on the rung-16
+> store the unpinned scale stretches by about 27% at the top (openless node
+> leader 1167 -> 1491, `rand` = 0 in both). The same comparison kept every
+> category cell's champion, every core's rank, and the top 3 of every search
+> head with 5 or more active agents, so no title below changes from the prior
+> alone. Re-certification for the new tracks stays pending on Round 4.
+
 > **[TIME BUDGET NOT ENFORCED - flagged 2026-09-01]** Every `time=150ms` title
 > below (openless x time, opener8 x time, dil20 x time) was decided by games in
 > which the wall-clock budget did not actually bound the search. `time=` was a

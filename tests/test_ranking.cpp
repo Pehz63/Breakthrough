@@ -3026,8 +3026,8 @@ TEST_CASE("BT fits - the per-pair prior sets how far a few-game pair is pulled t
     }
     std::map<std::string,double> pin;
     pin["B"] = 0.0;
-    const double qs[3] = {RANK_PRIOR_GAMES_DEFAULT, 0.01, 2.0};
-    for (int t = 0; t < 3; t++) {
+    const double qs[4] = {RANK_PRIOR_GAMES_DEFAULT, 0.5, 0.01, 2.0};
+    for (int t = 0; t < 4; t++) {
         g_rankPriorGames = qs[t];
         double p = (3.0 + 0.5 * qs[t]) / (4.0 + qs[t]);
         double want = 400.0 * log10(p / (1.0 - p));
@@ -3038,8 +3038,6 @@ TEST_CASE("BT fits - the per-pair prior sets how far a few-game pair is pulled t
         REQUIRE(ff.elo[fitIndexOf(ff, "A")] - ff.elo[fitIndexOf(ff, "B")] == Approx(want).margin(1e-6));
     }
     g_rankPriorGames = RANK_PRIOR_GAMES_DEFAULT;
-    // The default reproduces the long-standing 0.5-game prior: 166.0 Elo.
-    REQUIRE(400.0 * log10(3.25 / 1.25) == Approx(166.0).margin(0.1));
 }
 
 TEST_CASE("pinned BT fit - a cohort's internal order is resolved by intra-cohort games") {

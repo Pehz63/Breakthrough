@@ -427,10 +427,12 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
 // Virtual games at score 0.5 added to every PLAYED pair by rankFitBT,
 // rankFitBTPinned and rankFitSingle. It keeps an undefeated agent finite. Its
 // weight within a pair is prior / (games + prior), so it pulls a rating toward
-// its opponents harder when each pair holds few games: at the default and 2
-// games per pair it is 20% of that pair's data, at 16 games 3%. Set for one
+// its opponents harder when each pair holds few games: at the default it is
+// 4.8% of a 2-game pair's data and 0.6% of a 16-game pair's. Kept small so a
+// rating does not depend on how the schedule splits games over opponents
+// (measured in plans/sparse-schedule-results-1-cedar-lynx.md). Set for one
 // run by `rank.exe rate --prior X`, which writes its own output family.
-const double RANK_PRIOR_GAMES_DEFAULT = 0.5;
+const double RANK_PRIOR_GAMES_DEFAULT = 0.1;
 extern double g_rankPriorGames;
 // Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with the
 // g_rankPriorGames prior per played pair. Deterministic and order-independent.

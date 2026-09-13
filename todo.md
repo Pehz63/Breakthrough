@@ -472,9 +472,16 @@ win percentages among its own combinations, not ratings against outside programs
   opponents (128 x 8 games: 17.2 Elo disjoint error). The default per-pair
   prior of 0.5 confounded the first run, so `rank.exe rate --prior X` was
   added (theories 73 and 74)
-  - Decide whether the canonical fit's prior stays at 0.5 (it moves levels
-    by up to 39 Elo at rung 16 and changes no champion or core rank) `[Next]`
-    {cpu: minutes, dev: low}
+  - ~~Decide whether the canonical fit's prior stays at 0.5~~ Lowered to 0.1
+    (developer decision, 2026-09-13). Unpinned rung-16 fit: every cell
+    champion, core rank and per-head top 3 unchanged, scale stretched (openless
+    node leader 1167 -> 1491). Banner in `ranking/CHAMPION.md`.
+    `ranking/rungs/cores_r8.tsv` and `cores_r16.tsv` were fitted at 0.5, so a
+    later rung compared against them must be fitted with `--prior 0.5`
+  - Shared-panel variant (every cohort agent meets one panel, no
+    cohort-vs-cohort games, within-cell contrast error), which sizes the
+    replication study's panel. Then pin the panel and start Pass 2
+    (developer decision, 2026-09-13) `[Now]` {cpu: hours, dev: low}
   - Scheduler mode `rank.exe play --opponents K`, each agent's opponents
     drawn from a hash of the run seed and the ids, with the dense contender
     block kept for title claims `[Later]` {cpu: none, dev: medium}

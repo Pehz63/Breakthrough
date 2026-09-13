@@ -193,7 +193,7 @@ static void usage() {
     cout << "                       for the rest, so the reference scale stays fixed across a study.\n";
     cout << "                       SCREENING ONLY: pinned agents cannot move, so a pinned fit can\n";
     cout << "                       never dethrone a champion. Certify with a plain 'rate' (no --pin).\n";
-    cout << "      --prior <X>      virtual games at 50% per played pair (default 0.5). Any other\n";
+    cout << "      --prior <X>      virtual games at 50% per played pair (default 0.1). Any other\n";
     cout << "                       value writes ranking/*_prior<X>.* (canonical files untouched)\n";
     cout << "  rank.exe history --agent \"ab(d4\"\n";
     cout << "  rank.exe gauntlet --id \"ab(d5)@1.classic(t1,c4,w0,l0)@1\" --games 4\n";
