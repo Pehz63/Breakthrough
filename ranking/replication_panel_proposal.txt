@@ -1,0 +1,36 @@
+# Proposed replication-study panel (not pinned yet). 32 active agents nearest to
+# 32 evenly spaced Elo targets from rand@1 to the top of ranking/standings.tsv
+# (canonical fit, prior 0.1, 2026-09-13). Excluded: time= heads (load-sensitive),
+# gaz heads and anything over 40 cpu_ms_move (cost), book openers.
+anchor  rand@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=75)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=63)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=52)@1
+on      ab(deep=6,nodes=200k)@3.classic(chip=100)@2.dil(prob=50)@1
+on      ab(deep=4)@3.classic(chip=100)@2.dil(prob=50)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1.dil(prob=20)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.classic(chip=100)@2.dil(prob=43)@1
+on      tiered@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      smart(pieces=6)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=97,87a5093d,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      smart(pieces=4)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=261,52cd70f8,tdleaf_self,mlp,shape=129-32-1)@1.opener(rand,moves=8)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=585,e37f6895,tdleaf_self,mlp,shape=30-32-1)@1.opener(rand,moves=8)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=531,748d1c8d,tdleaf_self,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      smart(pieces=2)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=8,6f1a4264,pool_games,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1.dil(prob=20)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=369,612a48a8,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=4)@3.classic(chip=100)@2.dil(prob=5)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=441,01db390c,tdleaf_self,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=603,2da121ee,tdleaf_self,lin,shape=129-1)@1.opener(rand,moves=8)@1
+on      ab(deep=6,nodes=200k)@3.classic(chip=100)@2
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=10,fead67b7,weight_merge,lin,shape=129-1)@1.opener(rand,moves=4)@1
+on      ab(deep=6,tt,nodes=200k)@3.classic(chip=100)@2
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=351,42d88d8e,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3.learned(model=602,68cbb27d,tdleaf_self,lin,shape=129-1)@1
+on      ab(deep=6,tt,ord,nodes=200k)@3.learned(model=169,4975683c,tdleaf_self,lin,shape=129-1)@1

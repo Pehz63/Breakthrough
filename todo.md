@@ -478,10 +478,15 @@ win percentages among its own combinations, not ratings against outside programs
     node leader 1167 -> 1491). Banner in `ranking/CHAMPION.md`.
     `ranking/rungs/cores_r8.tsv` and `cores_r16.tsv` were fitted at 0.5, so a
     later rung compared against them must be fitted with `--prior 0.5`
-  - Shared-panel variant (every cohort agent meets one panel, no
+  - ~~Shared-panel variant (every cohort agent meets one panel, no
     cohort-vs-cohort games, within-cell contrast error), which sizes the
-    replication study's panel. Then pin the panel and start Pass 2
-    (developer decision, 2026-09-13) `[Now]` {cpu: hours, dev: low}
+    replication study's panel~~ Done 2026-09-13 (results doc, "Shared
+    panel"): for opener agents the split of games over a panel of 16 or more
+    made about 5 to 10 Elo of difference with no consistent winner, about 18
+    to 22 Elo contrast error at 480 games per agent. Proposed panel:
+    `ranking/replication_panel_proposal.txt` (32 agents, Elo 0 to 1525),
+    awaiting the developer before pinning and starting Pass 2 `[Now]`
+    {cpu: none, dev: low}
   - Scheduler mode `rank.exe play --opponents K`, each agent's opponents
     drawn from a hash of the run seed and the ids, with the dense contender
     block kept for title claims `[Later]` {cpu: none, dev: medium}

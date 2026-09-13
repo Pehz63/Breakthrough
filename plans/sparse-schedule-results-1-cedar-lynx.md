@@ -233,6 +233,75 @@ on node head `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3` and time head
 
 Core order by mean Elo, prior 0.5 vs 0.01: rho 1.0000, no core moves.
 
+## Shared panel: the replication study's design (prior 0.1)
+
+Run after the canonical prior moved to 0.1 (developer decision, 2026-09-13).
+Every cohort agent meets one panel of k agents drawn from the 228 active
+non-cohort agents that met every cohort agent, and cohort-vs-cohort games
+are dropped from every design (`--opponents noncohort`), as in a panel
+study. `panel` draws the panel at random, `panelstrat` takes k/4 from each
+rung-8 Elo quartile, and `random` gives each agent its own k opponents from
+the same pool for comparison. Draw B uses a second panel with no member in
+common. The column that matters for the study is the **within-cell error**:
+each design's Elo error after removing its category cell's mean error,
+which is the error left in a contrast between two agents of one cell. The
+opener8 agents are the closest analogue of the study's agents, which wear
+`.opener(rand,moves=8)@1`. Reference: the full rung-16 store pinned at prior
+0.1. Raw table: `sparse_results_panel_prior0.1.tsv`.
+
+Disjoint within-cell error / sqrt(2), opener8 agents (66 of 198), Elo:
+
+| panel size \ games per pair | panel 2 | 4 | 8 | 16 | panelstrat 2 | 4 | 8 | 16 | per-agent random 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 8 | 110.2 | 89.4 | 56.5 | 49.7 | 107.7 | 74.0 | 59.3 | 49.6 | 122.0 | 95.7 | 71.2 | 63.1 |
+| 16 | 73.0 | 49.4 | 37.1 | 25.8 | 67.6 | 48.6 | 34.3 | 20.7 | 77.6 | 68.3 | 50.6 | 41.7 |
+| 32 | 46.8 | 37.7 | 24.3 | 17.9 | 55.6 | 41.1 | 27.7 | 21.9 | 55.7 | 44.7 | 39.3 | 29.9 |
+| 64 | 36.2 | 26.0 | 22.1 | 17.3 | 40.8 | 30.3 | 22.1 | 19.1 | 41.7 | 30.5 | 23.8 | 20.5 |
+| 112 | 30.5 | 23.0 | 18.3 | 14.2 | 24.5 | 21.8 | 14.9 | 13.3 | 24.7 | 21.3 | 18.2 | 16.4 |
+
+Games per agent: panel size x games per pair, within 5% (for example 32 x 16
+-> 476, 64 x 8 -> 482, 112 x 16 -> 1,670).
+
+Equal budgets side by side, opener8 within-cell disjoint error:
+
+| games per agent | design | panel | panelstrat | per-agent random | Bradley-Terry SE at p(1-p) 0.164 |
+|---|---|---|---|---|---|
+| about 240 | 16 x 16 | 25.8 | 20.7 | 41.7 | 27.7 |
+| | 32 x 8 | 24.3 | 27.7 | 39.3 | |
+| | 64 x 4 | 26.0 | 30.3 | 30.5 | |
+| | 112 x 2 | 30.5 | 24.5 | 24.7 | |
+| about 480 | 32 x 16 | 17.9 | 21.9 | 29.9 | 19.6 |
+| | 64 x 8 | 22.1 | 22.1 | 23.8 | |
+| | 112 x 4 | 23.0 | 21.8 | 21.3 | |
+| about 950 | 64 x 16 | 17.3 | 19.1 | 20.5 | 13.9 |
+| | 112 x 8 | 18.3 | 14.9 | 18.2 | |
+| about 1,670 | 112 x 16 | 14.2 | 13.3 | 16.4 | 10.5 |
+
+The same for all 198 agents (panel, random draw), where the openless agents
+meet deterministic panel members at no more than 2 distinct games per pair:
+
+| panel size \ games per pair | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|
+| 8 | 127.9 | 99.8 | 71.2 | 59.5 |
+| 16 | 79.6 | 60.1 | 52.8 | 49.1 |
+| 32 | 52.8 | 43.8 | 36.0 | 33.0 |
+| 64 | 38.6 | 31.3 | 26.9 | 22.5 |
+| 112 | 30.1 | 23.9 | 20.2 | 16.5 |
+
+Readings, each from one draw pair per cell:
+
+- For opener8 agents facing a shared panel of 16 or more, contrast error at a
+  given number of games per agent varied by about 5 to 10 Elo across the ways
+  of splitting those games, with no consistent winner. With per-agent draws,
+  fewer opponents was consistently worse (41.7 at 16 x 16 against 24.7 at
+  112 x 2). A shared panel gives every agent the same opponent mix, so the
+  opponent-mix error cancels in a contrast.
+- Openless agents need breadth even with a shared panel: 16 x 16 gives the
+  all-agent table 49.1, against 33.0 at 32 x 16.
+- Stratifying the panel by Elo quartile did not reduce error consistently.
+- At about 480 games per agent the best designs sit near the Bradley-Terry SE
+  (17.9 against 19.6). By 1,670 they are 1.3x above it.
+
 ## Round 4 rung 16
 
 Rung 16 finished 2026-09-13 02:21 with 477,944 games. The store holds
