@@ -3012,6 +3012,36 @@ TEST_CASE("pinned BT fit - pinned ratings are returned exactly unchanged") {
     REQUIRE_FALSE(fit.provisional[ix]);
 }
 
+TEST_CASE("BT fits - the per-pair prior sets how far a few-game pair is pulled toward even") {
+    // A beats B 3-1. With prior q the fit solves p = (3 + q/2) / (4 + q), so
+    // A = 400 log10(p / (1 - p)) above B in both the pinned and the full fit.
+    // Colours alternate. A wins games 0-2, B (playing white) wins game 3.
+    std::vector<RankMatchRow> rows;
+    for (int k = 0; k < 4; k++) {
+        RankMatchRow r = RankMatchRow();
+        r.w = (k % 2 == 0) ? "A" : "B";
+        r.b = (k % 2 == 0) ? "B" : "A";
+        r.r = (k == 3) ? 'W' : (r.w == "A" ? 'W' : 'B');
+        rows.push_back(r);
+    }
+    std::map<std::string,double> pin;
+    pin["B"] = 0.0;
+    const double qs[3] = {RANK_PRIOR_GAMES_DEFAULT, 0.01, 2.0};
+    for (int t = 0; t < 3; t++) {
+        g_rankPriorGames = qs[t];
+        double p = (3.0 + 0.5 * qs[t]) / (4.0 + qs[t]);
+        double want = 400.0 * log10(p / (1.0 - p));
+        RankFit pf, ff;
+        rankFitBTPinned(rows, pin, pf);
+        rankFitBT(rows, "B", ff);
+        REQUIRE(pf.elo[fitIndexOf(pf, "A")] == Approx(want).margin(1e-6));
+        REQUIRE(ff.elo[fitIndexOf(ff, "A")] - ff.elo[fitIndexOf(ff, "B")] == Approx(want).margin(1e-6));
+    }
+    g_rankPriorGames = RANK_PRIOR_GAMES_DEFAULT;
+    // The default reproduces the long-standing 0.5-game prior: 166.0 Elo.
+    REQUIRE(400.0 * log10(3.25 / 1.25) == Approx(166.0).margin(0.1));
+}
+
 TEST_CASE("pinned BT fit - a cohort's internal order is resolved by intra-cohort games") {
     // Two cohort agents that BOTH score identically against the roster, so only
     // their head-to-head can separate them. A gauntlet (which never plays them

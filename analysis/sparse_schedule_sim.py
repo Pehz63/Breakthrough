@@ -129,7 +129,12 @@ def elo_bands(standings, ids, nb=4):
 
 
 # ------------------------------------------------------------------ fitting
-def fit(tag, base, part_lines, work, roster, pin, rank_exe):
+def prior_suffix(prior):
+    """rank.exe's output suffix for a non-default prior ('' at the default)."""
+    return "" if prior is None or prior == 0.5 else "_prior%s" % ("%g" % prior)
+
+
+def fit(tag, base, part_lines, work, roster, pin, rank_exe, prior=None):
     """Write <work>/matches_<tag>.index.txt over the base part and this design's
     part, run the pinned fit, and move its outputs into <work>/<tag>/."""
     part = os.path.join(work, tag + ".part.jsonl")
@@ -138,8 +143,10 @@ def fit(tag, base, part_lines, work, roster, pin, rank_exe):
     store = os.path.join(work, "matches_" + tag + ".jsonl")
     with open(os.path.join(work, "matches_" + tag + ".index.txt"), "w", encoding="utf-8") as f:
         f.write(os.path.basename(base) + "\n" + os.path.basename(part) + "\n")
-    out = subprocess.run([rank_exe, "rate", "--roster", roster, "--in", store, "--pin", pin],
-                         capture_output=True, text=True)
+    cmd = [rank_exe, "rate", "--roster", roster, "--in", store, "--pin", pin]
+    if prior is not None:
+        cmd += ["--prior", "%g" % prior]
+    out = subprocess.run(cmd, capture_output=True, text=True)
     if out.returncode != 0:
         raise RuntimeError("rank.exe rate failed for %s:\n%s" % (tag, out.stdout[-2000:]))
     dest = os.path.join(work, tag)
@@ -147,7 +154,7 @@ def fit(tag, base, part_lines, work, roster, pin, rank_exe):
     got = {}
     for stem in ("standings", "cores", "ratings", "games", "report"):
         ext = ".md" if stem == "report" else ".tsv"
-        src = os.path.join("ranking", "%s_%s_pinned%s" % (stem, tag, ext))
+        src = os.path.join("ranking", "%s_%s%s_pinned%s" % (stem, tag, prior_suffix(prior), ext))
         if os.path.exists(src):
             if stem in ("standings", "cores"):
                 got[stem] = shutil.move(src, os.path.join(dest, os.path.basename(src)))
@@ -282,7 +289,7 @@ def run(a):
     div_ids = {d: [x for x in cohort if division(x) == d] for d in ("openless", "opener8", "dil20")}
 
     def one(j):
-        got = fit(j["tag"], base, j["lines"], a.work, a.roster, a.pin, rank_exe)
+        got = fit(j["tag"], base, j["lines"], a.work, a.roster, a.pin, rank_exe, a.prior)
         j["st"] = read_standings(got["standings"])
         j["cores"] = got.get("cores")
         j["lines"] = None
@@ -373,6 +380,9 @@ def main(argv):
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--work", default="analysis/out/sparse_schedule")
     r.add_argument("--workers", type=int, default=1)
+    r.add_argument("--prior", type=float, default=None,
+                   help="rank.exe rate --prior for every fit (default: rank.exe's 0.5). "
+                        "The reference fit must use the same value")
     r.add_argument("--dry", action="store_true")
     sub.add_parser("selftest")
     a = ap.parse_args(argv)

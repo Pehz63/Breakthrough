@@ -424,8 +424,16 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
 // need (plans/replication-study-plan-1-brass-lectern.md, "Game independence").
 
 // ---- Rating ----
-// Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with a
-// 0.5-virtual-game prior per played pair. Deterministic and order-independent.
+// Virtual games at score 0.5 added to every PLAYED pair by rankFitBT,
+// rankFitBTPinned and rankFitSingle. It keeps an undefeated agent finite. Its
+// weight within a pair is prior / (games + prior), so it pulls a rating toward
+// its opponents harder when each pair holds few games: at the default and 2
+// games per pair it is 20% of that pair's data, at 16 games 3%. Set for one
+// run by `rank.exe rate --prior X`, which writes its own output family.
+const double RANK_PRIOR_GAMES_DEFAULT = 0.5;
+extern double g_rankPriorGames;
+// Bradley-Terry MM fit over all rows, anchored at anchorId = Elo 0, with the
+// g_rankPriorGames prior per played pair. Deterministic and order-independent.
 // regimeBalanced weights each pair by 1/(agents in A's regime * agents in B's
 // regime), rescaled to the original total game count, so every regime bloc
 // contributes equally however many agents wear it. Off by default because it

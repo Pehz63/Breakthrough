@@ -71,6 +71,23 @@ than trusting 8-games/pair separations. The reigning champion is declared in
 `ranking/CHAMPION.md` (the single source of truth other docs point at), and
 the certification procedure is a standing instruction in `CLAUDE.md`.
 
+The same prior also makes a rating depend on **games per pair**. Within one
+pair it is prior / (games + prior) of the data: 20% at 2 games, 3% at 16. An
+agent whose games are spread thinly over many opponents is pulled toward its
+opponents' mean much harder than one with the same total concentrated on a
+few. Measured on Round 4's 198 category agents (2026-09-13, pinned to
+`ranking/rungs/pin_source_standings_20260906.tsv`): refitting only 2 games of
+every pair moved the dil20 cells' mean up 60 to 70 Elo and the openless cells'
+down about 10 against the 16-games-per-pair fit, whichever 2 games were kept
+(first, last or random), and the shift halved with each doubling of games per
+pair. At 16 games per pair, lowering the prior from 0.5 to 0.01 moved cell
+means by -15.5 to +8.3 Elo and the openless node champion by +39, and changed
+no champion and no core's rank. Deterministic pairs stop at 2 games, so the
+openless cells keep carrying the 20% share at every rung.
+`rank.exe rate --prior X` sets the prior for one run and writes a
+`_prior<X>` output family. Any design that compares schedules with different
+games per pair has to hold this constant or use a small prior.
+
 ### A pinned fit reports on the PIN FILE'S scale, not today's (2026-08-01)
 
 `rank.exe rate --pin <tsv>` copies the listed agents' Elo verbatim out of that

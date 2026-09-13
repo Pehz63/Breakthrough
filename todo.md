@@ -465,10 +465,22 @@ win percentages among its own combinations, not ratings against outside programs
 - **Sparse opponent graphs instead of round robins** (developer question
   2026-09-12: game count grows with the square of the pool). Theory and the
   offline test that subsamples Round 4's rung-16 games:
-  `plans/sparse-schedule-plan-1-cedar-lynx.md`. Runs after rung 16 and before
-  Pass 2 training (developer priority, 2026-09-12), since its k-opponent
-  results also size the replication study's panel `[Next]`
-  {cpu: hours, dev: medium}
+  `plans/sparse-schedule-plan-1-cedar-lynx.md`. ~~Run after rung 16 and before
+  Pass 2 training (developer priority, 2026-09-12)~~ Done 2026-09-13:
+  `plans/sparse-schedule-results-1-cedar-lynx.md`. At prior 0.01, more
+  opponents at fewer games per pair beat fewer opponents at more, up to 128
+  opponents (128 x 8 games: 17.2 Elo disjoint error). The default per-pair
+  prior of 0.5 confounded the first run, so `rank.exe rate --prior X` was
+  added (theories 73 and 74)
+  - Decide whether the canonical fit's prior stays at 0.5 (it moves levels
+    by up to 39 Elo at rung 16 and changes no champion or core rank) `[Next]`
+    {cpu: minutes, dev: low}
+  - Scheduler mode `rank.exe play --opponents K`, each agent's opponents
+    drawn from a hash of the run seed and the ids, with the dense contender
+    block kept for title claims `[Later]` {cpu: none, dev: medium}
+  - Three to five draw seeds per design, a split-half error for the complete
+    graph, and a shared-panel variant that measures arm-to-arm contrasts
+    (results doc, Future Work) `[Later]` {cpu: hours, dev: low}
   - **Rewrite `ranking/CHAMPION.md` for the new tracks once Round 4 converges.**
     Retire the `TIME BUDGET NOT ENFORCED` banner in the same edit, stating in the
     Round 4 entry why it no longer applies rather than letting it vanish. Move

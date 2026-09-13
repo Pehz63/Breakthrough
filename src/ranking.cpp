@@ -2580,6 +2580,7 @@ std::vector<RankPendingGame> rankSchedule(const std::vector<RankAgent>& roster,
 // BRADLEY-TERRY FIT
 // ============================================================
 static const double ELO_PER_NAT = 400.0 / 2.302585092994045684;   // 400 / ln(10)
+double g_rankPriorGames = RANK_PRIOR_GAMES_DEFAULT;
 
 void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, RankFit& out,
                bool regimeBalanced) {
@@ -2646,11 +2647,11 @@ void rankFitBT(const std::vector<RankMatchRow>& rows, const string& anchorId, Ra
         }
     }
 
-    // Prior: 0.5 virtual games (0.25 win each way) per pair that actually played.
-    // Keeps undefeated agents finite without adding phantom edges.
+    // Prior: g_rankPriorGames virtual games at score 0.5 per pair that actually
+    // played. Keeps undefeated agents finite without adding phantom edges.
     for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
-        it->second.first += 0.5;
-        it->second.second += 0.25;
+        it->second.first += g_rankPriorGames;
+        it->second.second += 0.5 * g_rankPriorGames;
     }
 
     // W_i = each agent's total score (real + prior); always > 0 thanks to the prior.
@@ -2808,8 +2809,8 @@ void rankFitBTPinned(const std::vector<RankMatchRow>& rows,
         e.second += si;
     }
     for (PairMap::iterator it = agg.begin(); it != agg.end(); ++it) {
-        it->second.first += 0.5;
-        it->second.second += 0.25;
+        it->second.first += g_rankPriorGames;
+        it->second.second += 0.5 * g_rankPriorGames;
     }
 
     std::vector<double> W(n, 0.0);
@@ -2899,13 +2900,13 @@ void rankFitBTPinned(const std::vector<RankMatchRow>& rows,
 double rankFitSingle(const std::vector<double>& oppElo, const std::vector<double>& score,
                      double& seOut) {
     std::vector<double> e = oppElo, s = score, wgt(score.size(), 1.0);
-    // Same prior shape as the full fit: 0.5 virtual games at score 0.5 per
-    // distinct opponent rating, so an undefeated candidate stays finite.
+    // Same prior shape as the full fit: g_rankPriorGames virtual games at score
+    // 0.5 per distinct opponent rating, so an undefeated candidate stays finite.
     std::set<double> uniq(oppElo.begin(), oppElo.end());
     for (std::set<double>::iterator it = uniq.begin(); it != uniq.end(); ++it) {
         e.push_back(*it);
         s.push_back(0.5);
-        wgt.push_back(0.5);
+        wgt.push_back(g_rankPriorGames);
     }
     double target = 0.0, totW = 0.0;
     for (size_t i = 0; i < s.size(); i++) { target += wgt[i] * s[i]; totW += wgt[i]; }
@@ -3821,7 +3822,8 @@ static void writeReportMd(const RankFit& fit, const std::vector<int>& order,
       << "agents whose Elos are not interchangeable. For a current-standings comparison read "
       << "`ranking/standings.tsv` (active only, grouped by head) instead, fix ONE head, and "
       << "compare only within this one fit. Full rules: `Docs/benchmarking.md`.\n\n";
-    f << "Fit: Bradley-Terry MM refit over the full store, prior 0.5 virtual games per played pair, "
+    f << "Fit: Bradley-Terry MM refit over the full store, prior " << g_rankPriorGames
+      << " virtual games per played pair, "
       << "anchor `" << anchorId << "` = Elo 0. `+/-` is one standard error. "
       << "`white win%`/`black win%` are this agent's own win rate when playing that color "
       << "(wins / (wins+losses) played as that color); a wide gap between the two is a first-move/"
@@ -4255,6 +4257,16 @@ int rankMatchup(const string& rosterFile, const string& storeFile, const string&
 int rankRate(const string& rosterFile, const string& storeFile, const string& board,
              const string& pinFile, bool regimeBalanced) {
     setOutSuffixFromStore(storeFile);
+    if (g_rankPriorGames != RANK_PRIOR_GAMES_DEFAULT) {
+        // A different prior is a different fit, so like --pin it never
+        // overwrites the canonical files.
+        char buf[48];
+        snprintf(buf, sizeof buf, "_prior%g", g_rankPriorGames);
+        g_outSuffix += buf;
+        cout << "PRIOR: " << g_rankPriorGames << " virtual games per played pair (default "
+             << RANK_PRIOR_GAMES_DEFAULT << "). Writing ranking/*" << g_outSuffix
+             << "*.* (canonical files untouched).\n";
+    }
     std::vector<RankAgent> roster;
     RankCategoryConfig catCfg;
     string err;
