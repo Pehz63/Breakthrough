@@ -196,9 +196,11 @@ win percentages among its own combinations, not ratings against outside programs
   trainings). Developer decision: price runs from stamped counts (nodes, and
   TreeStrap's new tree=/treemoves=) with a fixed-concurrency benchmark.
   Running: A3 ladder retrain with the stamped trainer
-  (`models/sweep/rep1_p2_A3tree_train.log`). Then, on an idle machine: the
-  benchmark (`-Step cost`, to build), the price fit, the driver's currency
-  switch, and rebuilding `train.exe` from the stamped source `[Now]`
+  (`models/sweep/rep1_p2_A3tree_train.log`). `-Step cost` and the priced
+  currency are built and stand-in tested. Then, once no trainer runs: rebuild
+  `train.exe` from the stamped source, run `-Step cost` with defaults, check
+  the A3 price residuals, rerun the curve report for the priced tables, and
+  set T_max `[Now]`
   {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done

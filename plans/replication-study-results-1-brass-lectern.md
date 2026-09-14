@@ -596,6 +596,32 @@ trainings hold `train.exe` open.
 The benchmark itself waits for these trainings to finish, since it needs a
 machine running nothing else.
 
+The driver's `-Step cost` implements it. Each job resumes a published curve
+checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40
+games (A3: 8), with exactly 6 trainings running at every moment, filler B0
+runs holding the count while the queue drains. Prices: CPU per node by least
+squares for each arm. A3 takes B0's per-node price, since it runs B0's
+search, and fits only its price per probe move. The free two-price fit is
+printed as a check. Stand-in test on a busy machine (B0 and A3, rungs 0 and
+10, 1 repeat, 2 slots, `-CostAllowBusy`), prices not for use:
+
+| job | games | cpu s | nodes | treemoves | CPU us/node | residual |
+|---|---|---|---|---|---|---|
+| B0 from 0 | 40 | 60.30 | 222,429,163 | 0 | 0.2711 | 0.6% |
+| B0 from 10 | 40 | 64.28 | 239,884,587 | 0 | 0.2680 | -0.5% |
+| A3 from 0 | 8 | 74.03 | 44,095,287 | 123,201,977 | 1.6789 | -0.5% |
+| A3 from 10 | 8 | 66.94 | 39,169,651 | 110,335,988 | 1.7089 | 0.6% |
+
+- Fit: B0 0.26941 us per node. A3 0.26941 per node plus 0.50739 per probe
+  move. The free fit on these 2 A3 points gave -1.987 per node, which is why
+  the per-node price is shared rather than fitted.
+- Repeating the stand-in gave identical counts for every job and CPU within
+  0.2% of the first run.
+- The curve report's priced tables were checked with placeholder prices
+  (0.25 per node, 0.01 per probe move for A3): A3's first three rungs
+  borrowed counts from the stamped A3 ladder through the weight match, and
+  the later A3 cells stayed blank until that ladder reaches them.
+
 ## Still open before Pass 2's rated steps
 
 - The per-arm ranges above were locked as computed (developer decision,

@@ -14,6 +14,12 @@
 #          start e for A8) get the same budget again, drawn jointly with the
 #          rate. A5 to A8 differ from B0 in one switch, so they train at B0's
 #          tuned lambda (-BaseLambda).
+#   cost   prices each arm's training work from counts that do not depend on
+#          machine load. Every job resumes a published curve checkpoint for a
+#          few games with exactly -CostSlots trainings running (filler runs
+#          hold the count while the queue drains). The fit gives each arm CPU
+#          microseconds per search node, plus per TreeStrap probe move for A3,
+#          in cost_prices.tsv. -NoiseCpu and -TuneCpu are priced seconds.
 #
 # Rating. Every rated checkpoint is published to a model slot and plays ONLY
 # the panel: one rank.exe process per agent, each writing its own part file
@@ -40,7 +46,7 @@
 # when they ran at the same concurrency.
 
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("curve", "noise", "tune")][string]$Step,
+    [Parameter(Mandatory = $true)][ValidateSet("curve", "noise", "tune", "cost")][string]$Step,
     [ValidateSet("train", "publish", "play", "rate", "report", "all")][string]$Phase = "all",
     [string]$Panel = "",
     [string]$PanelPin = "ranking/standings.tsv",
@@ -57,6 +63,10 @@ param(
     [int]$CurveSeed = 4001,
     [string]$CurveTag = "",
     [string]$TrainExe = "train.exe",
+    [int]$CostSlots = 6,
+    [int]$CostReps = 2,
+    [string]$CostFrom = "0,80,640,1280,2560,5120",
+    [switch]$CostAllowBusy,   # stand-in tests only: prices measured beside other trainings are not load-free
     [string]$NoiseArms = "",
     [int]$NoiseSeedBase = 4101,
     [int]$NoiseSeeds = 5,
@@ -120,17 +130,63 @@ public static class RepFnv {
 function Teacher($path) { (Get-Content $path | Where-Object { $_ -like "teacher=*" } | Select-Object -First 1) }
 function StampNum($t, $key) { if ($t -match "(?:^|[,(])$key=([0-9.eE+-]+)") { return [double]::Parse($Matches[1], $Inv) }; return $null }
 
-# The arm's cumulative CPU seconds reach $cpu at this many games, read off its
-# curve run (linear between rungs, the last rung's rate past the top).
+# Priced training seconds: a checkpoint's stamped work counts at the prices
+# -Step cost measured, which unlike cpu= stamps do not depend on machine load.
+function Read-Prices {
+    $f = "$Work/cost_prices.tsv"
+    if (-not (Test-Path $f)) { return $null }
+    $m = @{}
+    foreach ($r in (Import-Csv $f -Delimiter "`t")) {
+        $m[$r.arm] = @{ A = [double]::Parse($r.us_per_node, $Inv); B = [double]::Parse($r.us_per_treemove, $Inv) }
+    }
+    return $m
+}
+
+function Weights($path) { @(Get-Content $path | Where-Object { $_ -notlike "teacher=*" }) -join "`n" }
+
+# Priced seconds of the checkpoint at $path, $arm's after $games games. A
+# TreeStrap checkpoint from before the tree= stamp borrows the counts of another
+# ladder of the same arm and seed whose checkpoint at that game count holds
+# identical weights: training is deterministic, so that is the same run.
+function Get-Priced([string]$arm, [string]$path, [int]$games) {
+    if ($null -eq $Prices -or -not $Prices.ContainsKey($arm)) { return $null }
+    $p = $Prices[$arm]
+    $t = Teacher $path
+    $n = StampNum $t "nodes"; $m = StampNum $t "treemoves"
+    if ($p.B -gt 0 -and $null -eq $m) {
+        $w = $null
+        foreach ($f in @(Get-ChildItem "$Work/curve" -Filter "curve_${arm}_s${CurveSeed}*_g$games.txt" -ErrorAction SilentlyContinue)) {
+            $t2 = Teacher $f.FullName
+            if ($null -eq (StampNum $t2 "treemoves")) { continue }
+            if ($null -eq $w) { $w = Weights $path }
+            if ((Weights $f.FullName) -eq $w) { $n = StampNum $t2 "nodes"; $m = StampNum $t2 "treemoves"; break }
+        }
+        if ($null -eq $m) { return $null }
+    }
+    if ($null -eq $m) { $m = 0.0 }
+    return ($p.A * $n + $p.B * $m) / 1e6
+}
+
+# The arm's priced seconds reach $cpu at this many games, read off its curve
+# ladders (linear between rungs, the last rung's rate past the top). At a game
+# count two ladders share the published one wins, since a tagged ladder can be
+# a different recipe (A8's anneal spans its own run).
 function Get-ArmGames([string]$arm, [double]$cpu, [int]$fixed) {
     if ($fixed -gt 0) { return $fixed }
-    if ($cpu -le 0) { throw "give -NoiseCpu/-TuneCpu (matched compute) or -NoiseGames/-TuneGames" }
-    $pts = @(@{ G = 0; C = 0.0 })
-    foreach ($r in $CurveRungList) {
-        $f = "$Work/curve/curve_${arm}_s${CurveSeed}_g$r.txt"
-        if (Test-Path $f) { $pts += @{ G = $r; C = (StampNum (Teacher $f) "cpu") } }
+    if ($cpu -le 0) { throw "give -NoiseCpu/-TuneCpu (priced seconds) or -NoiseGames/-TuneGames" }
+    if ($null -eq $Prices) { throw "no $Work/cost_prices.tsv: run -Step cost first" }
+    $byG = @{}
+    $files = @(Get-ChildItem "$Work/curve" -Filter "curve_${arm}_s${CurveSeed}*_g*.txt" -ErrorAction SilentlyContinue |
+        Sort-Object { $_.Name -notmatch "_s${CurveSeed}_g\d+\.txt$" }, Name)
+    foreach ($f in $files) {
+        if ($f.Name -notmatch "_g(\d+)\.txt$") { continue }
+        $g = [int]$Matches[1]
+        if ($byG.ContainsKey($g)) { continue }
+        $c = Get-Priced $arm $f.FullName $g
+        if ($null -ne $c) { $byG[$g] = $c }
     }
-    if ($pts.Count -lt 2) { throw "no curve checkpoints for $arm under $Work/curve: run -Step curve first" }
+    $pts = @(@{ G = 0; C = 0.0 }) + @($byG.Keys | Sort-Object | ForEach-Object { @{ G = $_; C = $byG[$_] } })
+    if ($pts.Count -lt 2) { throw "no priced curve checkpoints for $arm under $Work/curve: run -Step curve and -Step cost first" }
     for ($i = 1; $i -lt $pts.Count; $i++) {
         if ($pts[$i].C -ge $cpu) {
             $a = $pts[$i - 1]; $b = $pts[$i]
@@ -235,6 +291,125 @@ function Invoke-Train($runs) {
     }
     Say "train: $($jobs.Count) run(s) to train, $(@($runs).Count - $jobs.Count) already done"
     Invoke-TrainJobs $jobs
+}
+
+# ---- Step: cost ----
+# Games per benchmark job, sized so every job takes a similar time.
+$CostGames = @{ B0 = 40; A1 = 40; A2 = 40; A3 = 8; A4 = 40; A5 = 40; A6 = 40; A7 = 40; A8 = 40 }
+
+function Stamp-Counts($path) {
+    $r = @{}
+    if (-not $path) { foreach ($k in "games", "cpu", "nodes", "tree", "treemoves") { $r[$k] = 0.0 }; return $r }
+    $t = Teacher $path
+    foreach ($k in "games", "cpu", "nodes", "tree", "treemoves") { $v = StampNum $t $k; $r[$k] = $(if ($null -eq $v) { 0.0 } else { $v }) }
+    return $r
+}
+
+function Invoke-Cost {
+    $froms = @($CostFrom.Split(",") | ForEach-Object { [int]$_ })
+    $jobs = @()
+    for ($rep = 1; $rep -le $CostReps; $rep++) {
+        foreach ($k in (@($ArmList | Where-Object { $_ -eq "A3" }) + @($ArmList | Where-Object { $_ -ne "A3" }))) {
+            foreach ($f in $froms) {
+                $key = "cost_${k}_f${f}_r$rep"
+                $extra = if ($k -eq "A7") { @("--explore", "0.1") } else { @() }
+                $a = @("tdleaf") + $HeadFlags + @("--seed", "$CurveSeed", "--games", "$($f + $CostGames[$k])",
+                    "--lr", (Lr ($RangeLo[$k] + $Width / 2)), "--out", "$StepDir/$key") + $ArmSwitch[$k] + $extra
+                # The published ladder's recipe: A8 anneals over its last rung.
+                if ($k -eq "A8") { $a += @("--ordinal-games", "$($CurveRungList[-1])") }
+                $prior = $null
+                if ($f -gt 0) {
+                    $prior = "$Work/curve/curve_${k}_s${CurveSeed}_g$f.txt"
+                    if (-not (Test-Path $prior)) { throw "$prior missing: the cost step resumes the published curve ladder" }
+                    $a += @("--resume", $prior)
+                }
+                $a = @($a | Where-Object { $null -ne $_ })
+                $jobs += [pscustomobject]@{ Key = $key; Arm = $k; From = $f; Rep = $rep; Prior = $prior; Args = $a }
+            }
+        }
+    }
+    $others = @(Get-Process -Name train, train_new -ErrorAction SilentlyContinue)
+    if ($others.Count -gt 0 -and -not $CostAllowBusy) { throw "$($others.Count) trainer process(es) already running: the benchmark needs a machine running nothing else" }
+    Say "cost: $($jobs.Count) job(s), exactly $CostSlots trainings at every moment ($Train)"
+    $queue = New-Object System.Collections.Queue
+    foreach ($j in $jobs) { $queue.Enqueue($j) }
+    $procs = @(); $fillers = @(); $fi = 0
+    while ($true) {
+        $live = @($procs | Where-Object { -not $_.P.HasExited })
+        $fillers = @($fillers | Where-Object { -not $_.HasExited })
+        if ($queue.Count -eq 0 -and $live.Count -eq 0) { break }
+        for ($free = $CostSlots - $live.Count - $fillers.Count; $free -gt 0; $free--) {
+            if ($queue.Count -gt 0) {
+                $j = $queue.Dequeue()
+                $p = Start-Process -FilePath $Train -ArgumentList $j.Args -WorkingDirectory $Root -NoNewWindow -PassThru `
+                    -RedirectStandardOutput "$StepDir/$($j.Key).log" -RedirectStandardError "$StepDir/$($j.Key).log.err"
+                [void]$p.Handle
+                $procs += [pscustomobject]@{ Job = $j; P = $p }
+            } else {
+                # Filler: B0 from scratch, never read, stopped when the last job ends.
+                $fi++
+                $fa = @("tdleaf") + $HeadFlags + @("--seed", "$(9000 + $fi)", "--games", "100000", "--lr", "0.01", "--out", "$StepDir/filler_$fi")
+                $p = Start-Process -FilePath $Train -ArgumentList $fa -WorkingDirectory $Root -NoNewWindow -PassThru `
+                    -RedirectStandardOutput "$StepDir/filler_$fi.log" -RedirectStandardError "$StepDir/filler_$fi.log.err"
+                $fillers += $p
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $fillers | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    $bad = @($procs | Where-Object { $_.P.ExitCode -ne 0 })
+    if ($bad.Count -gt 0) { throw "$($bad.Count) benchmark job(s) failed, see the .log/.err files under $StepDir" }
+
+    # Each job's own work: its stamp minus the stamp it resumed from. A treestrap
+    # checkpoint from before the tree= stamp resumes with no walk prior, so its
+    # job's stamp holds only the job's own walk.
+    $rows = @()
+    foreach ($x in $procs) {
+        $j = $x.Job
+        $s = Stamp-Counts "$StepDir/$($j.Key).txt"; $p0 = Stamp-Counts $j.Prior
+        $rows += [pscustomobject]@{ arm = $j.Arm; from = $j.From; rep = $j.Rep; games = $s.games - $p0.games
+            cpu = $s.cpu - $p0.cpu; nodes = $s.nodes - $p0.nodes; tree = $s.tree - $p0.tree; treemoves = $s.treemoves - $p0.treemoves }
+    }
+    $bench = "$Work/cost_bench.tsv"
+    @("arm`tfrom`trep`tgames`tcpu`tnodes`ttree`ttreemoves") + @($rows | ForEach-Object {
+        "$($_.arm)`t$($_.from)`t$($_.rep)`t$($_.games)`t$($_.cpu.ToString('R', $Inv))`t$($_.nodes)`t$($_.tree)`t$($_.treemoves)" }) |
+        Out-File -FilePath $bench -Encoding ascii
+
+    # Prices: CPU = a x nodes for every arm, by least squares over its jobs. An
+    # arm whose walk made probe moves (A3) runs B0's search, so it takes B0's
+    # per-node price and fits only b, the price per probe move. The free
+    # two-price fit is printed beside it as a check.
+    $prices = @()
+    $aB0 = $null
+    Say ""
+    Say ("{0,4}{1,7}{2,5}{3,7}{4,10}{5,15}{6,15}{7,11}{8,9}" -f "arm", "from", "rep", "games", "cpu s", "nodes", "treemoves", "us/node", "resid")
+    $walkArms = @($ArmList | Where-Object { $k = $_; (@($rows | Where-Object { $_.arm -eq $k }) | ForEach-Object { $_.treemoves } | Measure-Object -Sum).Sum -gt 0 })
+    foreach ($k in (@($ArmList | Where-Object { $walkArms -notcontains $_ }) + $walkArms)) {
+        $r = @($rows | Where-Object { $_.arm -eq $k })
+        $snn = 0.0; $snm = 0.0; $smm = 0.0; $snc = 0.0; $smc = 0.0
+        foreach ($x in $r) { $snn += $x.nodes * $x.nodes; $snm += $x.nodes * $x.treemoves; $smm += $x.treemoves * $x.treemoves; $snc += $x.nodes * $x.cpu; $smc += $x.treemoves * $x.cpu }
+        if ($smm -gt 0) {
+            $det = $snn * $smm - $snm * $snm
+            if ($det -gt 0) { Say ("  {0} free fit: {1:N5} us per node, {2:N5} us per probe move" -f $k, (1e6 * ($snc * $smm - $smc * $snm) / $det), (1e6 * ($smc * $snn - $snc * $snm) / $det)) }
+            if ($null -ne $aB0) { $a = $aB0; $b = ($smc - $a * $snm) / $smm }
+            else { $a = ($snc * $smm - $smc * $snm) / $det; $b = ($smc * $snn - $snc * $snm) / $det }
+        } else { $a = $snc / $snn; $b = 0.0 }
+        if ($k -eq "B0") { $aB0 = $a }
+        $maxr = 0.0
+        foreach ($x in ($r | Sort-Object from, rep)) {
+            $res = $x.cpu / ($a * $x.nodes + $b * $x.treemoves) - 1
+            if ([Math]::Abs($res) -gt $maxr) { $maxr = [Math]::Abs($res) }
+            Say ("{0,4}{1,7}{2,5}{3,7}{4,10:N2}{5,15:N0}{6,15:N0}{7,11:N4}{8,9:P1}" -f $k, $x.from, $x.rep, $x.games, $x.cpu, $x.nodes, $x.treemoves, (1e6 * $x.cpu / $x.nodes), $res)
+        }
+        $prices += [pscustomobject]@{ arm = $k; a = 1e6 * $a; b = 1e6 * $b; resid = 100 * $maxr; n = $r.Count }
+    }
+    Say ""
+    Say "Prices (CPU microseconds per search node, per TreeStrap probe move), largest residual over the arm's jobs:"
+    foreach ($p in $prices) { Say ("  {0,-3} {1,9:N5} per node{2}   max |resid| {3:N1}%   {4} jobs" -f $p.arm, $p.a, $(if ($p.b -gt 0) { ", {0:N5} per probe move" -f $p.b } else { "" }), $p.resid, $p.n) }
+    @("arm`tus_per_node`tus_per_treemove`tmax_abs_resid_pct`tjobs") + @($prices | ForEach-Object {
+        "$($_.arm)`t$($_.a.ToString('R', $Inv))`t$($_.b.ToString('R', $Inv))`t$($_.resid.ToString('R', $Inv))`t$($_.n)" }) |
+        Out-File -FilePath "$Work/cost_prices.tsv" -Encoding ascii
+    Say "cost: $bench, $Work/cost_prices.tsv"
 }
 
 # ---- Panel ----
@@ -417,7 +592,7 @@ function Invoke-Report {
         Say $hdr
         foreach ($g in $rungs) { Say (("{0,7}" -f $g) + (($arms | ForEach-Object { $c = $cell["$_|$g"]; "{0,12}" -f $(if ($c) { "{0:N1}" -f $c.cpu } else { "" }) }) -join "")) }
         Say ""
-        Say "CPU seconds per game between consecutive rungs (the cost output):"
+        Say "CPU seconds per game between consecutive rungs (cpu= stamps, which depend on machine load):"
         Say $hdr
         $prev = @{}; foreach ($a in $arms) { $prev[$a] = @{ G = 0; C = 0.0 } }
         foreach ($g in $rungs) {
@@ -427,6 +602,35 @@ function Invoke-Report {
                 if ($c) { $line += "{0,12}" -f ("{0:N2}" -f (($c.cpu - $prev[$a].C) / ($g - $prev[$a].G))); $prev[$a] = @{ G = $g; C = $c.cpu } } else { $line += "{0,12}" -f "" }
             }
             Say $line
+        }
+        Say ""
+        if ($null -eq $Prices) { Say "Priced seconds: no $Work/cost_prices.tsv yet (run -Step cost)." }
+        else {
+            Say "Priced training seconds at each rung (the cost output: stamped counts at -Step cost's prices):"
+            Say $hdr
+            $pc = @{}
+            foreach ($x in $rows) { $pc["$($x.col)|$($x.rung)"] = Get-Priced $x.arm $x.model ([int]$x.rung) }
+            foreach ($g in $rungs) { Say (("{0,7}" -f $g) + (($arms | ForEach-Object { $v = $pc["$_|$g"]; "{0,12}" -f $(if ($null -ne $v) { "{0:N1}" -f $v } else { "" }) }) -join "")) }
+            Say ""
+            Say "Elo at matched priced seconds, log-linear between rungs, marks at B0's rungs:"
+            Say (("{0,9}" -f "priced s") + (($arms | ForEach-Object { "{0,12}" -f $_ }) -join ""))
+            $marks = @($rungs | Where-Object { $null -ne $pc["B0|$_"] } | ForEach-Object { $pc["B0|$_"] })
+            foreach ($mk in $marks) {
+                $line = "{0,9:N0}" -f $mk
+                foreach ($a in $arms) {
+                    $pts = @($rungs | Where-Object { $c = $cell["$a|$_"]; $c -and $null -ne $c.elo -and $null -ne $pc["$a|$_"] } |
+                        ForEach-Object { @{ C = $pc["$a|$_"]; E = $cell["$a|$_"].elo } })
+                    $v = $null
+                    for ($i = 1; $i -lt $pts.Count; $i++) {
+                        if ($pts[$i - 1].C -le $mk -and $mk -le $pts[$i].C) {
+                            $fr = ([Math]::Log($mk) - [Math]::Log($pts[$i - 1].C)) / ([Math]::Log($pts[$i].C) - [Math]::Log($pts[$i - 1].C))
+                            $v = $pts[$i - 1].E + $fr * ($pts[$i].E - $pts[$i - 1].E); break
+                        }
+                    }
+                    $line += "{0,12}" -f $(if ($null -ne $v) { "{0:N0}" -f $v } else { "" })
+                }
+                Say $line
+            }
         }
     } elseif ($Step -eq "noise") {
         foreach ($a in @($rows | ForEach-Object { $_.arm } | Select-Object -Unique)) {
@@ -480,6 +684,13 @@ function Invoke-Report {
     if ($LASTEXITCODE -ne 0) { Say "VERIFY-STORE FAILED" }
 }
 
+$Prices = Read-Prices
+if ($Step -eq "cost") {
+    Invoke-Cost
+    $out | Out-File -FilePath "$Work/cost_summary.txt" -Encoding utf8
+    Write-Host "summary: $Work/cost_summary.txt"
+    return
+}
 $runs = Get-Runs
 if ($Phase -in @("train", "all")) { Invoke-Train $runs }
 if ($Phase -in @("publish", "all")) { [void](Assert-Panel); Invoke-Publish $runs }
