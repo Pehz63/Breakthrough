@@ -427,12 +427,83 @@ overwrote the `-Draws` parameter (variable names are case-blind), and a
 `switch` statement's automatic `$switch` shadowed a script variable of the
 same name inside functions it called.
 
+## Pass 2: curve step
+
+Finished 2026-09-13 22:05:
+`tools/replication_pass2.ps1 -Step curve -Panel ranking/replication_panel.txt
+-PanelPin ranking/replication_panel_pin.tsv -GamesPerPair 16`.
+
+- **Panel:** `ranking/replication_panel.txt`, 32 active agents nearest to
+  evenly spaced Elo targets from `rand@1` (0) to 1525, pinned from
+  `ranking/replication_panel_pin.tsv`, a frozen copy of the canonical
+  standings at prior 0.1 on 2026-09-13. Size and games per pair come from the
+  shared-panel test in `plans/sparse-schedule-results-1-cedar-lynx.md`
+  (32 x 16: 17.9 Elo contrast error for opener agents at about 480 games per
+  agent). The panel is pinned from a Round 4 fit stopped at rung 16, before
+  `ranking/CHAMPION.md` was rewritten (developer decision, 2026-09-12).
+- **Agents:** every arm, seed 4001, at the geometric middle of its locked
+  range, checkpoints at 10 to 5,120 games, each wearing
+  `.opener(rand,moves=8)@1` on `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`.
+  Each plays 16 games against each panel member (512), with paired common
+  openings.
+- **Instrument checks:** at least 504 distinct trajectories of 512 games for
+  every agent. `verify-store`: 2,880 pairs, 23,040 couples, 0 not exactly one
+  game per colour, and every agent met the panel on the same seed set.
+
+Elo (pm) against the panel, 1 seed:
+
+| games | B0 | A1 TD-directed | A2 RootStrap | A3 TreeStrap | A4 lambda = 1 | A5 depth reward | A6 mirror | A7 epsilon | A8 ordinal |
+|---|---|---|---|---|---|---|---|---|---|
+| lr | 0.01 | 0.03162 | 0.01 | 3.162e-6 | 0.001 | 0.03162 | 0.01 | 0.03162 | 0.03162 |
+| 10 | 744 (20) | 769 (20) | 766 (20) | 721 (20) | 773 (20) | 755 (20) | 751 (20) | 726 (20) | 717 (20) |
+| 20 | 766 (20) | 793 (20) | 803 (20) | 757 (20) | 778 (20) | 793 (20) | 773 (20) | 726 (20) | 742 (20) |
+| 40 | 744 (20) | 789 (20) | 841 (20) | 737 (20) | 773 (20) | 793 (20) | 848 (20) | 739 (20) | 733 (20) |
+| 80 | 814 (20) | 851 (20) | 814 (20) | 751 (20) | 818 (20) | 839 (20) | 851 (20) | 773 (20) | 730 (20) |
+| 160 | 860 (20) | 917 (20) | 893 (20) | 728 (20) | 812 (20) | 874 (20) | 890 (20) | 793 (20) | 782 (20) |
+| 320 | 931 (21) | 981 (21) | 974 (21) | 757 (20) | 784 (20) | 912 (20) | 1,012 (21) | 869 (20) | 800 (20) |
+| 640 | 984 (21) | 1,004 (21) | 1,041 (22) | 764 (20) | 805 (20) | 1,007 (21) | 1,055 (22) | 919 (21) | 828 (20) |
+| 1,280 | 1,010 (21) | 1,066 (22) | 1,044 (22) | 766 (20) | 862 (20) | 1,012 (21) | 1,036 (22) | 986 (21) | 841 (20) |
+| 2,560 | 1,074 (22) | 1,015 (21) | 1,060 (22) | 780 (20) | 905 (20) | 1,102 (22) | 1,120 (22) | 1,002 (21) | 860 (20) |
+| 5,120 | 1,094 (22) | 1,069 (22) | 1,031 (22) | 793 (20) | 986 (21) | 1,094 (22) | 1,108 (22) | 1,025 (21) | 1,036 (22) |
+
+Cumulative training CPU seconds:
+
+| games | B0 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 |
+|---|---|---|---|---|---|---|---|---|---|
+| 640 | 811 | 796 | 774 | 5,200 | 930 | 847 | 813 | 665 | 427 |
+| 1,280 | 1,586 | 1,585 | 1,546 | 9,175 | 1,817 | 1,643 | 1,619 | 1,298 | 771 |
+| 2,560 | 3,187 | 3,160 | 3,177 | 16,711 | 3,503 | 3,262 | 3,271 | 2,517 | 1,543 |
+| 5,120 | 6,203 | 6,164 | 6,329 | 32,256 | 6,596 | 6,353 | 6,378 | 4,909 | 4,075 |
+
+CPU seconds per training game between rungs, range over the ladder (the cost
+output): B0 1.18 to 1.44, A1 1.17 to 1.48, A2 1.19 to 1.31, A3 5.89 to 9.20,
+A4 1.21 to 1.59, A5 1.21 to 1.64, A6 1.21 to 1.47, A7 0.89 to 1.09, A8 0.54
+to 0.99. Full table: `models/sweep/rep1_p2/curve_summary.txt`.
+
+Elo at matched training CPU seconds, log-interpolated between rungs (- where
+the arm's ladder ends first):
+
+| CPU s | B0 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 |
+|---|---|---|---|---|---|---|---|---|---|
+| 800 | 983 | 1,004 | 1,041 | 746 | 800 | 999 | 1,054 | 937 | 842 |
+| 1,600 | 1,011 | 1,065 | 1,045 | 735 | 851 | 1,012 | 1,036 | 991 | 867 |
+| 3,200 | 1,074 | 1,016 | 1,060 | 759 | 899 | 1,099 | 1,117 | 1,010 | 992 |
+| 6,200 | 1,094 | - | 1,032 | 765 | 978 | 1,094 | 1,109 | - | - |
+
+Readings, each on one seed with about 21 Elo of rating error per checkpoint
+and seed-to-seed variance not yet measured:
+
+- B0 gained 20 Elo from 2,560 to 5,120 games, within one pm. A2, A5 and A6
+  moved -29, -8 and -12 over the same doubling.
+- A4 (+81) and A8 (+176) were still rising over the last doubling.
+- A3 at 3.162e-6 moved from 721 to 793 over 5,120 games, the smallest change
+  of any arm, at 5.2x B0's CPU. Its curve rate is a decade below its probe's
+  L of 3.16e-5 (Future Work, "A3's curve lr sits below its L").
+- The 10-game checkpoints already rate 717 to 773, so the panel's four
+  members below 560 Elo sit well below every study agent measured.
+
 ## Still open before Pass 2's rated steps
 
-- The panel file and the study store (I8) wait for Round 4's fit and the
-  `ranking/CHAMPION.md` rewrite, from which the panel ratings are pinned.
-  Curve shape, seed noise and the tuning search are all rated against the
-  panel. The driver is ready: `-Step curve -Panel <file>`.
 - The per-arm ranges above were locked as computed (developer decision,
   2026-09-11), with the playbook's edge check as the safety net.
 - C2, C6 and C7 have been read (plan's claims table). C2's chess comparison

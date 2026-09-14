@@ -179,10 +179,19 @@ win percentages among its own combinations, not ratings against outside programs
   with the panel file as an input~~ Done 2026-09-11:
   `tools/replication_pass2.ps1`, tested end to end on a stand-in panel
   (results doc, "Pass 2 driver")
+- ~~Build the study panel file~~ Done 2026-09-13: `ranking/replication_panel.txt`
+  (32 agents, Elo 0 to 1525), pinned from the frozen
+  `ranking/replication_panel_pin.tsv` (canonical fit, prior 0.1). Sized by the
+  shared-panel test in `plans/sparse-schedule-results-1-cedar-lynx.md`
 - Pass 2 calibration: curve shape, seed noise, the equal-budget tuning
-  search, CPU seconds per game per arm. Launches with
-  `tools/replication_pass2.ps1 -Step curve -Panel <panel>` once the panel is
-  pinned `[Next]` {cpu: days, dev: medium}
+  search, CPU seconds per game per arm. Curve step launched 2026-09-13:
+  `tools/replication_pass2.ps1 -Step curve -Panel ranking/replication_panel.txt
+  -PanelPin ranking/replication_panel_pin.tsv -GamesPerPair 16` (developer
+  choice of 16, revisited after the noise step), log
+  `models/sweep/rep1_p2_curve.log`. Curve step done 2026-09-13 22:05
+  (results doc, "Pass 2: curve step"). Next: the noise step, which needs the
+  candidate T_max and the contrasting arm from the developer `[Now]`
+  {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
   2026-09-10: the plan's claims table and `Docs/works-cited.md` now carry
