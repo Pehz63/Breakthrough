@@ -28,6 +28,16 @@
 # play is deficit-scheduled. Slots come from the study's block (1858..3857),
 # recorded in -Ledger, and a slot file the ledger does not list is never
 # overwritten.
+#
+# -CurveTag names a second curve ladder under its own run keys (for example a
+# longer ladder, "-CurveTag _T10240 -CurveRungs 5120,10240"), so it neither
+# collides with the published ladder nor retrains it. The curve report gives
+# each ladder its own column.
+#
+# cpu= stamps are load-sensitive: on the 6-core, 12-thread dev machine the same
+# 20 games (identical weights and node counts) cost 18 to 22% fewer CPU seconds
+# with 4 training processes running than with 9. Compare CPU across runs only
+# when they ran at the same concurrency.
 
 param(
     [Parameter(Mandatory = $true)][ValidateSet("curve", "noise", "tune")][string]$Step,
@@ -45,6 +55,7 @@ param(
     [string]$Arms = "B0,A1,A2,A3,A4,A5,A6,A7,A8",
     [string]$CurveRungs = "10,20,40,80,160,320,640,1280,2560,5120",
     [int]$CurveSeed = 4001,
+    [string]$CurveTag = "",
     [string]$NoiseArms = "",
     [int]$NoiseSeedBase = 4101,
     [int]$NoiseSeeds = 5,
@@ -144,6 +155,7 @@ function Get-Draws {
 
 function New-Run($arm, $seed, $draw, [double]$lrExp, $hName, $hVal, [int]$games, $rungs, $extra) {
     $key = if ($draw -gt 0) { "{0}_{1}_d{2:D2}" -f $Step, $arm, $draw } else { "{0}_{1}_s{2}" -f $Step, $arm, $seed }
+    if ($Step -eq "curve") { $key += $CurveTag }
     $a = @("tdleaf") + $HeadFlags + @("--seed", "$seed", "--games", "$games", "--ckpt-at", ($rungs -join ","),
         "--lr", (Lr $lrExp), "--out", "$StepDir/$key") + $ArmSwitch[$arm] + $extra
     if ($arm -eq "A8") { $a += @("--ordinal-games", "$games") }
@@ -386,12 +398,15 @@ function Invoke-Report {
     Say ""
 
     if ($Step -eq "curve") {
-        $arms = @($rows | ForEach-Object { $_.arm } | Select-Object -Unique)
+        # One column per ladder: the arm, plus the -CurveTag of a ladder run under its own key.
+        foreach ($x in $rows) { $x | Add-Member -Force NoteProperty col (($x.key -replace '^curve_', '') -replace "_s$($x.seed)", '') }
+        $arms = @($rows | ForEach-Object { $_.col } | Select-Object -Unique)
+        $colArm = @{}; foreach ($x in $rows) { $colArm[$x.col] = $x.arm }
         $rungs = @($rows | ForEach-Object { [int]$_.rung } | Sort-Object -Unique)
-        $cell = @{}; foreach ($x in $rows) { $cell["$($x.arm)|$($x.rung)"] = $x }
+        $cell = @{}; foreach ($x in $rows) { $cell["$($x.col)|$($x.rung)"] = $x }
         $hdr = ("{0,7}" -f "games") + (($arms | ForEach-Object { "{0,12}" -f $_ }) -join "")
         Say "Elo (pm) at each rung, 1 seed ($CurveSeed), each arm at the middle of its locked range:"
-        Say (("{0,7}" -f "lr") + (($arms | ForEach-Object { "{0,12}" -f (F ([Math]::Pow(10, $RangeLo[$_] + $Width / 2))) }) -join ""))
+        Say (("{0,7}" -f "lr") + (($arms | ForEach-Object { "{0,12}" -f (F ([Math]::Pow(10, $RangeLo[$colArm[$_]] + $Width / 2))) }) -join ""))
         Say $hdr
         foreach ($g in $rungs) {
             Say (("{0,7}" -f $g) + (($arms | ForEach-Object { $c = $cell["$_|$g"]; if ($c -and $null -ne $c.elo) { "{0,12}" -f ("{0:N0} ({1:N0})" -f $c.elo, $c.pm) } else { "{0,12}" -f "" } }) -join ""))

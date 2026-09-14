@@ -189,9 +189,12 @@ win percentages among its own combinations, not ratings against outside programs
   -PanelPin ranking/replication_panel_pin.tsv -GamesPerPair 16` (developer
   choice of 16, revisited after the noise step), log
   `models/sweep/rep1_p2_curve.log`. Curve step done 2026-09-13 22:05
-  (results doc, "Pass 2: curve step"). Next: the noise step, which needs the
-  candidate T_max and the contrasting arm from the developer `[Now]`
-  {cpu: days, dev: medium}
+  (results doc, "Pass 2: curve step"). Developer decisions: extend the ladder
+  to 10,240 games before setting T_max, noise step on B0 and A8, A3's rate left
+  to the tune step. Extension running (`models/sweep/rep1_p2_extend.log`).
+  cpu= stamps turned out load-sensitive (17 to 21% between 4 and 9 concurrent
+  trainings), so the compute-matching currency needs a decision before the
+  noise step `[Now]` {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
   2026-09-10: the plan's claims table and `Docs/works-cited.md` now carry

@@ -497,10 +497,55 @@ and seed-to-seed variance not yet measured:
   moved -29, -8 and -12 over the same doubling.
 - A4 (+81) and A8 (+176) were still rising over the last doubling.
 - A3 at 3.162e-6 moved from 721 to 793 over 5,120 games, the smallest change
-  of any arm, at 5.2x B0's CPU. Its curve rate is a decade below its probe's
-  L of 3.16e-5 (Future Work, "A3's curve lr sits below its L").
+  of any arm, at 5.2x B0's CPU as stamped (load-sensitive, next section). Its
+  curve rate is a decade below its probe's L of 3.16e-5 (Future Work, "A3's
+  curve lr sits below its L").
 - The 10-game checkpoints already rate 717 to 773, so the panel's four
   members below 560 Elo sit well below every study agent measured.
+
+### CPU seconds depend on machine load
+
+Checked while preparing the ladder extension. Retraining the first 20 games
+of B0, A3, A6 and A7 with the curve step's exact arguments, 4 processes at
+once on the 6-core, 12-thread dev machine:
+
+| run | weights at g10, g20 | nodes at g20 | CPU s at g20, curve step (9 processes) | CPU s at g20, check (4 processes) | ratio |
+|---|---|---|---|---|---|
+| B0 | identical | 109,073,036 both | 27.22 | 22.22 | 0.82 |
+| A3 | identical | 114,351,732 both | 176.75 | 138.97 | 0.79 |
+| A6 | identical | 109,021,866 both | 27.02 | 22.03 | 0.82 |
+| A7 | identical | 80,424,918 both | 19.78 | 16.33 | 0.83 |
+
+- Training is deterministic: the same seed gives bit-identical weights and
+  node counts. So every Elo in the curve tables is independent of load.
+- The cpu= stamp is not. The same games cost 17 to 21% less CPU at the lower
+  concurrency.
+- In the curve step all 9 runs started together. The 8 cheaper arms finished
+  between 4,075 and 6,596 CPU s, and A3 ran most of its 32,256 CPU s with
+  fewer processes beside it. So the per-game cost table, the matched-CPU
+  table and A3's 5.2x mix load conditions. A3's per-game cost fell from 7.96
+  to 6.21 CPU s between the 640 and 1,280 rungs, around when the other arms
+  finished. How much of that fall is load and how much is game length is not
+  separated.
+- Nodes do not capture A3's cost: at g20 A3 searched 1.05x B0's nodes at
+  6.3x B0's CPU (check run), since TreeStrap's cost is in its update.
+
+### Extension to 10,240 games (running)
+
+Developer decision 2026-09-13: A4 and A8 were still rising at 5,120, so the
+ladder goes to 10,240 before T_max is set. Launched 22:38 by
+`models/sweep/rep1_p2_extend.ps1` (gitignored, log
+`models/sweep/rep1_p2_extend.log`), each part with
+`-Step curve -Panel ranking/replication_panel.txt -PanelPin ranking/replication_panel_pin.tsv -GamesPerPair 16 -CurveTag _T10240`:
+
+- B0, A1, A2, A4, A5, A6, A7 and A3: retrained from scratch to 10,240 games,
+  rungs 5,120 and 10,240. The new 5,120 rung is expected to hold the same
+  weights as the published one, which the rating will show as an identical
+  Elo.
+- A8: its ordinal anneal runs from 0 to 1 over the whole run, so a
+  10,240-game run is a different recipe at every rung. All 11 rungs are
+  rated as a second A8 ladder.
+- All 9 trainings started together, as in the curve step.
 
 ## Still open before Pass 2's rated steps
 
