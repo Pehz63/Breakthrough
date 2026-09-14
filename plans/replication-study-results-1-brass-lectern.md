@@ -547,6 +547,56 @@ ladder goes to 10,240 before T_max is set. Launched 22:38 by
   rated as a second A8 ladder.
 - All 9 trainings started together, as in the curve step.
 
+### Extension results (finished 2026-09-14 17:16)
+
+Elo (pm) against the same pinned panel, 1 seed, same head and opener as the
+curve step. The `_T10240` ladders were retrained from scratch to 10,240
+games. A8's `_T10240` ladder anneals over 10,240 games, so it is a different
+recipe from the published A8 at every rung.
+
+| arm | published 5,120 | `_T10240` at 5,120 | `_T10240` at 10,240 |
+|---|---|---|---|
+| B0 | 1,094 (22) | 1,085 (22) | 1,080 (22) |
+| A1 | 1,069 (22) | 1,080 (22) | 1,074 (22) |
+| A2 | 1,031 (22) | 1,031 (22) | 981 (21) |
+| A3 | 793 (20) | 803 (20) | 837 (20) |
+| A4 | 986 (21) | 989 (21) | 1,036 (22) |
+| A5 | 1,094 (22) | 1,100 (22) | 1,094 (22) |
+| A6 | 1,108 (22) | 1,102 (22) | 1,131 (23) |
+| A7 | 1,025 (21) | 1,023 (21) | 1,015 (21) |
+
+A8's 10,240-game recipe, every rung:
+
+| games | 10 | 20 | 40 | 80 | 160 | 320 | 640 | 1,280 | 2,560 | 5,120 | 10,240 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Elo | 735 | 762 | 773 | 775 | 800 | 814 | 816 | 805 | 855 | 830 | 1,066 |
+
+Published A8 (anneal over 5,120) at 5,120: 1,036. On both A8 recipes the
+largest single gain is at the rung where the anneal ends.
+
+`verify-store`: 3,744 pairs, 29,952 couples, 0 not exactly one game per
+colour, every study agent on the same seed set. Minimum 504 distinct
+trajectories per 512 games.
+
+### The same weights in a different slot are not quite the same player
+
+Every `_T10240` 5,120 checkpoint holds bit-identical weights to the
+published one, yet the ratings differ by -9 to +11 Elo. Of each agent's 512
+games, 480 to 494 match the published part on (seed, result, plies). The
+rest differ in node counts on both sides (for example seed 2558568426, both
+end B in 47 plies, but 1,605,522 vs 1,605,493 white nodes).
+
+- Not engine nondeterminism: replaying B0's published agent against one
+  panel member twice (16 games each, 2 concurrent processes) reproduced the
+  stored part exactly, node counts included.
+- Cause: the transposition table salts every key with the evaluator's
+  parameters (`ai_minimax.cpp`, `s_ttCtx`), and a learned evaluator's first
+  parameter is its model slot. A different slot gives a different salt, so
+  different table collisions, so occasionally a different search.
+- The rating differences (largest 11) are inside every agent's pm of 20 to
+  22. They are a measurement of how much a rating moves when only the table
+  salt changes, not a training effect.
+
 ### Compute currency
 
 Developer decision 2026-09-14: match arms on stamped work counts priced by a

@@ -9,6 +9,8 @@ matches_rep1/curve_A1_s4001_g40.jsonl
 matches_rep1/curve_A1_s4001_g5120.jsonl
 matches_rep1/curve_A1_s4001_g640.jsonl
 matches_rep1/curve_A1_s4001_g80.jsonl
+matches_rep1/curve_A1_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A1_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A2_s4001_g10.jsonl
 matches_rep1/curve_A2_s4001_g1280.jsonl
 matches_rep1/curve_A2_s4001_g160.jsonl
@@ -19,6 +21,8 @@ matches_rep1/curve_A2_s4001_g40.jsonl
 matches_rep1/curve_A2_s4001_g5120.jsonl
 matches_rep1/curve_A2_s4001_g640.jsonl
 matches_rep1/curve_A2_s4001_g80.jsonl
+matches_rep1/curve_A2_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A2_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A3_s4001_g10.jsonl
 matches_rep1/curve_A3_s4001_g1280.jsonl
 matches_rep1/curve_A3_s4001_g160.jsonl
@@ -29,6 +33,8 @@ matches_rep1/curve_A3_s4001_g40.jsonl
 matches_rep1/curve_A3_s4001_g5120.jsonl
 matches_rep1/curve_A3_s4001_g640.jsonl
 matches_rep1/curve_A3_s4001_g80.jsonl
+matches_rep1/curve_A3_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A3_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A4_s4001_g10.jsonl
 matches_rep1/curve_A4_s4001_g1280.jsonl
 matches_rep1/curve_A4_s4001_g160.jsonl
@@ -39,6 +45,8 @@ matches_rep1/curve_A4_s4001_g40.jsonl
 matches_rep1/curve_A4_s4001_g5120.jsonl
 matches_rep1/curve_A4_s4001_g640.jsonl
 matches_rep1/curve_A4_s4001_g80.jsonl
+matches_rep1/curve_A4_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A4_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A5_s4001_g10.jsonl
 matches_rep1/curve_A5_s4001_g1280.jsonl
 matches_rep1/curve_A5_s4001_g160.jsonl
@@ -49,6 +57,8 @@ matches_rep1/curve_A5_s4001_g40.jsonl
 matches_rep1/curve_A5_s4001_g5120.jsonl
 matches_rep1/curve_A5_s4001_g640.jsonl
 matches_rep1/curve_A5_s4001_g80.jsonl
+matches_rep1/curve_A5_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A5_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A6_s4001_g10.jsonl
 matches_rep1/curve_A6_s4001_g1280.jsonl
 matches_rep1/curve_A6_s4001_g160.jsonl
@@ -59,6 +69,8 @@ matches_rep1/curve_A6_s4001_g40.jsonl
 matches_rep1/curve_A6_s4001_g5120.jsonl
 matches_rep1/curve_A6_s4001_g640.jsonl
 matches_rep1/curve_A6_s4001_g80.jsonl
+matches_rep1/curve_A6_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A6_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A7_s4001_g10.jsonl
 matches_rep1/curve_A7_s4001_g1280.jsonl
 matches_rep1/curve_A7_s4001_g160.jsonl
@@ -69,6 +81,8 @@ matches_rep1/curve_A7_s4001_g40.jsonl
 matches_rep1/curve_A7_s4001_g5120.jsonl
 matches_rep1/curve_A7_s4001_g640.jsonl
 matches_rep1/curve_A7_s4001_g80.jsonl
+matches_rep1/curve_A7_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A7_s4001_T10240_g5120.jsonl
 matches_rep1/curve_A8_s4001_g10.jsonl
 matches_rep1/curve_A8_s4001_g1280.jsonl
 matches_rep1/curve_A8_s4001_g160.jsonl
@@ -79,6 +93,17 @@ matches_rep1/curve_A8_s4001_g40.jsonl
 matches_rep1/curve_A8_s4001_g5120.jsonl
 matches_rep1/curve_A8_s4001_g640.jsonl
 matches_rep1/curve_A8_s4001_g80.jsonl
+matches_rep1/curve_A8_s4001_T10240_g10.jsonl
+matches_rep1/curve_A8_s4001_T10240_g10240.jsonl
+matches_rep1/curve_A8_s4001_T10240_g1280.jsonl
+matches_rep1/curve_A8_s4001_T10240_g160.jsonl
+matches_rep1/curve_A8_s4001_T10240_g20.jsonl
+matches_rep1/curve_A8_s4001_T10240_g2560.jsonl
+matches_rep1/curve_A8_s4001_T10240_g320.jsonl
+matches_rep1/curve_A8_s4001_T10240_g40.jsonl
+matches_rep1/curve_A8_s4001_T10240_g5120.jsonl
+matches_rep1/curve_A8_s4001_T10240_g640.jsonl
+matches_rep1/curve_A8_s4001_T10240_g80.jsonl
 matches_rep1/curve_B0_s4001_g10.jsonl
 matches_rep1/curve_B0_s4001_g1280.jsonl
 matches_rep1/curve_B0_s4001_g160.jsonl
@@ -89,3 +114,5 @@ matches_rep1/curve_B0_s4001_g40.jsonl
 matches_rep1/curve_B0_s4001_g5120.jsonl
 matches_rep1/curve_B0_s4001_g640.jsonl
 matches_rep1/curve_B0_s4001_g80.jsonl
+matches_rep1/curve_B0_s4001_T10240_g10240.jsonl
+matches_rep1/curve_B0_s4001_T10240_g5120.jsonl

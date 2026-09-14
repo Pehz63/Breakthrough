@@ -195,7 +195,8 @@ win percentages among its own combinations, not ratings against outside programs
   cpu= stamps turned out load-sensitive (17 to 21% between 4 and 9 concurrent
   trainings). Developer decision: price runs from stamped counts (nodes, and
   TreeStrap's new tree=/treemoves=) with a fixed-concurrency benchmark.
-  Running: A3 ladder retrain with the stamped trainer
+  Extension rated 2026-09-14 (results doc, "Extension results"). Running: A3
+  ladder retrain with the stamped trainer
   (`models/sweep/rep1_p2_A3tree_train.log`). `-Step cost` and the priced
   currency are built and stand-in tested. Then, once no trainer runs: rebuild
   `train.exe` from the stamped source, run `-Step cost` with defaults, check
