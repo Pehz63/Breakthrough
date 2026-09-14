@@ -127,7 +127,7 @@ std::string tbStamp(const TrainBudget& b, const char* unitName) {
 
 // Read "<key>=<number>" out of a provenance string. Matches only at a token
 // boundary so "games=" never matches inside "opengames=".
-static bool tbFindNumber(const std::string& s, const std::string& key, double& out) {
+bool tbFindNumber(const std::string& s, const std::string& key, double& out) {
     std::string pat = key + "=";
     size_t from = 0;
     while (true) {

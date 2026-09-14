@@ -56,6 +56,7 @@ param(
     [string]$CurveRungs = "10,20,40,80,160,320,640,1280,2560,5120",
     [int]$CurveSeed = 4001,
     [string]$CurveTag = "",
+    [string]$TrainExe = "train.exe",
     [string]$NoiseArms = "",
     [int]$NoiseSeedBase = 4101,
     [int]$NoiseSeeds = 5,
@@ -72,7 +73,7 @@ $ErrorActionPreference = "Stop"
 $Inv = [Globalization.CultureInfo]::InvariantCulture
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
-$Train = Join-Path $Root "train.exe"
+$Train = Join-Path $Root $TrainExe
 $Rank = Join-Path $Root "rank.exe"
 $StepDir = "$Work/$Step"
 foreach ($d in @($Work, $StepDir, "$StepDir/rosters", "$StepDir/play_logs")) { New-Item -ItemType Directory -Force $d | Out-Null }

@@ -193,8 +193,13 @@ win percentages among its own combinations, not ratings against outside programs
   to 10,240 games before setting T_max, noise step on B0 and A8, A3's rate left
   to the tune step. Extension running (`models/sweep/rep1_p2_extend.log`).
   cpu= stamps turned out load-sensitive (17 to 21% between 4 and 9 concurrent
-  trainings), so the compute-matching currency needs a decision before the
-  noise step `[Now]` {cpu: days, dev: medium}
+  trainings). Developer decision: price runs from stamped counts (nodes, and
+  TreeStrap's new tree=/treemoves=) with a fixed-concurrency benchmark.
+  Running: A3 ladder retrain with the stamped trainer
+  (`models/sweep/rep1_p2_A3tree_train.log`). Then, on an idle machine: the
+  benchmark (`-Step cost`, to build), the price fit, the driver's currency
+  switch, and rebuilding `train.exe` from the stamped source `[Now]`
+  {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
   2026-09-10: the plan's claims table and `Docs/works-cited.md` now carry

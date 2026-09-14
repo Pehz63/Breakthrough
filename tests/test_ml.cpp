@@ -13,6 +13,7 @@
 #include "datastore.h"
 #include "ml_cluster.h"
 #include "transposition.h"
+#include "train_budget.h"
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -1815,6 +1816,59 @@ TEST_CASE("trainTDLeaf treestrap - restricted to the root it IS rootstrap") {
     INFO("entries accepted " << sfull.treeNodes << " over " << sfull.searches << " searches");
     REQUIRE(sfull.treeNodes > sfull.searches);   // more than one node per search
     REQUIRE(weightL1(wf, wr) > 1e-4);
+}
+
+TEST_CASE("trainTDLeaf treestrap - the stamp carries the walk's work, cumulative across a resume") {
+    // CPU seconds depend on machine load, so the study prices a run from
+    // counts: nodes for the search, tree= and treemoves= for TreeStrap's walk.
+    TDLeafConfig c = tdLeafDefaults();
+    c.outPath = "models/sweep/tdl_test_tree_a";
+    c.games = 1; c.depth = 3; c.openPlies = 2; c.reportEvery = 0; c.seed = 8181;
+    c.backup = "treestrap"; c.treeMinDepth = 1; c.lr = c.lrFloor = 0.0005;
+    REQUIRE(trainTDLeaf(c) == 0);
+    const TDLeafRunStats s1 = g_tdLastRun;
+    REQUIRE(s1.treeNodes > 0);
+    REQUIRE(s1.treeMoves > s1.treeNodes);   // every accepted entry was reached by a move
+    double t = -1.0, tm = -1.0;
+    Model* m = loadModel("models/sweep/tdl_test_tree_a.txt");
+    REQUIRE(m != nullptr);
+    INFO(m->teacher);
+    REQUIRE(tbFindNumber(m->teacher, "tree", t));
+    REQUIRE(tbFindNumber(m->teacher, "treemoves", tm));
+    REQUIRE((long long)t == s1.treeNodes);
+    REQUIRE((long long)tm == s1.treeMoves);
+    delete m;
+
+    TDLeafConfig r = c;
+    r.outPath = "models/sweep/tdl_test_tree_b";
+    r.resumeFrom = "models/sweep/tdl_test_tree_a.txt";
+    r.games = 2;
+    REQUIRE(trainTDLeaf(r) == 0);
+    const TDLeafRunStats s2 = g_tdLastRun;
+    REQUIRE(s2.games == 1);
+    REQUIRE(s2.treeNodes > 0);
+    Model* mr = loadModel("models/sweep/tdl_test_tree_b.txt");
+    REQUIRE(mr != nullptr);
+    INFO(mr->teacher);
+    REQUIRE(tbFindNumber(mr->teacher, "tree", t));
+    REQUIRE(tbFindNumber(mr->teacher, "treemoves", tm));
+    REQUIRE((long long)t == s1.treeNodes + s2.treeNodes);
+    REQUIRE((long long)tm == s1.treeMoves + s2.treeMoves);
+    delete mr;
+
+    // A backup with no walk stamps neither field.
+    TDLeafConfig d = tdLeafDefaults();
+    d.outPath = "models/sweep/tdl_test_tree_c";
+    d.games = 1; d.depth = 3; d.openPlies = 2; d.reportEvery = 0; d.seed = 8181;
+    REQUIRE(trainTDLeaf(d) == 0);
+    Model* md = loadModel("models/sweep/tdl_test_tree_c.txt");
+    REQUIRE(md != nullptr);
+    REQUIRE(md->teacher.find("tree=") == string::npos);
+    REQUIRE(md->teacher.find("treemoves=") == string::npos);
+    delete md;
+    std::remove("models/sweep/tdl_test_tree_a.txt");
+    std::remove("models/sweep/tdl_test_tree_b.txt");
+    std::remove("models/sweep/tdl_test_tree_c.txt");
 }
 
 TEST_CASE("trainTDLeaf ordinal - e = 0 plays moves other than the search's") {

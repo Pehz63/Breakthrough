@@ -547,6 +547,55 @@ ladder goes to 10,240 before T_max is set. Launched 22:38 by
   rated as a second A8 ladder.
 - All 9 trainings started together, as in the curve step.
 
+### Compute currency
+
+Developer decision 2026-09-14: match arms on stamped work counts priced by a
+benchmark run once at a fixed concurrency (6 processes, one per core),
+instead of on `cpu=` stamps.
+
+CPU per node (microseconds) between consecutive curve rungs, from the stamps,
+under whatever load each segment ran at:
+
+| games | B0 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 |
+|---|---|---|---|---|---|---|---|---|---|
+| 10 | 0.251 | 0.251 | 0.252 | 1.575 | 0.251 | 0.251 | 0.249 | 0.247 | 0.249 |
+| 80 | 0.247 | 0.247 | 0.253 | 1.498 | 0.252 | 0.250 | 0.249 | 0.249 | 0.247 |
+| 640 | 0.248 | 0.249 | 0.249 | 1.341 | 0.253 | 0.247 | 0.246 | 0.251 | 0.259 |
+| 1,280 | 0.248 | 0.247 | 0.246 | 1.068 | 0.254 | 0.246 | 0.246 | 0.250 | 0.260 |
+| 2,560 | 0.248 | 0.248 | 0.245 | 0.993 | 0.253 | 0.247 | 0.245 | 0.248 | 0.257 |
+| 5,120 | 0.232 | 0.236 | 0.230 | 0.981 | 0.232 | 0.233 | 0.231 | 0.243 | 0.255 |
+
+- For the 8 arms other than A3, CPU per node stays within 0.241 to 0.260
+  over every segment before the last (all 10 rungs, not only those shown).
+  In the last segment, as the other runs finished, it falls to 0.230 to 0.236
+  for six of them. A single benchmarked price per node fits these arms.
+- A3's CPU per node fell from 1.575 to 0.981 along its own run, far more
+  than the load change. One price per node cannot fit A3, and a price
+  measured on this ladder would not transfer to the tune step's A3 runs at
+  other rates.
+- The walk's cost is in moves it makes probing the table. `train.exe` now
+  stamps `tree=` (entries accepted) and `treemoves=` (probe moves) on
+  treestrap checkpoints, cumulative across `--resume`
+  (`tests/test_ml.cpp`, "the stamp carries the walk's work"). At A3's g10
+  the stamped run made 150,553,656 probe moves against 53,807,720 search
+  nodes and accepted 5,874,941 entries, with weights identical to the
+  published g10.
+- The price model to fit from the benchmark: CPU = a_arm x nodes +
+  b x treemoves (+ c x tree), with the residual checked across A3
+  checkpoints whose treemoves-per-node ratio differs.
+
+The published A3 ladder and the running A3 extension were trained before the
+stamp existed. A third A3 ladder, `-CurveTag _T10240tree -Phase train
+-TrainExe train_new.exe` (log `models/sweep/rep1_p2_A3tree_train.log`), is
+retraining it to 10,240 with every rung, train only, to recover `tree=` and
+`treemoves=` for every rated A3 checkpoint. Its weights must match the
+published ladder's at every rung up to 5,120 and the extension's at 10,240.
+`train_new.exe` is the stamped build, kept apart because the running
+trainings hold `train.exe` open.
+
+The benchmark itself waits for these trainings to finish, since it needs a
+machine running nothing else.
+
 ## Still open before Pass 2's rated steps
 
 - The per-arm ranges above were locked as computed (developer decision,

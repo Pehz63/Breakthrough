@@ -121,3 +121,8 @@ std::string tbStamp(const TrainBudget& b, const char* unitName);
 // leaves any field it cannot find at zero. Returns true if at least one was
 // found, which is also the check for "this file was written by a stamped run".
 bool tbParsePrior(const std::string& teacher, TrainBudget& b, const char* unitName);
+
+// Read "<key>=<number>" out of a provenance string, matching only at a token
+// boundary so "games=" never matches inside "opengames=". For regime-specific
+// stamp fields a resume must carry forward (TD-Leaf's tree= and treemoves=).
+bool tbFindNumber(const std::string& s, const std::string& key, double& out);

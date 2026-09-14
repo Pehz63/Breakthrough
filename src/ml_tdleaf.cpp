@@ -181,6 +181,7 @@ struct TreeWalkTD {
     std::vector<double> G;       // sum of g * x over the game
     double Gb;                   // sum of g
     long long accepted, updated, mirrorUpdated;
+    long long moves;             // moves made to probe the table, the walk's other cost
 };
 
 static void treeAccumulateTD(TreeWalkTD& w, const float* x, double q, int flag) {
@@ -213,6 +214,7 @@ static void treeVisitTD(TreeWalkTD& w, int side) {
         if (m.dy == 0 || m.dy == SIZE - 1) continue;   // a winning move: terminal, never stored
         bool cap = (side == White) ? simulateMoveWhite(m.sx, m.sy, m.dx)
                                    : simulateMoveBlack(m.sx, m.sy, m.dx);
+        w.moves++;
         // Decided positions are never stored (the search returns a sentinel
         // before its store), so there is nothing to probe below them.
         if (g_whiteCount > 0 && g_blackCount > 0 && nearWinCheck(opp) == 0) {
@@ -448,6 +450,9 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     // ---- Model: resume a run, load an initialisation, or build a fresh one ----
     Model* model = nullptr;
     string provInit;
+    // TreeStrap's walk work carried in by a --resume (tree=, treemoves=).
+    long long priorTree = 0, priorTreeMoves = 0;
+    bool priorTreeKnown = false;
     const string loadFrom = !cfg.resumeFrom.empty() ? cfg.resumeFrom : cfg.initModel;
     if (!loadFrom.empty()) {
         model = loadModel(loadFrom);
@@ -464,6 +469,9 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
                      << " (games=/secs=/nodes=), so its ladder cannot be continued.\n";
                 delete model; return 1;
             }
+            double tv = 0.0;
+            if (tbFindNumber(model->teacher, "tree", tv)) { priorTree = (long long)tv; priorTreeKnown = true; }
+            if (tbFindNumber(model->teacher, "treemoves", tv)) priorTreeMoves = (long long)tv;
             // The resumed file's provenance is the source of the recipe prefix
             // only for reporting; the recipe itself comes from THIS command line,
             // which is the caller's responsibility to keep identical.
@@ -610,13 +618,20 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     // Attach the spend this checkpoint actually represents, then save. Every
     // save in this function goes through here, which is what keeps a rung's
     // header honest -- see the header comment on trainTDLeaf.
+    // A TreeStrap run also stamps its walk's cumulative work: nodes alone miss
+    // the cost of the update, and unlike CPU seconds these counts do not
+    // depend on machine load.
     struct Saver {
         Model* model; const string& recipe; const string& init; const TrainBudget& b;
+        const TreeWalkTD* tree; long long treePrior, treeMovesPrior;
         bool save(const string& path) const {
-            model->teacher = recipe + tbStamp(b, "games") + ") " + init;
+            string walkStamp;
+            if (tree) walkStamp = ",tree=" + std::to_string(treePrior + tree->accepted)
+                                + ",treemoves=" + std::to_string(treeMovesPrior + tree->moves);
+            model->teacher = recipe + tbStamp(b, "games") + walkStamp + ") " + init;
             return model->save(path);
         }
-    } saver = { model, provRecipe, provInit, budget };
+    } saver = { model, provRecipe, provInit, budget, nullptr, 0, 0 };
 
     cout << "TD-Leaf: " << provRecipe << ",...) " << provInit << "\n";
     cout << "Model: type=" << model->typeName() << " featVer=" << featVer
@@ -659,7 +674,13 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     walk.outScale = model->outputScale(); walk.ctx = 0; walk.gen = 0;
     walk.dMin = cfg.treeMinDepth; walk.mirror = mirror;
     walk.G.assign(featCount, 0.0); walk.Gb = 0.0;
-    walk.accepted = walk.updated = walk.mirrorUpdated = 0;
+    walk.accepted = walk.updated = walk.mirrorUpdated = walk.moves = 0;
+    if (backupKind == BK_TREE) {
+        saver.tree = &walk; saver.treePrior = priorTree; saver.treeMovesPrior = priorTreeMoves;
+        if (!cfg.resumeFrom.empty() && !priorTreeKnown)
+            cout << "NOTE: " << cfg.resumeFrom << " carries no tree= stamp, so this run's"
+                 << " tree=/treemoves= count only its own walk\n";
+    }
     long long searches = 0, gamePliesTotal = 0, updates = 0, mirrorUpdates = 0;
     long long ordMoves = 0, ordNonBest = 0, ordRanked = 0, ordUnranked = 0;
     double effOrdinal = cfg.ordinalStart;
@@ -972,7 +993,8 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
         cout << "  treestrap (d_min " << cfg.treeMinDepth << "): table entries accepted "
              << walk.accepted << " ("
              << (searches ? (double)walk.accepted / searches : 0.0) << " per search),"
-             << " updates that moved " << walk.updated << "\n";
+             << " updates that moved " << walk.updated
+             << ", probe moves " << walk.moves << "\n";
     }
     if (mirror)
         cout << "  mirror: " << mirrorUpdates << " of " << updates << " updates were mirrored\n";
@@ -989,6 +1011,7 @@ int trainTDLeaf(const TDLeafConfig& cfg) {
     g_tdLastRun.mirrorUpdates = mirrorUpdates;
     g_tdLastRun.treeNodes = walk.accepted;
     g_tdLastRun.treeUpdated = walk.updated;
+    g_tdLastRun.treeMoves = walk.moves;
     g_tdLastRun.ordinalMoves = ordMoves;
     g_tdLastRun.ordinalNonBest = ordNonBest;
     g_tdLastRun.ordinalRanked = ordRanked;

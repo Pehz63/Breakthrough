@@ -224,6 +224,7 @@ struct TDLeafRunStats {
     long long mirrorUpdates;      // of which mirrored
     long long treeNodes;          // treestrap: table entries accepted by the walk
     long long treeUpdated;        // treestrap: of which moved (a bound was violated)
+    long long treeMoves;          // treestrap: moves the walk made to probe the table
     long long ordinalMoves;       // ordinal: moves drawn from the distribution
     long long ordinalNonBest;     // ordinal: of which not the search's choice
     long long ordinalRanked;      // ordinal: root moves ranked from a table entry
