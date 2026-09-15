@@ -689,13 +689,69 @@ count off its curve ladders: B0 10,240 games, A8 beyond its last measured
 rung at that rung's average rate (A8's 10,240-game recipe cost 6,868 priced
 seconds).
 
-### Noise step (running)
+### Noise step
 
-Launched 2026-09-14: `-Step noise -NoiseArms B0,A8 -NoiseCpu 11284.2
+Finished 2026-09-15 01:49. Launched 2026-09-14: `-Step noise -NoiseArms B0,A8 -NoiseCpu 11284.2
 -Panel ranking/replication_panel.txt -PanelPin ranking/replication_panel_pin.tsv
 -GamesPerPair 16`, 5 seeds each (4101 to 4105), every curve rung below the
 arm's game count rated plus the final one. Log
-`models/sweep/rep1_p2_noise.log`.
+`models/sweep/rep1_p2_noise.log`, table `models/sweep/rep1_p2/noise_summary.txt`.
+
+Elo (pm) against the pinned panel, 16 games per panel opponent, head
+`ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`, every agent wearing
+`.opener(rand,moves=8)@1`:
+
+| B0 games | 4101 | 4102 | 4103 | 4104 | 4105 | mean | sd over seeds | mean pm |
+|---|---|---|---|---|---|---|---|---|
+| 640 | 986 | 941 | 974 | 964 | 934 | 960 | 21.9 | 21.0 |
+| 1,280 | 1,036 | 1,028 | 1,050 | 1,039 | 981 | 1,027 | 26.8 | 21.6 |
+| 2,560 | 1,085 | 1,066 | 1,085 | 1,058 | 1,088 | 1,076 | 13.5 | 22.0 |
+| 5,120 | 1,100 | 1,080 | 1,105 | 1,083 | 1,111 | 1,096 | 13.7 | 22.0 |
+| 10,240 | 1,158 | 1,146 | 1,105 | 1,077 | 1,123 | 1,122 | 32.4 | 22.4 |
+
+| A8 games | 4101 | 4102 | 4103 | 4104 | 4105 | mean | sd over seeds | mean pm |
+|---|---|---|---|---|---|---|---|---|
+| 640 | 848 | 834 | 818 | 816 | 846 | 832 | 15.1 | 20.0 |
+| 1,280 | 844 | 805 | 872 | 830 | 825 | 835 | 24.9 | 20.0 |
+| 2,560 | 867 | 855 | 846 | 832 | 865 | 853 | 14.4 | 20.0 |
+| 5,120 | 860 | 846 | 837 | 825 | 853 | 844 | 13.7 | 20.0 |
+| 16,824 | 1,047 | 1,036 | 1,114 | 1,094 | 1,074 | 1,073 | 32.3 | 22.0 |
+
+A8's rungs below 16,824 are mid-anneal points of the 16,824-game recipe.
+Final-rung training CPU (10 trainings at once): B0 13,323 to 13,885 s, A8
+14,064 to 14,174 s. `verify-store`: 3,520 pairs, 28,160 couples, 0 not
+exactly one game per colour, minimum 504 distinct trajectories of 512.
+
+`pm` is the fit's standard error (`ranking.cpp`, `fit.se`). At T_max:
+
+| arm | sd over seeds | mean pm (sigma_meas) | sigma_seed = sqrt(sd^2 - pm^2) |
+|---|---|---|---|
+| B0 | 32.4 | 22.4 | 23.4 |
+| A8 | 32.3 | 22.0 | 23.6 |
+
+- sigma_meas is about equal to sigma_seed, so the plan's rule sigma_meas <=
+  sigma_seed / 2 fails at 16 games per opponent. pm scales as 1/sqrt(G): 64
+  games per opponent gives about 11.1.
+- 5 seeds give the sd 4 degrees of freedom, so each sigma_seed is uncertain
+  by roughly a factor of 2 either way.
+- At B0's 2,560 and 5,120 and A8's 40, 320, 2,560 and 5,120 rungs the sd over
+  seeds (8.2 to 14.4) is below the rungs' pm (20 to 22). If pm were each
+  agent's independent rating error, the sd could not sit below it that often.
+  Hypothesis, untested: with common openings every agent meets each panel
+  member on the same couples, so much of the rating error is shared and
+  cancels in a contrast, and pm overstates the error a contrast carries.
+- Single contrast, exploratory (A8 is outside the confirmatory family): A8
+  at T_max 1,073 vs B0 1,122, difference -49, standard error from the seed
+  spreads 20.4.
+
+Minimum detectable effect (3.5 contrast standard errors, Dunnett over 8
+arms) with sigma_seed 23.5 and sigma_meas from pm:
+
+| seeds (arm / baseline) | G = 16 (sigma 32.3) | G = 32 (sigma 28.3) | G = 64 (sigma 26.0) |
+|---|---|---|---|
+| 5 / 12 | 60 | 53 | 48 |
+| 8 / 20 | 47 | 41 | 38 |
+| 10 / 24 | 43 | 37 | 34 |
 
 The driver's `-Step cost` implements it. Each job resumes a published curve
 checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40
