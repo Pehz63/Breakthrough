@@ -643,8 +643,59 @@ published ladder's at every rung up to 5,120 and the extension's at 10,240.
 `train_new.exe` is the stamped build, kept apart because the running
 trainings hold `train.exe` open.
 
-The benchmark itself waits for these trainings to finish, since it needs a
-machine running nothing else.
+The stamped A3 ladder finished 2026-09-14 19:00. Its weights are identical
+to the published ladder's at every rung from 10 to 5,120 and to the
+`_T10240` extension's at 10,240, so its counts price every rated A3
+checkpoint. At 10,240 games it stamped 62,855,632,231 nodes,
+5,900,527,570 accepted entries and 141,414,145,491 probe moves.
+`train.exe` was then rebuilt from the stamped source.
+
+#### Benchmark results (2026-09-14, idle machine)
+
+`-Step cost` with defaults: 108 jobs (9 arms x 6 starting rungs x 2
+repeats), exactly 6 trainings at every moment. Full table:
+`models/sweep/rep1_p2/cost_summary.txt`, jobs in `cost_bench.tsv`.
+
+| arm | CPU us per node, arm alone | largest residual |
+|---|---|---|
+| B0 | 0.21536 | 3.7% |
+| A1 | 0.21370 | 4.0% |
+| A2 | 0.21155 | 5.5% |
+| A4 | 0.21770 | 3.7% |
+| A5 | 0.21548 | 4.7% |
+| A6 | 0.21890 | 3.3% |
+| A7 | 0.22283 | 1.5% |
+| A8 | 0.22176 | 3.1% |
+| A3 | 0.21536 (B0's) plus 0.41308 per probe move | 4.1% |
+
+- Every job's counts were identical across its two repeats. For B0, A1, A2,
+  A4, A5 and A3 the second repeat cost 4 to 5% more CPU than the first. Jobs
+  ran arm by arm in a fixed order, so arm differences and time drift cannot
+  be separated. The per-arm prices span 5.3%.
+- A3's free two-price fit: 0.16456 per node and 0.43397 per probe move.
+
+Developer decision 2026-09-14: one shared per-node price for every arm
+without a TreeStrap walk (`-CostPricing shared`, the driver's default),
+refit from the stored benchmark with `-Step cost -Phase report`: 0.21646 us
+per node over 96 jobs, largest residual 7.6% (A2). A3: 0.21646 per node plus
+0.41263 per probe move, largest residual 4.1%.
+
+#### T_max
+
+Priced seconds at the shared price, B0: 5,593 at 5,120 games and 11,284 at
+10,240. Developer decision 2026-09-14: T_max = B0's 10,240-game budget,
+11,284.2 priced seconds. The noise step converts it to each arm's game
+count off its curve ladders: B0 10,240 games, A8 beyond its last measured
+rung at that rung's average rate (A8's 10,240-game recipe cost 6,868 priced
+seconds).
+
+### Noise step (running)
+
+Launched 2026-09-14: `-Step noise -NoiseArms B0,A8 -NoiseCpu 11284.2
+-Panel ranking/replication_panel.txt -PanelPin ranking/replication_panel_pin.tsv
+-GamesPerPair 16`, 5 seeds each (4101 to 4105), every curve rung below the
+arm's game count rated plus the final one. Log
+`models/sweep/rep1_p2_noise.log`.
 
 The driver's `-Step cost` implements it. Each job resumes a published curve
 checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40

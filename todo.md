@@ -197,11 +197,11 @@ win percentages among its own combinations, not ratings against outside programs
   TreeStrap's new tree=/treemoves=) with a fixed-concurrency benchmark.
   Extension rated 2026-09-14 (results doc, "Extension results"). Running: A3
   ladder retrain with the stamped trainer
-  (`models/sweep/rep1_p2_A3tree_train.log`). `-Step cost` and the priced
-  currency are built and stand-in tested. Then, once no trainer runs: rebuild
-  `train.exe` from the stamped source, run `-Step cost` with defaults, check
-  the A3 price residuals, rerun the curve report for the priced tables, and
-  set T_max `[Now]`
+  (`models/sweep/rep1_p2_A3tree_train.log`). Benchmark done, shared per-node
+  price, T_max = 11,284.2 priced seconds (B0's 10,240 games), developer
+  decisions 2026-09-14. Running: noise step, B0 and A8, 5 seeds
+  (`models/sweep/rep1_p2_noise.log`). Next: sigma_seed and sigma_meas, the
+  power analysis for seeds and games per pair, then tuning `[Now]`
   {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done

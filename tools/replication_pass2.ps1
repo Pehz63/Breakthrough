@@ -66,6 +66,7 @@ param(
     [int]$CostSlots = 6,
     [int]$CostReps = 2,
     [string]$CostFrom = "0,80,640,1280,2560,5120",
+    [ValidateSet("shared", "perarm")][string]$CostPricing = "shared",
     [switch]$CostAllowBusy,   # stand-in tests only: prices measured beside other trainings are not load-free
     [string]$NoiseArms = "",
     [int]$NoiseSeedBase = 4101,
@@ -306,6 +307,14 @@ function Stamp-Counts($path) {
 }
 
 function Invoke-Cost {
+    $bench = "$Work/cost_bench.tsv"
+    if ($Phase -eq "report") {
+        # Refit the prices from the stored benchmark without rerunning it.
+        $rows = @(Import-Csv $bench -Delimiter "`t" | ForEach-Object { [pscustomobject]@{ arm = $_.arm; from = [int]$_.from; rep = [int]$_.rep
+            games = [double]::Parse($_.games, $Inv); cpu = [double]::Parse($_.cpu, $Inv); nodes = [double]::Parse($_.nodes, $Inv)
+            tree = [double]::Parse($_.tree, $Inv); treemoves = [double]::Parse($_.treemoves, $Inv) } })
+        Say "cost: refit from $bench ($($rows.Count) jobs), pricing $CostPricing"
+    } else {
     $froms = @($CostFrom.Split(",") | ForEach-Object { [int]$_ })
     $jobs = @()
     for ($rep = 1; $rep -le $CostReps; $rep++) {
@@ -370,20 +379,30 @@ function Invoke-Cost {
         $rows += [pscustomobject]@{ arm = $j.Arm; from = $j.From; rep = $j.Rep; games = $s.games - $p0.games
             cpu = $s.cpu - $p0.cpu; nodes = $s.nodes - $p0.nodes; tree = $s.tree - $p0.tree; treemoves = $s.treemoves - $p0.treemoves }
     }
-    $bench = "$Work/cost_bench.tsv"
     @("arm`tfrom`trep`tgames`tcpu`tnodes`ttree`ttreemoves") + @($rows | ForEach-Object {
         "$($_.arm)`t$($_.from)`t$($_.rep)`t$($_.games)`t$($_.cpu.ToString('R', $Inv))`t$($_.nodes)`t$($_.tree)`t$($_.treemoves)" }) |
         Out-File -FilePath $bench -Encoding ascii
+    }
 
-    # Prices: CPU = a x nodes for every arm, by least squares over its jobs. An
-    # arm whose walk made probe moves (A3) runs B0's search, so it takes B0's
-    # per-node price and fits only b, the price per probe move. The free
-    # two-price fit is printed beside it as a check.
+    # Prices: CPU = a x nodes, by least squares. -CostPricing shared (the
+    # default) pools every arm without a TreeStrap walk into one per-node price,
+    # since the per-arm prices measured 2026-09-14 differed by no more than the
+    # benchmark's own drift. perarm fits each arm alone. An arm whose walk made
+    # probe moves (A3) runs B0's search, so it takes that per-node price and
+    # fits only b, the price per probe move. The free two-price fit is printed
+    # beside it as a check.
     $prices = @()
     $aB0 = $null
     Say ""
     Say ("{0,4}{1,7}{2,5}{3,7}{4,10}{5,15}{6,15}{7,11}{8,9}" -f "arm", "from", "rep", "games", "cpu s", "nodes", "treemoves", "us/node", "resid")
     $walkArms = @($ArmList | Where-Object { $k = $_; (@($rows | Where-Object { $_.arm -eq $k }) | ForEach-Object { $_.treemoves } | Measure-Object -Sum).Sum -gt 0 })
+    $aShared = $null
+    if ($CostPricing -eq "shared") {
+        $pr = @($rows | Where-Object { $walkArms -notcontains $_.arm })
+        $aShared = (($pr | ForEach-Object { $_.nodes * $_.cpu } | Measure-Object -Sum).Sum) / (($pr | ForEach-Object { $_.nodes * $_.nodes } | Measure-Object -Sum).Sum)
+        $aB0 = $aShared
+        Say ("  shared per-node price over {0} jobs: {1:N5} us" -f $pr.Count, (1e6 * $aShared))
+    }
     foreach ($k in (@($ArmList | Where-Object { $walkArms -notcontains $_ }) + $walkArms)) {
         $r = @($rows | Where-Object { $_.arm -eq $k })
         $snn = 0.0; $snm = 0.0; $smm = 0.0; $snc = 0.0; $smc = 0.0
@@ -393,19 +412,20 @@ function Invoke-Cost {
             if ($det -gt 0) { Say ("  {0} free fit: {1:N5} us per node, {2:N5} us per probe move" -f $k, (1e6 * ($snc * $smm - $smc * $snm) / $det), (1e6 * ($smc * $snn - $snc * $snm) / $det)) }
             if ($null -ne $aB0) { $a = $aB0; $b = ($smc - $a * $snm) / $smm }
             else { $a = ($snc * $smm - $smc * $snm) / $det; $b = ($smc * $snn - $snc * $snm) / $det }
-        } else { $a = $snc / $snn; $b = 0.0 }
-        if ($k -eq "B0") { $aB0 = $a }
+        } else { $a = $(if ($null -ne $aShared) { $aShared } else { $snc / $snn }); $b = 0.0 }
+        $own = 1e6 * $snc / $snn
+        if ($k -eq "B0" -and $null -eq $aShared) { $aB0 = $a }
         $maxr = 0.0
         foreach ($x in ($r | Sort-Object from, rep)) {
             $res = $x.cpu / ($a * $x.nodes + $b * $x.treemoves) - 1
             if ([Math]::Abs($res) -gt $maxr) { $maxr = [Math]::Abs($res) }
             Say ("{0,4}{1,7}{2,5}{3,7}{4,10:N2}{5,15:N0}{6,15:N0}{7,11:N4}{8,9:P1}" -f $k, $x.from, $x.rep, $x.games, $x.cpu, $x.nodes, $x.treemoves, (1e6 * $x.cpu / $x.nodes), $res)
         }
-        $prices += [pscustomobject]@{ arm = $k; a = 1e6 * $a; b = 1e6 * $b; resid = 100 * $maxr; n = $r.Count }
+        $prices += [pscustomobject]@{ arm = $k; a = 1e6 * $a; b = 1e6 * $b; resid = 100 * $maxr; n = $r.Count; own = $own }
     }
     Say ""
     Say "Prices (CPU microseconds per search node, per TreeStrap probe move), largest residual over the arm's jobs:"
-    foreach ($p in $prices) { Say ("  {0,-3} {1,9:N5} per node{2}   max |resid| {3:N1}%   {4} jobs" -f $p.arm, $p.a, $(if ($p.b -gt 0) { ", {0:N5} per probe move" -f $p.b } else { "" }), $p.resid, $p.n) }
+    foreach ($p in $prices) { Say ("  {0,-3} {1,9:N5} per node{2}   max |resid| {3:N1}%   {4} jobs   (arm alone, nodes only: {5:N5})" -f $p.arm, $p.a, $(if ($p.b -gt 0) { ", {0:N5} per probe move" -f $p.b } else { "" }), $p.resid, $p.n, $p.own) }
     @("arm`tus_per_node`tus_per_treemove`tmax_abs_resid_pct`tjobs") + @($prices | ForEach-Object {
         "$($_.arm)`t$($_.a.ToString('R', $Inv))`t$($_.b.ToString('R', $Inv))`t$($_.resid.ToString('R', $Inv))`t$($_.n)" }) |
         Out-File -FilePath "$Work/cost_prices.tsv" -Encoding ascii
