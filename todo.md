@@ -199,9 +199,13 @@ win percentages among its own combinations, not ratings against outside programs
   ladder retrain with the stamped trainer
   (`models/sweep/rep1_p2_A3tree_train.log`). Benchmark done, shared per-node
   price, T_max = 11,284.2 priced seconds (B0's 10,240 games), developer
-  decisions 2026-09-14. Running: noise step, B0 and A8, 5 seeds
-  (`models/sweep/rep1_p2_noise.log`). Next: sigma_seed and sigma_meas, the
-  power analysis for seeds and games per pair, then tuning `[Now]`
+  decisions 2026-09-14. Noise step done (sigma_seed about 23.5, sigma_meas
+  about 22 at 16 games per opponent). Developer chose the "Fast" package
+  2026-09-15: tuning at 2,784.1 priced seconds with 16 draws, grid 5 / 12
+  seeds with final checkpoints at 64 games per opponent. Running: tuning wave
+  1, B0 A1 A2 A3 A4 (`models/sweep/rep1_p2_tune1.log`). Then wave 2 at B0's
+  tuned lambda, then the driver's per-rung games setting and the
+  pre-registration before Pass 3 `[Now]`
   {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done

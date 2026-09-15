@@ -753,6 +753,23 @@ arms) with sigma_seed 23.5 and sigma_meas from pm:
 | 8 / 20 | 47 | 41 | 38 |
 | 10 / 24 | 43 | 37 | 34 |
 
+#### Stage 1 scope (developer decision 2026-09-15: the "Fast" package)
+
+- Tuning at B0's 2,560-game budget, 2,784.1 priced seconds, 16 draws (32 for
+  arms tuned jointly on a second hyperparameter): 224 runs, in two waves
+  because A5 to A8 train at B0's tuned lambda. Wave 1 is B0, A1, A2, A3, A4
+  (128 runs), wave 2 A5, A6, A7, A8 (96 runs).
+- Pass 3 grid: 5 seeds per arm, 12 of B0, at T_max, final checkpoints rated
+  at 64 games per panel opponent, earlier checkpoints at 16. Minimum
+  detectable effect about 48 Elo.
+- Throughput measured on the noise step: 10 T_max trainings at once took
+  3.97 hours (20:43 to 00:41), and rating 110 agents at 16 games per panel
+  opponent took 1.03 hours (00:46 to 01:49).
+
+Tuning wave 1 launched 2026-09-15: `-Step tune -Arms B0,A1,A2,A3,A4
+-TuneCpu 2784.1 -Draws 16 -GamesPerPair 16`, same panel and pin, log
+`models/sweep/rep1_p2_tune1.log`.
+
 The driver's `-Step cost` implements it. Each job resumes a published curve
 checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40
 games (A3: 8), with exactly 6 trainings running at every moment, filler B0
