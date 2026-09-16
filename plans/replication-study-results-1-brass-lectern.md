@@ -840,6 +840,67 @@ Tuning wave 2 launched 2026-09-15: `-Step tune -Arms A5,A6,A7,A8 -TuneCpu
 2784.1 -Draws 16 -GamesPerPair 16 -BaseLambda 0.6607`, same panel and pin, 96
 runs, log `models/sweep/rep1_p2_tune2.log`.
 
+#### The tuning surface is flat, and the draws over-provisioned
+
+A1's 32 draws, cut by the two settings that do separate: drop the 5 draws
+above lr 0.15, then split what is left by lambda.
+
+| cut | draws | mean Elo | sd | range |
+|---|---|---|---|---|
+| all | 32 | 993 | 80 | 780 to 1,083 |
+| lr <= 0.15 | 27 | 1,012 | 61 | 834 to 1,083 |
+| lr <= 0.15, lambda > 0.8 | 8 | 959 | 89 | 834 to 1,060 |
+| lr <= 0.15, lambda <= 0.8 | 19 | 1,034 | 20 | 1,007 to 1,083 |
+
+The 19 survivors spread 20 Elo. One draw's expected noise is 32 Elo
+(sigma_seed 23.4 with the fit's pm 21.5), so they are tighter than the noise
+and no draw among them is distinguishable from another. Any rate from 0.005
+to 0.145 at any lambda below 0.8 performs the same, and A1's best draw at
+1,083 is the top of a noise distribution rather than a peak. Two exclusions
+and a plateau is all the 32 draws established, and 16 would have shown both.
+The draw counts come from the plan's equal-budget fairness rule, not from an
+information argument, and a smaller shared budget would satisfy that rule
+equally. Developer observation 2026-09-15.
+
+#### Stage 1 scope, revised (developer decisions 2026-09-15)
+
+Per-run standard deviation at T_max is sigma_seed 23.5 combined with the
+rating error at G games per panel opponent, 8.6 at G = 64, so sigma is 25.0
+to 26.0. Contrast standard error is sigma sqrt(1/n_a + 1/n_0), the minimum
+detectable effect 3.5 of those (Dunnett over 8 arms), and the equivalence
+test needs a 90% CI half-width, 1.645 SE, inside the pre-registered margin
+of +/- 30 Elo:
+
+| seeds (arm / baseline) | grid runs | contrast SE | minimum detectable effect | 90% CI half-width |
+|---|---|---|---|---|
+| 2 / 6 | 24 | 21.2 | 76 | 34.9 |
+| 2 / 12 | 28 | 19.9 | 70 | 32.7 |
+| 3 / 12 | 36 | 16.8 | 59 | 27.6 |
+| 5 / 12 | 52 | 13.8 | 48 | 22.8 |
+| 8 / 16 | 80 | 11.3 | 39 | 18.5 |
+
+- **Grid: 3 seeds per arm, 12 for B0, 36 runs at T_max**, replacing the Fast
+  package's 5 / 12. The minimum detectable effect is 59 Elo. From the
+  extension's gaps against B0 at 10,240 games (A1 -6, A5 +14, A8 -14, A4 -44,
+  A6 +51, A7 -65, A2 -99, A3 -243), A2 and A3 are resolved, A7 is marginal,
+  and A4 and A6 most likely come back inconclusive. The pre-registration
+  states that in advance. 3 rather than 2 seeds is what keeps the equivalence
+  test usable: at 2 seeds the half-width is 32.7 and no arm could ever be
+  reported as a non-transfer, only as inconclusive.
+- **The learning-rate schedule gets one test before the grid.** The trainer
+  has `--lr-floor` with `--lr-decay-games` (and the same pair for explore),
+  every arm runs at a constant rate, and no study here has ever varied it.
+  It was excluded by the plan's rule that nothing but the tuned values differs
+  per arm, not by evidence, which is the axis-completeness gap the playbook's
+  Pass 2 checklist exists to catch. The sharper concern is that tuning ran at
+  2,560 games while the grid runs at 10,240, so every rate was chosen at a
+  quarter of the length it will be used at, and a decaying rate is exactly
+  what a longer run might want. The test is 3 seeds of B0 at T_max with the
+  rate decaying from its tuned 0.0572798, against the 12 constant-rate B0
+  seeds the grid runs anyway. If the decay wins it becomes a fixed shared
+  setting for every arm and the grid uses it. If not, the plan is unchanged
+  and the gap is closed by measurement rather than left as a limitation.
+
 The driver's `-Step cost` implements it. Each job resumes a published curve
 checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40
 games (A3: 8), with exactly 6 trainings running at every moment, filler B0

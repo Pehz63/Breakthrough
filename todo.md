@@ -210,7 +210,12 @@ win percentages among its own combinations, not ratings against outside programs
   half a decade upward with 8 more draws each. Running: tuning wave 2, A5 A6
   A7 A8 at lambda 0.6607 (`models/sweep/rep1_p2_tune2.log`). Then the d_min
   ladders and the A3 rerun, then the driver's per-rung games setting and the
-  pre-registration before Pass 3 `[Now]`
+  pre-registration before Pass 3. Grid revised 2026-09-15 to 3 seeds per arm
+  and 12 for B0, 36 runs at T_max, minimum detectable effect 59 Elo, which is
+  the smallest allocation that keeps the +/- 30 Elo equivalence test usable.
+  One learning-rate-schedule test first: 3 seeds of B0 at T_max with the rate
+  decaying from its tuned value, against the 12 constant-rate B0 seeds. A win
+  makes the decay a fixed shared setting for every arm `[Now]`
   {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7
   (Sutton 1988, TD-Gammon) before the pre-registration is committed~~ Done
