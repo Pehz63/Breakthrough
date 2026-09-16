@@ -202,9 +202,14 @@ win percentages among its own combinations, not ratings against outside programs
   decisions 2026-09-14. Noise step done (sigma_seed about 23.5, sigma_meas
   about 22 at 16 games per opponent). Developer chose the "Fast" package
   2026-09-15: tuning at 2,784.1 priced seconds with 16 draws, grid 5 / 12
-  seeds with final checkpoints at 64 games per opponent. Running: tuning wave
-  1, B0 A1 A2 A3 A4 (`models/sweep/rep1_p2_tune1.log`). Then wave 2 at B0's
-  tuned lambda, then the driver's per-rung games setting and the
+  seeds with final checkpoints at 64 games per opponent. Tuning wave 1 done
+  2026-09-15 (results doc, "Tuning wave 1 results"): B0's lambda is 0.6607,
+  and A3's d_min draws were not compute-matched. Developer decisions: rerun
+  A3 matched per draw off one priced curve ladder per d_min (arms A3d2, A3d4,
+  A3d8), keep the best-draw selection rule, widen B0's and A3's rate ranges
+  half a decade upward with 8 more draws each. Running: tuning wave 2, A5 A6
+  A7 A8 at lambda 0.6607 (`models/sweep/rep1_p2_tune2.log`). Then the d_min
+  ladders and the A3 rerun, then the driver's per-rung games setting and the
   pre-registration before Pass 3 `[Now]`
   {cpu: days, dev: medium}
 - ~~Read C2 (Baxter 1999 full text), C6 (symmetry augmentation source) and C7

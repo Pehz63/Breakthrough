@@ -770,6 +770,76 @@ Tuning wave 1 launched 2026-09-15: `-Step tune -Arms B0,A1,A2,A3,A4
 -TuneCpu 2784.1 -Draws 16 -GamesPerPair 16`, same panel and pin, log
 `models/sweep/rep1_p2_tune1.log`.
 
+#### Tuning wave 1 results
+
+Head `ab(deep=12,tt,ord,rem=70,retain,nodes=100k)@3`, study agents wear
+`.opener(rand,moves=8)@1`, scratch init, 32-agent panel
+`ranking/replication_panel.txt` pinned from `ranking/replication_panel_pin.tsv`,
+16 games per panel opponent with paired common openings, pinned fit
+`ranking/standings_rep1_pinned.tsv`. Every draw trained for 2,784.1 priced
+seconds. `verify-store` over the 128 tune agents: 4,096 pairs, 0 bad couples,
+min 512 stored rows and 503 distinct trajectories per agent. Full per-draw
+tables are `models/sweep/rep1_p2/tune_summary_wave1.txt`.
+
+| arm | learning-rate range | draws | games | best draw | Elo (pm) | position of the best rate in the range |
+|---|---|---|---|---|---|---|
+| B0 | 0.001 to 0.1 | 32 | 2,560 | 21: lr 0.0572798, lambda 0.6607 | 1,094 (22) | 0.88 |
+| A1 | 0.00316228 to 0.316228 | 32 | 2,586 | 3: lr 0.0170949, lambda 0.6762 | 1,083 (22) | 0.37 |
+| A2 | 0.001 to 0.1 | 16 | 2,551 | 6: lr 0.00790751 | 1,108 (22) | 0.45 |
+| A3 | 3.16228e-7 to 3.16228e-5 | 32 | 392 | 10: lr 1.71138e-5, dmin 1 | 805 (21) | 0.87 |
+| A4 | 0.0001 to 0.01 | 16 | 2,376 | 5: lr 0.00486557 | 946 (21) | 0.84 |
+
+A quadratic in log learning rate fitted to all of an arm's draws, as a second
+reading that one lucky draw moves less. Position is again the fraction of the
+way up the range:
+
+| arm | fitted peak position | learning rate there | fitted Elo at the peak | residual rmse | positions of the 5 best draws |
+|---|---|---|---|---|---|
+| B0 | 0.94 | 0.0755 | 1,058 | 26.3 | 0.88, 0.70, 0.77, 0.48, 0.83 |
+| A1 | 0.20 | 0.00804 | 1,040 | 67.8 | 0.37, 0.17, 0.12, 0.22, 0.72 |
+| A2 | 0.43 | 0.00741 | 1,082 | 23.6 | 0.45, 0.37, 0.48, 0.39, 0.44 |
+| A3 | 1.00 | 3.16e-5 | 814 | 20.9 | 0.87, 0.95, 0.77, 0.80, 0.88 |
+| A4 | 0.59 | 0.00152 | 923 | 24.0 | 0.84, 0.75, 0.44, 0.39, 0.66 |
+
+Adding lambda to the fit puts B0's optimum at 0.66 and A1's at 0.37, matching
+each arm's best draw (0.6607 and 0.6762 for B0 and A1). B0's tuned lambda for
+wave 2 is therefore 0.6607 on either rule.
+
+A3's d_min draws were not compute-matched, a defect in the driver. Games were
+fixed at 392 for every A3 draw, a count read off the d_min = 1 curve profile,
+but a larger d_min costs less per game:
+
+| d_min | draws | CPU seconds over the draws | mean Elo | best Elo |
+|---|---|---|---|---|
+| 1 | 13 | 3,233 to 3,671 | 755 | 805 |
+| 2 | 5 | 1,292 to 1,468 | 764 | 803 |
+| 4 | 5 | 549 to 627 | 766 | 787 |
+| 8 | 9 | 528 to 611 | 754 | 789 |
+
+So the d_min comparison in wave 1 is a compute comparison, and the d_min = 1
+draws bought about six times the training of the d_min = 8 draws. Nothing
+about d_min can be read off this table.
+
+Developer decisions 2026-09-15, after these results:
+
+- Rerun A3's tune compute-matched per draw. Each draw's game count now comes
+  from the priced curve ladder of its own d_min, which means one curve ladder
+  per d_min value. The driver takes those as the arm names A3d2, A3d4 and A3d8,
+  A3's recipe at that d_min under its own run keys, and `LadderOf` picks the
+  ladder for a draw.
+- Keep the plan's selection rule, the single best draw, rather than re-rating
+  the top draws with more seeds or taking the fitted peak. Per-draw rating
+  noise is about 32 Elo, so the chosen setting is optimistic by an unmeasured
+  amount, and the grid's own seeds are what the study concludes from.
+- Widen B0's and A3's learning-rate ranges upward, whose best draws and fitted
+  peaks both sit at the top. `-WidenArms B0,A3 -WidenDraws 8 -WidenUp 0.5` adds
+  8 draws spread over the half decade above each range, numbered from 101 so
+  they take their own run keys and seeds.
+
+Tuning wave 2 launched 2026-09-15: `-Step tune -Arms A5,A6,A7,A8 -TuneCpu
+2784.1 -Draws 16 -GamesPerPair 16 -BaseLambda 0.6607`, same panel and pin, 96
+runs, log `models/sweep/rep1_p2_tune2.log`.
+
 The driver's `-Step cost` implements it. Each job resumes a published curve
 checkpoint (default rungs 0, 80, 640, 1,280, 2,560, 5,120, 2 repeats) for 40
 games (A3: 8), with exactly 6 trainings running at every moment, filler B0

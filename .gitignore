@@ -311,3 +311,6 @@ models/sweep/*
 !models/sweep/slot705.txt
 !models/sweep/slot706.txt
 !models/sweep/slot707.txt
+
+# Python bytecode from the analysis layer
+__pycache__/

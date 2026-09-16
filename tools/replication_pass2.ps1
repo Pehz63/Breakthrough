@@ -14,6 +14,12 @@
 #          start e for A8) get the same budget again, drawn jointly with the
 #          rate. A5 to A8 differ from B0 in one switch, so they train at B0's
 #          tuned lambda (-BaseLambda).
+#          Draws are matched by PRICED SECONDS, per draw: A3's cost per game
+#          depends on d_min, so each A3 draw's game count comes from the priced
+#          curve ladder of its own d_min (arm names A3d2, A3d4, A3d8, which
+#          -Step curve trains). -WidenArms adds -WidenDraws more draws in the
+#          -WidenUp decades above an arm's locked range, for an arm whose best
+#          draw sat at the top of it.
 #   cost   prices each arm's training work from counts that do not depend on
 #          machine load. Every job resumes a published curve checkpoint for a
 #          few games with exactly -CostSlots trainings running (filler runs
@@ -78,7 +84,10 @@ param(
     [int]$TuneSeedBase = 5001,
     [double]$TuneCpu = 0,
     [int]$TuneGames = 0,
-    [double]$BaseLambda = -1
+    [double]$BaseLambda = -1,
+    [string]$WidenArms = "",
+    [double]$WidenUp = 0.5,
+    [int]$WidenDraws = 8
 )
 $ErrorActionPreference = "Stop"
 $Inv = [Globalization.CultureInfo]::InvariantCulture
@@ -112,6 +121,20 @@ $ArmSwitch = @{
 # Arms whose TD-Leaf backup reads lambda and that differ from B0 in one switch.
 $InheritLambda = @("A5", "A6", "A7", "A8")
 $DminSet = @(1, 2, 4, 8)
+# A3's cost per game falls as d_min rises, so matching draws by priced seconds
+# needs one priced curve ladder per d_min. A3dN is A3's recipe at d_min N, an
+# arm name the curve step accepts (-Arms A3d2,A3d4,A3d8) and the tune step reads
+# to size each A3 draw's game count. d_min 1 is A3's own published ladder.
+$VariantBase = @{}; $VariantExtra = @{}
+foreach ($d in $DminSet) {
+    if ($d -eq 1) { continue }
+    $VariantBase["A3d$d"] = "A3"; $VariantExtra["A3d$d"] = @("--tree-min-depth", "$d")
+}
+function BaseArm([string]$a) { if ($VariantBase.ContainsKey($a)) { return $VariantBase[$a] } return $a }
+# The curve ladder that prices arm $a's games, at hyperparameter value $hv.
+function LadderOf([string]$a, $hv) { if ($a -eq "A3" -and "$hv" -ne "" -and [int]"$hv" -ne 1) { return "A3d$hv" } return $a }
+$WidenList = @($WidenArms.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+function RangeWidth([string]$a) { if ($WidenList -contains $a) { return $Width + $WidenUp } return $Width }
 
 $out = New-Object System.Collections.Generic.List[string]
 function Say([string]$s) { Write-Host $s; $out.Add($s) }
@@ -150,8 +173,9 @@ function Weights($path) { @(Get-Content $path | Where-Object { $_ -notlike "teac
 # ladder of the same arm and seed whose checkpoint at that game count holds
 # identical weights: training is deterministic, so that is the same run.
 function Get-Priced([string]$arm, [string]$path, [int]$games) {
-    if ($null -eq $Prices -or -not $Prices.ContainsKey($arm)) { return $null }
-    $p = $Prices[$arm]
+    $pk = BaseArm $arm
+    if ($null -eq $Prices -or -not $Prices.ContainsKey($pk)) { return $null }
+    $p = $Prices[$pk]
     $t = Teacher $path
     $n = StampNum $t "nodes"; $m = StampNum $t "treemoves"
     if ($p.B -gt 0 -and $null -eq $m) {
@@ -205,7 +229,7 @@ $CurveRungList = @($CurveRungs.Split(",") | ForEach-Object { [int]$_ })
 function Get-Draws {
     $rng = New-Object System.Random($DrawSeed)
     $rows = @()
-    for ($d = 1; $d -le 2 * $Draws; $d++) { $rows += @{ D = $d; U = $rng.NextDouble(); V = $rng.NextDouble() } }
+    for ($d = 1; $d -le 2 * $Draws + $WidenDraws; $d++) { $rows += @{ D = $d; U = $rng.NextDouble(); V = $rng.NextDouble() } }
     "draw,u,v" | Out-File -FilePath "$Work/tune_draws.csv" -Encoding ascii
     foreach ($r in $rows) { "$($r.D),$($r.U.ToString('R', $Inv)),$($r.V.ToString('R', $Inv))" | Add-Content -Path "$Work/tune_draws.csv" -Encoding ascii }
     return $rows
@@ -215,7 +239,7 @@ function New-Run($arm, $seed, $draw, [double]$lrExp, $hName, $hVal, [int]$games,
     $key = if ($draw -gt 0) { "{0}_{1}_d{2:D2}" -f $Step, $arm, $draw } else { "{0}_{1}_s{2}" -f $Step, $arm, $seed }
     if ($Step -eq "curve") { $key += $CurveTag }
     $a = @("tdleaf") + $HeadFlags + @("--seed", "$seed", "--games", "$games", "--ckpt-at", ($rungs -join ","),
-        "--lr", (Lr $lrExp), "--out", "$StepDir/$key") + $ArmSwitch[$arm] + $extra
+        "--lr", (Lr $lrExp), "--out", "$StepDir/$key") + $ArmSwitch[(BaseArm $arm)] + $(if ($VariantExtra.ContainsKey($arm)) { $VariantExtra[$arm] } else { @() }) + $extra
     if ($arm -eq "A8") { $a += @("--ordinal-games", "$games") }
     $a = @($a | Where-Object { $null -ne $_ })   # an empty @() assigned from an if expression arrives as $null
     return [pscustomobject]@{ Key = $key; Arm = $arm; Seed = $seed; Draw = $draw; LrExp = $lrExp; Lr = (Lr $lrExp)
@@ -226,10 +250,12 @@ function Get-Runs {
     $runs = @()
     if ($Step -eq "curve") {
         foreach ($k in $ArmList) {
-            $extra = if ($k -eq "A7") { @("--explore", "0.1") } else { @() }
-            $h = @{ B0 = "lambda"; A1 = "lambda"; A3 = "dmin"; A7 = "epsilon"; A8 = "ordinal_start" }[$k]
-            $hv = @{ B0 = "0.7"; A1 = "0.7"; A3 = "1"; A7 = "0.1"; A8 = "0" }[$k]
-            $runs += New-Run $k $CurveSeed 0 ($RangeLo[$k] + $Width / 2) $h $hv $CurveRungList[-1] $CurveRungList $extra
+            $b = BaseArm $k
+            $extra = if ($b -eq "A7") { @("--explore", "0.1") } else { @() }
+            $h = @{ B0 = "lambda"; A1 = "lambda"; A3 = "dmin"; A7 = "epsilon"; A8 = "ordinal_start" }[$b]
+            $hv = @{ B0 = "0.7"; A1 = "0.7"; A3 = "1"; A7 = "0.1"; A8 = "0" }[$b]
+            if ($VariantBase.ContainsKey($k)) { $hv = $k.Substring($b.Length + 1) }
+            $runs += New-Run $k $CurveSeed 0 ($RangeLo[$b] + $Width / 2) $h $hv $CurveRungList[-1] $CurveRungList $extra
         }
     } elseif ($Step -eq "noise") {
         $na = @($NoiseArms.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -248,11 +274,17 @@ function Get-Runs {
             throw "tuning A5..A8 needs -BaseLambda: B0's tuned lambda, since they differ from B0 in one switch"
         }
         foreach ($k in $ArmList) {
-            $g = Get-ArmGames $k $TuneCpu $TuneGames
             $joint = @("B0", "A1", "A3", "A7", "A8") -contains $k
             $n = if ($joint) { 2 * $Draws } else { $Draws }
-            foreach ($dr in ($drawRows | Select-Object -First $n)) {
-                $e = $RangeLo[$k] + $Width * $dr.U
+            # The range's draws, then the widening draws: the same random rows,
+            # placed in the half decade (-WidenUp) above the locked range and
+            # numbered from 100 so they get their own run keys and seeds.
+            $rowsFor = @($drawRows | Select-Object -First $n | ForEach-Object { @{ R = $_; D = $_.D; E = $RangeLo[$k] + $Width * $_.U } })
+            if ($WidenList -contains $k) {
+                $rowsFor += @($drawRows | Select-Object -Last $WidenDraws | ForEach-Object { @{ R = $_; D = 100 + $_.D; E = $RangeLo[$k] + $Width + $WidenUp * $_.U } })
+            }
+            foreach ($row in $rowsFor) {
+                $dr = $row.R; $e = $row.E
                 $extra = @(); $h = ""; $hv = ""
                 if ($InheritLambda -contains $k) { $extra += @("--lambda", $BaseLambda.ToString("R", $Inv)) }
                 switch ($k) {
@@ -261,7 +293,10 @@ function Get-Runs {
                     "A7" { $h = "epsilon"; $hv = [Math]::Pow(10, -2 + $dr.V * [Math]::Log10(30)).ToString("0.#####", $Inv); $extra += @("--explore", $hv) }
                     "A8" { $h = "ordinal_start"; $hv = $dr.V.ToString("0.####", $Inv); $extra += @("--ordinal-start", $hv, "--ordinal-end", "1") }
                 }
-                $runs += New-Run $k ($TuneSeedBase + $dr.D - 1) $dr.D $e $h $hv $g @($g) $extra
+                # Compute-matched per draw, not per arm: A3's game count comes
+                # from the priced ladder of the draw's own d_min.
+                $g = Get-ArmGames (LadderOf $k $hv) $TuneCpu $TuneGames
+                $runs += New-Run $k ($TuneSeedBase + $row.D - 1) $row.D $e $h $hv $g @($g) $extra
             }
         }
     }
@@ -286,7 +321,7 @@ function Invoke-TrainJobs($jobs) {
 function Invoke-Train($runs) {
     $jobs = @()
     # Slowest arm first so it does not become the tail.
-    foreach ($r in (@($runs | Where-Object { $_.Arm -eq "A3" }) + @($runs | Where-Object { $_.Arm -ne "A3" }))) {
+    foreach ($r in (@($runs | Where-Object { (BaseArm $_.Arm) -eq "A3" }) + @($runs | Where-Object { (BaseArm $_.Arm) -ne "A3" }))) {
         if (Test-Path "$StepDir/$($r.Key)_g$($r.Games).txt") { continue }
         $jobs += @{ Exe = $Train; Args = $r.Args; Log = "$StepDir/$($r.Key).log" }
     }
@@ -602,7 +637,7 @@ function Invoke-Report {
         $cell = @{}; foreach ($x in $rows) { $cell["$($x.col)|$($x.rung)"] = $x }
         $hdr = ("{0,7}" -f "games") + (($arms | ForEach-Object { "{0,12}" -f $_ }) -join "")
         Say "Elo (pm) at each rung, 1 seed ($CurveSeed), each arm at the middle of its locked range:"
-        Say (("{0,7}" -f "lr") + (($arms | ForEach-Object { "{0,12}" -f (F ([Math]::Pow(10, $RangeLo[$colArm[$_]] + $Width / 2))) }) -join ""))
+        Say (("{0,7}" -f "lr") + (($arms | ForEach-Object { "{0,12}" -f (F ([Math]::Pow(10, $RangeLo[(BaseArm $colArm[$_])] + $Width / 2))) }) -join ""))
         Say $hdr
         foreach ($g in $rungs) {
             Say (("{0,7}" -f $g) + (($arms | ForEach-Object { $c = $cell["$_|$g"]; if ($c -and $null -ne $c.elo) { "{0,12}" -f ("{0:N0} ({1:N0})" -f $c.elo, $c.pm) } else { "{0,12}" -f "" } }) -join ""))
@@ -678,13 +713,15 @@ function Invoke-Report {
     } else {
         foreach ($a in @($rows | ForEach-Object { $_.arm } | Select-Object -Unique)) {
             $ar = @($rows | Where-Object { $_.arm -eq $a } | Sort-Object { [double]::Parse($_.lr, $Inv) })
-            $lo = $RangeLo[$a]
-            Say ("$a, range [{0}, {1}], {2} draws, {3} games each:" -f (Lr $lo), (Lr ($lo + $Width)), $ar.Count, $ar[0].rung)
-            Say ("{0,6}{1,12}{2,16}{3,10}{4,14}" -f "draw", "lr", $(if ($ar[0].hname) { $ar[0].hname } else { "" }), "cpu s", "Elo (pm)")
-            foreach ($x in $ar) { Say ("{0,6}{1,12}{2,16}{3,10:N1}{4,14}" -f $x.draw, $x.lr, $x.hval, $x.cpu, $(if ($null -ne $x.elo) { "{0:N0} ({1:N0})" -f $x.elo, $x.pm } else { "" })) }
+            $lo = $RangeLo[(BaseArm $a)]
+            $wid = RangeWidth $a
+            $gs = @($ar | ForEach-Object { [int]$_.rung } | Sort-Object -Unique)
+            Say ("$a, range [{0}, {1}], {2} draws, {3} games each:" -f (Lr $lo), (Lr ($lo + $wid)), $ar.Count, $(if ($gs.Count -eq 1) { $gs[0] } else { "$($gs[0])..$($gs[-1]), compute-matched per draw" }))
+            Say ("{0,6}{1,12}{2,16}{3,8}{4,10}{5,14}" -f "draw", "lr", $(if ($ar[0].hname) { $ar[0].hname } else { "" }), "games", "cpu s", "Elo (pm)")
+            foreach ($x in $ar) { Say ("{0,6}{1,12}{2,16}{3,8}{4,10:N1}{5,14}" -f $x.draw, $x.lr, $x.hval, $x.rung, $x.cpu, $(if ($null -ne $x.elo) { "{0:N0} ({1:N0})" -f $x.elo, $x.pm } else { "" })) }
             $best = $ar | Where-Object { $null -ne $_.elo } | Sort-Object { - $_.elo } | Select-Object -First 1
             if ($best) {
-                $pos = ([Math]::Log10([double]::Parse($best.lr, $Inv)) - $lo) / $Width
+                $pos = ([Math]::Log10([double]::Parse($best.lr, $Inv)) - $lo) / $wid
                 $edge = if ($pos -lt 0.1 -or $pos -gt 0.9) { "  EDGE: best rate within 0.2 decades of the range end" } else { "" }
                 Say ("  best draw {0}: lr {1} ({2:N2} of the way up the range){3} {4}" -f $best.draw, $best.lr, $pos, $(if ($best.hname) { ", $($best.hname) $($best.hval)" } else { "" }), $edge)
             }
