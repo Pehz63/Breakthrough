@@ -31,11 +31,64 @@ Chosen: Track A as the project, with two stretch stages appended.
 | 2 | Full rules, grabbable pieces, hot-seat human vs human, pressable UI | No, this is the MVP |
 | 3 | AI opponent from the project engine, plus hint display | Degradable, not droppable |
 | 4 | Manual alignment to a physical board, tap-to-enter position, move arrows | Yes |
-| 5 | Passthrough Camera API board reading (computer vision) | Yes, expected to be dropped |
+| 5 | Passthrough Camera API board reading (computer vision) | Yes |
 
 The cut line sits after stage 2. A build that stops there is still a complete
 mixed reality application. Stage 3 degrades rather than drops: if the engine
 integration stalls, a weak C# evaluator still produces an opponent.
+
+## Decisions resolved (2026-09-16)
+
+Three questions were open when the stage table above was drafted. All three are
+now answered, and the answers change the plan materially.
+
+**Schedule: 6 to 12 weeks.** Stages 0 through 4 are the planned deliverable.
+Stage 5 is attempted only if 0 through 4 are complete with time remaining, and
+is still expected to be the stage that gets cut. Breadth detours are budgeted
+deliberately rather than taken as slack fillers, with the Depth API insert
+after stage 1 as the first one.
+
+**The demo may rely on a PC on the LAN.** This is the single largest risk
+reduction available to the project. Route B (engine as a LAN server) becomes
+the SHIPPED answer for stage 3 rather than a fallback, which means the native
+Android plugin is no longer on the critical path at all. It is reclassified
+from a required port to an optional learning exercise, attempted after stage 4
+if the schedule allows. A second benefit: the engine binary serving the demo is
+byte-identical to the one the Elo ladder rated, so any strength claim made
+about the opponent transfers without qualification.
+
+**A physical board with 32 pieces is obtainable.** Stages 4 and 5 stay in
+scope and the piece-count row drops out of the blocking risks. See "Physical
+set" below for what to actually acquire, since the choice has direct
+consequences for stage 5's difficulty.
+
+Net effect: the riskiest engineering task (cross-compiling the engine to ARM64)
+left the critical path, and the two stretch stages both survived. Effort freed
+from the port should go to stage 2 polish and stage 4, not to starting stage 5
+early.
+
+## Physical set
+
+Stages 4 and 5 both need an 8x8 board and 16 pieces per side. The cheapest
+option that is also the best option for stage 5 is a printed board rather than
+a bought one:
+
+- A large-format matte print of an 8x8 grid, with ArUco fiducial markers at the
+  four corners. Matte matters, since a glossy board produces specular
+  highlights under room lighting that break per-cell classification. The
+  fiducials give stage 5 a robust pose without depending on detecting the board
+  outline, which is the single largest source of CV risk.
+- Dark squares that are NOT black. Green, deep red, or mid brown all preserve
+  contrast against a black piece. A black disk on a black square is the
+  low-contrast case that makes stage 5 hard, and it is avoidable for free at
+  this step.
+- Large squares, on the order of 2 inches or more, so each cell occupies more
+  camera pixels at a natural seated viewing distance.
+- 32 plain plastic discs or poker chips in two colors, with matte tops.
+
+A bought checkers set works for stage 4 (which needs no vision at all) as long
+as two sets are combined to reach 16 per side, but it is a worse substrate for
+stage 5 on every axis above.
 
 ## Stage detail
 
@@ -101,8 +154,9 @@ table through the headset.
 
 ### Stage 3 - The engine opponent
 
-Two routes, both laid out below under "Engine integration". Decision deferred
-until stage 2 lands.
+Route B (engine as a LAN server) is the shipped answer, settled 2026-09-16.
+See "Engine integration" below for both routes and why the native port left the
+critical path.
 
 - Agent selection from a small curated list, mirroring `gui/presets.txt`
   (Easy / Medium / Hard).
@@ -125,13 +179,12 @@ recommended move is drawn over the real board.
 This delivers the experience the developer described in the original second
 idea while carrying none of its risk.
 
-Physical set note: Breakthrough needs 16 pieces per side. A standard checkers
-or draughts set has 12 per side, so one set cannot represent a Breakthrough
-opening position. Resolve this before stage 4 by acquiring a second set, using
-a different piece type, or defining a reduced-piece variant and rating it
-separately. This constraint applies to stage 5 equally.
+Physical set note: Breakthrough needs 16 pieces per side, confirmed against
+`boards/board1.txt`, while a standard checkers or draughts set has 12. See the
+"Physical set" section above for what to acquire and why the choice matters
+more to stage 5 than to this stage.
 
-### Stage 5 - Camera board reading (stretch, expected to be dropped)
+### Stage 5 - Camera board reading (stretch)
 
 Passthrough Camera API, available from Horizon OS v74 on Quest 3 and 3S,
 surfaces camera frames to Unity as a `WebCamTexture` with pose and intrinsics.
@@ -209,18 +262,36 @@ Con: requires the PC to be on and on the same network, is not a shippable
 standalone app, and adds latency. Acceptable for a course demo where the
 developer controls the demo environment, not acceptable for distribution.
 
-### Recommended sequencing
+### Chosen sequencing (settled 2026-09-16)
 
-Stand up Route B first so stage 3 never blocks on a toolchain problem, then
-attempt Route A once the game itself is complete. If Route A lands, the server
-becomes a development convenience. If it does not, the demo still works.
+Route B is the shipped answer. The demo is permitted to rely on a PC on the
+LAN, which removes the only requirement that would have forced the native port.
 
-Decision criteria, evaluated after stage 2:
-- If schedule pressure is high at that point, ship Route B and stop.
-- If the NDK build produces a working `.so` within one focused attempt, take
-  Route A.
-- If the demo must run without a PC present, Route A is mandatory and should
-  be started immediately rather than deferred.
+Route A is reclassified as an optional learning exercise, attempted after stage
+4 and only if the schedule allows. If it lands, the server becomes a
+development convenience and the app gains the ability to run standalone. If it
+never happens, nothing in the deliverable is missing.
+
+This ordering is not a compromise. Route B keeps the demo running the exact
+engine binary the Elo ladder rated, so a claim like "the Hard preset is the
+strongest rated agent at 1227 in the 2026-09-06 fit" transfers to the demo
+without needing to re-rate a recompiled ARM64 build. A native port would
+require re-measuring before any such claim could be repeated, since a different
+compiler and instruction set can change search behavior at a node budget.
+
+Practical requirements for Route B:
+- A defined wire protocol carrying a position and returning a move. The
+  position format should be the engine's own board text (see `boards/`) plus
+  side to move, so the server side is thin.
+- The agent is selected by canonical ID string, so the Easy / Medium / Hard
+  presets are exactly the `gui/presets.txt` lines rather than a reimplementation
+  of them.
+- The headset must behave when the server is unreachable. A visible connection
+  state in the UI panel, and a fallback to the stage 2 C# evaluator, so the
+  demo degrades instead of hanging.
+- Demo-day hazard: campus and venue Wi-Fi frequently blocks peer-to-peer
+  traffic between clients. Test on the actual demo network well before the
+  deadline, and carry a travel router or a phone hotspot as a backup.
 
 ### On-device performance
 
@@ -252,9 +323,12 @@ for the deadline can be traded against learning value rather than guessed at.
 
 Stage 3's native plugin route is the highest learning value per unit of time
 outside of stage 2, because native interop generalizes well beyond this
-project. The Depth API for real-object occlusion is a cheap add at any point
-after stage 1 and is a strong visual upgrade for a demo, so it is a good
-candidate to insert if the schedule allows.
+project. It is now optional rather than required, which makes it the natural
+place to spend schedule slack once stage 4 is done.
+
+The Depth API for real-object occlusion is a cheap add at any point after stage
+1 and is the largest visual upgrade per unit of effort available for a demo. It
+is the first breadth detour to take, ahead of anything in stage 5.
 
 ## Repository layout question (open)
 
@@ -278,19 +352,33 @@ research work.
 | Android build pipeline friction | High | Budget the whole first session for it and nothing else |
 | Meta SDK version churn breaks tutorials | Medium | Pin Unity and Meta XR SDK versions, record them in the repo |
 | Table not in the user's room scan | Medium | Pinch-to-place fallback built before the MRUK path |
-| Engine will not cross-compile to ARM64 | Medium | Route B exists precisely for this. The Emscripten build is evidence against it |
-| On-device search too slow at desktop budgets | Medium | Wall-clock budget instead of node budget, measured on-device |
-| Stage 5 consumes the schedule | High | Stage 5 is explicitly expected to be dropped, and stage 4 delivers its user-facing value without it |
-| Physical set has 12 pieces per side, not 16 | Blocking for stages 4 and 5 | Resolve before stage 4 starts |
+| Demo-network Wi-Fi blocks headset-to-PC traffic | Medium | Test on the real demo network early, carry a travel router or hotspot |
+| Stage 5 consumes the schedule | High | Stage 5 is the designated cut, and stage 4 delivers its user-facing value without it |
+
+Retired risks, kept for the record:
+
+- *Engine will not cross-compile to ARM64.* Off the critical path as of
+  2026-09-16, since Route B is the shipped answer and the native port is
+  optional.
+- *On-device search too slow at desktop budgets.* Same reason. It returns if
+  Route A is attempted, and the mitigation is a wall-clock budget rather than a
+  node budget, set from an on-device measurement.
+- *Physical set has 12 pieces per side, not 16.* Resolved, a set can be
+  obtained. See "Physical set".
 
 ## Open questions
 
-- The course due date, needed to place the cut line on the stage table.
-- Whether the demo must run standalone with no PC present, which forces the
-  native plugin route.
-- Whether a physical board and 32 pieces can be obtained, which gates stages 4
-  and 5.
-- Repository layout, per the section above.
+All three scope questions were resolved on 2026-09-16, see "Decisions
+resolved". Remaining:
+
+- Repository layout. Provisionally option 1, an `xr/` subfolder on this branch
+  with a Unity `.gitignore` layered in, on the grounds that it keeps the engine
+  and the client in one history. Cheap to reverse until Unity files exist.
+- The wire protocol for Route B, to be specified before stage 3 starts.
+- Whether the on-device us/node measurement is worth taking even though Route A
+  is optional. It is a real datapoint for the research side and needs only a
+  throwaway NDK build rather than a full plugin, so it may be worth doing
+  independently of whether the plugin ever ships.
 
 ## Ideas this inspired
 
