@@ -25,9 +25,11 @@ rank.
 - **Gap-colored arrows** (native and web). `ArrowColor` in `main_gui.cpp`
   colors each arrow, score pill, and Analysis-tab line from the gap to the best
   line, measured as a share of the eval bar for the side to move. It runs green
-  at no gap, through yellow, to red at `ARROW_RED_GAP` = 0.25 of the bar (450
+  at no gap, through yellow, to red at `ARROW_RED_GAP` = 1/12 of the bar (150
   points on the learned evaluators' +/-900 scale). Rank still shows in arrow
-  width.
+  width. The first version put red at 0.25 of the bar (450 points). In play,
+  a 220-point gap (860 against 640) was hard to see, so the developer asked
+  for a color change 2-4x stronger, and the scale was tightened 3x.
 - **Measurement hooks** (web build). `window.__anaLog` gets one record per
   completed analysis depth: wall and compute ms, nodes, top-3 scores, and why
   the run stopped. `window.__anaStarts` gets the moves behind each analysed
@@ -227,12 +229,14 @@ depth 7 under SwiftShader, 8 on the GPU.
   every human move during a deep search triggers a restart. Measure the restart
   latency, from spawn to the first new snapshot, in a real browser to decide
   whether a warm spare analysis worker is worth its memory.
-- **`ARROW_RED_GAP` = 0.25 is a judgment call.** Over 119 Watch positions at
+- **`ARROW_RED_GAP` = 1/12 is a judgment call.** Over 119 Watch positions at
   depth 5-7, the gap from best to second had a median of 50 points and a p90 of
-  368. The gap from best to third had a median of 123 and a p90 of 617. So at
-  the median the top three run green to yellow-green, and about one position in
-  ten shows red. Whether that matches what a player finds useful is the
-  developer's call after playing with it.
+  368. The gap from best to third had a median of 123 and a p90 of 617. With
+  red at 150 points, the median second move is yellow-green (a third of the
+  way to red) and the median third move is orange (82% of the way). The share
+  of positions showing red at this setting was not recomputed. Whether it
+  matches what a player finds useful is the developer's call after playing
+  with it.
 
 ## Ideas This Inspired
 

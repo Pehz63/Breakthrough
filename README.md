@@ -196,7 +196,8 @@ and the one-time Pages setting.
 - **Recommended moves.** With analysis on (**A**), arrows show the best moves for
   the side to move, thickest first. Color shows how much worse each is than the
   best: green for the best and anything nearly as good, shading through yellow
-  to red for a move a quarter of the eval bar worse or more. Each carries its
+  to red for a move a twelfth of the eval bar worse or more (150 points for
+  the learned evaluators). Each carries its
   score, and a dashed red arrow shows the opponent's best reply to the top
   move. Scores are white-centric: positive favors White, and a forced win shows as
   `+WIN` / `-WIN`. The **eval bar** left of the board shows the top score as

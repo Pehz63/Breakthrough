@@ -135,12 +135,11 @@ static const BoardTheme BOARD_THEMES[] = {
 };
 static const int BOARD_THEME_COUNT = (int)(sizeof(BOARD_THEMES) / sizeof(BOARD_THEMES[0]));
 
-// Arrow colors by rank: best, second, third, the rest.
 // Recommended-move arrows are colored by how far each falls short of the best
 // move, measured as a share of the eval bar for the side to move: green at no
-// gap, through yellow, to red at ARROW_RED_GAP (a quarter of the bar, 450
+// gap, through yellow, to red at ARROW_RED_GAP (a twelfth of the bar, 150
 // points on the learned evaluators' +/-900 scale). Rank shows in arrow width.
-static const float ARROW_RED_GAP = 0.25f;
+static const float ARROW_RED_GAP = 1.0f / 12.0f;
 static const unsigned char ARROW_ALPHA[4] = { 225, 210, 195, 180 };
 static const Color COL_REPLY = { 230,  70,  70, 170 };
 
