@@ -206,9 +206,10 @@ and the one-time Pages setting.
   them, every root move with its score and best reply at the deepest completed
   depth.
 - **View tab.** Piece colors (Classic, Red / Blue, Blue / Red, Gold / Purple),
-  board colors (Wood, Slate, Green, Blue), flip board (**F**), coordinates,
-  last-move highlight, legal-move dots, per-agent readouts (**E**), the slider
-  design switch, and **Simple mode** (the web layout, also available natively).
+  board colors (Wood, Slate, Green, Blue), flip board (**F**), coordinates (files
+  a-h, rows 1-8), last-move highlight, legal-move dots, per-agent readouts
+  (**E**), the slider design switch, and **Simple mode** (the web layout, also
+  available natively).
 - **Human moves.** Click a piece and then its destination, or drag it. Legal
   destinations show as dots (rings for captures). **Undo** (**U** or Ctrl+Z)
   takes back to your previous turn.
@@ -579,3 +580,7 @@ Enter moves as `c1d` where:
 - `d` = destination column (letter)
 
 Example: `d2e` moves the piece at column d, row 2 diagonally to column e.
+
+The console numbers rows 0-7, with White's back row as row 0, as its printed
+board shows. The GUI labels the same rows 1-8 and writes its move list that way,
+so the console's `d2e` is `d3e` in the GUI.

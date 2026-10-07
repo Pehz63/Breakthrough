@@ -47,12 +47,12 @@ From the project root in PowerShell:
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 New-Item -ItemType Directory -Force third_party | Out-Null
 Invoke-WebRequest `
-  -Uri "https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_msvc16.zip" `
+  -Uri "https://github.com/raysan5/raylib/releases/download/6.0/raylib-6.0_win64_msvc16.zip" `
   -OutFile third_party\raylib.zip
 tar -xf third_party\raylib.zip -C third_party
 ```
 
-This creates `third_party\raylib-5.5_win64_msvc16\` with `include\` and `lib\`,
+This creates `third_party\raylib-6.0_win64_msvc16\` with `include\` and `lib\`,
 which is exactly the path `build_gui.bat` expects.
 
 > Note: the prebuilt raylib is compiled against the **dynamic** CRT, so the GUI is
@@ -95,15 +95,15 @@ recognized". The SDK takes about 1 GB.
 
 ### 3b. Build raylib for the web (one time)
 
-There is no official prebuilt web library, so compile raylib once with emcc. With
-the emsdk environment active:
+Compile raylib once with the same emcc that builds the page. With the emsdk
+environment active:
 
 ```powershell
-git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git third_party\raylib-src
+git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib.git third_party\raylib-src
 cd third_party\raylib-src\src
-emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c utils.c `
+emcc -c rcore.c rshapes.c rtextures.c rtext.c rmodels.c raudio.c `
   -Os -Wall -DPLATFORM_WEB -DGRAPHICS_API_OPENGL_ES2 -I.
-emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o utils.o
+emar rcs libraylib.a rcore.o rshapes.o rtextures.o rtext.o rmodels.o raudio.o
 cd ..\..\..
 # Lay it out where build_web.bat expects it:
 New-Item -ItemType Directory -Force third_party\raylib-web\lib, third_party\raylib-web\include | Out-Null
@@ -140,7 +140,7 @@ has a tracked `Docs/` folder, and Windows treats the two names as the same
 folder.
 
 The repo publishes it with GitHub Pages through `.github/workflows/web.yml`. The
-workflow installs the emsdk and raylib 5.5 on an Ubuntu runner, runs
+workflow installs the emsdk and raylib 6.0 on an Ubuntu runner, runs
 `build_web.sh`, and deploys `build/web`. It runs on every push to `main` that
 touches `gui/`, `src/`, `boards/`, or the build files, and from the Actions tab
 on demand. One-time setup on GitHub: **Settings -> Pages -> Build and

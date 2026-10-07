@@ -52,6 +52,18 @@ Web build specifics (`build_web.bat`):
 - Timers use `GetTime()` differences, never a sum of `GetFrameTime()`. On the
   web, raylib's `GetFrameTime()` covers only the frame's own work, not the
   browser's wait between frames, so a summed delay runs many times too long.
+- raylib 6.0 or newer on the web. raylib 5.5's resize callback resized the
+  canvas without telling Emscripten's GLFW layer, and `libglfw.js` maps every
+  mouse event through `GLFW.active.width / canvas width`. GLFW kept the
+  `InitWindow` size (1280x820), so in any other window size the game read the
+  mouse scaled toward the top-left corner (a 1436x919 window put the center
+  78 px left and 50 px up), and a devicePixelRatio change (dragging the browser
+  to a monitor with another scale factor) reset the canvas to 1280x820. raylib
+  fixed it upstream (PR #5115, in 6.0). `web_shot.ps1` runs Chrome at 1280x860,
+  close to the `InitWindow` size, so its screenshots would not show a
+  regression; check the mapping at another viewport size with
+  `Browser.calculateMouseCoords(x, y)` against `GLFW.active.width/height` in
+  the page console.
 - No `SetWindowMinSize` on the web. raylib's web resize callback sizes the
   canvas to `window.innerWidth x innerHeight` but clamps it to the minimum, so
   the native 900x640 minimum held the canvas wider than a phone's screen and
@@ -132,7 +144,7 @@ Local, gitignored files the native GUI writes next to the exe:
 ```powershell
 .\tools\smoke_test_gui.ps1 -Build     # build, run hidden, screenshot to build\gui_smoke.png
 .\tools\gui_shot.ps1 -All             # every scenario -> build\gui_shots\*.png
-.\tools\gui_shot.ps1 -Scenario analysis -Moves "c1c,f6f"
+.\tools\gui_shot.ps1 -Scenario analysis -Moves "c2c,f7f"
 ```
 
 Both run the exe in `--capture` mode: the window is created hidden, nothing takes

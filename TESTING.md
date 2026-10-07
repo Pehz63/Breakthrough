@@ -112,13 +112,14 @@ edits:
 ```powershell
 .\tools\gui_shot.ps1 -All                                  # every scenario -> build\gui_shots\*.png
 .\tools\gui_shot.ps1 -Scenario editor                      # one scenario
-.\tools\gui_shot.ps1 -Scenario "view,red,flip" -Moves "c1c,f6f"
+.\tools\gui_shot.ps1 -Scenario "view,red,flip" -Moves "c2c,f7f"
 ```
 
 Scenarios: `library`, `standings`, `presets`, `editor`, `models`, `analysis`,
 `view`, `simple`, `aivai` (two presets at 4x), `red` (Red / Blue pieces), `flip`,
-`nopanel`, `hard` (Black = the Hard preset). `--moves` plays moves in engine
-notation first (`c1c` = c1 to c2). Capture mode starts from defaults and never
+`nopanel`, `hard` (Black = the Hard preset). `--moves` plays moves first, in
+the GUI's notation: rows 1-8 as the board labels them (`c2c` = c2 to c3), where
+the console engine numbers rows 0-7. Capture mode starts from defaults and never
 reads or writes `gui_settings.txt`, favorites, or history. To read small glyphs,
 zoom the PNG with **nearest-neighbor** (no smoothing).
 
@@ -170,8 +171,9 @@ fresh profile (or a cache-busting query) after every rebuild: a reused profile
 can serve the previous `index.wasm` from its cache.
 
 Board orientation truth (useful when checking click-to-move and coordinates): on
-`board1.txt`, **Black is at the top** (rows 6-7) and **White is at the bottom**
-(rows 0-1), moving upward. This is what the screen actually shows.
+`board1.txt`, **Black is at the top** (engine rows 6-7, labeled 7-8 in the GUI)
+and **White is at the bottom** (engine rows 0-1, labeled 1-2), moving upward.
+This is what the screen actually shows.
 
 ### Rebuild lock (LNK1104)
 

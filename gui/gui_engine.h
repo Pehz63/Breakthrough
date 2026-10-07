@@ -57,7 +57,7 @@ int  guiLegalMoves(const GuiPos& p, GuiMove* out);                  // capacity 
 int  guiApplyMove(GuiPos& p, const GuiMove& m);                     // flips side; returns guiWinner after it
 int  guiWinner(const GuiPos& p);                                    // White / Black / None
 void guiCountPieces(const GuiPos& p, int& white, int& black);
-std::string guiMoveText(const GuiMove& m);                          // engine notation, e.g. "a1b"
+std::string guiMoveText(const GuiMove& m);                          // rows 1-8 as on the board labels, e.g. "a2b" from row y=1
 bool guiLoadBoardFile(const std::string& path, GuiPos& out, std::string& err);
 
 // ============================================================

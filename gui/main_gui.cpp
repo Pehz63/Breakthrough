@@ -989,7 +989,7 @@ static void DrawBoard() {
             DrawText(lbl, tx, g_boardY + g_boardPx + 5, fs, COL_LABEL);
         }
         for (int y = 0; y < SIZE; y++) {
-            const char *lbl = TextFormat("%d", y);
+            const char *lbl = TextFormat("%d", y + 1);   // rows 1-8, engine row y
             Rectangle r = SquareRect(0, y);
             DrawText(lbl, g_boardX - fs - 6, (int)(r.y + g_cell / 2 - fs / 2), fs, COL_LABEL);
         }
@@ -2402,7 +2402,7 @@ static void PlayMovesText(const std::string &list) {
         p = (q == std::string::npos) ? list.size() : q + 1;
         if (t.size() < 3 || g_state == AppState::GameOver) continue;
         GuiMove m;
-        m.sx = t[0] - 'a'; m.sy = t[1] - '0'; m.dx = t[2] - 'a';
+        m.sx = t[0] - 'a'; m.sy = t[1] - '1'; m.dx = t[2] - 'a';   // guiMoveText's rows 1-8
         m.dy = m.sy + (g_pos.side == White ? 1 : -1);
         if (guiIsLegal(g_pos, m.sx, m.sy, m.dx)) ApplyMove(m);
     }

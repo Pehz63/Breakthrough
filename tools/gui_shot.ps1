@@ -8,7 +8,7 @@
 #
 # Examples:
 #   .\tools\gui_shot.ps1                                   # default scenario -> build\gui_shots\default.png
-#   .\tools\gui_shot.ps1 -Scenario analysis -Moves "c1c,f6f"
+#   .\tools\gui_shot.ps1 -Scenario analysis -Moves "c2c,f7f"
 #   .\tools\gui_shot.ps1 -All                              # every scenario below, in parallel
 #
 # Scenarios (comma-separated, applied in order): library, standings, presets,
@@ -48,10 +48,10 @@ function Start-Shot([string]$name, [string]$scen, [string]$mv, [int]$frames, [st
 $procs = @()
 if ($All) {
     $set = @(
-        @("default", "", "c1c,f6f"), @("analysis", "analysis", "c1c,f6f,b1c"), @("library", "library", ""),
+        @("default", "", "c2c,f7f"), @("analysis", "analysis", "c2c,f7f,b2c"), @("library", "library", ""),
         @("standings", "standings", ""), @("presets", "presets", ""), @("editor", "editor", ""),
-        @("models", "models", ""), @("simple", "simple", "d1d"), @("aivai", "aivai", ""),
-        @("view", "view,red,flip", "c1c")
+        @("models", "models", ""), @("simple", "simple", "d2d"), @("aivai", "aivai", ""),
+        @("view", "view,red,flip", "c2c")
     )
     foreach ($s in $set) {
         $f = if ($s[0] -eq "aivai" -or $s[0] -eq "models") { 420 } else { $Frames }

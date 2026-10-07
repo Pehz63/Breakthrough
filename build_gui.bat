@@ -1,9 +1,9 @@
 @echo off
 REM Build the native (Windows/MSVC) Breakthrough GUI.
 REM Requires Visual Studio with the C++ toolset and the prebuilt raylib in
-REM third_party\raylib-5.5_win64_msvc16 (see README for download instructions).
+REM third_party\raylib-6.0_win64_msvc16 (see README for download instructions).
 setlocal
-set RAYLIB=third_party\raylib-5.5_win64_msvc16
+set RAYLIB=third_party\raylib-6.0_win64_msvc16
 
 REM Locate and enter the Visual Studio build environment (provides cl).
 for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VSPATH=%%i

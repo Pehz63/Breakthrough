@@ -118,7 +118,8 @@ int guiApplyMove(GuiPos& p, const GuiMove& m) {
 std::string guiMoveText(const GuiMove& m) {
     if (!m.valid()) return "--";
     char buf[8];
-    std::snprintf(buf, sizeof(buf), "%c%d%c", (char)('a' + m.sx), m.sy, (char)('a' + m.dx));
+    // Rows print 1-8, matching the board labels, while the engine indexes them 0-7.
+    std::snprintf(buf, sizeof(buf), "%c%d%c", (char)('a' + m.sx), m.sy + 1, (char)('a' + m.dx));
     return buf;
 }
 
