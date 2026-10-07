@@ -166,6 +166,20 @@ Two headless Chrome shortcuts give misleading pictures of this page:
 - `--timeout=N --screenshot` does not wait N ms. The shot is taken about a
   second after load.
 
+Analysis depth and agent move cost: `.\tools\web_ana_bench.ps1 -Gpu -Pages
+"p=mode=white&hints=1" -Seconds 70` saves the page's per-depth analysis log to
+`build\web_bench\p.json`. Add `&engine=inline` to the query to measure the
+inline fallback in the same build, and `&moves=c2c,f7f` to analyse another
+position. Without `-Gpu`, SwiftShader's CPU rendering slows the analysis
+worker by about 2.5x.
+
+`web_shot.ps1`'s default run loads three pages at once in software-rendered
+Chrome, which saturates the CPU enough that the engine workers miss their 4 s
+startup deadline and the pages play on the inline engine (`gui/CLAUDE.md`, "Web
+engine workers"). The screenshots still check the page, but not the workers.
+To check the workers, load one page at a time, or use `web_ana_bench.ps1`
+(worker records in its logs carry `worker: 1`).
+
 `web_shot.ps1` uses a fresh profile per run. When driving Chrome by hand, use a
 fresh profile (or a cache-busting query) after every rebuild: a reused profile
 can serve the previous `index.wasm` from its cache.

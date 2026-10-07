@@ -2019,6 +2019,14 @@ optimum is a surface, not a point. Replace single sweeps with a search that maps
 - GUI analysis speed: split the root moves across several `rank.exe`-style worker processes so
   multi-line analysis reaches deeper per second. One engine thread scores the root moves one
   after another today `[Later]` {cpu: minutes, dev: high}
+- ~~Web page analysis stopped at depth 7-8: it ran inside the frame loop, so it refused any depth
+  whose per-root-move search was predicted over 120 ms `[Now]` {cpu: seconds, dev: high}~~ Done
+  2026-10-06: the page runs agent moves and analysis in two Web Workers
+  (`plans/web-engine-workers-results-1-quiet-lantern.md`).
+- Web analysis: score the root moves on a pool of analysis workers
+  (`navigator.hardwareConcurrency - 2`), each taking the next unscored root move, the web form of
+  the item above. Each worker has its own TT, so check the nodes-per-depth cost of losing the shared
+  table before claiming the speedup `[Later]` {cpu: seconds, dev: medium}
 - GUI: a "rush" or pondering option for agents, where the agent searches during the human's
   turn (the analysis thread already has the machinery) `[Later]` {cpu: seconds, dev: medium}
 - ~~Web page hosting: pick where `build\web\` is published (see the questions in

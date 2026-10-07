@@ -9,7 +9,8 @@ the full GUI verification playbook is in `TESTING.md`.
 The GUI is an additive layer over the engine. Native: `.\build_gui.bat` ->
 `breakthrough_gui.exe` (needs the prebuilt raylib in `third_party/`, see
 `INSTALL.md`). Web: `.\build_web.bat` -> `build\web\index.html` (+ `.js`,
-`.wasm`, `.data`), `.\build_web.bat dev` for a debug build. It needs the emsdk
+`.wasm`, `.data`) and `build\web\engine_worker.js` (+ `.wasm`, `.data`),
+`.\build_web.bat dev` for a debug build. It needs the emsdk
 and a raylib-for-web `libraylib.a` (`INSTALL.md` section 3), and activates
 `third_party\emsdk` itself when `emcc` is not on PATH. `build_web.sh` is the
 same build for Linux and macOS (it honors an `OUTDIR` environment variable), and
@@ -30,11 +31,27 @@ src\explorers.cpp src\choosers.cpp src\ranking.cpp src\ai_gumbel.cpp`.
 `src/ranking.h`) is available on both platforms and there are no
 `PLATFORM_WEB` feature forks beyond the ones listed below.
 
+The web build makes a second program, the engine worker: `gui\gui_engine.cpp`
+with `-DGUI_ENGINE_WORKER`, the engine link set, and the same five `src\`
+files, without raylib, `main_gui.cpp`, or `gui_library.cpp`. Keep its source
+list in step with the page's.
+
 Web build specifics (`build_web.bat`):
 - `em++`, not `emcc`, or the link fails on undefined C++ runtime symbols.
 - `-fwasm-exceptions`, because a few engine parsers use `try { std::stoi } catch (...)`.
 - `-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=128MB -sSTACK_SIZE=8MB`. The
   default Emscripten stack is far too small for the recursive search.
+- The engine worker is built with `-sENVIRONMENT=worker`, 64 MB initial memory
+  (the transposition table is 24 MB, allocated on first use), exports
+  `_wk_message` / `_wk_pump` / `_malloc` / `_free` and `HEAPU8`, and takes
+  `gui\engine_worker_pre.js` as `--pre-js`: the message pump that queues
+  commands until the runtime is ready, then alternates "read every queued
+  command" with "run one unit of work". It preloads the same model files as
+  the page, not `boards/` or `presets.txt`.
+- No `SharedArrayBuffer` and no pthreads. Both need the page served with
+  cross-origin isolation headers (COOP/COEP), which GitHub Pages cannot send.
+  This is why a running search in a worker cannot be stopped from the page
+  (see "Web engine workers" below).
 - Preloads `boards/`, `gui/presets.txt`, `models/lin_value.txt`,
   `models/lin_policy.txt`, and every model file a preset names
   (`tools\web_preloads.ps1` prints the `--preload-file` list, mirroring
@@ -72,7 +89,8 @@ Web build specifics (`build_web.bat`):
   (`IsMouseButtonPressed` / `Released` / `Down`) and the mouse position, so
   taps, drags, and raygui buttons work with no touch-specific code. A tap whose
   touchstart and touchend both land between two frames is lost, which can only
-  happen during a long frame (an agent's move job). `shell.html` sets
+  happen during a long frame (an agent's move job, in the inline fallback
+  only). `shell.html` sets
   `touch-action: none` on the canvas, and `g_noHover` (from the
   `(hover: none)` media query) turns off the board's hover highlight, which
   would otherwise stay on the last square touched.
@@ -119,19 +137,69 @@ copy of the position:
   aborted step does not pollute the table. The aborted step is discarded and
   retried after the move.
 - MSVC's `rand()` state is per thread, so the engine thread seeds its own.
-- **Web** (no pthreads): the same API, but `engTick()` runs the work inline: a
-  move job completes within one frame, and analysis runs in slices of about
-  10 ms per frame, declining to start a depth whose predicted step exceeds
-  120 ms.
+
+### Web engine workers
+
+On the web the page runs no engine work. `gui_engine.cpp` is compiled twice:
+into the page (`GUI_ENGINE_CLIENT`), where the public API forwards each job,
+and into `engine_worker.js` (`GUI_ENGINE_WORKER`), which runs the service
+above with no thread, one unit of work per macrotask. The page starts two
+copies of the worker:
+
+- **Move worker**: agent moves only. A move job is bounded by the agent's own
+  node budget, so it is never cut short. `engCancelMove` drops the result by
+  request id, and a new request waits behind a running one. Its transposition
+  table holds only that game's agent entries (cleared by `engNewGame`), so
+  analysis never evicts them, which is closer to `rank.exe`'s `playOneGame`
+  than the native GUI's shared table.
+- **Analysis worker**: the arrows and the eval bar. It runs with no per-step
+  cap (`s_webStepCapMs = 0`), so it deepens until the depth limit, the
+  Analysis tab's time limit, or a proven result, as natively.
+
+A worker reads commands only between units, so a long root-move search cannot
+be aborted from the page (no shared memory to write `g_nodeDeadline` through).
+The worker acknowledges every analysis command when it reads it. If the
+acknowledgement is more than `WK_ANA_RESPAWN_MS` (150 ms) late, the page
+terminates the analysis worker, starts a fresh one, and resends the command.
+The grace period starts when the fresh worker reports ready, so a slow load
+does not trigger another restart. A restart loses only the analysis TT.
+
+Wire format: each message is a flat byte array of trivially copyable fields
+(`GuiPos`, `AgentSpec`, `EngAnalysisConfig`, `EngLine`) in a fixed order
+(`WkWriter` / `WkReader`, the `CMD_*` and `MSG_*` enums). Both ends are the same
+file built by the same compiler, so the struct layouts match. The worker posts a
+snapshot when the request, depth, or state changes, and progress within a
+depth at most every 100 ms.
+
+If a worker cannot be created (for example a page opened from `file://`),
+reports an error, or has not reported ready `WK_START_MS` (4 s) after it was
+started, the page falls back to the inline engine for the rest of the session
+(`clientFallback`, which logs a console warning), re-queuing the move and the
+analysis that were in flight. A worker is ready 100-400 ms after it starts on an
+idle machine. With three headless Chromes rendering in software at once (the
+default `web_shot.ps1` run), worker startup took 13 s to over 2 minutes, and
+before the deadline existed the page sat on "thinking" until it finished. `?engine=inline` forces that path, for comparisons in one build. The
+inline engine runs a move job inside one frame, and runs analysis in slices of
+about 10 ms per frame, declining to start a depth whose predicted step exceeds
+120 ms (`?anacap=<ms>` changes that cap, 0 = none).
+
+Measurement: `tools\web_ana_bench.ps1` reads `window.__anaLog` (one record per
+completed depth: wall and compute ms, nodes, top-3 scores, why it stopped),
+`window.__anaStarts` (the moves behind each analysed position), and
+`window.__moveLog` (each agent move job), which both engine paths write. Worker
+records carry `worker: 1`. Measure with `-Gpu`: SwiftShader's software
+rendering runs on the CPU, and at the worker build's full frame rate it competed
+with the analysis worker for cores, which cut its nodes per ms by about 2.5x.
 
 ## File details
 
 | File | Purpose |
 |---|---|
-| `main_gui.cpp` | The front end. Sections are marked `// ===` (grep it). **State:** `PlayerConfig` per side (Human, or an `AgentSpec` + canonical id + optional label), `g_pos` / `g_history` / `g_moves` (position, undo stack, move log), `AppState` (`WaitingForHuman`, `WaitingBeforeAI`, `ComputingAI`, `GameOver`, `Stopped`). **Flow:** `StartGame`, `ApplyMove` (shared by human and agent moves), `Undo` (back to the last human turn, one move and a pause in agent vs agent), `LaunchAIMove` -> `engRequestMove`, polled with `engTakeMoveResult` and applied by `FinalizeAIMove`. **Analysis:** `UpdateAnalysis` restarts the engine's analysis whenever the position or the settings hash (`AnalysisHash`) changes and stops it when unwanted. `DrawArrows` draws the top N lines (green / amber / orange / gray by rank, width by rank), white-centric score pills, and a dashed red reply to the best line. `DrawEvalBar` sits left of the board (learned evaluators map linearly over +/-900, heuristics through tanh at 2.5 chips). **Panel:** Play / Analysis / View tabs (`DrawPlayTab`, `DrawAnalysisTab`, `DrawViewTab`), or simple mode (`DrawSimplePanel`, which switches to `DrawSimplePanelCompact` when the panel is shorter than `SIMPLE_FULL_H`: three rows of buttons, then the status, the rules, the level note, and the move list, each only where it fits). **Layout:** `ComputeLayout` sizes the board for two layouts and picks one each frame. The side layout has the panel left and the badge strip right. The stacked layout (`g_stacked`, simple mode only, taken when its board cell is more than 1.15x the side layout's, as on a phone held upright) puts the board across the width under the top bar, a badge row above and below it (`DrawSideRow`), and the compact panel underneath. The stacked top bar drops the Hide button, and `PanelShown()` counts the panel as shown there. **Modals:** agent library (`DrawLibrary`), agent editor (`DrawAgentEditor`, canonical id box + structured fields, both views of one `AgentSpec`), model picker (`DrawModelPicker`), save favorite. Open dropdowns go through `DeferDropdown` / `FlushDropdowns` so their lists draw on top and lock the controls under them. **Widgets:** `StepperRow` with five bar+number designs (`StepStyle`), forced globally by the View tab's Sliders switch. **Style:** `ApplyDarkStyle` sets raygui's DEFAULT palette to match the app's dark panels. **Persistence:** `SaveAllSettings` / `LoadStartupSettings` via `gui_settings.txt` (players as canonical ids). **Capture mode:** `--capture <png> [--frames N] [--size WxH] [--scenario a,b] [--moves m1,m2]` renders into a hidden window's offscreen texture and saves the last frame (`ParseArgs`, `ApplyScenario`, `PlayMovesText`), reading and writing none of the user's files. **Web:** simple mode only, hints off at start, URL options `?mode=white|black|watch&level=easy|medium|hard&hints=0|1` (`ApplyWebUrlOptions`). |
-| `gui_engine.h/.cpp` | The engine service described above, plus the pure `GuiPos` rule helpers (`guiIsLegal`, `guiLegalMoves`, `guiApplyMove`, `guiWinner`, `guiCountPieces`, `guiMoveText`, `guiLoadBoardFile`). Includes no raylib header. |
+| `main_gui.cpp` | The front end. Sections are marked `// ===` (grep it). **State:** `PlayerConfig` per side (Human, or an `AgentSpec` + canonical id + optional label), `g_pos` / `g_history` / `g_moves` (position, undo stack, move log), `AppState` (`WaitingForHuman`, `WaitingBeforeAI`, `ComputingAI`, `GameOver`, `Stopped`). **Flow:** `StartGame`, `ApplyMove` (shared by human and agent moves), `Undo` (back to the last human turn, one move and a pause in agent vs agent), `LaunchAIMove` -> `engRequestMove`, polled with `engTakeMoveResult` and applied by `FinalizeAIMove`. **Analysis:** `UpdateAnalysis` restarts the engine's analysis whenever the position or the settings hash (`AnalysisHash`) changes and stops it when unwanted. `DrawArrows` draws the top N lines, colored by `ArrowColor` from how far each falls short of the best line (the gap in eval-bar share for the side to move, green at 0 through yellow to red at `ARROW_RED_GAP`, 0.25 of the bar), width by rank, white-centric score pills, and a dashed red reply to the best line. The Analysis tab's line list uses the same colors. `DrawEvalBar` sits left of the board (learned evaluators map linearly over +/-900, heuristics through tanh at 2.5 chips). **Panel:** Play / Analysis / View tabs (`DrawPlayTab`, `DrawAnalysisTab`, `DrawViewTab`), or simple mode (`DrawSimplePanel`, which switches to `DrawSimplePanelCompact` when the panel is shorter than `SIMPLE_FULL_H`: three rows of buttons, then the status, the rules, the level note, and the move list, each only where it fits). **Layout:** `ComputeLayout` sizes the board for two layouts and picks one each frame. The side layout has the panel left and the badge strip right. The stacked layout (`g_stacked`, simple mode only, taken when its board cell is more than 1.15x the side layout's, as on a phone held upright) puts the board across the width under the top bar, a badge row above and below it (`DrawSideRow`), and the compact panel underneath. The stacked top bar drops the Hide button, and `PanelShown()` counts the panel as shown there. **Modals:** agent library (`DrawLibrary`), agent editor (`DrawAgentEditor`, canonical id box + structured fields, both views of one `AgentSpec`), model picker (`DrawModelPicker`), save favorite. Open dropdowns go through `DeferDropdown` / `FlushDropdowns` so their lists draw on top and lock the controls under them. **Widgets:** `StepperRow` with five bar+number designs (`StepStyle`), forced globally by the View tab's Sliders switch. **Style:** `ApplyDarkStyle` sets raygui's DEFAULT palette to match the app's dark panels. **Persistence:** `SaveAllSettings` / `LoadStartupSettings` via `gui_settings.txt` (players as canonical ids). **Capture mode:** `--capture <png> [--frames N] [--size WxH] [--scenario a,b] [--moves m1,m2]` renders into a hidden window's offscreen texture and saves the last frame (`ParseArgs`, `ApplyScenario`, `PlayMovesText`), reading and writing none of the user's files. **Web:** simple mode only, hints off at start, URL options `?mode=white|black|watch&level=easy|medium|hard&hints=0|1` (`ApplyWebUrlOptions`), plus measurement options `&moves=c2c,f7f` (play these moves after the first game starts), `&anacap=<ms>` (the inline engine's per-step cap), and `&engine=inline` (skip the workers). `UpdateAnalysis` logs each analysed position's moves to `window.__anaStarts`. |
+| `gui_engine.h/.cpp` | The engine service described above (native thread, web workers, inline fallback), plus the pure `GuiPos` rule helpers (`guiIsLegal`, `guiLegalMoves`, `guiApplyMove`, `guiWinner`, `guiCountPieces`, `guiMoveText`, `guiLoadBoardFile`). Includes no raylib header. |
 | `gui_library.h/.cpp` | Where agent ids come from, all plain text files read on the UI thread: `ranking/standings.tsv` (header-driven columns, active roster by head), `ranking/CHAMPION.md`'s Summary table, `gui/presets.txt`, `gui_favorites.txt`, `gui_agent_history.txt` (30 most recent). Also the model catalog (a background scan of every slot file via `rankSlotFile`, header lines only, each slot tagged with its best standings Elo), board file discovery, and `gui_settings.txt` key=value settings. |
 | `presets.txt` | Curated agents: `role | name | canonical id | description`. Roles `easy` / `medium` / `hard` are simple mode's difficulties and `watch_white` / `watch_black` its Watch matchup. Every learned model a preset names is bundled into the web build. |
+| `engine_worker_pre.js` | The engine worker's `--pre-js`: queues the page's commands until the runtime is ready, hands each to `_wk_message`, and runs one `_wk_pump` unit per macrotask (a `MessageChannel` post), so commands are read between root-move searches. |
 | `raygui.h` | Vendored single-header raygui 4.0 (`RAYGUI_IMPLEMENTATION` in `main_gui.cpp`). |
 | `shell.html` | Emscripten page shell: a full-window canvas (the app is resizable, so raylib sizes the canvas to the browser window), `touch-action: none` and no long-press selection on the canvas, and a loading line. |
 | `web_models/` | Byte-exact copies of the preset model files the web build bundles, at their `models/...` relative paths. `.gitattributes` turns off line-ending conversion. Refresh with `tools\web_preloads.ps1 -Sync`. |
@@ -159,4 +227,5 @@ Watch, Hard, and Easy in hidden headless Chrome, into `build\web_shots\`).
 `-Device 390x760` emulates a phone with touch, and `-Steps` taps and drags on
 it (`TESTING.md`, "Web build check"). For a live look,
 `python -m http.server -d build\web` and open
-`http://127.0.0.1:8000/?mode=watch&hints=1`.
+`http://127.0.0.1:8000/?mode=watch&hints=1`. Analysis depth and agent move
+cost: `.\tools\web_ana_bench.ps1 -Gpu` (see "Web engine workers").

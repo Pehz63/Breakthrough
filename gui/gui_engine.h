@@ -21,8 +21,12 @@
 // analysis step is aborted and retried after the move. The abort works by
 // forcing the search's node deadline (see engTick in gui_engine.cpp).
 //
-// Web (Emscripten, no threads): the same API runs the work inline from
-// engTick(), a bounded slice of analysis per frame and a move job in one frame.
+// Web (Emscripten): the page runs no engine work itself. The same API forwards
+// jobs to two Web Workers, one for agent moves and one for analysis, each a
+// separate build of gui_engine.cpp with its own engine globals (see "WEB ENGINE
+// WORKERS" in gui_engine.cpp). If the workers cannot start, the page falls back
+// to running the work inline from engTick(): a bounded slice of analysis per
+// frame, and a move job in one frame.
 //
 // This header deliberately includes no raylib header, and gui_engine.cpp is the
 // only GUI file that includes ml_eval.h (whose class Model collides with
@@ -124,3 +128,4 @@ int  engStartAnalysis(const GuiPos& p, const EngAnalysisConfig& cfg);   // repla
 void engStopAnalysis();
 bool engAnalysisSnapshot(EngAnalysis& out);                    // false when none was started
 bool engAnalysisRunning();
+void engSetWebStepCap(double ms);   // web only: per-root-move cost cap in ms (default 120, 0 = none)

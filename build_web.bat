@@ -7,7 +7,8 @@ REM      activates third_party\emsdk itself when that folder exists.
 REM   2. A web build of raylib at third_party\raylib-web\lib\libraylib.a with
 REM      headers in third_party\raylib-web\include.
 REM
-REM Output: build\web\index.html (+ .js, .wasm, .data). Any static file host can
+REM Output: build\web\index.html (+ .js, .wasm, .data) and the engine worker
+REM build\web\engine_worker.js (+ .wasm, .data). Any static file host can
 REM serve that folder. Local test:  python -m http.server -d build\web
 REM
 REM The page is the GUI's simple mode: play White or Black against the Easy /
@@ -63,6 +64,25 @@ em++ gui\main_gui.cpp gui\gui_engine.cpp gui\gui_library.cpp ^
 
 if errorlevel 1 (
     echo Web build FAILED.
+    exit /b 1
+)
+
+REM The engine worker: the same engine compiled without raylib, which the page
+REM runs as two Web Workers (agent moves, analysis). See gui/CLAUDE.md.
+em++ gui\gui_engine.cpp ^
+   src\globals.cpp src\board_io.cpp src\settings.cpp src\board_analysis.cpp ^
+   src\moves.cpp src\ai_eval.cpp src\ai_random.cpp src\ai_minimax.cpp ^
+   src\ml_features.cpp src\ml_model.cpp src\ml_eval.cpp src\ml_cluster.cpp ^
+   src\datastore.cpp src\transposition.cpp ^
+   src\agents.cpp src\explorers.cpp src\choosers.cpp src\ranking.cpp src\ai_gumbel.cpp ^
+   -I src -I gui ^
+   -fwasm-exceptions -sENVIRONMENT=worker -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=8MB %OPTFLAGS% ^
+   -sEXPORTED_FUNCTIONS=_malloc,_free,_wk_message,_wk_pump -sEXPORTED_RUNTIME_METHODS=HEAPU8 ^
+   --pre-js gui\engine_worker_pre.js %PRELOADS% ^
+   -o %OUTDIR%\engine_worker.js -DPLATFORM_WEB -DGUI_ENGINE_WORKER
+
+if errorlevel 1 (
+    echo Engine worker build FAILED.
     exit /b 1
 )
 echo Web build OK -^> %OUTDIR%\index.html

@@ -84,6 +84,7 @@ for the full verification playbook, including what to look for visually.
 | `gui/presets.txt` | Curated GUI agents, including the web page's Easy / Medium / Hard |
 | `gui/raygui.h` | Vendored single-header raygui widget library |
 | `gui/shell.html` | Emscripten HTML shell for the web build |
+| `gui/engine_worker_pre.js` | Message pump for the web build's engine workers |
 | `gui/web_models/` | Byte-exact copies of the preset agents' model files, bundled into the web build |
 
 ## Running
@@ -130,7 +131,7 @@ Get-Process breakthrough_gui -EA 0 | Stop-Process -Force; .\build_gui.bat; if ($
 ### Web build
 
 ```powershell
-.\build_web.bat                      # release -> build\web\index.html (+ .js/.wasm/.data)
+.\build_web.bat                      # release -> build\web\index.html (+ .js/.wasm/.data, engine_worker.*)
 python -m http.server -d build\web   # then open http://localhost:8000
 ```
 
@@ -161,8 +162,8 @@ and the one-time Pages setting.
   left has three tabs: **Play**, **Analysis**, and **View**. **Tab** (or the
   top-left button) hides it so the board can grow.
 - The window never freezes: agent moves and the live analysis run on a separate
-  engine thread (native). The web build runs the same work in short slices
-  between frames.
+  engine thread (native). The web page runs them in two Web Workers, one for
+  agent moves and one for analysis.
 - **Players.** Each side is **Human** or **Agent**. An agent is any agent the
   project's canonical ID grammar (`src/ranking.h`) can express, the same ids
   `ranking/roster.txt` and `rank.exe` use. Each side card shows the agent's name
@@ -193,8 +194,10 @@ and the one-time Pages setting.
 - **Changing an agent mid-game** takes effect from its next move. **New Game**
   restarts, and also loads the board chosen in the **Board** dropdown.
 - **Recommended moves.** With analysis on (**A**), arrows show the best moves for
-  the side to move: green for the best, then amber, orange, and gray. Each carries
-  its score, and a dashed red arrow shows the opponent's best reply to the top
+  the side to move, thickest first. Color shows how much worse each is than the
+  best: green for the best and anything nearly as good, shading through yellow
+  to red for a move a quarter of the eval bar worse or more. Each carries its
+  score, and a dashed red arrow shows the opponent's best reply to the top
   move. Scores are white-centric: positive favors White, and a forced win shows as
   `+WIN` / `-WIN`. The **eval bar** left of the board shows the top score as
   White's share. The analysis deepens continuously in the background and restarts

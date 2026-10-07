@@ -136,9 +136,12 @@ static const BoardTheme BOARD_THEMES[] = {
 static const int BOARD_THEME_COUNT = (int)(sizeof(BOARD_THEMES) / sizeof(BOARD_THEMES[0]));
 
 // Arrow colors by rank: best, second, third, the rest.
-static const Color ARROW_COLORS[4] = {
-    {  84, 210, 120, 225 }, { 240, 190,  70, 205 }, { 236, 132,  64, 190 }, { 170, 176, 196, 165 },
-};
+// Recommended-move arrows are colored by how far each falls short of the best
+// move, measured as a share of the eval bar for the side to move: green at no
+// gap, through yellow, to red at ARROW_RED_GAP (a quarter of the bar, 450
+// points on the learned evaluators' +/-900 scale). Rank shows in arrow width.
+static const float ARROW_RED_GAP = 0.25f;
+static const unsigned char ARROW_ALPHA[4] = { 225, 210, 195, 180 };
 static const Color COL_REPLY = { 230,  70,  70, 170 };
 
 // ============================================================
@@ -676,6 +679,15 @@ static bool AnalysisWanted() {
            g_state == AppState::ComputingAI || g_state == AppState::Stopped;
 }
 
+#if defined(PLATFORM_WEB)
+// The measurement log's position record: which moves led to analysis `req`.
+EM_JS(void, WebAnaStartLog, (int req, const char *moves), {
+    var L = window.__anaStarts || (window.__anaStarts = []);
+    if (L.length >= 20000) L.splice(0, 10000);
+    L.push({ req: req, moves: UTF8ToString(moves), t: performance.now() });
+});
+#endif
+
 // Keep the engine's analysis on the displayed position with the current
 // settings: restart it when either changes, stop it when unwanted.
 static void UpdateAnalysis() {
@@ -689,6 +701,11 @@ static void UpdateAnalysis() {
         g_anaPos = g_pos;
         g_anaCfgHash = h;
         g_anaRequest = engStartAnalysis(g_pos, AnalysisConfig());
+#if defined(PLATFORM_WEB)
+        std::string mv;
+        for (size_t i = 0; i < g_moves.size(); i++) { if (i) mv += ","; mv += guiMoveText(g_moves[i]); }
+        WebAnaStartLog(g_anaRequest, mv.c_str());
+#endif
     }
     EngAnalysis s;
     if (engAnalysisSnapshot(s) && s.request == g_anaRequest) { g_anaSnap = s; g_anaSnapValid = true; }
@@ -907,6 +924,18 @@ static void DrawScorePill(Vector2 at, const std::string &txt, Color edge) {
     DrawText(txt.c_str(), (int)(r.x + 5), (int)(r.y + 3), fs, COL_NUM);
 }
 
+static float EvalFraction(int v);
+
+static Color ArrowColor(int score, int best, int side, int rank) {
+    float fb = EvalFraction(best), fs = EvalFraction(score);
+    float gap = (side == White) ? fb - fs : fs - fb;
+    float t = gap / ARROW_RED_GAP;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    Color c = ColorFromHSV(130.0f * (1.0f - t), 0.62f, 0.86f);
+    c.a = ARROW_ALPHA[rank < 3 ? rank : 3];
+    return c;
+}
+
 static void DrawArrows() {
     if (!g_ana.on || g_ana.arrows <= 0 || !g_anaSnapValid || g_anaSnap.depth < 1) return;
     if (g_state == AppState::GameOver) return;
@@ -917,7 +946,7 @@ static void DrawArrows() {
         DrawArrow(SquareCenter(L[0].reply.sx, L[0].reply.sy), SquareCenter(L[0].reply.dx, L[0].reply.dy),
                   g_cell * 0.07f, COL_REPLY, true);
     for (int k = n - 1; k >= 0; k--) {
-        Color c = ARROW_COLORS[k < 3 ? k : 3];
+        Color c = ArrowColor(L[k].score, L[0].score, g_anaSnap.side, k);
         float w = g_cell * (k == 0 ? 0.13f : (k == 1 ? 0.10f : 0.08f));
         Vector2 a = SquareCenter(L[k].move.sx, L[k].move.sy), b = SquareCenter(L[k].move.dx, L[k].move.dy);
         DrawArrow(a, b, w, c, false);
@@ -926,7 +955,7 @@ static void DrawArrows() {
         for (int k = n - 1; k >= 0; k--) {
             Vector2 a = SquareCenter(L[k].move.sx, L[k].move.sy), b = SquareCenter(L[k].move.dx, L[k].move.dy);
             Vector2 at = { a.x + (b.x - a.x) * 0.45f, a.y + (b.y - a.y) * 0.45f };
-            DrawScorePill(at, FormatEval(L[k].score), ARROW_COLORS[k < 3 ? k : 3]);
+            DrawScorePill(at, FormatEval(L[k].score), ArrowColor(L[k].score, L[0].score, g_anaSnap.side, k));
         }
     }
 }
@@ -1599,7 +1628,7 @@ static void DrawAnalysisTab(float x, float y, float w) {
         const EngLine &L = s.lines[i];
         std::string t = TextFormat("%2d. %-4s %7s", (int)i + 1, guiMoveText(L.move).c_str(), FormatEval(L.score).c_str());
         if (L.reply.valid()) t += "   " + guiMoveText(L.reply);
-        Color c = (int)i < g_ana.arrows ? ARROW_COLORS[i < 3 ? i : 3] : COL_DIM;
+        Color c = (int)i < g_ana.arrows ? ArrowColor(L.score, s.lines[0].score, s.side, (int)i) : COL_DIM;
         c.a = 255;
         DrawText(t.c_str(), (int)x, (int)y, 13, c);
         y += 16;
@@ -2525,11 +2554,32 @@ EM_JS(int, WebPrimaryPointerNoHover, (), {
     return (window.matchMedia && window.matchMedia('(hover: none)').matches) ? 1 : 0;
 });
 
+// Measurement options, for tools that drive the page (window.__anaLog):
+//   &moves=c2c,f7f   play these moves after the page's first game starts
+//   &anacap=<ms>     the analysis's per-root-move cost cap (0 = none, default 120)
+// Returns a malloc'd string ("" when absent), freed by the caller.
+EM_JS(char *, WebUrlParam, (const char *name), {
+    var v = new URLSearchParams(window.location.search).get(UTF8ToString(name));
+    return stringToNewUTF8(v === null ? "" : v);
+});
+
+static std::string WebUrlString(const char *name) {
+    char *p = WebUrlParam(name);
+    std::string s = p ? p : "";
+    std::free(p);
+    return s;
+}
+
+static std::string g_webMoves;
+
 static void ApplyWebUrlOptions() {
     int packed = WebUrlOptionsPacked();
     if (packed & 3)         g_simpleMode = (packed & 3) - 1;
     if ((packed >> 2) & 3)  g_simpleLevel = ((packed >> 2) & 3) - 1;
     if ((packed >> 4) & 3)  g_ana.on = ((packed >> 4) & 3) == 2;
+    g_webMoves = WebUrlString("moves");
+    std::string cap = WebUrlString("anacap");
+    if (!cap.empty()) engSetWebStepCap(std::atof(cap.c_str()));
 }
 #endif
 
@@ -2586,6 +2636,7 @@ int main(int argc, char **argv) {
     }
 
 #if defined(PLATFORM_WEB)
+    if (!g_webMoves.empty()) PlayMovesText(g_webMoves);
     emscripten_set_main_loop(UpdateDrawFrame, 0, 1);
 #else
     SetTargetFPS(60);

@@ -8,7 +8,8 @@
 # third_party/raylib-web/include, and PowerShell (pwsh) for
 # tools/web_preloads.ps1, which lists and hash-checks the bundled model files.
 #
-# Output: build/web/index.html (+ .js, .wasm, .data).
+# Output: build/web/index.html (+ .js, .wasm, .data) and the engine worker
+# build/web/engine_worker.js (+ .wasm, .data).
 # Pass "dev" as the first argument for a debug build (assertions + source map).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -42,6 +43,20 @@ em++ gui/main_gui.cpp gui/gui_engine.cpp gui/gui_library.cpp \
    -fwasm-exceptions -sUSE_GLFW=3 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=128MB -sSTACK_SIZE=8MB $OPTFLAGS \
    --preload-file boards --preload-file gui/presets.txt@gui/presets.txt $PRELOADS \
    --shell-file gui/shell.html -o "$OUTDIR/index.html" -DPLATFORM_WEB
+
+# The engine worker: the same engine compiled without raylib, which the page
+# runs as two Web Workers (agent moves, analysis). See gui/CLAUDE.md.
+em++ gui/gui_engine.cpp \
+   src/globals.cpp src/board_io.cpp src/settings.cpp src/board_analysis.cpp \
+   src/moves.cpp src/ai_eval.cpp src/ai_random.cpp src/ai_minimax.cpp \
+   src/ml_features.cpp src/ml_model.cpp src/ml_eval.cpp src/ml_cluster.cpp \
+   src/datastore.cpp src/transposition.cpp \
+   src/agents.cpp src/explorers.cpp src/choosers.cpp src/ranking.cpp src/ai_gumbel.cpp \
+   -I src -I gui \
+   -fwasm-exceptions -sENVIRONMENT=worker -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=8MB $OPTFLAGS \
+   -sEXPORTED_FUNCTIONS=_malloc,_free,_wk_message,_wk_pump -sEXPORTED_RUNTIME_METHODS=HEAPU8 \
+   --pre-js gui/engine_worker_pre.js $PRELOADS \
+   -o "$OUTDIR/engine_worker.js" -DPLATFORM_WEB -DGUI_ENGINE_WORKER
 
 echo "Web build OK -> $OUTDIR/index.html"
 echo "Serve locally with:  python3 -m http.server -d $OUTDIR"

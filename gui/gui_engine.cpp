@@ -6,6 +6,7 @@
 //   MOVE JOB           one agent move, mirroring src/ranking.cpp's playOneGame dispatch
 //   ANALYSIS JOB       iterative-deepening multi-line analysis, one root move per step
 //   SERVICE            job queue, abort protocol, native thread / web inline driver
+//   WEB ENGINE WORKERS the page's move and analysis workers and their wire format
 
 #include "gui_engine.h"
 #include "ai_eval.h"        // g_evaluators, g_evalCount
@@ -29,6 +30,13 @@
 #include <condition_variable>
 #else
 #define GUI_ENGINE_THREADED 0
+#include <emscripten.h>
+#if !defined(GUI_ENGINE_WORKER)
+#define GUI_ENGINE_CLIENT 1         // the page: jobs go to two engine workers
+#endif
+#endif
+#if !defined(GUI_ENGINE_CLIENT)
+#define GUI_ENGINE_CLIENT 0
 #endif
 
 typedef std::chrono::steady_clock EngClock;
@@ -299,6 +307,7 @@ struct AnalysisRun {
     unsigned long long nodes = 0;
     EngClock::time_point t0, depthT0;
     double lastDepthMs = 0.0;
+    double computeMs = 0.0, depthComputeMs = 0.0;   // time inside computeStep only
 };
 
 struct StepOut {
@@ -391,6 +400,42 @@ static bool isWinFor(int side, int score) {
     return side == White ? score >= WhiteWin - 1024 : score <= BlackWin + 1024;
 }
 
+// Why an analysis run ended (the web log's `stop` field).
+enum AnaStop { ANA_GOING = 0, ANA_MAX_DEPTH, ANA_PROVEN, ANA_WEB_CAP, ANA_MAX_SECONDS };
+
+#if !GUI_ENGINE_THREADED
+// Web measurement log, read from the page as window.__anaLog (one record per
+// completed depth or run end) and window.__moveLog (one per agent move job).
+// Wall ms span frames, so they include rendering and the browser's idle time
+// between slices. Compute ms count only the engine's own work.
+// In an engine worker the record is posted to the page, which appends it to the
+// same array (engWkSpawn). There `t` is on the worker's own clock.
+EM_JS(void, webAnaLog, (int req, int depth, int moves, double depthWallMs, double depthComputeMs,
+                        double wallMs, double computeMs, double nodes, int best, int second, int third,
+                        int stop), {
+    var rec = { req: req, depth: depth, moves: moves, depthWallMs: depthWallMs, depthComputeMs: depthComputeMs,
+                wallMs: wallMs, computeMs: computeMs, nodes: nodes, best: best, second: second, third: third,
+                stop: stop, t: performance.now() };
+    if (typeof window === "undefined") { postMessage({ log: "__anaLog", rec: rec }); return; }
+    var L = window.__anaLog || (window.__anaLog = []);
+    if (L.length >= 20000) L.splice(0, 10000);
+    L.push(rec);
+});
+EM_JS(void, webMoveLog, (int req, double ms, double nodes, double effDepth), {
+    var rec = { req: req, ms: ms, nodes: nodes, effDepth: effDepth, t: performance.now() };
+    if (typeof window === "undefined") { postMessage({ log: "__moveLog", rec: rec }); return; }
+    var L = window.__moveLog || (window.__moveLog = []);
+    if (L.length >= 20000) L.splice(0, 10000);
+    L.push(rec);
+});
+#endif
+
+// Web inline engine only: stop before a depth whose predicted cost per root
+// move exceeds this many ms (0 = never), since each root move's search runs
+// inside one frame. An engine worker runs with no cap.
+static double s_webStepCapMs = 120.0;
+void engSetWebStepCap(double ms) { s_webStepCapMs = ms < 0.0 ? 0.0 : ms; }
+
 // Fold a step's result into the run and the published snapshot. Returns false
 // once the run is finished. Runs with the service lock held (native).
 static bool commitStep(AnalysisRun& run, const StepOut& o, EngAnalysis& snap) {
@@ -420,6 +465,7 @@ static bool commitStep(AnalysisRun& run, const StepOut& o, EngAnalysis& snap) {
     snap.workingTotal = n;
 
     bool finished = false;
+    int stop = ANA_GOING;
     if (run.pos == n) {
         int side = run.root.side;
         std::vector<int> idx(n);
@@ -439,21 +485,40 @@ static bool commitStep(AnalysisRun& run, const StepOut& o, EngAnalysis& snap) {
         run.order = idx;                      // best-first order for the next depth
         run.lastDepthMs = msSince(run.depthT0);
         run.depthT0 = EngClock::now();
+        double depthComputeMs = run.depthComputeMs;
+        run.depthComputeMs = 0.0;
         int best = run.score[idx[0]];
         // A proven result for the side to move cannot change with more depth
         // except toward a faster win, which the arrows do not need.
         bool proven = isWinFor(side, best) || isWinFor(side == White ? Black : White, best);
-        if (run.d >= run.cfg.maxDepth || proven) finished = true;
+        if (run.d >= run.cfg.maxDepth) { finished = true; stop = ANA_MAX_DEPTH; }
+        else if (proven) { finished = true; stop = ANA_PROVEN; }
 #if !GUI_ENGINE_THREADED
         // Web runs steps inside frames: stop before one root move's search would
         // stall a frame for long (the next depth costs roughly 4x this one).
-        if (run.lastDepthMs / n * 4.0 > 120.0) finished = true;
+        else if (s_webStepCapMs > 0.0 && run.lastDepthMs / n * 4.0 > s_webStepCapMs) {
+            finished = true; stop = ANA_WEB_CAP;
+        }
+#endif
+        if (!finished && run.cfg.maxSeconds > 0.0 && msSince(run.t0) > run.cfg.maxSeconds * 1000.0) {
+            finished = true; stop = ANA_MAX_SECONDS;
+        }
+#if !GUI_ENGINE_THREADED
+        webAnaLog(run.request, run.d, n, run.lastDepthMs, depthComputeMs, msSince(run.t0), run.computeMs,
+                  (double)run.nodes, best, n > 1 ? run.score[idx[1]] : best, n > 2 ? run.score[idx[2]] : best, stop);
 #endif
         run.d++;
         run.pos = 0;
     }
-    if (run.cfg.maxSeconds > 0.0 && snap.depth >= 1 && msSince(run.t0) > run.cfg.maxSeconds * 1000.0)
-        finished = true;
+    if (!finished && run.cfg.maxSeconds > 0.0 && snap.depth >= 1 && msSince(run.t0) > run.cfg.maxSeconds * 1000.0) {
+        finished = true; stop = ANA_MAX_SECONDS;
+#if !GUI_ENGINE_THREADED
+        int b0 = snap.lines.empty() ? 0 : snap.lines[0].score;
+        webAnaLog(run.request, snap.depth, n, 0.0, 0.0, msSince(run.t0), run.computeMs, (double)run.nodes,
+                  b0, snap.lines.size() > 1 ? snap.lines[1].score : b0, snap.lines.size() > 2 ? snap.lines[2].score : b0,
+                  stop);
+#endif
+    }
     if (finished) {
         snap.finished = true;
         snap.working = 0;
@@ -520,6 +585,20 @@ static AnalysisRun s_run;                 // engine thread only
 static EngAnalysis s_snap;                // published, under the lock
 static bool     s_hasSnap = false;
 
+// The page side of the web engine workers (WEB ENGINE WORKERS, below).
+#if GUI_ENGINE_CLIENT
+static bool clientActive();
+static bool clientInit(unsigned seed);
+static void clientShutdown();
+static void clientTick();
+static void clientNewGame();
+static void clientInvalidate(int slot);
+static void clientRequestMove(int id, const GuiPos& p, const AgentSpec& spec);
+static void clientCancelMove();
+static void clientStartAnalysis(int id, const GuiPos& p, const EngAnalysisConfig& cfg);
+static void clientStopAnalysis();
+#endif
+
 static void pokeLocked() {
     if ((s_abortAnalysis && s_running == RUN_ANALYSIS) || (s_abortMove && s_running == RUN_MOVE))
         g_nodeDeadline = 1;
@@ -565,6 +644,9 @@ static bool runOne(Lock& lk) {
         s_running = RUN_MOVE;
         lk.unlock();
         EngMoveResult r = runMoveJob(job);
+#if !GUI_ENGINE_THREADED
+        webMoveLog(job.request, r.ms, (double)r.nodes, r.effDepth);
+#endif
         lk.lock();
         s_running = RUN_NONE;
         s_abortMove = false;
@@ -574,12 +656,16 @@ static bool runOne(Lock& lk) {
     if (s_run.active) {
         s_running = RUN_ANALYSIS;
         lk.unlock();
+        EngClock::time_point st = EngClock::now();
         StepOut o = computeStep(s_run);
+        double stepMs = msSince(st);
         lk.lock();
         s_running = RUN_NONE;
         if (s_abortAnalysis) {
             s_abortAnalysis = false;          // step discarded; retried unless replaced
         } else {
+            s_run.computeMs += stepMs;
+            s_run.depthComputeMs += stepMs;
             commitStep(s_run, o, s_snap);
         }
         return true;
@@ -609,10 +695,16 @@ void engInit(unsigned seed) {
 #else
     std::srand(s_seed);
 #endif
+#if GUI_ENGINE_CLIENT
+    clientInit(s_seed);
+#endif
 }
 
 void engShutdown() {
     if (!s_started) return;
+#if GUI_ENGINE_CLIENT
+    clientShutdown();
+#endif
 #if GUI_ENGINE_THREADED
     {
         Lock lk(s_mu);
@@ -629,6 +721,9 @@ void engShutdown() {
 }
 
 void engTick() {
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientTick(); return; }
+#endif
 #if GUI_ENGINE_THREADED
     Lock lk(s_mu);
     pokeLocked();
@@ -651,6 +746,9 @@ void engNewGame() {
 #if GUI_ENGINE_THREADED
     Lock lk(s_mu);
 #endif
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientNewGame(); return; }
+#endif
     s_newGame = true;
     notify();
 }
@@ -659,15 +757,14 @@ void engInvalidateModel(int slot) {
 #if GUI_ENGINE_THREADED
     Lock lk(s_mu);
 #endif
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientInvalidate(slot); return; }
+#endif
     s_invalidate.insert(slot);
     notify();
 }
 
-int engRequestMove(const GuiPos& p, const AgentSpec& spec) {
-#if GUI_ENGINE_THREADED
-    Lock lk(s_mu);
-#endif
-    int id = s_nextRequest++;
+static void queueMove(int id, const GuiPos& p, const AgentSpec& spec) {
     s_moveJob.request = id;
     s_moveJob.pos = p;
     s_moveJob.spec = spec;
@@ -681,6 +778,37 @@ int engRequestMove(const GuiPos& p, const AgentSpec& spec) {
 #endif
     }
     notify();
+}
+
+static void queueAnalysis(int id, const GuiPos& p, const EngAnalysisConfig& cfg) {
+    s_anaQueued = true;
+    s_anaQueuedReq = id;
+    s_anaQueuedPos = p;
+    s_anaQueuedCfg = cfg;
+    s_anaStop = false;
+    if (s_running == RUN_ANALYSIS) {
+        s_abortAnalysis = true;
+#if GUI_ENGINE_THREADED
+        pokeLocked();
+#endif
+    }
+    notify();
+}
+
+int engRequestMove(const GuiPos& p, const AgentSpec& spec) {
+#if GUI_ENGINE_THREADED
+    Lock lk(s_mu);
+#endif
+    int id = s_nextRequest++;
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) {
+        s_moveWanted = id;
+        s_moveReady = false;
+        clientRequestMove(id, p, spec);
+        return id;
+    }
+#endif
+    queueMove(id, p, spec);
     return id;
 }
 
@@ -709,6 +837,9 @@ void engCancelMove() {
     s_moveQueued = false;
     s_moveWanted = 0;
     s_moveReady = false;
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientCancelMove(); return; }
+#endif
     if (s_running == RUN_MOVE) {
         s_abortMove = true;
 #if GUI_ENGINE_THREADED
@@ -722,24 +853,19 @@ int engStartAnalysis(const GuiPos& p, const EngAnalysisConfig& cfg) {
     Lock lk(s_mu);
 #endif
     int id = s_nextRequest++;
-    s_anaQueued = true;
-    s_anaQueuedReq = id;
-    s_anaQueuedPos = p;
-    s_anaQueuedCfg = cfg;
-    s_anaStop = false;
-    if (s_running == RUN_ANALYSIS) {
-        s_abortAnalysis = true;
-#if GUI_ENGINE_THREADED
-        pokeLocked();
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientStartAnalysis(id, p, cfg); return id; }
 #endif
-    }
-    notify();
+    queueAnalysis(id, p, cfg);
     return id;
 }
 
 void engStopAnalysis() {
 #if GUI_ENGINE_THREADED
     Lock lk(s_mu);
+#endif
+#if GUI_ENGINE_CLIENT
+    if (clientActive()) { clientStopAnalysis(); return; }
 #endif
     s_anaQueued = false;
     s_anaStop = true;
@@ -766,5 +892,423 @@ bool engAnalysisRunning() {
 #if GUI_ENGINE_THREADED
     Lock lk(s_mu);
 #endif
+#if GUI_ENGINE_CLIENT
+    if (clientActive())
+        return s_anaQueuedReq > 0 && !(s_hasSnap && s_snap.request == s_anaQueuedReq && s_snap.finished);
+#endif
     return s_anaQueued || (s_run.active && !s_anaStop);
 }
+
+// ============================================================
+// WEB ENGINE WORKERS -- the page's move and analysis workers
+// ============================================================
+// On the web the page runs no engine work itself. It starts two copies of
+// build/web/engine_worker.js (this file compiled with -DGUI_ENGINE_WORKER, plus
+// gui/engine_worker_pre.js): a MOVE worker for agent moves and an ANALYSIS
+// worker for the arrows and the eval bar. Each worker has its own engine
+// globals, model slots, and transposition table, so analysis entries never
+// evict an agent's, and neither job runs inside a frame.
+//
+// A worker reads a command only between two units of work (one move job, or one
+// root move's search), so a search cannot be cut short from the page: there is
+// no shared memory to poke g_nodeDeadline through (SharedArrayBuffer needs
+// cross-origin isolation headers, which GitHub Pages cannot send). Instead:
+//   - MOVE: a move job is bounded by its agent's own budget. A cancelled move
+//     runs to completion and its result is dropped by request id.
+//   - ANALYSIS: the worker acknowledges every analysis command when it reads
+//     it. An acknowledgement more than WK_ANA_RESPAWN_MS late means the worker
+//     is inside a long root-move search, so the page terminates it, starts a
+//     fresh one, and resends the command. Only the analysis TT is lost.
+// If a worker cannot be started, reports an error, or has not finished loading
+// WK_START_MS after it was started, the page falls back to the inline engine
+// above for the rest of the session. A worker loads in well under a second on
+// an idle machine, but wasm compilation and startup can be starved for far
+// longer when the CPU is saturated (three headless Chromes rendering in
+// software took 13 s to over 2 minutes), and a move must not wait on that.
+//
+// Wire format: each message is a flat byte array of trivially copyable fields
+// in a fixed order. Both ends are this file built by the same compiler.
+#if defined(__EMSCRIPTEN__)
+enum WkCmd { CMD_INIT = 1, CMD_MOVE, CMD_CANCEL_MOVE, CMD_NEW_GAME, CMD_INVALIDATE, CMD_ANA_START, CMD_ANA_STOP };
+enum WkMsg { MSG_READY = 1, MSG_MOVE, MSG_SNAP, MSG_ACK, MSG_ERROR = 99 };
+
+struct WkWriter {
+    std::vector<unsigned char> b;
+    template <class T> void pod(const T& v) {
+        const unsigned char* p = reinterpret_cast<const unsigned char*>(&v);
+        b.insert(b.end(), p, p + sizeof(T));
+    }
+    void str(const std::string& s) { pod((int)s.size()); b.insert(b.end(), s.begin(), s.end()); }
+};
+
+struct WkReader {
+    const unsigned char* p;
+    int  n, at;
+    bool ok;
+    WkReader(const unsigned char* p_, int n_) : p(p_), n(n_), at(0), ok(true) {}
+    template <class T> T pod() {
+        T v;
+        if (!ok || at + (int)sizeof(T) > n) { ok = false; return T(); }
+        std::memcpy(&v, p + at, sizeof(T));
+        at += (int)sizeof(T);
+        return v;
+    }
+    std::string str() {
+        int k = pod<int>();
+        if (!ok || k < 0 || at + k > n) { ok = false; return std::string(); }
+        std::string s(reinterpret_cast<const char*>(p + at), k);
+        at += k;
+        return s;
+    }
+};
+
+static void putMoveResult(WkWriter& w, const EngMoveResult& r) {
+    w.pod(r.request); w.pod(r.move); w.pod(r.byOpener); w.pod(r.hasImm); w.pod(r.imm);
+    w.pod(r.hasDown); w.pod(r.down); w.pod(r.nodes); w.pod(r.effDepth); w.pod(r.ms); w.str(r.error);
+}
+
+static EngMoveResult getMoveResult(WkReader& r) {
+    EngMoveResult o;
+    o.request = r.pod<int>(); o.move = r.pod<GuiMove>(); o.byOpener = r.pod<bool>(); o.hasImm = r.pod<bool>();
+    o.imm = r.pod<int>(); o.hasDown = r.pod<bool>(); o.down = r.pod<int>();
+    o.nodes = r.pod<unsigned long long>(); o.effDepth = r.pod<double>(); o.ms = r.pod<double>(); o.error = r.str();
+    return o;
+}
+
+static void putSnap(WkWriter& w, const EngAnalysis& a) {
+    w.pod(a.request); w.pod(a.side); w.pod(a.depth); w.pod(a.working); w.pod(a.workingDone); w.pod(a.workingTotal);
+    w.pod(a.hasStatic); w.pod(a.staticEval); w.pod(a.nodes); w.pod(a.ms); w.pod(a.finished); w.str(a.error);
+    w.pod((int)a.lines.size());
+    for (size_t i = 0; i < a.lines.size(); i++) w.pod(a.lines[i]);
+}
+
+static bool getSnap(WkReader& r, EngAnalysis& a) {
+    a.request = r.pod<int>(); a.side = r.pod<int>(); a.depth = r.pod<int>(); a.working = r.pod<int>();
+    a.workingDone = r.pod<int>(); a.workingTotal = r.pod<int>(); a.hasStatic = r.pod<bool>();
+    a.staticEval = r.pod<int>(); a.nodes = r.pod<unsigned long long>(); a.ms = r.pod<double>();
+    a.finished = r.pod<bool>(); a.error = r.str();
+    int n = r.pod<int>();
+    if (!r.ok || n < 0 || n > GUI_MAX_MOVES) return false;
+    a.lines.resize(n);
+    for (int i = 0; i < n; i++) a.lines[i] = r.pod<EngLine>();
+    return r.ok;
+}
+#endif
+
+#if defined(GUI_ENGINE_WORKER)
+// ---- worker side: called by gui/engine_worker_pre.js ----
+EM_JS(void, wkPost, (int kind, const unsigned char* p, int n), {
+    var b = HEAPU8.slice(p, p + n);
+    postMessage({ kind: kind, bytes: b }, [b.buffer]);
+});
+
+static void wkSend(int kind, const WkWriter& w) {
+    static const unsigned char none = 0;
+    wkPost(kind, w.b.empty() ? &none : &w.b[0], (int)w.b.size());
+}
+
+static void wkAck(int seq) { WkWriter w; w.pod(seq); wkSend(MSG_ACK, w); }
+
+extern "C" EMSCRIPTEN_KEEPALIVE void wk_message(const unsigned char* p, int n) {
+    WkReader r(p, n);
+    int cmd = r.pod<int>();
+    switch (cmd) {
+    case CMD_INIT: {
+        unsigned seed = r.pod<unsigned>();
+        mlAutoLoadDefaultSlots();
+        s_webStepCapMs = 0.0;               // nothing here shares a frame with rendering
+        engInit(seed);
+        wkSend(MSG_READY, WkWriter());
+        break;
+    }
+    case CMD_MOVE: {
+        int id = r.pod<int>();
+        GuiPos pos = r.pod<GuiPos>();
+        AgentSpec spec = r.pod<AgentSpec>();
+        if (r.ok) queueMove(id, pos, spec);
+        break;
+    }
+    case CMD_CANCEL_MOVE:
+        s_moveQueued = false;
+        s_moveWanted = 0;
+        s_moveReady = false;
+        break;
+    case CMD_NEW_GAME:
+        s_newGame = true;
+        break;
+    case CMD_INVALIDATE: {
+        int slot = r.pod<int>();
+        if (r.ok) s_invalidate.insert(slot);
+        break;
+    }
+    case CMD_ANA_START: {
+        int seq = r.pod<int>();
+        int id = r.pod<int>();
+        GuiPos pos = r.pod<GuiPos>();
+        EngAnalysisConfig cfg = r.pod<EngAnalysisConfig>();
+        if (r.ok) queueAnalysis(id, pos, cfg);
+        wkAck(seq);
+        break;
+    }
+    case CMD_ANA_STOP: {
+        int seq = r.pod<int>();
+        s_anaQueued = false;
+        s_anaStop = true;
+        s_snap.working = 0;
+        wkAck(seq);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+// What the page last saw of the analysis, so a snapshot is posted when the
+// depth, request, or state changes, and progress within a depth at most every
+// 100 ms.
+static int  s_postedReq = -1, s_postedDepth = -1, s_postedWorking = -1, s_postedDone = -1;
+static bool s_postedFinished = false;
+static EngClock::time_point s_postedAt;
+
+// One unit of work. Returns 1 when there may be more.
+extern "C" EMSCRIPTEN_KEEPALIVE int wk_pump() {
+    Lock lk;
+    bool did = runOne(lk);
+    if (s_moveReady) {
+        WkWriter w;
+        putMoveResult(w, s_moveResult);
+        wkSend(MSG_MOVE, w);
+        s_moveReady = false;
+        s_moveWanted = 0;
+    }
+    if (s_hasSnap) {
+        const EngAnalysis& a = s_snap;
+        bool changed = a.request != s_postedReq || a.depth != s_postedDepth || a.working != s_postedWorking ||
+                       a.finished != s_postedFinished;
+        bool progress = a.workingDone != s_postedDone && msSince(s_postedAt) >= 100.0;
+        if (changed || progress) {
+            WkWriter w;
+            putSnap(w, a);
+            wkSend(MSG_SNAP, w);
+            s_postedReq = a.request; s_postedDepth = a.depth; s_postedWorking = a.working;
+            s_postedDone = a.workingDone; s_postedFinished = a.finished;
+            s_postedAt = EngClock::now();
+        }
+    }
+    return did ? 1 : 0;
+}
+#endif
+
+#if GUI_ENGINE_CLIENT
+// ---- page side ----
+enum { WK_MOVE = 0, WK_ANA = 1 };
+static const double WK_ANA_RESPAWN_MS = 150.0;
+static const double WK_START_MS = 4000.0;
+
+// Start (or restart) worker `which`. Its messages queue in window.__engWk.q
+// until engTick drains them; a replaced worker's late messages are dropped.
+// Measurement records it posts go straight to the page's log arrays.
+EM_JS(int, engWkSpawn, (int which), {
+    try {
+        var W = window.__engWk || (window.__engWk = { w: [null, null], q: [], spawns: 0 });
+        if (W.w[which]) W.w[which].terminate();
+        var w = new Worker("engine_worker.js");
+        w.onmessage = function (e) {
+            var d = e.data;
+            if (d.log) {
+                var L = window[d.log] || (window[d.log] = []);
+                if (L.length >= 20000) L.splice(0, 10000);
+                d.rec.worker = which;
+                L.push(d.rec);
+                return;
+            }
+            if (W.w[which] === w) W.q.push({ which: which, kind: d.kind, bytes: d.bytes });
+        };
+        w.onerror = function (e) {
+            if (W.w[which] === w) W.q.push({ which: which, kind: 99, bytes: new Uint8Array(0) });
+            if (e && e.preventDefault) e.preventDefault();
+        };
+        W.w[which] = w;
+        W.spawns++;
+        return 1;
+    } catch (err) {
+        return 0;
+    }
+});
+
+EM_JS(void, engWkSend, (int which, const unsigned char* p, int n), {
+    var W = window.__engWk;
+    if (!W || !W.w[which]) return;
+    var b = HEAPU8.slice(p, p + n);
+    W.w[which].postMessage(b, [b.buffer]);
+});
+
+// Pops one queued message into buf. Returns its length (-1 = none), and
+// writes the worker index and message kind into meta[0] and meta[1].
+EM_JS(int, engWkPop, (unsigned char* buf, int cap, int* meta), {
+    var W = window.__engWk;
+    if (!W || !W.q.length) return -1;
+    var m = W.q.shift();
+    var n = Math.min(m.bytes.length, cap);
+    HEAPU8.set(m.bytes.subarray(0, n), buf);
+    HEAP32[meta >> 2] = m.which;
+    HEAP32[(meta >> 2) + 1] = m.kind;
+    return n;
+});
+
+EM_JS(void, engWkStopAll, (), {
+    var W = window.__engWk;
+    if (!W) return;
+    for (var i = 0; i < W.w.length; i++) if (W.w[i]) { W.w[i].terminate(); W.w[i] = null; }
+    W.q = [];
+});
+
+static bool     s_cl = false;                 // the workers are running (else the inline engine)
+static unsigned s_clSeed = 1;
+static int      s_clSeq = 0;
+static bool     s_clReady[2] = { false, false };    // each worker has finished loading
+static double   s_clSpawnAt[2] = { 0.0, 0.0 };     // when each worker was last started
+static int      s_clAnaPending = 0;           // seq of the analysis command awaiting its ack (0 = none)
+static double   s_clAnaSentAt = 0.0;
+static std::vector<unsigned char> s_clAnaLast;    // the last analysis command, resent after a restart
+static GuiPos   s_clMovePos, s_clAnaPos;          // kept for the inline fallback
+static AgentSpec s_clMoveSpec;
+static EngAnalysisConfig s_clAnaCfg;
+
+static bool clientActive() { return s_cl; }
+
+static void clSend(int which, const WkWriter& w) { engWkSend(which, &w.b[0], (int)w.b.size()); }
+
+static void clInitWorker(int which) {
+    WkWriter w;
+    w.pod((int)CMD_INIT);
+    w.pod(s_clSeed);
+    clSend(which, w);
+    s_clReady[which] = false;
+    s_clSpawnAt[which] = emscripten_get_now();
+}
+
+// An analysis command carries its seq at byte 4, restamped on every send.
+static void clSendAna(const std::vector<unsigned char>& bytes) {
+    s_clAnaLast = bytes;
+    int seq = ++s_clSeq;
+    std::memcpy(&s_clAnaLast[4], &seq, sizeof(seq));
+    s_clAnaPending = seq;
+    s_clAnaSentAt = emscripten_get_now();
+    engWkSend(WK_ANA, &s_clAnaLast[0], (int)s_clAnaLast.size());
+}
+
+// ?engine=inline in the page URL keeps the engine on the page, for comparing
+// the two paths in one build (tools/web_ana_bench.ps1).
+EM_JS(int, engWkWanted, (), {
+    return new URLSearchParams(window.location.search).get("engine") === "inline" ? 0 : 1;
+});
+
+static bool clientInit(unsigned seed) {
+    s_clSeed = seed;
+    if (!engWkWanted()) return false;
+    s_cl = engWkSpawn(WK_MOVE) && engWkSpawn(WK_ANA);
+    if (!s_cl) { engWkStopAll(); return false; }
+    clInitWorker(WK_MOVE);
+    clInitWorker(WK_ANA);
+    return true;
+}
+
+static void clientShutdown() { engWkStopAll(); s_cl = false; }
+
+// A worker failed: run everything inline from now on, picking up the move and
+// the analysis that were in flight.
+static void clientFallback() {
+    EM_ASM({ console.warn("Engine worker failed or was too slow to load; running the engine on the page instead."); });
+    engWkStopAll();
+    s_cl = false;
+    if (s_moveWanted != 0 && !s_moveReady) queueMove(s_moveWanted, s_clMovePos, s_clMoveSpec);
+    if (s_anaQueuedReq > 0) queueAnalysis(s_anaQueuedReq, s_clAnaPos, s_clAnaCfg);
+}
+
+static void clientNewGame() {
+    WkWriter w;
+    w.pod((int)CMD_NEW_GAME);
+    clSend(WK_MOVE, w);
+    clSend(WK_ANA, w);
+}
+
+static void clientInvalidate(int slot) {
+    WkWriter w;
+    w.pod((int)CMD_INVALIDATE);
+    w.pod(slot);
+    clSend(WK_MOVE, w);
+    clSend(WK_ANA, w);
+}
+
+static void clientRequestMove(int id, const GuiPos& p, const AgentSpec& spec) {
+    s_clMovePos = p;
+    s_clMoveSpec = spec;
+    WkWriter w;
+    w.pod((int)CMD_MOVE);
+    w.pod(id);
+    w.pod(p);
+    w.pod(spec);
+    clSend(WK_MOVE, w);
+}
+
+static void clientCancelMove() {
+    WkWriter w;
+    w.pod((int)CMD_CANCEL_MOVE);
+    clSend(WK_MOVE, w);
+}
+
+static void clientStartAnalysis(int id, const GuiPos& p, const EngAnalysisConfig& cfg) {
+    s_anaQueuedReq = id;                      // what engAnalysisRunning and the fallback read
+    s_clAnaPos = p;
+    s_clAnaCfg = cfg;
+    WkWriter w;
+    w.pod((int)CMD_ANA_START);
+    w.pod(0);                                 // seq, stamped by clSendAna
+    w.pod(id);
+    w.pod(p);
+    w.pod(cfg);
+    clSendAna(w.b);
+}
+
+static void clientStopAnalysis() {
+    s_anaQueuedReq = 0;
+    s_snap.working = 0;
+    WkWriter w;
+    w.pod((int)CMD_ANA_STOP);
+    w.pod(0);
+    clSendAna(w.b);
+}
+
+static void clientTick() {
+    static unsigned char buf[16384];
+    int meta[2] = { 0, 0 };
+    int n;
+    while ((n = engWkPop(buf, (int)sizeof(buf), meta)) >= 0) {
+        int which = meta[0], kind = meta[1];
+        if (kind == MSG_ERROR) { clientFallback(); return; }
+        WkReader r(buf, n);
+        if (which == WK_MOVE && kind == MSG_MOVE) {
+            EngMoveResult res = getMoveResult(r);
+            if (r.ok && s_moveWanted != 0 && res.request == s_moveWanted) { s_moveResult = res; s_moveReady = true; }
+        } else if (kind == MSG_READY) {
+            s_clReady[which] = true;
+            if (which == WK_ANA) s_clAnaSentAt = emscripten_get_now();   // the grace period starts once it can read
+        } else if (which == WK_ANA && kind == MSG_SNAP) {
+            EngAnalysis a;
+            if (getSnap(r, a)) { s_snap = a; s_hasSnap = true; }
+        } else if (which == WK_ANA && kind == MSG_ACK) {
+            int seq = r.pod<int>();
+            if (r.ok && seq == s_clAnaPending) s_clAnaPending = 0;
+        }
+    }
+    double now = emscripten_get_now();
+    for (int i = 0; i < 2; i++)
+        if (!s_clReady[i] && now - s_clSpawnAt[i] > WK_START_MS) { clientFallback(); return; }
+    if (s_clAnaPending && s_clReady[WK_ANA] && now - s_clAnaSentAt > WK_ANA_RESPAWN_MS) {
+        if (!engWkSpawn(WK_ANA)) { clientFallback(); return; }
+        clInitWorker(WK_ANA);
+        clSendAna(s_clAnaLast);
+    }
+}
+#endif
